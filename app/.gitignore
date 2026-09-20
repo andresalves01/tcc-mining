@@ -1,0 +1,3 @@
+# Output of the VS Code Java extension's own compiler, written parallel to Gradle's build/.
+# Regenerated on every save, and only Gradle's output is the one that gets run.
+bin/

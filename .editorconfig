@@ -1,0 +1,31 @@
+# Encodes the style the sources already follow, so editors stop reformatting against it.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.java]
+# Google Java Style, as the existing sources are written.
+max_line_length = 100
+
+[*.{kts,gradle}]
+indent_size = 4
+
+[*.py]
+indent_size = 4
+
+[*.md]
+# Two trailing spaces are a line break in Markdown.
+trim_trailing_whitespace = false
+
+[*.bat]
+# Matches .gitattributes, which keeps the Windows launcher on CRLF.
+end_of_line = crlf
+
+[Makefile]
+indent_style = tab
