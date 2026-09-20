@@ -1,0 +1,33 @@
+# The MongoDB the pipeline reads. Reconstructed from the container this study actually ran against,
+# so the environment is reproducible rather than something someone started once by hand.
+#
+#   docker compose up -d
+#   docker compose exec mongo mongosh --quiet --eval 'db.adminCommand({listDatabases:1})'
+#
+# Restoring the corpus is a separate, one-off step -- see the README. Nothing here creates it.
+
+services:
+  mongo:
+    image: mongo:5.0
+    container_name: smartshark-mongo
+    restart: unless-stopped
+
+    # 6 GB is what produced every number this repository reports, on a 15 GB machine. It is worth
+    # knowing why the figure is contested: WiredTiger competes with the pipeline's own 4 GB heap,
+    # and `build-ledger` and `funnel` run co-resident with it. Lowering this to 4 leaves more room
+    # for the JVM at the cost of cache hits on a corpus far larger than either. Change it
+    # deliberately, and re-measure rather than assuming the stages get faster.
+    command: ["--wiredTigerCacheSizeGB", "6"]
+
+    ports:
+      - "27017:27017"
+
+    volumes:
+      # The restored corpus, 686 GB. A bind mount rather than a named volume because it is far too
+      # large to want Docker managing its lifecycle -- `docker volume prune` must never be able to
+      # reach it. Override the host path with SMARTSHARK_DATA_DIR.
+      - ${SMARTSHARK_DATA_DIR:-/home/andre/mongo_data}:/data/db
+      - mongo-config:/data/configdb
+
+volumes:
+  mongo-config:
