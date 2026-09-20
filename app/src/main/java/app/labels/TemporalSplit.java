@@ -65,7 +65,17 @@ public final class TemporalSplit {
     }
   }
 
-  public record Split(Side outer, Side inner, Map<String, SplitPart> parts) {}
+  /**
+   * Where every label landed, under both cuts.
+   *
+   * @param parts the outer verdict, over all labels: training side, test side, or excluded
+   * @param innerParts the inner verdict, over the outer training side only. A label absent here
+   *     never reached that side. Recomputed against the earlier instant rather than inherited, so
+   *     a label that is {@code TRAIN} outside can be {@code INSUFFICIENT_HISTORY} inside — its
+   *     author had not yet done the work that made them eligible.
+   */
+  public record Split(Side outer, Side inner, Map<String, SplitPart> parts,
+      Map<String, SplitPart> innerParts) {}
 
   private TemporalSplit() {}
 
@@ -76,13 +86,14 @@ public final class TemporalSplit {
       throw new IllegalArgumentException("no labels to split");
     }
     final Map<String, SplitPart> parts = new LinkedHashMap<>();
+    final Map<String, SplitPart> innerParts = new LinkedHashMap<>();
     final Side outer = cutAt(labels, quantileOfCreation(labels, trainShare), minResolved, parts);
     final Side inner = cutAt(outer.past(),
-        quantileOfCreation(outer.past(), trainShare), minResolved, null);
-    return new Split(outer, inner, Map.copyOf(parts));
+        quantileOfCreation(outer.past(), trainShare), minResolved, innerParts);
+    return new Split(outer, inner, Map.copyOf(parts), Map.copyOf(innerParts));
   }
 
-  /** @param parts when given, records where each label landed; the inner cut does not overwrite it */
+  /** @param parts when given, records where each label landed under this cut */
   private static Side cutAt(final List<IssueLabel> labels, final Instant cut, final int minResolved,
       final Map<String, SplitPart> parts) {
 

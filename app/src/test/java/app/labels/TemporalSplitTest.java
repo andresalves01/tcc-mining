@@ -49,6 +49,47 @@ class TemporalSplitTest {
   }
 
   @Test
+  @DisplayName("the inner verdict covers the training side only, and never the test side")
+  void innerSplitIsScopedToTheTrainingSide() {
+    final List<IssueLabel> labels = corpus("a", "b", "c");
+    final TemporalSplit.Split split = TemporalSplit.of(labels, 0.70, 1);
+
+    assertEquals(split.outer().past().size(), split.innerParts().size(),
+        "every label on the training side gets an inner verdict, and only those");
+    split.outer().future().forEach(label ->
+        assertTrue(!split.innerParts().containsKey(label.issueId()),
+            "a test-side label must carry no inner verdict: it never reached the inner cut"));
+    split.innerParts().keySet().forEach(id ->
+        assertEquals(SplitPart.TRAIN, split.parts().get(id),
+            "only labels the outer cut sent to training may appear in the inner verdict"));
+  }
+
+  @Test
+  @DisplayName("inner eligibility is recomputed, not inherited from the outer cut")
+  void innerEligibilityIsRecomputed() {
+    // A developer who reaches five resolutions only late in the training period is eligible at the
+    // outer cut and not at the earlier inner one. Carrying the outer verdict inward would credit
+    // them with work they had not done yet -- the whole reason the inner cut is computed afresh.
+    final List<IssueLabel> labels = new ArrayList<>(corpus("veteran"));
+    for (int i = 0; i < 5; i++) {
+      labels.add(label("latecomer", 60 + i, 61 + i));
+    }
+    final TemporalSplit.Split split = TemporalSplit.of(labels, 0.70, 5);
+
+    final long trainedOutside = labels.stream()
+        .filter(l -> l.canonicalAuthorId().equals("latecomer"))
+        .filter(l -> split.parts().get(l.issueId()) == SplitPart.TRAIN)
+        .count();
+    final long trainedInside = labels.stream()
+        .filter(l -> l.canonicalAuthorId().equals("latecomer"))
+        .filter(l -> split.innerParts().get(l.issueId()) == SplitPart.TRAIN)
+        .count();
+
+    assertTrue(trainedInside <= trainedOutside,
+        "the inner cut is earlier, so it can only be at least as strict about history");
+  }
+
+  @Test
   @DisplayName("an issue resolved after the cut is in neither side, and is counted")
   void crossingIssuesAreExcludedAndCounted() {
     // The rule the design turns on: at the cut this issue had no known outcome, so training on it

@@ -115,7 +115,7 @@ because every later stage keys on the canonical author.
 | 3 | `canonicalize` | `people` | `person_canonical` |
 | 4 | `build-ledger` | `commit`, `file_action`, `file`, `project`, `vcs_system` | `developer_contribution` |
 | 5 | `funnel` | `issue`, `event`, `issue_system`, `commit`, `file_action`, `file`, `hunk`, `code_entity_state` | `issue_label` |
-| 6 | `split` | `issue_label` | `issue_label` (the assignment), `split_meta` |
+| 6 | `split` | `issue_label` | `issue_label` (`split` and `split_inner`), `split_meta` |
 | 7 | `seniority` | `developer_contribution` | nothing — reports only |
 
 `check` and `stats` may be run at any point. Everything written lands in `TARGET_DB`, which must differ from
@@ -132,7 +132,13 @@ Three of these deserve a note:
   cheap enough to compare `MERGE_STRICTNESS` settings without re-mining.
 - **`split`** does not take a cut-off date. It computes one from the `TRAIN_SHARE` quantile of
   issue creation and records it in `split_meta`, so no downstream script should ever hard-code a
-  date — read it back instead.
+  date — read it back instead. It writes two verdicts per label: `split` for the outer cut, and
+  `split_inner` for the inner one, which divides the training side so regularisation can be chosen
+  without touching the test set. The three usable partitions are therefore
+  `split=TRAIN, split_inner=TRAIN` (fit), `split=TRAIN, split_inner=TEST` (hyperparameter
+  selection) and `split=TEST` (held out). Inner eligibility is recomputed against the earlier
+  instant rather than inherited, so a developer eligible at the outer cut may not be at the inner
+  one.
 
 ## Environment
 
@@ -169,7 +175,7 @@ The sample the study reports, for checking that a re-run landed in the same plac
 | Funnel | **56,153 labels**, 2,434 developers, 97 projects |
 | Time-to-code | p25 0.88 d, p50 7.03 d, p75 47.52 d, p95 462.74 d |
 | Outer split `t0` | 2015-12-01 — 36,677 train / 8,318 test, 677 eligible (dev, project) pairs |
-| Inner split `t1` | 2013-10-22 — 24,582 fit / 5,397 parameter selection |
+| Inner split `t1` | 2013-10-22 — 24,582 fit / 5,397 parameter selection, 443 eligible pairs |
 
 The funnel's exclusions are printed in order and are **incremental**: each denominator is what the
 previous line retained, so the percentages do not add up to a share of the original total and the

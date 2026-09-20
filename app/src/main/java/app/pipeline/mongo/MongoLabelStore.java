@@ -37,6 +37,9 @@ public final class MongoLabelStore implements LabelStore {
   public static final String ISSUE_LABEL = "issue_label";
   public static final String SPLIT_META = "split_meta";
 
+  /** The inner verdict's field name on a label; the outer one is plain {@code split}. */
+  private static final String SPLIT_INNER = "split_inner";
+
   private static final int BATCH_SIZE = 2_000;
 
   private final MongoDatabase target;
@@ -128,11 +131,20 @@ public final class MongoLabelStore implements LabelStore {
         meta(split, trainShare, minResolved), new ReplaceOptions().upsert(true));
 
     final Map<String, SplitPart> parts = split.parts();
+    final Map<String, SplitPart> innerParts = split.innerParts();
     final List<WriteModel<Document>> batch = new ArrayList<>(BATCH_SIZE);
     long written = 0;
     for (final Map.Entry<String, SplitPart> entry : parts.entrySet()) {
+      // Both verdicts go on the row, so a consumer selects a partition by field rather than by
+      // re-deriving a cut date. A label off the outer training side carries no inner verdict at
+      // all: absent says "never reached the inner cut", which a fifth enum value would blur.
+      final SplitPart innerPart = innerParts.get(entry.getKey());
       batch.add(new UpdateOneModel<>(new Document("_id", new ObjectId(entry.getKey())),
-          Updates.set("split", entry.getValue().name())));
+          innerPart == null
+              ? Updates.combine(Updates.set("split", entry.getValue().name()),
+                  Updates.unset(SPLIT_INNER))
+              : Updates.combine(Updates.set("split", entry.getValue().name()),
+                  Updates.set(SPLIT_INNER, innerPart.name()))));
       if (batch.size() == BATCH_SIZE) {
         written += flush(batch);
       }
@@ -140,6 +152,8 @@ public final class MongoLabelStore implements LabelStore {
     written += flush(batch);
     target.getCollection(ISSUE_LABEL)
         .createIndex(Indexes.ascending("split"), new IndexOptions().background(true));
+    target.getCollection(ISSUE_LABEL)
+        .createIndex(Indexes.ascending(SPLIT_INNER), new IndexOptions().background(true));
     return written;
   }
 

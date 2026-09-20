@@ -5,6 +5,7 @@ import app.cli.CommandRunner;
 import app.cli.Context;
 import app.config.PipelineConfig;
 import app.labels.IssueLabel;
+import app.labels.SplitPart;
 import app.labels.TemporalSplit;
 import app.pipeline.SplitTask;
 import java.util.List;
@@ -29,6 +30,17 @@ public final class SplitCommand implements CommandRunner {
         report.labels().size(), config.minResolvedBeforeCut());
     printSide("CORTE EXTERNO t0", split.outer(), "treino", "teste");
     printSide("CORTE INTERNO t1", split.inner(), "ajuste", "selecao de parametros");
+    final long ajuste = split.innerParts().values().stream()
+        .filter(part -> part == SplitPart.TRAIN).count();
+    final long selecao = split.innerParts().values().stream()
+        .filter(part -> part == SplitPart.TEST).count();
+    System.out.printf("%n  AS TRES PARTICOES UTILIZAVEIS%n");
+    System.out.printf("    ajuste          split=TRAIN split_inner=TRAIN : %,7d%n", ajuste);
+    System.out.printf("    selecao de hiperparametros  split_inner=TEST : %,7d%n", selecao);
+    System.out.printf("    teste                        split=TEST      : %,7d%n",
+        split.outer().future().size());
+    System.out.printf("    (o resto atravessa um dos cortes ou nao tem historico suficiente)%n");
+
     System.out.printf("%n  gravou %,d atribuicoes em %s%n", report.written(),
         context.labelStore().describe());
   }
