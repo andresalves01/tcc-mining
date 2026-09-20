@@ -24,7 +24,7 @@ class PipelineConfigTest {
   @DisplayName("refuses a target equal to the source database")
   void refusesToTargetTheSourceDatabase() {
     // Provenance guard. Reconstructed documents written into smartshark_2_2 would be
-    // indistinguishable from ones that shipped in the release, and re-restoring the 481 GB
+    // indistinguishable from ones that shipped in the release, and re-restoring the 686 GB
     // archive would silently discard them. Checked at startup, so a misconfigured run fails in
     // under a second rather than after reading 7 GB of repositories.
     final IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,

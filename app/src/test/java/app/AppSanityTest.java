@@ -26,7 +26,7 @@ import org.junit.jupiter.api.Test;
 class AppSanityTest {
 
   private static final String DB_NAME = "smartshark_2_2";
-  /** Scratch writes go to a throwaway database -- never into the 481 GB source corpus. */
+  /** Scratch writes go to a throwaway database -- never into the 686 GB source corpus. */
   private static final String WRITE_DB_NAME = "smartshark_tcc_test";
   private static final String MONGO_URI = "mongodb://127.0.0.1:27017";
   private static final String TEST_COLLECTION = "app_sanity_test_" + System.nanoTime();

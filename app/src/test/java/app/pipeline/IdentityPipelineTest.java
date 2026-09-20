@@ -28,7 +28,7 @@ import org.junit.jupiter.api.Test;
  *
  * <p>These tests are the reason the ports exist. The behaviour worth protecting — aborting on a
  * broken bijection, refusing to harvest into an empty registry, linking the two id spaces end to
- * end — used to be reachable only by running the real thing against 481 GB of MongoDB and a live
+ * end — used to be reachable only by running the real thing against 686 GB of MongoDB and a live
  * issue tracker. Here it runs in milliseconds with neither.
  */
 class IdentityPipelineTest {

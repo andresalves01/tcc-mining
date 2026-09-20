@@ -12,7 +12,7 @@ plans
 .project
 .settings/
 
-# JVM crash and replay dumps: the mining stages run with a 4 GB heap against a 481 GB corpus,
+# JVM crash and replay dumps: the mining stages run with a 4 GB heap against a 686 GB corpus,
 # so an OOM leaves one of these in the working directory
 hs_err_pid*.log
 replay_pid*.log
