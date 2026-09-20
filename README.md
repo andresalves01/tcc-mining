@@ -181,13 +181,14 @@ filters' effects are not independent.
 ./gradlew :app:test
 ```
 
-81 of the 84 tests run in about two seconds against in-memory doubles, with no MongoDB and no
-Spark — that is the point of the port-and-adapter layering below. The other three need a MongoDB at `127.0.0.1:27017`. Two live in
+81 of the 85 tests run in about two seconds against in-memory doubles, with no MongoDB and no
+Spark — that is the point of the port-and-adapter layering below. The other four need a MongoDB at `127.0.0.1:27017`. Two live in
 `AppSanityTest`, which checks that this machine's Spark and Mongo connector actually work and writes
 to a throwaway `smartshark_tcc_test` database. The third is `CorpusRegressionTest`, which asserts
-that the restored corpus still holds the counts every number below was measured from — it reads
-collection metadata, answers in about two seconds, and **skips rather than fails** when no server
-answers. To skip all three:
+that the restored corpus still holds the counts every number below was measured from. The fourth is
+`EventReplayTest`, which replays each sampled issue's event stream and checks it still lands on the
+state the corpus records — every date this study uses is recovered from that stream. Both read
+little and **skip rather than fail** when no server answers. To skip all four:
 
 ```bash
 ./gradlew :app:test --tests 'app.identity.*' --tests 'app.cost.*' \
