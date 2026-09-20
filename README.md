@@ -38,7 +38,8 @@ task's complexity ahead of time is a stated non-goal of the study, not a missing
 - **JDK 21.** The Gradle toolchain resolves it; nothing needs to be on `PATH` but a JVM to launch
   Gradle itself.
 - **MongoDB** holding the SmartSHARK 2.2 release, reachable at `MONGO_URI`. Restored, it is large:
-  the instance this study ran against holds 481 GB on disk (2.2 TB logical) across 31 collections,
+  the instance this study ran against holds 686 GB on disk across 31 collections (517 GB of
+  data plus its indexes; 2.4 TB logical, before WiredTiger compression),
   and a full pass over `commit` reads about 84 GB of it. Release 2.2 is documented against
   MongoDB 4.4; the runs reported here were made on 5.0.
 - **~4 GB of heap**, already set in [app/build.gradle.kts](app/build.gradle.kts) together with the
@@ -54,8 +55,14 @@ mirrors on Zenodo and Figshare. Restore the archive the usual way for that forma
 database named `smartshark_2_2`, or point `SOURCE_DB` elsewhere:
 
 ```bash
+docker compose up -d                          # the MongoDB this study ran against
 mongorestore --gzip --archive=smartshark_2_2.agz
 ```
+
+[compose.yaml](compose.yaml) reconstructs that server: MongoDB 5.0, a 6 GB WiredTiger cache, and the
+corpus bind-mounted from `SMARTSHARK_DATA_DIR` so no `docker volume prune` can ever reach it. Once
+it is restored, `./gradlew :app:test --tests 'app.CorpusRegressionTest'` confirms you have the same
+corpus the numbers below came from.
 
 **Use the full release, not the small one.** The small variant omits `code_entity_state`, which is
 where the method-level McCC and nesting level come from — `funnel` would exclude every issue at its
@@ -174,10 +181,13 @@ filters' effects are not independent.
 ./gradlew :app:test
 ```
 
-81 of the 83 tests run in about two seconds against in-memory doubles, with no MongoDB and no
-Spark — that is the point of the port-and-adapter layering below. The other two live in
-`AppSanityTest`, which checks that this machine's Spark and Mongo connector actually work; it needs
-a MongoDB at `127.0.0.1:27017` and writes to a throwaway `smartshark_tcc_test` database. To skip it:
+81 of the 84 tests run in about two seconds against in-memory doubles, with no MongoDB and no
+Spark — that is the point of the port-and-adapter layering below. The other three need a MongoDB at `127.0.0.1:27017`. Two live in
+`AppSanityTest`, which checks that this machine's Spark and Mongo connector actually work and writes
+to a throwaway `smartshark_tcc_test` database. The third is `CorpusRegressionTest`, which asserts
+that the restored corpus still holds the counts every number below was measured from — it reads
+collection metadata, answers in about two seconds, and **skips rather than fails** when no server
+answers. To skip all three:
 
 ```bash
 ./gradlew :app:test --tests 'app.identity.*' --tests 'app.cost.*' \
