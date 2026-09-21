@@ -18,6 +18,15 @@ repositories {
 dependencies {
     // --- 1. SPARK 3.5 (Core & SQL) ---
     // Spark handles the heavy lifting and distributed logic
+    // Elastic Net. Its native BLAS is not optional -- Smile's matrix layer has no pure-Java
+    // fallback, so excluding org.bytedeco compiles and then fails at the first multiplication.
+    // The 74 MB it adds is the price of the estimator; the data layer's is not.
+    implementation(libs.smile.core) {
+        // Smile can read a DataFrame from DuckDB and from SAS files; the regression cannot. That
+        // is 73 MB of embedded database for a matrix of 25k rows by 15 columns.
+        exclude(group = "org.duckdb")
+        exclude(group = "com.epam", module = "parso")
+    }
     implementation("org.apache.spark:spark-core_2.12:3.5.0")
     implementation("org.apache.spark:spark-sql_2.12:3.5.0")
     
