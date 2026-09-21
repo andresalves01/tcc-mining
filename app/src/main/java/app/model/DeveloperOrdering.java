@@ -16,11 +16,12 @@ import java.util.function.ToDoubleFunction;
  * <b>same project</b> with <b>different developers</b> and <b>comparable tasks</b>, and what is
  * scored is whether the sign of the predicted difference matches the sign of the real one.
  *
- * <p><b>Every task attribute the model can see has to be matched on, not just size.</b> Measured
- *2026-09-20: controlling for size alone reports 59.6%, and adding the description length — which
- * is the strongest creation-time predictor there is — takes it to a different number entirely. A
- * column left unmatched does not test the developer component; it lets task ordering answer a
- * question that was asked about people.
+ * <p><b>There is no single right filter, so the whole gradient is reported.</b> Measured
+ * 2026-09-21 against the mongosh prototype, which the Java implementation reproduces pair for
+ * pair: the agreement falls monotonically as task attributes are controlled — 63.4% over any pair,
+ * 59.5% matching size, 53.6% matching type, size and description. The last is the honest one, and
+ * it is barely above the coin. Reporting only a loose filter would credit the developer component
+ * with task ordering; reporting only the tight one would hide how much of the drop is the filter.
  *
  * <p>The pairs are not independent of each other — one observation appears in many — so the
  * decimals of the resulting share must not be read as precision. What it answers is whether the
@@ -30,15 +31,35 @@ public final class DeveloperOrdering {
 
   private DeveloperOrdering() {}
 
-  public record Result(int pairs, double agreement) {}
+  public record Result(String matching, int pairs, double agreement) {}
 
   /**
-   * @param matchOn columns two tasks must be alike in before their developers are compared
-   * @param tolerance how alike, on the transformed scale the columns arrive in
+   * How alike two tasks must be before their developers are compared.
+   *
+   * <p>The five the mongosh prototype sweeps, so the two implementations report the same thing.
+   *
+   * @param sizeTolerance {@link Double#MAX_VALUE} to not match on size at all
    */
+  public record Matching(String name, boolean sameType, double sizeTolerance,
+      double descriptionTolerance) {
+
+    public static final Matching ANY =
+        new Matching("qualquer par", false, Double.MAX_VALUE, Double.MAX_VALUE);
+    public static final Matching TYPE =
+        new Matching("mesmo tipo", true, Double.MAX_VALUE, Double.MAX_VALUE);
+    public static final Matching SIZE =
+        new Matching("tamanho parecido", false, 0.5, Double.MAX_VALUE);
+    public static final Matching TYPE_SIZE =
+        new Matching("mesmo tipo E tamanho", true, 0.5, Double.MAX_VALUE);
+    public static final Matching TIGHT =
+        new Matching("mesmo tipo, tamanho e descricao", true, 0.25, 0.5);
+
+    /** Loosest first, so the report shows the gradient rather than one chosen number. */
+    public static final List<Matching> GRADIENT = List.of(ANY, TYPE, SIZE, TYPE_SIZE, TIGHT);
+  }
+
   public static Result of(final List<Observation> rows,
-      final ToDoubleFunction<Observation> prediction, final int[] matchOn,
-      final double tolerance) {
+      final ToDoubleFunction<Observation> prediction, final Matching matching) {
 
     final Map<String, List<Observation>> byProject = new HashMap<>();
     for (final Observation row : rows) {
@@ -54,15 +75,8 @@ public final class DeveloperOrdering {
           if (a.developer().equals(b.developer())) {
             continue; // the question is about people, not about the same person twice
           }
-          boolean comparable = true;
-          for (final int column : matchOn) {
-            if (Math.abs(a.values()[column] - b.values()[column]) > tolerance) {
-              comparable = false;
-              break; // too different a task for the developer to be what separates them
-            }
-          }
-          if (!comparable) {
-            continue;
+          if (!comparable(a, b, matching)) {
+            continue; // too different a task for the developer to be what separates them
           }
           final double real = a.logTtc() - b.logTtc();
           final double guess =
@@ -77,6 +91,27 @@ public final class DeveloperOrdering {
         }
       }
     }
-    return new Result(pairs, pairs == 0 ? 0 : (double) agree / pairs);
+    return new Result(matching.name(), pairs, pairs == 0 ? 0 : (double) agree / pairs);
+  }
+
+  private static boolean comparable(final Observation a, final Observation b,
+      final Matching matching) {
+
+    if (matching.sameType()) {
+      for (final int column : Columns.typeIndices()) {
+        if (a.values()[column] != b.values()[column]) {
+          return false;
+        }
+      }
+    }
+    return alike(a, b, Columns.taskSize(), matching.sizeTolerance())
+        && alike(a, b, Columns.descriptionLength(), matching.descriptionTolerance());
+  }
+
+  private static boolean alike(final Observation a, final Observation b, final int column,
+      final double tolerance) {
+
+    return tolerance == Double.MAX_VALUE
+        || Math.abs(a.values()[column] - b.values()[column]) <= tolerance;
   }
 }

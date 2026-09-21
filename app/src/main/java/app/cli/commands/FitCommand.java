@@ -3,6 +3,7 @@ package app.cli.commands;
 import app.cli.CommandFailedException;
 import app.cli.CommandRunner;
 import app.cli.Context;
+import app.model.Bounds;
 import app.model.DeveloperOrdering;
 import app.model.ElasticNetModel;
 import app.model.Metrics;
@@ -15,14 +16,23 @@ public final class FitCommand implements CommandRunner {
 
   @Override
   public void run(final Context context) throws CommandFailedException {
-    final FitModelTask.Report report;
-    try {
-      report = new FitModelTask(context.observations(), context.progress()).run();
-    } catch (final FitModelTask.NoObservationsException e) {
-      throw new CommandFailedException(List.of("  " + e.getMessage()));
+    // Both arms from one run. Whether to restrict the sample to a coherent duration band is still
+    // open, and reporting only one of them would make the other impossible to put beside it.
+    final FitModelTask task = new FitModelTask(context.observations(), context.progress());
+    for (final Bounds bounds : List.of(Bounds.none(), Bounds.oneHourToOneYear())) {
+      try {
+        print(task.run(bounds), bounds);
+      } catch (final FitModelTask.NoObservationsException e) {
+        throw new CommandFailedException(List.of("  " + e.getMessage()));
+      }
     }
+  }
 
-    System.out.printf("%n  AJUSTE DO ELASTIC NET%n%n");
+  private static void print(final FitModelTask.Report report, final Bounds bounds) {
+
+    System.out.printf("%n%n  ===================================================================%n");
+    System.out.printf("  AJUSTE DO ELASTIC NET  --  %s%n", bounds.name().toUpperCase());
+    System.out.printf("  ===================================================================%n%n");
     System.out.printf("  ajuste : %,d rotulos      selecao : %,d rotulos%n",
         report.fitRows(), report.selectionRows());
     System.out.printf("  postos de lado por equipe vazia : %,d no ajuste, %,d na selecao%n",
@@ -66,18 +76,29 @@ public final class FitCommand implements CommandRunner {
     System.out.printf("    a referencia da 3.6 encontra o par em %.1f%% das linhas%n",
         100 * report.pairCoverage());
 
-    System.out.printf("%n  ORDENAR DESENVOLVEDORES  (mesmo projeto, pessoas diferentes,"
-        + " tarefas iguais em tamanho E em descricao)%n");
-    System.out.printf("    %-32s %10s %12s%n", "", "pares", "acerto");
+    System.out.printf("%n  ORDENAR DESENVOLVEDORES  (mesmo projeto, pessoas diferentes)%n");
+    System.out.printf("    conforme as tarefas ficam parecidas, so a diferenca entre as"
+        + " pessoas sobra%n%n");
+    final List<DeveloperOrdering.Result> gradient =
+        report.comparison().get(report.comparison().size() - 1).ordering();
+    System.out.printf("    %-34s %10s", "", "pares");
     for (final FitModelTask.Scored scored : report.comparison()) {
-      final DeveloperOrdering.Result o = scored.ordering();
-      // A prediction that does not vary between two people in the same project ties every pair,
-      // and a tie decides nothing. That is a property of the baseline, not a score of zero.
-      System.out.printf("    %-32s %10s %12s%n", scored.name(),
-          o.pairs() == 0 ? "--" : String.format("%,d", o.pairs()),
-          o.pairs() == 0 ? "nao distingue" : String.format("%.1f%%", 100 * o.agreement()));
+      System.out.printf(" %14s", abbreviate(scored.name()));
     }
-    System.out.printf("    (50%% e a moeda. Os pares nao sao independentes entre si, entao os%n");
+    System.out.println();
+    for (int i = 0; i < gradient.size(); i++) {
+      System.out.printf("    %-34s %10s", gradient.get(i).matching(),
+          String.format("%,d", gradient.get(i).pairs()));
+      for (final FitModelTask.Scored scored : report.comparison()) {
+        final DeveloperOrdering.Result o = scored.ordering().get(i);
+        // A prediction that does not vary between two people in the same project ties every
+        // pair, and a tie decides nothing. That is the baseline's shape, not a score of zero.
+        System.out.printf(" %14s", o.pairs() == 0 ? "nao distingue"
+            : String.format("%.1f%%", 100 * o.agreement()));
+      }
+      System.out.println();
+    }
+    System.out.printf("%n    (50%% e a moeda. Os pares nao sao independentes entre si, entao os%n");
     System.out.printf("     decimais nao devem ser lidos como precisao.)%n");
 
     System.out.printf("%n  ABLACAO POR GRUPO DE PREDITORES%n");
@@ -87,12 +108,19 @@ public final class FitCommand implements CommandRunner {
         System.out.printf("    %-24s (sem colunas)%n", entry.getKey());
         continue;
       }
+      final DeveloperOrdering.Result tight =
+          scored.ordering().get(scored.ordering().size() - 1);
       System.out.printf("    %-24s MAE %8.2fd   R2 log %7.3f   ordena tarefas %6.3f"
-          + "   ordena devs %5.1f%%%n", entry.getKey(), scored.metrics().maeDays(),
-          scored.metrics().r2Log(), scored.metrics().rankCorrelation(),
-          100 * scored.ordering().agreement());
+          + "   ordena devs %5.1f%% (filtro estrito)%n", entry.getKey(),
+          scored.metrics().maeDays(), scored.metrics().r2Log(),
+          scored.metrics().rankCorrelation(), 100 * tight.agreement());
     }
     System.out.printf("%n  EXPLORATORIO: a divisao interna ja foi olhada muitas vezes nas"
         + " sessoes anteriores.%n");
+  }
+
+  /** Short enough for a column header. */
+  private static String abbreviate(final String name) {
+    return name.length() <= 14 ? name : name.substring(0, 13) + ".";
   }
 }

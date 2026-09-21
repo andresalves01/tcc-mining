@@ -85,20 +85,42 @@ public final class Columns {
     return indices.stream().mapToInt(Integer::intValue).toArray();
   }
 
-  /**
-   * The columns two tasks must be alike in before their developers are compared.
-   *
-   * <p>Size and description length: the two strongest task-side predictors there are. Leaving
-   * either unmatched lets the model answer with the task when the question was about the person.
-   */
-  public static int[] comparableTask() {
+  /** The task-size column, which pairs of developers are matched on. */
+  public static int taskSize() {
+    return indexOf("ln(LOC tarefa)");
+  }
+
+  /** The description-length column: the strongest creation-time predictor there is. */
+  public static int descriptionLength() {
+    return indexOf("ln(tam. descricao)");
+  }
+
+  /** The issue-type indicators; two tasks share a type when all of them agree. */
+  public static int[] typeIndices() {
     final List<Integer> indices = new ArrayList<>();
     for (int i = 0; i < ALL.size(); i++) {
-      final String name = ALL.get(i).name();
-      if (name.equals("ln(LOC tarefa)") || name.equals("ln(tam. descricao)")) {
+      if (ALL.get(i).name().startsWith("tipo=")) {
         indices.add(i);
       }
     }
     return indices.stream().mapToInt(Integer::intValue).toArray();
+  }
+
+  /**
+   * The thirteen columns the mongosh prototype fitted, so the Java result can be put beside the
+   * numbers already reported in {@code analysis/}. It carries no load and no team statistics.
+   */
+  public static final List<String> PROTOTYPE = List.of(
+      "ln(LOC tarefa)", "McCC_i", "NL_i", "ln(tam. descricao)", "ln(issues ligadas)",
+      "ln(LOC acum. dev)", "ln(commits dev)", "ln(tempo de casa)",
+      "tipo=Bug", "tipo=Improvement", "tipo=New Feature", "tipo=Sub-task", "tipo=Task");
+
+  private static int indexOf(final String name) {
+    for (int i = 0; i < ALL.size(); i++) {
+      if (ALL.get(i).name().equals(name)) {
+        return i;
+      }
+    }
+    throw new IllegalStateException("no column named " + name);
   }
 }

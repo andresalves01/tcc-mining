@@ -1,6 +1,7 @@
 package app.pipeline;
 
 import app.model.Baselines;
+import app.model.Bounds;
 import app.model.Columns;
 import app.model.DeveloperOrdering;
 import app.model.ElasticNetModel;
@@ -39,13 +40,11 @@ public final class FitModelTask {
   /** How far below the largest penalty the grid reaches, log-spaced. */
   private static final double LAMBDA_FLOOR_RATIO = 1e-4;
 
-  /** How alike two tasks must be, per matched column, before their developers are compared. */
-  private static final double SIZE_TOLERANCE = 0.5;
-
-  public record Scored(String name, Metrics metrics, DeveloperOrdering.Result ordering) {}
+  public record Scored(String name, Metrics metrics, List<DeveloperOrdering.Result> ordering) {}
 
   public record Report(
-      int fitRows, int selectionRows, int excludedEmptyTeamFit, int excludedEmptyTeamSelection,
+      Bounds bounds, int fitRows, int selectionRows,
+      int excludedEmptyTeamFit, int excludedEmptyTeamSelection,
       List<String> columns, List<String> droppedColumns,
       double alpha, double lambda, double[] coefficients, double intercept, int selectedColumns,
       double pairCoverage,
@@ -69,12 +68,22 @@ public final class FitModelTask {
     }
   }
 
-  public Report run() {
+  public Report run(final Bounds bounds) {
     progress.phase(1, 4, "reading the two training partitions from %s", source.describe());
-    final Observations fit = source.of(Partition.FIT);
-    final Observations selection = source.of(Partition.SELECTION);
-    if (fit.isEmpty() || selection.isEmpty()) {
+    final Observations read = source.of(Partition.FIT);
+    final Observations readSelection = source.of(Partition.SELECTION);
+    if (read.isEmpty() || readSelection.isEmpty()) {
       throw new NoObservationsException(source.describe());
+    }
+    final Observations fit = restrict(read, bounds);
+    final Observations selection = restrict(readSelection, bounds);
+    if (bounds.restricts()) {
+      progress.detail("%s retained %,d of %,d to fit and %,d of %,d to select on", bounds.name(),
+          fit.rows().size(), read.rows().size(),
+          selection.rows().size(), readSelection.rows().size());
+    }
+    if (fit.isEmpty() || selection.isEmpty()) {
+      throw new NoObservationsException(source.describe() + " under " + bounds.name());
     }
     progress.detail("%,d to fit, %,d to select on (%,d and %,d set aside for an empty team)",
         fit.rows().size(), selection.rows().size(),
@@ -135,8 +144,11 @@ public final class FitModelTask {
         Columns.Group.TAREFA, Columns.Group.DEV, Columns.Group.CARGA, Columns.Group.CRIACAO));
     ablation.put("conhecido na criacao", ablate(standardizer, fit, selection, chosen,
         Columns.Group.DEV, Columns.Group.CARGA, Columns.Group.EQUIPE, Columns.Group.CRIACAO));
+    // The columns the mongosh prototype fitted, so the two can be put side by side.
+    ablation.put("colunas do prototipo", ablateNamed(standardizer, fit, selection, chosen,
+        Columns.PROTOTYPE));
 
-    return new Report(fit.rows().size(), selection.rows().size(),
+    return new Report(bounds, fit.rows().size(), selection.rows().size(),
         fit.excludedEmptyTeam(), selection.excludedEmptyTeam(),
         standardizer.columns(), standardizer.dropped(),
         chosen.alpha(), chosen.lambda(), chosen.coefficients(), chosen.intercept(),
@@ -147,15 +159,38 @@ public final class FitModelTask {
   private static Scored score(final String name, final List<Observation> rows,
       final ToDoubleFunction<Observation> prediction) {
 
-    return new Scored(name, Metrics.of(rows, prediction),
-        DeveloperOrdering.of(rows, prediction, Columns.comparableTask(), SIZE_TOLERANCE));
+    final List<DeveloperOrdering.Result> gradient = new ArrayList<>();
+    for (final DeveloperOrdering.Matching matching : DeveloperOrdering.Matching.GRADIENT) {
+      gradient.add(DeveloperOrdering.of(rows, prediction, matching));
+    }
+    return new Scored(name, Metrics.of(rows, prediction), gradient);
+  }
+
+  /** Keeps only the rows inside the band, preserving the column names and the excluded count. */
+  private static Observations restrict(final Observations all, final Bounds bounds) {
+    if (!bounds.restricts()) {
+      return all;
+    }
+    return new Observations(all.columns(),
+        all.rows().stream().filter(bounds::admits).toList(), all.excludedEmptyTeam());
   }
 
   /** Refits on a subset of the columns, with the same protocol, to see what each group carries. */
   private Scored ablate(final Standardizer standardizer, final Observations fit,
       final Observations selection, final ElasticNetModel chosen, final Columns.Group... groups) {
 
-    final int[] keep = indicesOf(standardizer.columns(), groups);
+    final List<String> wanted = new ArrayList<>();
+    for (final int i : Columns.indicesOf(groups)) {
+      wanted.add(Columns.ALL.get(i).name());
+    }
+    return ablateNamed(standardizer, fit, selection, chosen, wanted);
+  }
+
+  /** The same, for a specification named by columns rather than by group. */
+  private Scored ablateNamed(final Standardizer standardizer, final Observations fit,
+      final Observations selection, final ElasticNetModel chosen, final List<String> wanted) {
+
+    final int[] keep = indicesOf(standardizer.columns(), wanted);
     if (keep.length == 0) {
       return new Scored("sem colunas", null, null);
     }
@@ -172,11 +207,7 @@ public final class FitModelTask {
         row -> model.predict(xs[where.get(row)]));
   }
 
-  private static int[] indicesOf(final List<String> surviving, final Columns.Group... groups) {
-    final List<String> wanted = new ArrayList<>();
-    for (final int i : Columns.indicesOf(groups)) {
-      wanted.add(Columns.ALL.get(i).name());
-    }
+  private static int[] indicesOf(final List<String> surviving, final List<String> wanted) {
     final List<Integer> indices = new ArrayList<>();
     for (int i = 0; i < surviving.size(); i++) {
       if (wanted.contains(surviving.get(i))) {
