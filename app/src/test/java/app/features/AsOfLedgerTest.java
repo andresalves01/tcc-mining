@@ -9,6 +9,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
@@ -47,11 +49,16 @@ class AsOfLedgerTest {
 
   /** The definition, written out longhand, with no index and no binary search. */
   private static Optional<DeveloperHistory> bruteForce(final List<Contribution> ledger,
-      final String developer, final String project, final Instant asOf) {
+      final String developer, final String project, final Instant asOf,
+      final Map<String, CommitComplexity> complexity) {
 
     long java = 0;
     long all = 0;
     int commits = 0;
+    double mccc = 0;
+    double nl = 0;
+    int methods = 0;
+    int unrecoverable = 0;
     Instant first = null;
     for (final Contribution c : ledger) {
       if (!c.canonicalId().equals(developer) || !c.projectName().equals(project)) {
@@ -66,12 +73,21 @@ class AsOfLedgerTest {
       java += c.javaLinesAdded() + c.javaLinesDeleted();
       all += c.linesAdded() + c.linesDeleted();
       commits++;
+      final CommitComplexity k = complexity.get(c.commitId());
+      if (k != null) {
+        mccc += k.mccc();
+        nl += k.nl();
+        methods += k.methods();
+        unrecoverable += k.unrecoverable();
+      }
     }
     if (commits == 0) {
       return Optional.empty();
     }
     return Optional.of(new DeveloperHistory(java, all, commits,
-        (asOf.toEpochMilli() - first.toEpochMilli()) / 86_400_000.0));
+        (asOf.toEpochMilli() - first.toEpochMilli()) / 86_400_000.0,
+        complexity.isEmpty() ? Optional.empty()
+            : Optional.of(new AccumulatedComplexity(mccc, nl, methods, unrecoverable))));
   }
 
   @Test
@@ -86,13 +102,21 @@ class AsOfLedgerTest {
           projects[random.nextInt(projects.length)], random.nextInt(900),
           random.nextInt(500), random.nextInt(200), false));
     }
-    final AsOfLedger index = new AsOfLedger(ledger);
+    // Half the commits carry complexity, so the oracle also covers a table with gaps in it.
+    final Map<String, CommitComplexity> complexity = new HashMap<>();
+    for (final Contribution c : ledger) {
+      if (random.nextBoolean()) {
+        complexity.put(c.commitId(), new CommitComplexity(c.commitId(),
+            random.nextInt(200), random.nextInt(20), random.nextInt(30), random.nextInt(5)));
+      }
+    }
+    final AsOfLedger index = new AsOfLedger(ledger, complexity);
 
     for (int probe = 0; probe < 300; probe++) {
       final String developer = developers[random.nextInt(developers.length)];
       final String project = projects[random.nextInt(projects.length)];
       final Instant asOf = day(random.nextInt(1000));
-      assertEquals(bruteForce(ledger, developer, project, asOf),
+      assertEquals(bruteForce(ledger, developer, project, asOf, complexity),
           index.historyAt(developer, project, asOf),
           "the index disagrees with the definition at " + asOf + " for " + developer
               + " in " + project);
@@ -140,6 +164,50 @@ class AsOfLedgerTest {
         "day 50 minus the first lucene commit, which was on day 10");
     assertEquals(999, index.historyAt("alice", "derby", day(50)).orElseThrow().javaLines(),
         "the scope is the project of the task, so derby volume stays out of lucene");
+  }
+
+  @Test
+  @DisplayName("complexity counts once per commit, so a method touched twice contributes twice")
+  void complexityAccumulatesPerCommit() {
+    final Contribution first = commit("alice", "lucene", 10, 10, 0, false);
+    final Contribution second = commit("alice", "lucene", 40, 10, 0, false);
+    // The same method, at the same McCC, changed again months later. The per-issue rule would
+    // keep one; this quantity is defined to keep both, and the difference is the whole point.
+    final Map<String, CommitComplexity> complexity = Map.of(
+        first.commitId(), new CommitComplexity(first.commitId(), 7, 2, 1, 0),
+        second.commitId(), new CommitComplexity(second.commitId(), 7, 2, 1, 3));
+
+    final AsOfLedger index = new AsOfLedger(List.of(first, second), complexity);
+    final AccumulatedComplexity acc =
+        index.historyAt("alice", "lucene", day(50)).orElseThrow().complexity().orElseThrow();
+
+    assertEquals(14.0, acc.mccc(), 1e-9, "seven twice, not seven once");
+    assertEquals(2, acc.methods());
+    assertEquals(3, acc.unrecoverable(), "carried so coverage can be reported, not silently zeroed");
+    assertEquals(2.0 / 5, acc.coverage().orElseThrow(), 1e-9);
+
+    final AccumulatedComplexity early =
+        index.historyAt("alice", "lucene", day(20)).orElseThrow().complexity().orElseThrow();
+    assertEquals(7.0, early.mccc(), 1e-9, "as of day 20 only the first commit had happened");
+  }
+
+  @Test
+  @DisplayName("no complexity table means absent, but a gap inside one means zero")
+  void absentTableIsNotAZeroReading() {
+    final Contribution c = commit("alice", "lucene", 10, 10, 0, false);
+
+    assertTrue(new AsOfLedger(List.of(c)).historyAt("alice", "lucene", day(50))
+            .orElseThrow().complexity().isEmpty(),
+        "with no table built, an unmeasured history must not read as simple code");
+
+    // A table that exists but does not mention this commit: the commit changed no recoverable
+    // Java method, which really is a contribution of zero.
+    final Contribution other = commit("bob", "lucene", 5, 10, 0, false);
+    final AsOfLedger withTable = new AsOfLedger(List.of(c, other),
+        Map.of(other.commitId(), new CommitComplexity(other.commitId(), 9, 3, 2, 0)));
+    assertEquals(0.0, withTable.historyAt("alice", "lucene", day(50))
+        .orElseThrow().complexity().orElseThrow().mccc(), 1e-9);
+    assertTrue(withTable.complexityAvailable());
   }
 
   @Test

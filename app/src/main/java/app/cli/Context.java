@@ -3,6 +3,8 @@ package app.cli;
 import app.config.PipelineConfig;
 import app.cost.port.ContributionLedger;
 import app.cost.port.ContributionSource;
+import app.features.port.CommitComplexitySource;
+import app.features.port.CommitComplexityStore;
 import app.features.port.FeatureStore;
 import app.features.port.IssueAttributeSource;
 import app.identity.port.GitIdentitySource;
@@ -40,5 +42,7 @@ public record Context(
     LabelStore labelStore,
     IssueAttributeSource issueAttributes,
     FeatureStore featureStore,
+    CommitComplexitySource commitComplexity,
+    CommitComplexityStore complexityStore,
     Corpus corpus,
     Progress progress) {}

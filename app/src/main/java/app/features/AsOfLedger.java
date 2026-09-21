@@ -38,8 +38,21 @@ public final class AsOfLedger {
 
   private final Map<String, Pair> pairs;
   private final Map<String, ProjectIndex> projects;
+  private final boolean complexityAvailable;
 
   public AsOfLedger(final Collection<Contribution> ledger) {
+    this(ledger, Map.of());
+  }
+
+  /**
+   * @param complexityByCommit per-commit complexity, keyed by commit id. Empty means no such table
+   *     has been built, and every history then reports its complexity as absent rather than zero --
+   *     a commit missing from a table that <i>does</i> exist genuinely contributed nothing, because
+   *     it changed no recoverable Java method
+   */
+  public AsOfLedger(final Collection<Contribution> ledger,
+      final Map<String, CommitComplexity> complexityByCommit) {
+    this.complexityAvailable = !complexityByCommit.isEmpty();
     final Map<String, List<Contribution>> byPair = new HashMap<>(1 << 12);
     final Map<String, List<Contribution>> byProject = new HashMap<>(1 << 8);
     for (final Contribution c : ledger) {
@@ -52,7 +65,8 @@ public final class AsOfLedger {
       }
     }
     this.pairs = new HashMap<>(byPair.size() * 2);
-    byPair.forEach((k, commits) -> pairs.put(k, new Pair(commits)));
+    byPair.forEach((k, commits) -> pairs.put(k, new Pair(commits, complexityByCommit,
+        complexityAvailable)));
     this.projects = new HashMap<>(byProject.size() * 2);
     byProject.forEach((name, commits) -> projects.put(name, new ProjectIndex(commits)));
   }
@@ -70,6 +84,11 @@ public final class AsOfLedger {
 
     final Pair pair = pairs.get(key(developer, project));
     return pair == null ? Optional.empty() : pair.at(asOf);
+  }
+
+  /** Whether a per-commit complexity table was supplied, so absent can be told from zero. */
+  public boolean complexityAvailable() {
+    return complexityAvailable;
   }
 
   /** Whether the ledger holds any commit at all by {@code developer} in {@code project}. */
@@ -122,18 +141,42 @@ public final class AsOfLedger {
     private final long[] authoredAt;
     private final long[] javaPrefix;
     private final long[] allPrefix;
+    private final double[] mcccPrefix;
+    private final double[] nlPrefix;
+    private final int[] methodPrefix;
+    private final int[] unrecoverablePrefix;
+    private final boolean complexityAvailable;
 
-    Pair(final List<Contribution> commits) {
+    Pair(final List<Contribution> commits, final Map<String, CommitComplexity> complexity,
+        final boolean complexityAvailable) {
+      this.complexityAvailable = complexityAvailable;
       final List<Contribution> ordered = new ArrayList<>(commits);
       ordered.sort(Comparator.comparing(Contribution::authoredAt)
           .thenComparing(c -> c.revisionHash() == null ? "" : c.revisionHash()));
       this.authoredAt = new long[ordered.size()];
       this.javaPrefix = new long[ordered.size()];
       this.allPrefix = new long[ordered.size()];
+      this.mcccPrefix = new double[ordered.size()];
+      this.nlPrefix = new double[ordered.size()];
+      this.methodPrefix = new int[ordered.size()];
+      this.unrecoverablePrefix = new int[ordered.size()];
       long java = 0;
       long all = 0;
+      double mccc = 0;
+      double nl = 0;
+      int methods = 0;
+      int unrecoverable = 0;
       for (int i = 0; i < ordered.size(); i++) {
         final Contribution c = ordered.get(i);
+        final CommitComplexity k = complexity.get(c.commitId());
+        if (k != null) {
+          // Once per commit: a method touched again in a later commit contributes again, which is
+          // the rule this quantity is defined by and the opposite of the per-issue one.
+          mccc += k.mccc();
+          nl += k.nl();
+          methods += k.methods();
+          unrecoverable += k.unrecoverable();
+        }
         // Added plus deleted, never netted: removing a hundred lines is work done and evidence of
         // familiarity with what was removed. Seniority.allLines() states the same choice.
         java += c.javaLinesAdded() + c.javaLinesDeleted();
@@ -141,6 +184,10 @@ public final class AsOfLedger {
         authoredAt[i] = c.authoredAt().toEpochMilli();
         javaPrefix[i] = java;
         allPrefix[i] = all;
+        mcccPrefix[i] = mccc;
+        nlPrefix[i] = nl;
+        methodPrefix[i] = methods;
+        unrecoverablePrefix[i] = unrecoverable;
       }
     }
 
@@ -151,8 +198,11 @@ public final class AsOfLedger {
       }
       final int last = commits - 1;
       final double tenure = (asOf.toEpochMilli() - authoredAt[0]) / 86_400_000.0;
-      return Optional.of(
-          new DeveloperHistory(javaPrefix[last], allPrefix[last], commits, tenure));
+      return Optional.of(new DeveloperHistory(javaPrefix[last], allPrefix[last], commits, tenure,
+          complexityAvailable
+              ? Optional.of(new AccumulatedComplexity(mcccPrefix[last], nlPrefix[last],
+                  methodPrefix[last], unrecoverablePrefix[last]))
+              : Optional.empty()));
     }
   }
 

@@ -17,7 +17,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
 import java.util.List;
-import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import org.bson.Document;
 import org.bson.types.ObjectId;
@@ -70,8 +69,13 @@ public final class MongoFeatureStore implements FeatureStore {
 
     collection.createIndex(Indexes.ascending("project"), new IndexOptions().background(true));
     collection.createIndex(Indexes.ascending("canonical_id"), new IndexOptions().background(true));
+    // What is absent is a property of the rows, not a constant: it stops being true the moment
+    // the per-commit complexity table exists, and nothing downstream should have to guess.
+    final boolean withComplexity = rows.stream()
+        .anyMatch(row -> row.developer().complexity().isPresent());
     target.getCollection(FEATURE_META).replaceOne(new Document("_id", "current"),
-        meta(rows.size(), teamWindow), upsert);
+        meta(rows.size(), teamWindow,
+            withComplexity ? List.of() : List.of("mccc_tot", "mu_m", "s_m")), upsert);
     return written;
   }
 
@@ -103,7 +107,11 @@ public final class MongoFeatureStore implements FeatureStore {
         .append("team_empty", row.team().isEmpty())
         .append("attributes_found", row.attributes().found());
 
-    putIfPresent(doc, "mccc_tot", row.accumulatedComplexity());
+    row.developer().complexity().ifPresent(c -> doc
+        .append("mccc_tot", c.mccc())
+        .append("nl_tot", c.nl())
+        .append("extra_dev_methods", c.methods())
+        .append("extra_dev_methods_unrecoverable", c.unrecoverable()));
     row.team().accumulatedLines().ifPresent(stats -> put(doc, "mu_l", "s_l", stats));
     row.team().accumulatedComplexity().ifPresent(stats -> put(doc, "mu_m", "s_m", stats));
     putIfPresent(doc, "extra_desc_length", row.attributes().descriptionLength());
@@ -119,12 +127,6 @@ public final class MongoFeatureStore implements FeatureStore {
   }
 
   private static void putIfPresent(final Document doc, final String field,
-      final OptionalDouble value) {
-
-    value.ifPresent(present -> doc.append(field, present));
-  }
-
-  private static void putIfPresent(final Document doc, final String field,
       final OptionalInt value) {
 
     value.ifPresent(present -> doc.append(field, present));
@@ -134,16 +136,19 @@ public final class MongoFeatureStore implements FeatureStore {
    * One document describing the run, so nothing downstream has to assume a window or guess why a
    * predictor is missing.
    */
-  private static Document meta(final int rows, final Duration teamWindow) {
+  private static Document meta(final int rows, final Duration teamWindow,
+      final List<String> absent) {
+
     return new Document("_id", "current")
         .append("computed_at", new Date())
         .append("rows", rows)
         .append("team_window_days", teamWindow.toDays())
         .append("bounds", "none -- every stored label, whatever its duration")
-        .append("absent", List.of("mccc_tot", "mu_m", "s_m"))
-        .append("absent_reason",
-            "McCC_tot needs a per-commit complexity table; the funnel keeps only the set "
-                + "deduplicated once per issue, which is a different rule");
+        .append("absent", absent)
+        .append("absent_reason", absent.isEmpty() ? "nothing"
+            : "McCC_tot needs the per-commit complexity table that commit-methods builds; the "
+                + "funnel keeps only the set deduplicated once per issue, which is a different "
+                + "rule");
   }
 
   private static long write(final MongoCollection<Document> collection,

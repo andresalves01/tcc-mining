@@ -126,11 +126,8 @@ public final class FeatureMatrix {
           project,
           developer,
           at,
-          history.orElseGet(DeveloperHistory::none),
+          history.orElseGet(() -> DeveloperHistory.none(ledger.complexityAvailable())),
           known,
-          // McCC_tot,j needs a per-commit complexity table, which does not exist yet. Empty says
-          // so; a zero here would read downstream as a history of simple code.
-          OptionalDouble.empty(),
           label.javaLinesChanged(),
           mean(label.meanMccc(), label.issueId(), "cyclomatic complexity"),
           mean(label.meanNl(), label.issueId(), "nesting level"),
@@ -158,13 +155,19 @@ public final class FeatureMatrix {
       return TeamContext.empty();
     }
     final double[] lines = new double[members.size()];
+    final double[] complexity = new double[members.size()];
     int i = 0;
     for (final String member : members) {
-      lines[i++] = ledger.historyAt(member, project, at)
-          .map(DeveloperHistory::javaLines).orElse(0L);
+      final Optional<DeveloperHistory> history = ledger.historyAt(member, project, at);
+      lines[i] = history.map(DeveloperHistory::javaLines).orElse(0L);
+      complexity[i] = history.flatMap(DeveloperHistory::complexity)
+          .map(AccumulatedComplexity::mccc).orElse(0.0);
+      i++;
     }
-    // The complexity statistics stay empty until McCC_tot,j exists, for the same reason it does.
-    return new TeamContext(members.size(), TeamStatistics.of(lines), Optional.empty());
+    // The complexity statistics exist only when the per-commit table does. Absent, never zero:
+    // an unmeasured team is not a team that touched only simple code.
+    return new TeamContext(members.size(), TeamStatistics.of(lines),
+        ledger.complexityAvailable() ? TeamStatistics.of(complexity) : Optional.empty());
   }
 
   /** A label with no recoverable method never leaves the funnel, so absence means stale data. */

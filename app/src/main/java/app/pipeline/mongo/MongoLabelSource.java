@@ -9,7 +9,6 @@ import app.labels.MethodDeduplication;
 import app.labels.port.LabelSource;
 import app.pipeline.port.Progress;
 import com.mongodb.client.MongoClient;
-import com.mongodb.client.MongoCollection;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Projections;
@@ -22,6 +21,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.bson.Document;
 import org.bson.types.ObjectId;
 
@@ -39,22 +40,19 @@ import org.bson.types.ObjectId;
  */
 public final class MongoLabelSource implements LabelSource {
 
-  private static final String JAVA_SUFFIX = ".java";
-
   private static final String ISSUE = "issue";
   private static final String ISSUE_SYSTEM = "issue_system";
   private static final String EVENT = "event";
   private static final String COMMIT = "commit";
   private static final String FILE = "file";
-  private static final String FILE_ACTION = "file_action";
-  private static final String HUNK = "hunk";
-  private static final String ENTITY_STATE = "code_entity_state";
   private static final String PROJECT = "project";
 
   /** The collections this source opens. Declared here so it cannot drift from
-   * the queries above it; {@link app.pipeline.mongo.MongoCorpusCheck} verifies it. */
-  public static final Set<String> READS = Set.of(ISSUE, ISSUE_SYSTEM, EVENT, COMMIT, FILE, FILE_ACTION, HUNK, ENTITY_STATE,
-      PROJECT);
+   * the queries above it; {@link app.pipeline.mongo.MongoCorpusCheck} verifies it. The method
+   * reader's three come from {@link ChangedMethods} rather than being repeated. */
+  public static final Set<String> READS = Stream.concat(
+      Stream.of(ISSUE, ISSUE_SYSTEM, EVENT, COMMIT, FILE, PROJECT),
+      ChangedMethods.READS.stream()).collect(Collectors.toUnmodifiableSet());
   private static final Set<String> RESOLVED = Set.of("Resolved", "Closed");
   private static final int LINK_BATCH = 2_000;
 
@@ -211,72 +209,10 @@ public final class MongoLabelSource implements LabelSource {
     return new LabelScan(List.copyOf(labels), List.copyOf(stages), extracted);
   }
 
-  /**
-   * The methods one commit changed: every method whose line range meets the range of one of that
-   * commit's hunks, in the same file.
-   *
-   * <p>Both sides are read at the commit itself, which is what the corpus records — the entity
-   * states filed under a commit describe the file as it stands after it. The parent's states would
-   * be needed to see a method that the commit deleted, and they are absent for most touched files,
-   * so a deleted method leaves no measurement rather than a zero.
-   */
+  /** Delegates to the shared reader, keeping only what an issue-level label needs of it. */
   private Map<String, ChangedMethod> methodsOf(final ObjectId commitId,
       final Set<ObjectId> javaFiles) {
-
-    final Map<ObjectId, ObjectId> fileByAction = new HashMap<>();
-    for (final Document action : source.getCollection(FILE_ACTION)
-        .find(Filters.eq("commit_id", commitId))
-        .projection(Projections.include("file_id"))) {
-      final ObjectId fileId = action.getObjectId("file_id");
-      if (javaFiles.contains(fileId)) {
-        fileByAction.put(action.getObjectId("_id"), fileId);
-      }
-    }
-    if (fileByAction.isEmpty()) {
-      return Map.of();
-    }
-
-    final Map<ObjectId, List<int[]>> rangesByFile = new HashMap<>();
-    for (final Document hunk : source.getCollection(HUNK)
-        .find(Filters.in("file_action_id", fileByAction.keySet()))
-        .projection(Projections.include("file_action_id", "new_start", "new_lines"))) {
-      final int lines = intOf(hunk.get("new_lines"));
-      if (lines <= 0) {
-        continue; // a pure deletion adds no line to intersect against
-      }
-      final int start = intOf(hunk.get("new_start"));
-      rangesByFile.computeIfAbsent(fileByAction.get(hunk.getObjectId("file_action_id")),
-          key -> new ArrayList<>()).add(new int[] {start, start + lines - 1});
-    }
-    if (rangesByFile.isEmpty()) {
-      return Map.of();
-    }
-
-    final Map<String, ChangedMethod> changed = new LinkedHashMap<>();
-    for (final Document entity : source.getCollection(ENTITY_STATE)
-        .find(Filters.and(Filters.eq("commit_id", commitId), Filters.eq("ce_type", "method"),
-            Filters.in("file_id", rangesByFile.keySet())))
-        .projection(Projections.include(
-            "file_id", "start_line", "end_line", "long_name", "metrics.McCC", "metrics.NL"))) {
-
-      final Document metrics = entity.get("metrics", Document.class);
-      final String longName = entity.getString("long_name");
-      if (metrics == null || longName == null
-          || metrics.get("McCC") == null || metrics.get("NL") == null) {
-        continue; // a method without both metrics is not recoverable, and is not a zero
-      }
-      final int start = intOf(entity.get("start_line"));
-      final int end = intOf(entity.get("end_line"));
-      for (final int[] range : rangesByFile.getOrDefault(entity.getObjectId("file_id"), List.of())) {
-        if (start <= range[1] && end >= range[0]) {
-          changed.put(longName, new ChangedMethod(longName,
-              ((Number) metrics.get("McCC")).doubleValue(),
-              ((Number) metrics.get("NL")).doubleValue()));
-          break; // within a commit a method counts once, however many hunks reach it
-        }
-      }
-    }
-    return changed;
+    return new ChangedMethods(source).of(commitId, javaFiles).recovered();
   }
 
   private Map<ObjectId, List<Linked>> linkage(final Set<ObjectId> issues,
@@ -354,15 +290,7 @@ public final class MongoLabelSource implements LabelSource {
   }
 
   private Set<ObjectId> javaFileIds() {
-    final Set<ObjectId> ids = new HashSet<>(1 << 20);
-    final MongoCollection<Document> files = source.getCollection(FILE);
-    for (final Document file : files.find().projection(Projections.include("path"))) {
-      final String path = file.getString("path");
-      if (path != null && path.endsWith(JAVA_SUFFIX)) {
-        ids.add(file.getObjectId("_id"));
-      }
-    }
-    return ids;
+    return ChangedMethods.javaFileIds(source, FILE);
   }
 
   /** Earliest by authoring instant, revision hash breaking ties, so "first" is reproducible. */
@@ -393,7 +321,5 @@ public final class MongoLabelSource implements LabelSource {
     return new FunnelStage(name, next.size(), current.size() - next.size(), current.size());
   }
 
-  private static int intOf(final Object value) {
-    return value instanceof Number number ? number.intValue() : 0;
-  }
+
 }

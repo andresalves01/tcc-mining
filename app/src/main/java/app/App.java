@@ -11,6 +11,8 @@ import app.pipeline.port.Progress;
 import app.pipeline.mongo.GridFsGitIdentitySource;
 import app.pipeline.mongo.MongoContributionLedger;
 import app.pipeline.mongo.MongoContributionSource;
+import app.pipeline.mongo.MongoCommitComplexity;
+import app.pipeline.mongo.MongoCommitComplexityStore;
 import app.pipeline.mongo.MongoCorpusCheck;
 import app.pipeline.mongo.MongoFeatureStore;
 import app.pipeline.mongo.MongoIssueAttributes;
@@ -112,6 +114,8 @@ public final class App {
         new MongoLabelStore(client, config.targetDb()),
         new MongoIssueAttributes(client, config.sourceDb()),
         new MongoFeatureStore(client, config.targetDb()),
+        new MongoCommitComplexity(client, config.sourceDb(), progress),
+        new MongoCommitComplexityStore(client, config.targetDb()),
         new MongoCorpusCheck(client, config.sourceDb()),
         progress);
   }

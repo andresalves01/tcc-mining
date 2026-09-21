@@ -116,14 +116,15 @@ because every later stage keys on the canonical author.
 | 4 | `build-ledger` | `commit`, `file_action`, `file`, `project`, `vcs_system` | `developer_contribution` |
 | 5 | `funnel` | `issue`, `event`, `issue_system`, `commit`, `file_action`, `file`, `hunk`, `code_entity_state` | `issue_label` |
 | 6 | `split` | `issue_label` | `issue_label` (`split` and `split_inner`), `split_meta` |
-| 7 | `features` | `issue_label`, `developer_contribution`, `issue` | `issue_features`, `feature_meta` |
-| 8 | `seniority` | `developer_contribution` | nothing — reports only |
+| 7 | `complexity` | `issue_label`, `developer_contribution`, `file`, `file_action`, `hunk`, `code_entity_state` | `commit_complexity` |
+| 8 | `features` | `issue_label`, `developer_contribution`, `commit_complexity`, `issue` | `issue_features`, `feature_meta` |
+| 9 | `seniority` | `developer_contribution` | nothing — reports only |
 
 `check` and `stats` may be run at any point. Everything written lands in `TARGET_DB`, which must differ from
 `SOURCE_DB`; the pipeline refuses to start otherwise, so a reconstructed document can never be
 mistaken for one that shipped in the published release.
 
-Four of these deserve a note:
+Five of these deserve a note:
 
 - **`reconstruct-people`** exists because the published distribution ships without the `people`
   collection. It rebuilds the git half of the registry from the repositories bundled in GridFS,
@@ -140,6 +141,13 @@ Four of these deserve a note:
   selection) and `split=TEST` (held out). Inner eligibility is recomputed against the earlier
   instant rather than inherited, so a developer eligible at the outer cut may not be at the inner
   one.
+- **`complexity`** is the expensive stage and the only resumable one: it reads three collections
+  per commit across the ~250,000 ledger commits that touched Java inside a (developer, project) pair
+  some label uses, and upserts on the commit's own id, so an interrupted run continues rather than
+  restarting. A commit that changed no recoverable method is stored as a zero rather than skipped —
+  that row is what lets the next run tell "read, found nothing" from "not read". Methods whose
+  `McCC` the corpus never recorded are counted apart and never folded into the sum. Run `features`
+  again afterwards, which is what turns `mccc_tot`, `mu_m` and `s_m` from absent into numbers.
 - **`features`** applies no duration bound and reads no split. Every stored label gets a row,
   because whether the sample should be restricted to a coherent duration band is an open question
   of method, and filtering here would make the unrestricted arm impossible to report beside the
@@ -187,6 +195,7 @@ The sample the study reports, for checking that a re-run landed in the same plac
 | Outer split `t0` | 2015-12-01 — 36,677 train / 8,318 test, 677 eligible (dev, project) pairs |
 | Inner split `t1` | 2013-10-22 — 24,582 fit / 5,397 parameter selection, 443 eligible pairs |
 | Features | **56,153 rows**; 4,524 (8.06%) with no prior history and none of them an unknown pair; 553 (0.98%) with an empty active team; team size p50 = 7 |
+| Case study | 871–899 eligible demands; the paper's rule selects `commons-codec` at `t_d` = 2015-12-01 with `B` = 1, `N` = 1, `|P|` = 3 |
 
 The funnel's exclusions are printed in order and are **incremental**: each denominator is what the
 previous line retained, so the percentages do not add up to a share of the original total and the

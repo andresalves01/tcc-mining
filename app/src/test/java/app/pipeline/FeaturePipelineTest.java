@@ -7,8 +7,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import app.cost.Contribution;
 import app.cost.port.ContributionLedger;
+import app.features.CommitComplexity;
 import app.features.FeatureRow;
 import app.features.IssueAttributes;
+import app.features.port.CommitComplexityStore;
 import app.features.port.FeatureStore;
 import app.features.port.IssueAttributeSource;
 import app.labels.ChangedMethod;
@@ -25,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.OptionalInt;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -106,6 +109,38 @@ class FeaturePipelineTest {
     }
   }
 
+  /** No per-commit complexity table, which is the state the pipeline is in before `complexity`. */
+  private static final class InMemoryComplexity implements CommitComplexityStore {
+
+    private final Map<String, CommitComplexity> rows = new LinkedHashMap<>();
+
+    InMemoryComplexity(final CommitComplexity... complexities) {
+      for (final CommitComplexity c : complexities) {
+        rows.put(c.commitId(), c);
+      }
+    }
+
+    @Override
+    public long save(final Collection<CommitComplexity> saved) {
+      throw new AssertionError("building features must not write complexity");
+    }
+
+    @Override
+    public Set<String> storedIds() {
+      return rows.keySet();
+    }
+
+    @Override
+    public Map<String, CommitComplexity> readAll() {
+      return rows;
+    }
+
+    @Override
+    public String describe() {
+      return "target.commit_complexity";
+    }
+  }
+
   /** Captures what would have been written, so the assertions can read the matrix itself. */
   private static final class CapturingStore implements FeatureStore {
 
@@ -147,7 +182,8 @@ class FeaturePipelineTest {
     // A matrix over zero labels writes an empty collection and exits 0, which reads exactly like a
     // stage that ran and found the corpus wanting. The refusal has to name what is missing.
     final BuildFeaturesTask task = new BuildFeaturesTask(new InMemoryLabels(),
-        new InMemoryLedger(commit("alice", "lucene", 10, 100)), noAttributes(),
+        new InMemoryLedger(commit("alice", "lucene", 10, 100)),
+        new InMemoryComplexity(), noAttributes(),
         new CapturingStore(), SILENT);
 
     final SplitTask.LabelsEmptyException refusal =
@@ -166,7 +202,8 @@ class FeaturePipelineTest {
     // legitimate-looking zero and the model would be fitted against a corpus of strangers.
     final BuildFeaturesTask task = new BuildFeaturesTask(
         new InMemoryLabels(label("i1", "alice", "lucene", 100, 200)),
-        new InMemoryLedger(), noAttributes(), new CapturingStore(), SILENT);
+        new InMemoryLedger(),
+        new InMemoryComplexity(), noAttributes(), new CapturingStore(), SILENT);
 
     final BuildFeaturesTask.LedgerEmptyException refusal =
         assertThrows(BuildFeaturesTask.LedgerEmptyException.class, () -> task.run(NINETY_DAYS));
@@ -190,6 +227,7 @@ class FeaturePipelineTest {
             commit("alice", "lucene", 50, 7),
             commit("alice", "lucene", 100, 1_000_000),
             commit("alice", "lucene", 150, 1_000_000)),
+        new InMemoryComplexity(),
         noAttributes(), store, SILENT).run(NINETY_DAYS);
 
     final FeatureRow row = store.written.get(0);
@@ -210,6 +248,7 @@ class FeaturePipelineTest {
             label("i1", "alice", "lucene", 100, 200),
             label("i2", "stranger", "lucene", 100, 200)),
         new InMemoryLedger(commit("alice", "lucene", 500, 10)),
+        new InMemoryComplexity(),
         noAttributes(), store, SILENT).run(NINETY_DAYS);
 
     assertEquals(2, report.scan().withoutHistory(), "neither had committed before day 100");
@@ -234,6 +273,7 @@ class FeaturePipelineTest {
         new InMemoryLedger(
             commit("alice", "lucene", 250, 100),
             commit("bob", "lucene", 260, 300)),
+        new InMemoryComplexity(),
         noAttributes(), store, SILENT).run(NINETY_DAYS);
 
     final FeatureRow row = store.written.stream()
@@ -255,6 +295,31 @@ class FeaturePipelineTest {
   }
 
   @Test
+  @DisplayName("with the complexity table built, McCC_tot stops being absent and becomes a number")
+  void complexityArrivesWithItsTable() {
+    final CapturingStore store = new CapturingStore();
+    final Contribution before = commit("alice", "lucene", 50, 10);
+    final Contribution after = commit("alice", "lucene", 150, 10);
+
+    final BuildFeaturesTask.Report report = new BuildFeaturesTask(
+        new InMemoryLabels(label("i1", "alice", "lucene", 100, 200)),
+        new InMemoryLedger(before, after),
+        new InMemoryComplexity(
+            new CommitComplexity(before.commitId(), 12, 4, 3, 1),
+            new CommitComplexity(after.commitId(), 999, 99, 99, 99)),
+        noAttributes(), store, SILENT).run(NINETY_DAYS);
+
+    final FeatureRow row = store.written.get(0);
+    assertTrue(report.withComplexity(), "the run knows the table was there");
+    assertEquals(12.0, row.accumulatedComplexity().orElseThrow(), 1e-9,
+        "only the commit before the task; the one from day 150 is the work being predicted");
+    assertEquals(1, row.developer().complexity().orElseThrow().unrecoverable(),
+        "carried so coverage is reportable rather than silently folded into the sum");
+    assertEquals(12.0, row.team().accumulatedComplexity().orElseThrow().mean(), 1e-9,
+        "alice is the whole active team here");
+  }
+
+  @Test
   @DisplayName("an issue the source corpus does not describe is marked, not filled with zeros")
   void missingAttributesAreMarked() {
     final CapturingStore store = new CapturingStore();
@@ -266,6 +331,7 @@ class FeaturePipelineTest {
             label("i1", "alice", "lucene", 100, 200),
             label("i2", "alice", "lucene", 110, 200)),
         new InMemoryLedger(commit("alice", "lucene", 50, 10)),
+        new InMemoryComplexity(),
         partial, store, SILENT).run(NINETY_DAYS);
 
     assertEquals(1, report.scan().attributesFound());
@@ -296,6 +362,7 @@ class FeaturePipelineTest {
             label("i2", "alice", "lucene", 110, 200),
             label("i3", "alice", "lucene", 120, 200)),
         new InMemoryLedger(commit("alice", "lucene", 50, 10)),
+        new InMemoryComplexity(),
         mixed, store, SILENT).run(NINETY_DAYS);
 
     assertEquals(2, report.scan().withLinkedIssues(), "two had the field recorded");

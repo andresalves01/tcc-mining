@@ -17,7 +17,8 @@ public final class FeaturesCommand implements CommandRunner {
     final Duration window = context.config().teamWindow();
 
     final BuildFeaturesTask task = new BuildFeaturesTask(context.labelStore(), context.ledger(),
-        context.issueAttributes(), context.featureStore(), context.progress());
+        context.complexityStore(), context.issueAttributes(), context.featureStore(),
+        context.progress());
 
     final BuildFeaturesTask.Report report;
     try {
@@ -32,6 +33,7 @@ public final class FeaturesCommand implements CommandRunner {
   }
 
   private static void print(final BuildFeaturesTask.Report report, final Duration window) {
+
     final FeatureMatrix.Scan scan = report.scan();
     final int labels = report.labels();
 
@@ -69,12 +71,19 @@ public final class FeaturesCommand implements CommandRunner {
     System.out.printf("    %-48s%n",
         " zero aqui e real -- so a omissao e falta de dado, e ela e rara)");
 
-    System.out.printf("%n  AUSENTES NESTA RODADA%n");
-    System.out.printf("    %-48s %9s%n", "McCC_tot, mu_M, s_M", "100,00%");
-    System.out.printf("    %-48s%n",
-        "(falta a tabela de complexidade por commit: o funil deduplica uma vez por issue,");
-    System.out.printf("    %-48s%n",
-        " e McCC_tot exige uma vez por commit, que e outra regra)");
+    if (report.withComplexity()) {
+      System.out.printf("%n  COMPLEXIDADE ACUMULADA%n");
+      line("linhas com McCC_tot", labels, labels);
+      System.out.printf("    %-48s%n",
+          "(somada uma vez por commit; metodos sem metrica no corpus nao entram e nao sao zero)");
+    } else {
+      System.out.printf("%n  AUSENTES NESTA RODADA%n");
+      System.out.printf("    %-48s %9s%n", "McCC_tot, mu_M, s_M", "100,00%");
+      System.out.printf("    %-48s%n",
+          "(falta a tabela de complexidade por commit: rode `complexity`. O funil deduplica uma");
+      System.out.printf("    %-48s%n",
+          " vez por issue, e McCC_tot exige uma vez por commit, que e outra regra)");
+    }
   }
 
   private static void line(final String name, final int count, final int total) {

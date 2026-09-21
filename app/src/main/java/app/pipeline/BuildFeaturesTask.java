@@ -3,9 +3,11 @@ package app.pipeline;
 import app.cost.Contribution;
 import app.cost.port.ContributionLedger;
 import app.features.AsOfLedger;
+import app.features.CommitComplexity;
 import app.features.FeatureMatrix;
 import app.features.IssueAttributes;
 import app.features.OpenIssues;
+import app.features.port.CommitComplexityStore;
 import app.features.port.FeatureStore;
 import app.features.port.IssueAttributeSource;
 import app.labels.IssueLabel;
@@ -26,6 +28,10 @@ import java.util.Map;
  * <p>No duration bound is applied. Whether the sample should be restricted to a coherent band is an
  * open question of method, and answering it by filtering here would make the unrestricted arm
  * impossible to report beside the restricted one.
+ *
+ * <p>The per-commit complexity table is optional. When it is missing the accumulated complexity and
+ * the team's version of it are written as absent rather than zero, and the run says so — building
+ * that table is a separate stage because it costs hours and this one costs seconds.
  */
 public final class BuildFeaturesTask {
 
@@ -39,10 +45,12 @@ public final class BuildFeaturesTask {
     }
   }
 
-  public record Report(FeatureMatrix.Scan scan, long written, int labels) {}
+  public record Report(FeatureMatrix.Scan scan, long written, int labels,
+      boolean withComplexity) {}
 
   private final LabelStore labels;
   private final ContributionLedger ledger;
+  private final CommitComplexityStore complexity;
   private final IssueAttributeSource attributes;
   private final FeatureStore store;
   private final Progress progress;
@@ -50,12 +58,14 @@ public final class BuildFeaturesTask {
   public BuildFeaturesTask(
       final LabelStore labels,
       final ContributionLedger ledger,
+      final CommitComplexityStore complexity,
       final IssueAttributeSource attributes,
       final FeatureStore store,
       final Progress progress) {
 
     this.labels = labels;
     this.ledger = ledger;
+    this.complexity = complexity;
     this.attributes = attributes;
     this.store = store;
     this.progress = progress;
@@ -74,9 +84,14 @@ public final class BuildFeaturesTask {
     if (contributions.isEmpty()) {
       throw new LedgerEmptyException(ledger.describe());
     }
-    final AsOfLedger asOf = new AsOfLedger(contributions);
+    final Map<String, CommitComplexity> perCommit = complexity.readAll();
+    final AsOfLedger asOf = new AsOfLedger(contributions, perCommit);
     final OpenIssues open = new OpenIssues(stored);
     progress.detail("%,d contributions indexed", contributions.size());
+    progress.detail(perCommit.isEmpty()
+        ? "no per-commit complexity in " + complexity.describe()
+            + " -- McCC_tot, mu_M and s_M will be absent; run complexity to build it"
+        : String.format("%,d commits carry complexity", perCommit.size()));
 
     progress.phase(3, 5, "reading what each issue said when it was opened");
     final Map<String, IssueAttributes> described =
@@ -89,6 +104,7 @@ public final class BuildFeaturesTask {
         FeatureMatrix.of(stored, asOf, open, described, teamWindow);
 
     progress.phase(5, 5, "writing %s", store.describe());
-    return new Report(scan, store.save(scan.rows(), teamWindow), stored.size());
+    return new Report(scan, store.save(scan.rows(), teamWindow), stored.size(),
+        !perCommit.isEmpty());
   }
 }

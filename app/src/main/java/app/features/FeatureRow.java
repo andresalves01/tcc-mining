@@ -18,9 +18,6 @@ import java.util.OptionalDouble;
  * @param developerKnownToLedger whether the ledger holds any commit by this developer in this
  *     project. It separates a first task, whose zero is real, from a pair nothing is known about,
  *     whose zero is a gap -- both read as zero volume and only one is evidence
- * @param accumulatedComplexity {@code McCC_tot,j}; empty for every row until the per-commit
- *     complexity table exists, and empty rather than zero because an unmeasured history is not a
- *     history of simple code
  * @param taskComplexity mean over the methods the fix changed, which is a description of the
  *     outcome and not of the request
  */
@@ -31,7 +28,6 @@ public record FeatureRow(
     Instant createdAt,
     DeveloperHistory developer,
     boolean developerKnownToLedger,
-    OptionalDouble accumulatedComplexity,
     long taskLines,
     double taskComplexity,
     double taskNesting,
@@ -42,5 +38,11 @@ public record FeatureRow(
   /** Whether anything was observable about this developer here before the task was created. */
   public boolean developerHadHistory() {
     return developer.commits() > 0;
+  }
+
+  /** {@code McCC_tot,j}: empty when no per-commit complexity table has been built. */
+  public OptionalDouble accumulatedComplexity() {
+    return developer.complexity()
+        .map(c -> OptionalDouble.of(c.mccc())).orElseGet(OptionalDouble::empty);
   }
 }

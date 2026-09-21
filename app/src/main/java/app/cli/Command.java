@@ -3,6 +3,7 @@ package app.cli;
 import app.cli.commands.BuildLedgerCommand;
 import app.cli.commands.CanonicalizeCommand;
 import app.cli.commands.CheckCommand;
+import app.cli.commands.ComplexityCommand;
 import app.cli.commands.FeaturesCommand;
 import app.cli.commands.FunnelCommand;
 import app.cli.commands.HarvestJiraCommand;
@@ -63,6 +64,14 @@ public enum Command {
       Cut the labels into past and future at the TRAIN_SHARE quantile of
       issue creation, with an inner split inside the training side for
       choosing regularisation. Records the assignment on each label."""),
+
+  COMPLEXITY("complexity", new ComplexityCommand(), """
+      Build `commit_complexity` -- the McCC and NL a commit's changed methods
+      carry, summed once per commit. This is the expensive stage: three
+      collections per commit over about 250,000 of them. Resumable, so an
+      interrupted run continues rather than restarting. Needs funnel and
+      build-ledger first; run `features` again afterwards.""",
+      Corpus.Stage.COMPLEXITY),
 
   FEATURES("features", new FeaturesCommand(), """
       Build `issue_features` -- one predictor row per label, every quantity

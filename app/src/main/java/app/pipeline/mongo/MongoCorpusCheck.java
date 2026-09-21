@@ -49,7 +49,8 @@ public final class MongoCorpusCheck implements Corpus {
       Stage.HARVEST_JIRA, JiraChangelogSource.READS,
       Stage.BUILD_LEDGER, MongoContributionSource.READS,
       Stage.FUNNEL, MongoLabelSource.READS,
-      Stage.FEATURES, MongoIssueAttributes.READS);
+      Stage.FEATURES, MongoIssueAttributes.READS,
+      Stage.COMPLEXITY, MongoCommitComplexity.READS);
 
   private final MongoClient client;
   private final String database;

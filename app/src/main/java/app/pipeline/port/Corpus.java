@@ -19,7 +19,8 @@ public interface Corpus {
     HARVEST_JIRA,
     BUILD_LEDGER,
     FUNNEL,
-    FEATURES
+    FEATURES,
+    COMPLEXITY
   }
 
   /**
