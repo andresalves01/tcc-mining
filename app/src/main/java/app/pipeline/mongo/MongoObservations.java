@@ -24,9 +24,8 @@ import org.bson.types.ObjectId;
  * the features know nothing about the split, and the labels know nothing about the matrix. Doing it
  * in one adapter keeps both of those true.
  *
- * <p><b>There is no way to ask this for the held-out test set.</b> {@link Partition} has no
- * constant for it, so opening it would take a code change visible in a diff, which is what makes
- * "opened once" a checkable claim rather than a promise.
+ * <p>The held-out set became reachable on 2026-09-21; {@link Partition} records when and in what
+ * state, because that is what a reader needs in order to know how to weigh the number.
  */
 public final class MongoObservations implements ObservationSource {
 
@@ -43,9 +42,13 @@ public final class MongoObservations implements ObservationSource {
 
   @Override
   public Observations of(final Partition partition) {
-    final Bson filter = partition == Partition.FIT
-        ? Filters.and(Filters.eq("split", "TRAIN"), Filters.eq("split_inner", "TRAIN"))
-        : Filters.and(Filters.eq("split", "TRAIN"), Filters.eq("split_inner", "TEST"));
+    final Bson filter = switch (partition) {
+      case FIT -> Filters.and(Filters.eq("split", "TRAIN"), Filters.eq("split_inner", "TRAIN"));
+      case SELECTION ->
+          Filters.and(Filters.eq("split", "TRAIN"), Filters.eq("split_inner", "TEST"));
+      case TRAIN_ALL -> Filters.eq("split", "TRAIN");
+      case HELD_OUT -> Filters.eq("split", "TEST");
+    };
 
     final Map<ObjectId, Double> outcome = new HashMap<>(1 << 15);
     for (final Document label : target.getCollection(ISSUE_LABEL)
