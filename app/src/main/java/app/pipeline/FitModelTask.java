@@ -9,6 +9,7 @@ import app.model.Metrics;
 import app.model.Observation;
 import app.model.Observations;
 import app.model.Partition;
+import app.model.Population;
 import app.model.Standardizer;
 import app.model.port.ObservationSource;
 import app.pipeline.port.Progress;
@@ -43,7 +44,8 @@ public final class FitModelTask {
   public record Scored(String name, Metrics metrics, List<DeveloperOrdering.Result> ordering) {}
 
   public record Report(
-      Bounds bounds, int fitRows, int selectionRows,
+      Bounds bounds, Population population, int refusedMissingInterval,
+      int fitRows, int selectionRows,
       int excludedEmptyTeamFit, int excludedEmptyTeamSelection,
       List<String> columns, List<String> droppedColumns,
       double alpha, double lambda, double[] coefficients, double intercept, int selectedColumns,
@@ -68,22 +70,28 @@ public final class FitModelTask {
     }
   }
 
-  public Report run(final Bounds bounds) {
+  public Report run(final Bounds bounds, final Population population) {
     progress.phase(1, 4, "reading the two training partitions from %s", source.describe());
     final Observations read = source.of(Partition.FIT);
     final Observations readSelection = source.of(Partition.SELECTION);
     if (read.isEmpty() || readSelection.isEmpty()) {
       throw new NoObservationsException(source.describe());
     }
-    final Observations fit = restrict(read, bounds);
-    final Observations selection = restrict(readSelection, bounds);
-    if (bounds.restricts()) {
-      progress.detail("%s retained %,d of %,d to fit and %,d of %,d to select on", bounds.name(),
+    final int refused = missing(read, population) + missing(readSelection, population);
+    final Observations fit = restrict(read, bounds, population);
+    final Observations selection = restrict(readSelection, bounds, population);
+    if (bounds.restricts() || population.restricts()) {
+      progress.detail("%s / %s retained %,d of %,d to fit and %,d of %,d to select on",
+          bounds.name(), population.name(),
           fit.rows().size(), read.rows().size(),
           selection.rows().size(), readSelection.rows().size());
     }
+    if (refused > 0) {
+      progress.detail("refused for a missing post-commit interval: %,d", refused);
+    }
     if (fit.isEmpty() || selection.isEmpty()) {
-      throw new NoObservationsException(source.describe() + " under " + bounds.name());
+      throw new NoObservationsException(
+          source.describe() + " under " + bounds.name() + " / " + population.name());
     }
     progress.detail("%,d to fit, %,d to select on (%,d and %,d set aside for an empty team)",
         fit.rows().size(), selection.rows().size(),
@@ -124,7 +132,7 @@ public final class FitModelTask {
         best.alpha(), best.lambda(), best.selectedCount(), standardizer.columns().size());
 
     progress.detail("scoring the inner selection");
-    return evaluate(fit, selection, bounds, best.alpha(), best.lambda());
+    return evaluate(fit, selection, bounds, population, refused, best.alpha(), best.lambda());
   }
 
   /**
@@ -134,21 +142,28 @@ public final class FitModelTask {
    * <p>The parameters are passed in rather than re-swept, because choosing them here would let the
    * held-out outcomes pick their own model and the number would measure nothing.
    */
-  public Report heldOut(final Bounds bounds, final double alpha, final double lambda) {
+  public Report heldOut(final Bounds bounds, final Population population,
+      final double alpha, final double lambda) {
+
     progress.phase(1, 2, "reading the whole training side and the held-out partition");
-    final Observations train = restrict(source.of(Partition.TRAIN_ALL), bounds);
-    final Observations test = restrict(source.of(Partition.HELD_OUT), bounds);
+    final Observations readTrain = source.of(Partition.TRAIN_ALL);
+    final Observations readTest = source.of(Partition.HELD_OUT);
+    final int refused = missing(readTrain, population) + missing(readTest, population);
+    final Observations train = restrict(readTrain, bounds, population);
+    final Observations test = restrict(readTest, bounds, population);
     if (train.isEmpty() || test.isEmpty()) {
-      throw new NoObservationsException(source.describe() + " under " + bounds.name());
+      throw new NoObservationsException(
+          source.describe() + " under " + bounds.name() + " / " + population.name());
     }
     progress.detail("%,d to refit, %,d held out", train.rows().size(), test.rows().size());
     progress.phase(2, 2, "refitting with alpha=%.2f lambda=%.4g and scoring once", alpha, lambda);
-    return evaluate(train, test, bounds, alpha, lambda);
+    return evaluate(train, test, bounds, population, refused, alpha, lambda);
   }
 
   /** Standardise on the first side, fit there, score on the second. Used by both entry points. */
   private Report evaluate(final Observations fit, final Observations selection,
-      final Bounds bounds, final double alpha, final double lambda) {
+      final Bounds bounds, final Population population, final int refusedMissing,
+      final double alpha, final double lambda) {
 
     final Standardizer standardizer = Standardizer.fittedOn(fit);
     final double[][] x = matrix(standardizer, fit.rows());
@@ -181,7 +196,8 @@ public final class FitModelTask {
     ablation.put("colunas do prototipo", ablateNamed(standardizer, fit, selection, chosen,
         Columns.PROTOTYPE));
 
-    return new Report(bounds, fit.rows().size(), selection.rows().size(),
+    return new Report(bounds, population, refusedMissing,
+        fit.rows().size(), selection.rows().size(),
         fit.excludedEmptyTeam(), selection.excludedEmptyTeam(),
         standardizer.columns(), standardizer.dropped(),
         chosen.alpha(), chosen.lambda(), chosen.coefficients(), chosen.intercept(),
@@ -199,13 +215,27 @@ public final class FitModelTask {
     return new Scored(name, Metrics.of(rows, prediction), gradient);
   }
 
-  /** Keeps only the rows inside the band, preserving the column names and the excluded count. */
-  private static Observations restrict(final Observations all, final Bounds bounds) {
-    if (!bounds.restricts()) {
+  /** Keeps only the rows both filters admit, preserving the column names and excluded count. */
+  private static Observations restrict(final Observations all, final Bounds bounds,
+      final Population population) {
+
+    if (!bounds.restricts() && !population.restricts()) {
       return all;
     }
     return new Observations(all.columns(),
-        all.rows().stream().filter(bounds::admits).toList(), all.excludedEmptyTeam());
+        all.rows().stream().filter(bounds::admits).filter(population::admits).toList(),
+        all.excludedEmptyTeam());
+  }
+
+  /**
+   * Rows a restricting population refuses only because the interval is absent.
+   *
+   * <p>Counted and reported rather than folded into the ordinary exclusions: a source that stopped
+   * carrying the interval would otherwise shrink every restricted arm to nothing and look like a
+   * finding about the population.
+   */
+  private static int missing(final Observations all, final Population population) {
+    return (int) all.rows().stream().filter(population::refusesForMissing).count();
   }
 
   /** Refits on a subset of the columns, with the same protocol, to see what each group carries. */

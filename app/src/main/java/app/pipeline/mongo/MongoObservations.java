@@ -51,9 +51,17 @@ public final class MongoObservations implements ObservationSource {
     };
 
     final Map<ObjectId, Double> outcome = new HashMap<>(1 << 15);
-    for (final Document label : target.getCollection(ISSUE_LABEL)
-        .find(filter).projection(Projections.include("ttc_days"))) {
-      outcome.put(label.getObjectId("_id"), label.getDouble("ttc_days"));
+    // Resolution minus first linked commit, which Population selects on. Read here rather than
+    // recomputed downstream because both instants live on the label and nowhere else.
+    final Map<ObjectId, Double> postCommit = new HashMap<>(1 << 15);
+    for (final Document label : target.getCollection(ISSUE_LABEL).find(filter)
+        .projection(Projections.include("ttc_days", "resolved_at", "first_commit_at"))) {
+      final ObjectId id = label.getObjectId("_id");
+      outcome.put(id, label.getDouble("ttc_days"));
+      final java.util.Date resolved = label.getDate("resolved_at");
+      final java.util.Date first = label.getDate("first_commit_at");
+      postCommit.put(id, resolved == null || first == null ? Double.NaN
+          : (resolved.getTime() - first.getTime()) / 86_400_000.0);
     }
 
     final List<Observation> rows = new ArrayList<>(outcome.size());
@@ -70,7 +78,8 @@ public final class MongoObservations implements ObservationSource {
           features.getString("project"),
           features.getObjectId("canonical_id").toHexString(),
           outcome.get(features.getObjectId("_id")),
-          values(features)));
+          values(features),
+          postCommit.getOrDefault(features.getObjectId("_id"), Double.NaN)));
     }
     return new Observations(Columns.names(), rows, excluded);
   }
