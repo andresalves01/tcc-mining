@@ -12,6 +12,8 @@ import app.pipeline.mongo.GridFsGitIdentitySource;
 import app.pipeline.mongo.MongoContributionLedger;
 import app.pipeline.mongo.MongoContributionSource;
 import app.pipeline.mongo.MongoCorpusCheck;
+import app.pipeline.mongo.MongoFeatureStore;
+import app.pipeline.mongo.MongoIssueAttributes;
 import app.pipeline.mongo.MongoLabelSource;
 import app.pipeline.mongo.MongoLabelStore;
 import app.pipeline.mongo.MongoPersonRegistry;
@@ -108,6 +110,8 @@ public final class App {
         new MongoContributionLedger(client, config.targetDb()),
         new MongoLabelSource(client, config.sourceDb(), config.targetDb(), progress),
         new MongoLabelStore(client, config.targetDb()),
+        new MongoIssueAttributes(client, config.sourceDb()),
+        new MongoFeatureStore(client, config.targetDb()),
         new MongoCorpusCheck(client, config.sourceDb()),
         progress);
   }

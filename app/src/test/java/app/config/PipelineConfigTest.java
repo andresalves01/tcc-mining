@@ -17,7 +17,8 @@ class PipelineConfigTest {
     return new PipelineConfig(
         "mongodb://127.0.0.1:27017", sourceDb, targetDb,
         Path.of("build/work"), Path.of("build/cache"),
-        Duration.ofMillis(250), Strictness.EMAIL_AND_FULL_NAME, 1.0, 1.7283, true, 0.70, 5, Optional.empty());
+        Duration.ofMillis(250), Strictness.EMAIL_AND_FULL_NAME, 1.0, 1.7283, true, 0.70, 5,
+        Duration.ofDays(90), Optional.empty());
   }
 
   @Test

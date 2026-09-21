@@ -3,6 +3,8 @@ package app.cli;
 import app.config.PipelineConfig;
 import app.cost.port.ContributionLedger;
 import app.cost.port.ContributionSource;
+import app.features.port.FeatureStore;
+import app.features.port.IssueAttributeSource;
 import app.identity.port.GitIdentitySource;
 import app.identity.port.JiraIdentitySource;
 import app.identity.port.PersonRegistry;
@@ -36,5 +38,7 @@ public record Context(
     ContributionLedger ledger,
     LabelSource labels,
     LabelStore labelStore,
+    IssueAttributeSource issueAttributes,
+    FeatureStore featureStore,
     Corpus corpus,
     Progress progress) {}

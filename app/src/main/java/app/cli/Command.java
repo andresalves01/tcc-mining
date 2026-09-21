@@ -3,6 +3,7 @@ package app.cli;
 import app.cli.commands.BuildLedgerCommand;
 import app.cli.commands.CanonicalizeCommand;
 import app.cli.commands.CheckCommand;
+import app.cli.commands.FeaturesCommand;
 import app.cli.commands.FunnelCommand;
 import app.cli.commands.HarvestJiraCommand;
 import app.cli.commands.ReconstructPeopleCommand;
@@ -62,6 +63,13 @@ public enum Command {
       Cut the labels into past and future at the TRAIN_SHARE quantile of
       issue creation, with an inner split inside the training side for
       choosing regularisation. Records the assignment on each label."""),
+
+  FEATURES("features", new FeaturesCommand(), """
+      Build `issue_features` -- one predictor row per label, every quantity
+      read as of the issue's creation. Reads the labels and the ledger back,
+      so it is cheap to re-run when a definition changes. Needs funnel and
+      build-ledger to have run first.""",
+      Corpus.Stage.FEATURES),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both

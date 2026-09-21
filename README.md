@@ -116,13 +116,14 @@ because every later stage keys on the canonical author.
 | 4 | `build-ledger` | `commit`, `file_action`, `file`, `project`, `vcs_system` | `developer_contribution` |
 | 5 | `funnel` | `issue`, `event`, `issue_system`, `commit`, `file_action`, `file`, `hunk`, `code_entity_state` | `issue_label` |
 | 6 | `split` | `issue_label` | `issue_label` (`split` and `split_inner`), `split_meta` |
-| 7 | `seniority` | `developer_contribution` | nothing — reports only |
+| 7 | `features` | `issue_label`, `developer_contribution`, `issue` | `issue_features`, `feature_meta` |
+| 8 | `seniority` | `developer_contribution` | nothing — reports only |
 
 `check` and `stats` may be run at any point. Everything written lands in `TARGET_DB`, which must differ from
 `SOURCE_DB`; the pipeline refuses to start otherwise, so a reconstructed document can never be
 mistaken for one that shipped in the published release.
 
-Three of these deserve a note:
+Four of these deserve a note:
 
 - **`reconstruct-people`** exists because the published distribution ships without the `people`
   collection. It rebuilds the git half of the registry from the repositories bundled in GridFS,
@@ -139,6 +140,14 @@ Three of these deserve a note:
   selection) and `split=TEST` (held out). Inner eligibility is recomputed against the earlier
   instant rather than inherited, so a developer eligible at the outer cut may not be at the inner
   one.
+- **`features`** applies no duration bound and reads no split. Every stored label gets a row,
+  because whether the sample should be restricted to a coherent duration band is an open question
+  of method, and filtering here would make the unrestricted arm impossible to report beside the
+  restricted one. A predictor that could not be observed is **left off the document** rather than
+  written as zero — `mccc_tot`, `mu_m` and `s_m` are absent from every row until a per-commit
+  complexity table exists, and `feature_meta` says so in writing. The `dev_known_to_ledger` flag
+  separates a developer's genuine first task in a project, whose zero is real, from a pair the
+  ledger never saw, whose zero is a gap; both enter the model, and only the flag tells them apart.
 
 ## Environment
 
@@ -156,6 +165,7 @@ Three of these deserve a note:
 | `COST_RATIO` | `1.7283` | `C_max / C_min`. Reporting only. |
 | `TRAIN_SHARE` | `0.70` | The quantile of issue creation the outer cut falls on. |
 | `MIN_RESOLVED` | `5` | Resolutions a (developer, project) pair needs before a cut to be carried into it. |
+| `TEAM_WINDOW_DAYS` | `90` | How far back a commit still counts as presence on the active team, for `features`. |
 | `PILOT` | unset | Restricts `build-ledger` and `funnel` to matching project names. |
 
 The cost defaults are deliberately unitless: at `COST_MIN=1.0` the curve reports a multiplier
@@ -187,7 +197,7 @@ filters' effects are not independent.
 ./gradlew :app:test
 ```
 
-81 of the 85 tests run in about two seconds against in-memory doubles, with no MongoDB and no
+104 of the 108 tests run in about two seconds against in-memory doubles, with no MongoDB and no
 Spark — that is the point of the port-and-adapter layering below. The other four need a MongoDB at `127.0.0.1:27017`. Two live in
 `AppSanityTest`, which checks that this machine's Spark and Mongo connector actually work and writes
 to a throwaway `smartshark_tcc_test` database. The third is `CorpusRegressionTest`, which asserts
@@ -215,6 +225,7 @@ app.identity.port    interfaces the use cases depend on
 app.identity         domain     -- pure; knows nothing of Mongo, HTTP, Spark or files
 app.cost             domain     -- pure; contributions, seniority, the cost curve
 app.labels           domain     -- pure; the funnel, the methods, the temporal split
+app.features         domain     -- pure; the as-of index, the load counts, the design matrix
 ```
 
 Adding a command means adding a runner in `app.cli` and one constant to `app.cli.Command`, which

@@ -22,6 +22,9 @@ import java.util.Optional;
  * @param trainShare the quantile of issue creation instants that separates past from future
  * @param minResolvedBeforeCut how many labels a developer must have resolved before the cut to be
  *     carried into it. Applied to both sides of the split, though it does not bite both equally
+ * @param teamWindow how far back a commit still counts as presence on the active team. It bounds
+ *     participation observed and deliberately does not discount its members' accumulated
+ *     experience: someone who committed yesterday brings their whole history with them
  * @param pilotProject when present, restricts a scan to projects whose name contains it. A full
  *     over {@code commit} reads 84 GB, so a wrong field name should cost one small repository to
  *     discover, not half an hour
@@ -39,6 +42,7 @@ public record PipelineConfig(
     boolean javaOnlyVolume,
     double trainShare,
     int minResolvedBeforeCut,
+    Duration teamWindow,
     Optional<String> pilotProject) {
 
   public PipelineConfig {
@@ -63,6 +67,7 @@ public record PipelineConfig(
         !"ALL".equalsIgnoreCase(value("VOLUME", "JAVA")),
         Double.parseDouble(value("TRAIN_SHARE", "0.70")),
         Integer.parseInt(value("MIN_RESOLVED", "5")),
+        Duration.ofDays(Long.parseLong(value("TEAM_WINDOW_DAYS", "90"))),
         Optional.of(value("PILOT", "")).filter(pilot -> !pilot.isBlank()));
   }
 

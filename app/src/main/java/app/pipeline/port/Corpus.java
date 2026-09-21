@@ -18,7 +18,8 @@ public interface Corpus {
     RECONSTRUCT_PEOPLE,
     HARVEST_JIRA,
     BUILD_LEDGER,
-    FUNNEL
+    FUNNEL,
+    FEATURES
   }
 
   /**
