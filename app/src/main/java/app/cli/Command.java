@@ -5,6 +5,7 @@ import app.cli.commands.CanonicalizeCommand;
 import app.cli.commands.CheckCommand;
 import app.cli.commands.ComplexityCommand;
 import app.cli.commands.FeaturesCommand;
+import app.cli.commands.ExperimentsCommand;
 import app.cli.commands.FitCommand;
 import app.cli.commands.FunnelCommand;
 import app.cli.commands.HarvestJiraCommand;
@@ -84,8 +85,14 @@ public enum Command {
   FIT("fit", new FitCommand(), """
       Fit the Elastic Net on the training side and score it against the
       references the study names. Chooses alpha and lambda on the inner
-      split. Reads only, writes nothing, and cannot read the held-out
-      test set -- there is no code path to it. Needs features first."""),
+      split. Reads only, writes nothing. Reaches the held-out set, which
+      was opened on 2026-09-21; see Partition. Needs features first."""),
+
+  EXPERIMENTS("experiments", new ExperimentsCommand(), """
+      Print one row per held-out observation, per population, with the
+      Elastic Net and gradient-boosting predictions and the three
+      references. Hyperparameters are chosen on the inner split only.
+      Reads only, writes nothing -- redirect the output. Needs features."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both
