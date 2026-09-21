@@ -322,7 +322,16 @@ public final class FitModelTask {
    * The library does not divide the penalty by the row count, so this scales with the sample and
    * cannot be replaced by a fixed number.
    */
-  private static double largestPenalty(final double[][] x, final double[] y) {
+  /**
+   * The smallest penalty that drives every weight to zero, which anchors the grid to the data.
+   *
+   * <p><b>Deliberately not divided by the number of rows.</b> The library applies the penalty as
+   * given rather than per-observation, so scaling this by {@code n} would search a range orders of
+   * magnitude below where regularisation happens and every candidate would come back essentially
+   * unpenalised. Public so that {@link ExperimentsTask} anchors its grid identically: a second
+   * copy of this had drifted and chose a lambda 24,000 times too small.
+   */
+  public static double largestPenalty(final double[][] x, final double[] y) {
     double mean = 0;
     for (final double value : y) {
       mean += value;

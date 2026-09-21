@@ -102,7 +102,7 @@ public final class ExperimentsTask {
       double bestAlpha = ALPHAS[0];
       double bestLambda = 0;
       double bestMae = Double.MAX_VALUE;
-      final double lambdaMax = largestPenalty(x, y);
+      final double lambdaMax = FitModelTask.largestPenalty(x, y);
       for (final double alpha : ALPHAS) {
         for (int s = 0; s < LAMBDA_STEPS; s++) {
           final double lambda =
@@ -204,21 +204,4 @@ public final class ExperimentsTask {
     return at;
   }
 
-  /** The smallest penalty that zeroes every weight, which anchors the grid to the data. */
-  private static double largestPenalty(final double[][] x, final double[] y) {
-    double mean = 0;
-    for (final double v : y) {
-      mean += v;
-    }
-    mean /= y.length;
-    double largest = 0;
-    for (int j = 0; j < x[0].length; j++) {
-      double dot = 0;
-      for (int i = 0; i < x.length; i++) {
-        dot += x[i][j] * (y[i] - mean);
-      }
-      largest = Math.max(largest, Math.abs(dot) / x.length);
-    }
-    return Math.max(largest, 1e-6);
-  }
 }
