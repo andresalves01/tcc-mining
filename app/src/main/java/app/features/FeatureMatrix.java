@@ -31,6 +31,9 @@ public final class FeatureMatrix {
    * @param unknownPair a subset of the above: the ledger holds no commit by this developer in this
    *     project at all, so the zero is a gap rather than a first day
    * @param teamSizes one entry per label, so the report can show a distribution rather than a mean
+   * @param withLinkedIssues the corpus recorded the field at all, which is a different question
+   *     from {@code withAnyLink}: it records an empty list far more often than it omits one, so
+   *     most zeros here are real and only the omissions are missing data
    */
   public record Scan(
       List<FeatureRow> rows,
@@ -40,8 +43,10 @@ public final class FeatureMatrix {
       List<Integer> teamSizes,
       int attributesFound,
       int withDescription,
+      int withNonEmptyDescription,
       int withIssueType,
-      int withLinkedIssues) {
+      int withLinkedIssues,
+      int withAnyLink) {
 
     public Scan {
       rows = List.copyOf(rows);
@@ -69,8 +74,10 @@ public final class FeatureMatrix {
     int emptyTeam = 0;
     int attributesFound = 0;
     int withDescription = 0;
+    int withNonEmptyDescription = 0;
     int withIssueType = 0;
     int withLinkedIssues = 0;
+    int withAnyLink = 0;
 
     for (final IssueLabel label : labels) {
       final String developer = label.canonicalAuthorId();
@@ -100,12 +107,18 @@ public final class FeatureMatrix {
       }
       if (attribute.descriptionLength().isPresent()) {
         withDescription++;
+        if (attribute.descriptionLength().getAsInt() > 0) {
+          withNonEmptyDescription++;
+        }
       }
       if (attribute.issueType().isPresent()) {
         withIssueType++;
       }
       if (attribute.linkedIssues().isPresent()) {
         withLinkedIssues++;
+        if (attribute.linkedIssues().getAsInt() > 0) {
+          withAnyLink++;
+        }
       }
 
       rows.add(new FeatureRow(
@@ -129,7 +142,7 @@ public final class FeatureMatrix {
           attribute));
     }
     return new Scan(rows, withoutHistory, unknownPair, emptyTeam, teamSizes, attributesFound,
-        withDescription, withIssueType, withLinkedIssues);
+        withDescription, withNonEmptyDescription, withIssueType, withLinkedIssues, withAnyLink);
   }
 
   /**

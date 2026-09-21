@@ -271,10 +271,36 @@ class FeaturePipelineTest {
     assertEquals(1, report.scan().attributesFound());
     assertEquals(1, report.scan().withDescription());
     assertEquals(0, report.scan().withLinkedIssues(),
-        "issue_links is stored only when an issue has links, so its absence is not a zero here");
+        "the corpus recorded no issue_links field for either, which is missing data");
     final FeatureRow absent = store.written.stream()
         .filter(r -> r.issueId().equals("i2")).findFirst().orElseThrow();
     assertFalse(absent.attributes().found());
     assertTrue(absent.attributes().issueType().isEmpty());
+  }
+
+  @Test
+  @DisplayName("a field recorded as empty is counted apart from a field never recorded")
+  void emptyIsNotMissing() {
+    // The distinction the OptionalInt exists for. In the corpus issue_links is recorded as an
+    // empty list far more often than it is omitted, so collapsing the two would turn tens of
+    // thousands of real zeros and a few hundred genuine gaps into one indistinguishable number.
+    final CapturingStore store = new CapturingStore();
+    final IssueAttributeSource mixed = ids -> Map.of(
+        "i1", new IssueAttributes(true, OptionalInt.of(240), Optional.of("Bug"), OptionalInt.of(3)),
+        "i2", new IssueAttributes(true, OptionalInt.of(0), Optional.of("Bug"), OptionalInt.of(0)),
+        "i3", IssueAttributes.missing());
+
+    final BuildFeaturesTask.Report report = new BuildFeaturesTask(
+        new InMemoryLabels(
+            label("i1", "alice", "lucene", 100, 200),
+            label("i2", "alice", "lucene", 110, 200),
+            label("i3", "alice", "lucene", 120, 200)),
+        new InMemoryLedger(commit("alice", "lucene", 50, 10)),
+        mixed, store, SILENT).run(NINETY_DAYS);
+
+    assertEquals(2, report.scan().withLinkedIssues(), "two had the field recorded");
+    assertEquals(1, report.scan().withAnyLink(), "but only one of those actually had a link");
+    assertEquals(2, report.scan().withDescription(), "two had the field recorded");
+    assertEquals(1, report.scan().withNonEmptyDescription(), "and one of those was blank");
   }
 }

@@ -59,11 +59,15 @@ public final class FeaturesCommand implements CommandRunner {
 
     System.out.printf("%n  ATRIBUTOS DE CRIACAO  (fora da especificacao, guardados marcados)%n");
     line("issue localizada no corpus de origem", scan.attributesFound(), labels);
-    line("com descricao", scan.withDescription(), labels);
-    line("com tipo", scan.withIssueType(), labels);
-    line("com issues ligadas", scan.withLinkedIssues(), labels);
+    line("campo de descricao gravado", scan.withDescription(), labels);
+    line("  e nao vazio", scan.withNonEmptyDescription(), labels);
+    line("campo de tipo gravado", scan.withIssueType(), labels);
+    line("campo de issues ligadas gravado", scan.withLinkedIssues(), labels);
+    line("  e com ao menos uma ligacao", scan.withAnyLink(), labels);
     System.out.printf("    %-48s%n",
-        "(issue_links so e gravado quando existe, entao ausencia nao e zero aqui)");
+        "(o corpus grava lista vazia muito mais vezes do que omite o campo, entao quase todo");
+    System.out.printf("    %-48s%n",
+        " zero aqui e real -- so a omissao e falta de dado, e ela e rara)");
 
     System.out.printf("%n  AUSENTES NESTA RODADA%n");
     System.out.printf("    %-48s %9s%n", "McCC_tot, mu_M, s_M", "100,00%");

@@ -24,9 +24,11 @@ import org.bson.types.ObjectId;
  * batches rather than scanned, because the labels are a twentieth of {@code issue} and the ids are
  * already in hand — a full scan here would cost twenty times as much to answer the same question.
  *
- * <p>A field the corpus does not record stays absent. {@code issue_links} is the one that matters:
- * it is stored only for issues that have links, so reading its absence as "no links" is a claim
- * about the corpus, and that claim belongs to whoever fits the model rather than to the reader.
+ * <p>A field the corpus does not record stays absent, which is not the same as empty. Measured
+ * over the 56,153 labels on 2026-09-20, {@code issue_links} is recorded for 99.41% of them and is
+ * an empty list in 76.51% — so most zeros are real, and only the 334 omissions are missing data.
+ * Reading an omission as "no links" is therefore cheap, but it is still a claim about the corpus
+ * and belongs to whoever fits the model rather than to this reader.
  */
 public final class MongoIssueAttributes implements IssueAttributeSource {
 

@@ -186,6 +186,7 @@ The sample the study reports, for checking that a re-run landed in the same plac
 | Time-to-code | p25 0.88 d, p50 7.03 d, p75 47.52 d, p95 462.74 d |
 | Outer split `t0` | 2015-12-01 — 36,677 train / 8,318 test, 677 eligible (dev, project) pairs |
 | Inner split `t1` | 2013-10-22 — 24,582 fit / 5,397 parameter selection, 443 eligible pairs |
+| Features | **56,153 rows**; 4,524 (8.06%) with no prior history and none of them an unknown pair; 553 (0.98%) with an empty active team; team size p50 = 7 |
 
 The funnel's exclusions are printed in order and are **incremental**: each denominator is what the
 previous line retained, so the percentages do not add up to a share of the original total and the
