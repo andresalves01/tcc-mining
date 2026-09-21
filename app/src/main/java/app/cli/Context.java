@@ -12,6 +12,7 @@ import app.identity.port.JiraIdentitySource;
 import app.identity.port.PersonRegistry;
 import app.labels.port.LabelSource;
 import app.labels.port.LabelStore;
+import app.model.port.ObservationSource;
 import app.pipeline.port.Corpus;
 import app.pipeline.port.Progress;
 
@@ -44,5 +45,6 @@ public record Context(
     FeatureStore featureStore,
     CommitComplexitySource commitComplexity,
     CommitComplexityStore complexityStore,
+    ObservationSource observations,
     Corpus corpus,
     Progress progress) {}

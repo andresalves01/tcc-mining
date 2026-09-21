@@ -18,6 +18,7 @@ import app.pipeline.mongo.MongoFeatureStore;
 import app.pipeline.mongo.MongoIssueAttributes;
 import app.pipeline.mongo.MongoLabelSource;
 import app.pipeline.mongo.MongoLabelStore;
+import app.pipeline.mongo.MongoObservations;
 import app.pipeline.mongo.MongoPersonRegistry;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
@@ -116,6 +117,7 @@ public final class App {
         new MongoFeatureStore(client, config.targetDb()),
         new MongoCommitComplexity(client, config.sourceDb(), progress),
         new MongoCommitComplexityStore(client, config.targetDb()),
+        new MongoObservations(client, config.targetDb()),
         new MongoCorpusCheck(client, config.sourceDb()),
         progress);
   }

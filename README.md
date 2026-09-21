@@ -118,7 +118,8 @@ because every later stage keys on the canonical author.
 | 6 | `split` | `issue_label` | `issue_label` (`split` and `split_inner`), `split_meta` |
 | 7 | `complexity` | `issue_label`, `developer_contribution`, `file`, `file_action`, `hunk`, `code_entity_state` | `commit_complexity` |
 | 8 | `features` | `issue_label`, `developer_contribution`, `commit_complexity`, `issue` | `issue_features`, `feature_meta` |
-| 9 | `seniority` | `developer_contribution` | nothing — reports only |
+| 9 | `fit` | `issue_features`, `issue_label` | nothing — reports only |
+| 10 | `seniority` | `developer_contribution` | nothing — reports only |
 
 `check` and `stats` may be run at any point. Everything written lands in `TARGET_DB`, which must differ from
 `SOURCE_DB`; the pipeline refuses to start otherwise, so a reconstructed document can never be

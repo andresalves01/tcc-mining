@@ -5,6 +5,7 @@ import app.cli.commands.CanonicalizeCommand;
 import app.cli.commands.CheckCommand;
 import app.cli.commands.ComplexityCommand;
 import app.cli.commands.FeaturesCommand;
+import app.cli.commands.FitCommand;
 import app.cli.commands.FunnelCommand;
 import app.cli.commands.HarvestJiraCommand;
 import app.cli.commands.ReconstructPeopleCommand;
@@ -79,6 +80,12 @@ public enum Command {
       so it is cheap to re-run when a definition changes. Needs funnel and
       build-ledger to have run first.""",
       Corpus.Stage.FEATURES),
+
+  FIT("fit", new FitCommand(), """
+      Fit the Elastic Net on the training side and score it against the
+      references the study names. Chooses alpha and lambda on the inner
+      split. Reads only, writes nothing, and cannot read the held-out
+      test set -- there is no code path to it. Needs features first."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both
