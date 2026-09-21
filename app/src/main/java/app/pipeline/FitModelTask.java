@@ -123,9 +123,42 @@ public final class FitModelTask {
     progress.detail("chose alpha=%.2f lambda=%.4g, %d of %d columns selected",
         best.alpha(), best.lambda(), best.selectedCount(), standardizer.columns().size());
 
-    progress.phase(4, 4, "scoring against the references the study names");
-    final ElasticNetModel chosen = best;
+    progress.detail("scoring the inner selection");
+    return evaluate(fit, selection, bounds, best.alpha(), best.lambda());
+  }
+
+  /**
+   * The held-out evaluation: refit on the whole training side with the parameters the inner split
+   * chose, then score once on the partition created after the outer cut.
+   *
+   * <p>The parameters are passed in rather than re-swept, because choosing them here would let the
+   * held-out outcomes pick their own model and the number would measure nothing.
+   */
+  public Report heldOut(final Bounds bounds, final double alpha, final double lambda) {
+    progress.phase(1, 2, "reading the whole training side and the held-out partition");
+    final Observations train = restrict(source.of(Partition.TRAIN_ALL), bounds);
+    final Observations test = restrict(source.of(Partition.HELD_OUT), bounds);
+    if (train.isEmpty() || test.isEmpty()) {
+      throw new NoObservationsException(source.describe() + " under " + bounds.name());
+    }
+    progress.detail("%,d to refit, %,d held out", train.rows().size(), test.rows().size());
+    progress.phase(2, 2, "refitting with alpha=%.2f lambda=%.4g and scoring once", alpha, lambda);
+    return evaluate(train, test, bounds, alpha, lambda);
+  }
+
+  /** Standardise on the first side, fit there, score on the second. Used by both entry points. */
+  private Report evaluate(final Observations fit, final Observations selection,
+      final Bounds bounds, final double alpha, final double lambda) {
+
+    final Standardizer standardizer = Standardizer.fittedOn(fit);
+    final double[][] x = matrix(standardizer, fit.rows());
+    final double[] y = outcome(fit.rows());
+    final double[][] xs = matrix(standardizer, selection.rows());
+    final Map<Observation, Integer> where = index(selection.rows());
+    final ElasticNetModel chosen =
+        ElasticNetModel.fit(x, y, standardizer.columns(), alpha, lambda);
     final ToDoubleFunction<Observation> model = row -> chosen.predict(xs[where.get(row)]);
+
 
     final List<Scored> comparison = new ArrayList<>();
     comparison.add(score("chute constante", selection.rows(), Baselines.constant(fit.rows())));

@@ -21,29 +21,39 @@ public final class FitCommand implements CommandRunner {
     final FitModelTask task = new FitModelTask(context.observations(), context.progress());
     for (final Bounds bounds : List.of(Bounds.none(), Bounds.oneHourToOneYear())) {
       try {
-        print(task.run(bounds), bounds);
+        // The inner selection chooses the parameters; the held-out partition is then scored once
+        // with them, refitted over the whole training side. Re-sweeping there would let the
+        // held-out outcomes pick their own model.
+        final FitModelTask.Report inner = task.run(bounds);
+        print(inner, bounds, "SELECAO INTERNA");
+        print(task.heldOut(bounds, inner.alpha(), inner.lambda()), bounds, "TESTE EXTERNO");
       } catch (final FitModelTask.NoObservationsException e) {
         throw new CommandFailedException(List.of("  " + e.getMessage()));
       }
     }
   }
 
-  private static void print(final FitModelTask.Report report, final Bounds bounds) {
+  private static void print(final FitModelTask.Report report, final Bounds bounds,
+      final String partition) {
 
     System.out.printf("%n%n  ===================================================================%n");
-    System.out.printf("  AJUSTE DO ELASTIC NET  --  %s%n", bounds.name().toUpperCase());
+    System.out.printf("  %s  --  %s%n", partition, bounds.name().toUpperCase());
     System.out.printf("  ===================================================================%n%n");
-    System.out.printf("  ajuste : %,d rotulos      selecao : %,d rotulos%n",
+    System.out.printf("  ajustado em : %,d rotulos      pontuado em : %,d rotulos%n",
         report.fitRows(), report.selectionRows());
-    System.out.printf("  postos de lado por equipe vazia : %,d no ajuste, %,d na selecao%n",
+    System.out.printf("  postos de lado por equipe vazia : %,d e %,d%n",
         report.excludedEmptyTeamFit(), report.excludedEmptyTeamSelection());
-    System.out.printf("  O CONJUNTO DE TESTE EXTERNO NAO FOI LIDO.%n");
+    if (partition.startsWith("TESTE")) {
+      System.out.printf("  Aberto em 21/09/2026, uma vez, com a especificacao descrita em%n");
+      System.out.printf("  PRE-REGISTRO.md. Medicao unica -- NAO e estimativa independente de%n");
+      System.out.printf("  generalizacao: McCC_tot ausente e o corte de duracao indeciso.%n");
+    }
     if (!report.droppedColumns().isEmpty()) {
       System.out.printf("%n  constantes no ajuste, retiradas : %s%n",
           String.join(", ", report.droppedColumns()));
     }
 
-    System.out.printf("%n  HIPERPARAMETROS ESCOLHIDOS NA DIVISAO INTERNA%n");
+    System.out.printf("%n  HIPERPARAMETROS  (escolhidos sempre na divisao interna)%n");
     System.out.printf("    alpha = %.2f      lambda = %.6g%n", report.alpha(), report.lambda());
     System.out.printf("    colunas selecionadas : %d de %d   (limiar |b|/|b|max >= %.0e,"
         + " declarado antes)%n", report.selectedColumns(), report.columns().size(),
@@ -63,7 +73,7 @@ public final class FitCommand implements CommandRunner {
     }
     System.out.printf("    %-26s %12.6f%n", "(intercepto)", report.intercept());
 
-    System.out.printf("%n  CONTRA AS REFERENCIAS  (medido na selecao interna)%n");
+    System.out.printf("%n  CONTRA AS REFERENCIAS  (medido em %s)%n", partition.toLowerCase());
     System.out.printf("    %-32s %8s %9s %11s %9s %9s %9s %9s%n", "", "n", "MAE d",
         "RMSE d", "erro med", "R2 log", "ordena", "dentro 2x");
     for (final FitModelTask.Scored scored : report.comparison()) {
@@ -115,8 +125,9 @@ public final class FitCommand implements CommandRunner {
           scored.metrics().maeDays(), scored.metrics().r2Log(),
           scored.metrics().rankCorrelation(), 100 * tight.agreement());
     }
-    System.out.printf("%n  EXPLORATORIO: a divisao interna ja foi olhada muitas vezes nas"
-        + " sessoes anteriores.%n");
+    System.out.printf("%n  %s%n", partition.startsWith("TESTE")
+        ? "MEDICAO UNICA sobre a especificacao de PRE-REGISTRO.md, aberta em 21/09/2026."
+        : "EXPLORATORIO: a divisao interna ja foi olhada muitas vezes nas sessoes anteriores.");
   }
 
   /** Short enough for a column header. */
