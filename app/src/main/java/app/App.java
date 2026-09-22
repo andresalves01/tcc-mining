@@ -20,6 +20,8 @@ import app.pipeline.mongo.MongoLabelSource;
 import app.pipeline.mongo.MongoLabelStore;
 import app.pipeline.mongo.MongoObservations;
 import app.pipeline.mongo.MongoPersonRegistry;
+import app.pipeline.mongo.MongoPullRequestAttributes;
+import app.pipeline.mongo.MongoPullRequestSource;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import java.util.Optional;
@@ -119,7 +121,12 @@ public final class App {
         new MongoCommitComplexityStore(client, config.targetDb()),
         new MongoObservations(client, config.targetDb()),
         new MongoCorpusCheck(client, config.sourceDb()),
-        progress);
+        progress,
+        new MongoPersonRegistry(client, config.ledgerDb()),
+        new MongoContributionLedger(client, config.ledgerDb()),
+        new MongoCommitComplexityStore(client, config.ledgerDb()),
+        new MongoPullRequestSource(client, config.sourceDb(), config.ledgerDb()),
+        new MongoPullRequestAttributes(client, config.sourceDb()));
   }
 
   private App() {}

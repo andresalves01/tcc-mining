@@ -8,6 +8,8 @@ import app.cli.commands.FeaturesCommand;
 import app.cli.commands.FitCommand;
 import app.cli.commands.FunnelCommand;
 import app.cli.commands.HarvestJiraCommand;
+import app.cli.commands.PullRequestFeaturesCommand;
+import app.cli.commands.PullRequestLabelsCommand;
 import app.cli.commands.ReconstructPeopleCommand;
 import app.cli.commands.SeniorityCommand;
 import app.cli.commands.SplitCommand;
@@ -80,6 +82,19 @@ public enum Command {
       so it is cheap to re-run when a definition changes. Needs funnel and
       build-ledger to have run first.""",
       Corpus.Stage.FEATURES),
+
+  PR_LABELS("pr-labels", new PullRequestLabelsCommand(), """
+      Artigo 4: build `issue_label` from merged pull requests (opened to
+      merged) instead of resolved issues, keyed on the single commit
+      author. Reads pull_request* from SOURCE_DB and the identity
+      registry from LEDGER_DB -- writes only to TARGET_DB. Run `split`
+      afterwards, same as after `funnel`."""),
+
+  PR_FEATURES("pr-features", new PullRequestFeaturesCommand(), """
+      Artigo 4: build `issue_features` for the pull-request labels.
+      BuildFeaturesTask itself, unmodified -- only the databases behind
+      it differ: the ledger and complexity table are read from
+      LEDGER_DB, never written to. Needs pr-labels and split first."""),
 
   FIT("fit", new FitCommand(), """
       Fit the Elastic Net on the training side and score it against the

@@ -14,8 +14,13 @@ import org.junit.jupiter.api.Test;
 class PipelineConfigTest {
 
   private static PipelineConfig configOf(final String sourceDb, final String targetDb) {
+    return configOf(sourceDb, targetDb, targetDb);
+  }
+
+  private static PipelineConfig configOf(
+      final String sourceDb, final String targetDb, final String ledgerDb) {
     return new PipelineConfig(
-        "mongodb://127.0.0.1:27017", sourceDb, targetDb,
+        "mongodb://127.0.0.1:27017", sourceDb, targetDb, ledgerDb,
         Path.of("build/work"), Path.of("build/cache"),
         Duration.ofMillis(250), Strictness.EMAIL_AND_FULL_NAME, 1.0, 1.7283, true, 0.70, 5,
         Duration.ofDays(90), Optional.empty());
@@ -42,5 +47,17 @@ class PipelineConfigTest {
     assertEquals("smartshark_2_2", config.sourceDb());
     assertEquals("smartshark_tcc", config.targetDb());
     assertTrue(config.describe().contains("smartshark_tcc"));
+  }
+
+  @Test
+  @DisplayName("ledgerDb can differ from targetDb -- reading an already-built ledger without "
+      + "writing to the database it came from")
+  void ledgerDbCanDifferFromTarget() {
+    // The paper-4 use case this field exists for: TARGET_DB is a fresh database for pull-request
+    // labels, LEDGER_DB is smartshark_tcc, already built and never written to by that run.
+    final PipelineConfig config = configOf("smartshark_2_2", "smartshark_paper4", "smartshark_tcc");
+
+    assertEquals("smartshark_paper4", config.targetDb());
+    assertEquals("smartshark_tcc", config.ledgerDb());
   }
 }
