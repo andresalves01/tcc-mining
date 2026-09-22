@@ -1,5 +1,6 @@
 package app.pipeline.mongo;
 
+import app.labels.ExamOrigin;
 import app.paper4.MergedPullRequest;
 import app.paper4.port.MergedPullRequestSource;
 import com.mongodb.client.MongoClient;
@@ -12,6 +13,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.bson.Document;
 import org.bson.types.ObjectId;
@@ -40,13 +42,14 @@ public final class MongoPullRequestSource implements MergedPullRequestSource {
   /** The collections this source opens, in the source database. */
   public static final Set<String> READS = Set.of(
       "pull_request", "pull_request_event", "pull_request_commit", "pull_request_file",
-      "pull_request_review", "pull_request_system", "project");
+      "pull_request_review", "pull_request_comment", "pull_request_system", "project");
 
   private static final String PULL_REQUEST = "pull_request";
   private static final String PULL_REQUEST_EVENT = "pull_request_event";
   private static final String PULL_REQUEST_COMMIT = "pull_request_commit";
   private static final String PULL_REQUEST_FILE = "pull_request_file";
   private static final String PULL_REQUEST_REVIEW = "pull_request_review";
+  private static final String PULL_REQUEST_COMMENT = "pull_request_comment";
   private static final String PULL_REQUEST_SYSTEM = "pull_request_system";
   private static final String PROJECT = "project";
 
@@ -100,8 +103,7 @@ public final class MongoPullRequestSource implements MergedPullRequestSource {
       }
     }
 
-    // A primeira revisao de cada PR. A fronteira entre esperar por revisor e o ciclo com o
-    // autor -- ver PullRequestOutcome. Ausente em 48,7% dos rotulos, que caem no merge.
+    // A primeira revisao formal de cada PR.
     final Map<String, Instant> firstReview = new HashMap<>(1 << 15);
     for (final Document r : source.getCollection(PULL_REQUEST_REVIEW)
         .find().projection(Projections.include("pull_request_id", "submitted_at"))) {
@@ -111,6 +113,27 @@ public final class MongoPullRequestSource implements MergedPullRequestSource {
       final String prId = r.getObjectId("pull_request_id").toHexString();
       final Instant at = r.getDate("submitted_at").toInstant();
       firstReview.merge(prId, at, (a, b) -> a.isBefore(b) ? a : b);
+    }
+
+    // O primeiro comentario de quem NAO e autor dos commits deste PR. Revisao formal existe em
+    // 56,4% dos PRs mesclados; com o comentario de terceiro a cobertura da fronteira vai a 78,1%.
+    // O filtro de autoria nao e detalhe -- 12.716 PRs tem algum comentario, mas so 10.570 tem
+    // comentario de terceiro: o resto e o autor falando sozinho, que nao e exame de ninguem.
+    final Map<String, Instant> firstComment = new HashMap<>(1 << 15);
+    for (final Document c : source.getCollection(PULL_REQUEST_COMMENT)
+        .find().projection(Projections.include("pull_request_id", "created_at", "author_id"))) {
+      if (c.getDate("created_at") == null) {
+        continue;
+      }
+      final String prId = c.getObjectId("pull_request_id").toHexString();
+      final ObjectId commenter = c.getObjectId("author_id");
+      final Set<String> commitAuthors = authorsByPr.get(prId);
+      if (commenter != null && commitAuthors != null
+          && commitAuthors.contains(commenter.toHexString())) {
+        continue;
+      }
+      final Instant at = c.getDate("created_at").toInstant();
+      firstComment.merge(prId, at, (a, b) -> a.isBefore(b) ? a : b);
     }
 
     final Map<String, long[]> javaLines = new HashMap<>(1 << 15); // [added, deleted]
@@ -146,25 +169,39 @@ public final class MongoPullRequestSource implements MergedPullRequestSource {
       final String description = pr.getString("description");
 
       final Instant opened = pr.getDate("created_at").toInstant();
-      // Fallback para o merge, e uma revisao fora do intervalo [abertura, merge] nao e fronteira
-      // de nada -- 30 rotulos tem revisao posterior ao merge e caem aqui.
-      final Instant review = firstReview.get(prId);
-      final boolean reviewed =
-          review != null && !review.isBefore(opened) && !review.isAfter(merged);
+      // Um exame fora de [abertura, merge] nao e fronteira de nada, e sai. Sem fallback: quando
+      // nada resta, a fronteira fica ausente e as duas parcelas da duracao ficam ausentes com ela.
+      final Instant review = inside(firstReview.get(prId), opened, merged);
+      final Instant comment = inside(firstComment.get(prId), opened, merged);
+      final Instant exam = earliest(review, comment);
+      final Optional<ExamOrigin> origin = exam == null ? Optional.empty()
+          : Optional.of(exam.equals(review) ? ExamOrigin.REVIEW : ExamOrigin.COMMENT);
       out.add(new MergedPullRequest(
           prId,
           project,
           author,
           opened,
           merged,
-          reviewed ? review : merged,
-          reviewed,
+          Optional.ofNullable(exam),
+          origin,
           lines[0],
           lines[1],
           commitCountByPr.getOrDefault(prId, 0),
           description == null ? 0 : description.length()));
     }
     return out;
+  }
+
+  private static Instant inside(final Instant at, final Instant from, final Instant to) {
+    return at != null && !at.isBefore(from) && !at.isAfter(to) ? at : null;
+  }
+
+  /** Ties go to the review, which is the stronger evidence that someone actually examined it. */
+  private static Instant earliest(final Instant review, final Instant comment) {
+    if (review == null) {
+      return comment;
+    }
+    return comment == null || !comment.isBefore(review) ? review : comment;
   }
 
   private static long numberOr(final Document doc, final String field, final long fallback) {

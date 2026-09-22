@@ -4,8 +4,8 @@ import app.identity.port.PersonRegistry;
 import app.labels.ChangedMethod;
 import app.labels.IssueLabel;
 import app.labels.port.LabelStore;
+import app.labels.ExamOrigin;
 import app.paper4.MergedPullRequest;
-import app.paper4.PullRequestOutcome;
 import app.paper4.port.MergedPullRequestSource;
 import java.util.ArrayList;
 import java.util.List;
@@ -57,10 +57,15 @@ public final class BuildPullRequestLabelsTask {
    * @param unresolvedIdentity a single commit author existed, but the registry holds no canonical
    *     id for them
    * @param written rows the store reports as written
+   * @param examinedByReview labels whose boundary is a formal review
+   * @param examinedByComment labels whose boundary is a comment from someone who is not a commit
+   *     author, because no formal review preceded it
+   * @param notExamined labels the corpus records no external examination for. They are written and
+   *     they count in the total outcome; only the two components are absent for them
    */
   public record Report(
       int scanned, int noSingleAuthor, int unresolvedIdentity, long written,
-      PullRequestOutcome outcome, int withoutReview, int nonPositiveInterval) {}
+      int examinedByReview, int examinedByComment, int notExamined, int nonPositiveInterval) {}
 
   /** The one place this stage says what its complexity columns mean, visible in raw documents too. */
   public static final ChangedMethod ABSENT_COMPLEXITY =
@@ -69,19 +74,12 @@ public final class BuildPullRequestLabelsTask {
   private final MergedPullRequestSource source;
   private final LabelStore store;
   private final PersonRegistry registry;
-  private final PullRequestOutcome outcome;
 
   public BuildPullRequestLabelsTask(
       final MergedPullRequestSource source, final LabelStore store, final PersonRegistry registry) {
-    this(source, store, registry, PullRequestOutcome.OPEN_TO_MERGE);
-  }
-
-  public BuildPullRequestLabelsTask(final MergedPullRequestSource source, final LabelStore store,
-      final PersonRegistry registry, final PullRequestOutcome outcome) {
     this.source = source;
     this.store = store;
     this.registry = registry;
-    this.outcome = outcome;
   }
 
   public Report run() {
@@ -94,7 +92,9 @@ public final class BuildPullRequestLabelsTask {
     final List<IssueLabel> labels = new ArrayList<>(merged.size());
     int noSingleAuthor = 0;
     int unresolvedIdentity = 0;
-    int withoutReview = 0;
+    int byReview = 0;
+    int byComment = 0;
+    int notExamined = 0;
     int nonPositiveInterval = 0;
     for (final MergedPullRequest pr : merged) {
       if (pr.authorId() == null) {
@@ -106,40 +106,44 @@ public final class BuildPullRequestLabelsTask {
         unresolvedIdentity++;
         continue;
       }
-      if (outcome == PullRequestOutcome.REVIEW_TO_MERGE && !pr.reviewed()) {
-        // Sem revisao a fronteira e o proprio merge, e o intervalo seria zero. Excluir e honesto;
-        // escorar num epsilon seria inventar trabalho que o registro nao mostra.
-        withoutReview++;
-        continue;
-      }
-      if (!pr.endOf(outcome).isAfter(pr.startOf(outcome))) {
+      if (!pr.mergedAt().isAfter(pr.openedAt())) {
         nonPositiveInterval++;
         continue;
       }
-      labels.add(toLabel(pr, developer, outcome));
+      // Um exame ausente nao exclui nada: a linha entra com o desfecho total e sem as duas
+      // parcelas. Excluir aqui reintroduziria a perda de metade da populacao que a decomposicao
+      // existe para evitar.
+      if (pr.examOrigin().isEmpty()) {
+        notExamined++;
+      } else if (pr.examOrigin().get() == ExamOrigin.REVIEW) {
+        byReview++;
+      } else {
+        byComment++;
+      }
+      labels.add(toLabel(pr, developer));
     }
 
     final long written = store.save(labels);
     return new Report(merged.size(), noSingleAuthor, unresolvedIdentity, written,
-        outcome, withoutReview, nonPositiveInterval);
+        byReview, byComment, notExamined, nonPositiveInterval);
   }
 
-  private static IssueLabel toLabel(final MergedPullRequest pr, final String developer,
-      final PullRequestOutcome outcome) {
+  private static IssueLabel toLabel(final MergedPullRequest pr, final String developer) {
     return new IssueLabel(
         pr.pullRequestId(),
         pr.projectName(),
-        pr.startOf(outcome),
-        pr.endOf(outcome),
+        pr.openedAt(),
+        pr.mergedAt(),
         developer,
         // Nao e o primeiro commit -- essa data nao e recuperavel nesta populacao, ver
-        // MergedPullRequestSource. Carrega a fronteira de revisao, que e o que esta posicao
-        // significa aqui: um instante intermediario entre as duas pontas do intervalo. Nenhum
-        // calculo a le -- nem TemporalSplit nem MongoObservations -- so o documento gravado.
-        pr.reviewAt(),
+        // MergedPullRequestSource. Carrega a propria abertura, para o campo nao mentir: a
+        // fronteira do exame tem campo proprio agora, e e opcional, que e o que ela precisa ser.
+        pr.openedAt(),
         pr.linkedCommits(),
         pr.javaLinesAdded(),
         pr.javaLinesDeleted(),
-        List.of(ABSENT_COMPLEXITY));
+        List.of(ABSENT_COMPLEXITY),
+        pr.examinedAt(),
+        pr.examOrigin());
   }
 }

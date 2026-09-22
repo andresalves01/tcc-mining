@@ -56,7 +56,7 @@ public final class Help {
           TRAIN_SHARE       0.70                split: the quantile of issue creation to cut at
           MIN_RESOLVED      5                   split: resolutions a (dev, project) needs first
           TEAM_WINDOW_DAYS  90                  features: how far back the active team is read
-          PR_OUTCOME        OPEN_TO_MERGE       | OPEN_TO_REVIEW | REVIEW_TO_MERGE
+          TTC_TARGET        TOTAL               | ESPERA | AUTOR  (qual duracao se ajusta)
           COLUMNS           ISSUE               | PULL_REQUEST (sem as quatro que nao pagam)
           PILOT             (unset)             ledger and funnel: restrict to matching projects
         """);

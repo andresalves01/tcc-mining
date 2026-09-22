@@ -1,5 +1,6 @@
 package app.pipeline.mongo;
 
+import app.labels.TtcTarget;
 import app.model.Columns;
 import app.model.Observation;
 import app.model.Observations;
@@ -34,10 +35,28 @@ public final class MongoObservations implements ObservationSource {
 
   private final MongoDatabase target;
   private final String targetName;
+  private final TtcTarget outcomeTarget;
 
   public MongoObservations(final MongoClient client, final String targetDb) {
+    this(client, targetDb, TtcTarget.TOTAL);
+  }
+
+  /** Additive: the two-argument form is the whole life, which is what every issue stage wants. */
+  public MongoObservations(
+      final MongoClient client, final String targetDb, final TtcTarget outcomeTarget) {
+
     this.target = client.getDatabase(targetDb);
     this.targetName = targetDb;
+    this.outcomeTarget = outcomeTarget;
+  }
+
+  /** The stored field each target reads. Absent on a row means the row cannot serve that target. */
+  private String outcomeField() {
+    return switch (outcomeTarget) {
+      case TOTAL -> "ttc_days";
+      case ESPERA -> "ttc_espera";
+      case AUTOR -> "ttc_autor";
+    };
   }
 
   @Override
@@ -50,10 +69,26 @@ public final class MongoObservations implements ObservationSource {
       case HELD_OUT -> Filters.eq("split", "TEST");
     };
 
+    final String field = outcomeField();
     final Map<ObjectId, Double> outcome = new HashMap<>(1 << 15);
+    int withoutOutcome = 0;
     for (final Document label : target.getCollection(ISSUE_LABEL)
-        .find(filter).projection(Projections.include("ttc_days"))) {
-      outcome.put(label.getObjectId("_id"), label.getDouble("ttc_days"));
+        .find(filter).projection(Projections.include(field))) {
+      final Double value = label.getDouble(field);
+      // Sem exame externo registrado nao ha as duas parcelas, e a linha sai deste alvo -- sem sair
+      // do alvo TOTAL, onde ela e tao observada quanto qualquer outra. E a decomposicao que e
+      // parcial, nao o desfecho.
+      if (value == null) {
+        withoutOutcome++;
+        continue;
+      }
+      // Um intervalo nao positivo nao tem logaritmo. Acontece na parcela de espera quando o exame
+      // caiu no mesmo instante da abertura.
+      if (value <= 0) {
+        withoutOutcome++;
+        continue;
+      }
+      outcome.put(label.getObjectId("_id"), value);
     }
 
     final List<Observation> rows = new ArrayList<>(outcome.size());
@@ -72,7 +107,7 @@ public final class MongoObservations implements ObservationSource {
           outcome.get(features.getObjectId("_id")),
           values(features)));
     }
-    return new Observations(Columns.names(), rows, excluded);
+    return new Observations(Columns.names(), rows, excluded, withoutOutcome);
   }
 
   private static double[] values(final Document features) {

@@ -127,7 +127,7 @@ public final class App {
         new MongoFeatureStore(client, config.targetDb()),
         new MongoCommitComplexity(client, config.sourceDb(), progress),
         new MongoCommitComplexityStore(client, config.targetDb()),
-        new MongoObservations(client, config.targetDb()),
+        new MongoObservations(client, config.targetDb(), config.ttcTarget()),
         new MongoCorpusCheck(client, config.sourceDb()),
         progress,
         new MongoPersonRegistry(client, config.ledgerDb()),

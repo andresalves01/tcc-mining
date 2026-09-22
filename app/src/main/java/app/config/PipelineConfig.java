@@ -2,7 +2,7 @@ package app.config;
 
 import app.identity.Strictness;
 import app.model.Columns;
-import app.paper4.PullRequestOutcome;
+import app.labels.TtcTarget;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Optional;
@@ -23,8 +23,10 @@ import java.util.Optional;
  *     ledger from elsewhere -- a paper branch deriving new labels from a different outcome, never
  *     writing to the database the ledger came from -- sets it explicitly instead
  * @param columnProfile which column set the run fits. Default reproduces the thesis exactly
- * @param pullRequestOutcome which interval of a pull request's life {@code pr-labels} measures.
- *     Read only by that stage; every other one ignores it
+ * @param ttcTarget which duration of a label the fit regresses: the whole life, the wait before
+ *     the first external examination, or the cycle after it. Read only when observations are
+ *     assembled -- labelling always records all three, so switching target re-fits without
+ *     re-mining, and every target shares one split
  * @param costRatio {@code C_max / C_min}. A reporting parameter only: it is never written to the
  *     ledger, because the sensitivity analysis sweeps it and a stored cost would freeze one
  *     scenario into what otherwise reads as mined data
@@ -56,7 +58,7 @@ public record PipelineConfig(
     int minResolvedBeforeCut,
     Duration teamWindow,
     Columns.Profile columnProfile,
-    PullRequestOutcome pullRequestOutcome,
+    TtcTarget ttcTarget,
     Optional<String> pilotProject) {
 
   public PipelineConfig {
@@ -85,8 +87,7 @@ public record PipelineConfig(
         Integer.parseInt(value("MIN_RESOLVED", "5")),
         Duration.ofDays(Long.parseLong(value("TEAM_WINDOW_DAYS", "90"))),
         Columns.Profile.valueOf(value("COLUMNS", Columns.Profile.ISSUE.name())),
-        PullRequestOutcome.valueOf(
-            value("PR_OUTCOME", PullRequestOutcome.OPEN_TO_MERGE.name())),
+        TtcTarget.valueOf(value("TTC_TARGET", TtcTarget.TOTAL.name())),
         Optional.of(value("PILOT", "")).filter(pilot -> !pilot.isBlank()));
   }
 

@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import app.identity.Strictness;
 import app.model.Columns;
-import app.paper4.PullRequestOutcome;
+import app.labels.TtcTarget;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Optional;
@@ -25,7 +25,7 @@ class PipelineConfigTest {
         "mongodb://127.0.0.1:27017", sourceDb, targetDb, ledgerDb,
         Path.of("build/work"), Path.of("build/cache"),
         Duration.ofMillis(250), Strictness.EMAIL_AND_FULL_NAME, 1.0, 1.7283, true, 0.70, 5,
-        Duration.ofDays(90), Columns.Profile.ISSUE, PullRequestOutcome.OPEN_TO_MERGE,
+        Duration.ofDays(90), Columns.Profile.ISSUE, TtcTarget.TOTAL,
         Optional.empty());
   }
 

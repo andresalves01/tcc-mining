@@ -1,6 +1,7 @@
 package app.pipeline.mongo;
 
 import app.labels.ChangedMethod;
+import app.labels.ExamOrigin;
 import app.labels.IssueLabel;
 import app.labels.SplitPart;
 import app.labels.TemporalSplit;
@@ -20,6 +21,7 @@ import java.util.Collection;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.bson.Document;
 import org.bson.types.ObjectId;
 
@@ -75,7 +77,7 @@ public final class MongoLabelStore implements LabelStore {
         .map(m -> new Document("long_name", m.longName())
             .append("mccc", m.mccc()).append("nl", m.nl()))
         .toList();
-    return new Document("_id", new ObjectId(label.issueId()))
+    final Document doc = new Document("_id", new ObjectId(label.issueId()))
         .append("project", label.projectName())
         .append("created_at", Date.from(label.createdAt()))
         .append("resolved_at", Date.from(label.resolvedAt()))
@@ -89,6 +91,13 @@ public final class MongoLabelStore implements LabelStore {
         .append("mean_mccc", label.meanMccc().orElseThrow())
         .append("mean_nl", label.meanNl().orElseThrow())
         .append("methods", methods);
+    // Ausente e ausente: um rotulo sem exame externo nao ganha campo nenhum aqui, e MongoObservations
+    // deixa a linha de fora do alvo que o exigiria em vez de inventar um zero para ela.
+    label.examinedAt().ifPresent(at -> doc.append("examined_at", Date.from(at)));
+    label.examOrigin().ifPresent(origin -> doc.append("exam_origin", origin.name()));
+    label.waitDays().ifPresent(days -> doc.append("ttc_espera", days));
+    label.authorDays().ifPresent(days -> doc.append("ttc_autor", days));
+    return doc;
   }
 
   private long flush(final List<WriteModel<Document>> batch) {
@@ -118,7 +127,9 @@ public final class MongoLabelStore implements LabelStore {
           doc.getLong("java_lines_deleted") == null
               ? doc.getInteger("java_lines_deleted", 0) : doc.getLong("java_lines_deleted"),
           methods.stream().map(m -> new ChangedMethod(m.getString("long_name"),
-              m.getDouble("mccc"), m.getDouble("nl"))).toList()));
+              m.getDouble("mccc"), m.getDouble("nl"))).toList(),
+          Optional.ofNullable(doc.getDate("examined_at")).map(Date::toInstant),
+          Optional.ofNullable(doc.getString("exam_origin")).map(ExamOrigin::valueOf)));
     }
     return labels;
   }

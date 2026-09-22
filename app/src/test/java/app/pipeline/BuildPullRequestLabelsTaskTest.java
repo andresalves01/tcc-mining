@@ -7,11 +7,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import app.identity.PersonRecord;
 import app.identity.RefusedBridge;
 import app.identity.port.PersonRegistry;
+import app.labels.ExamOrigin;
 import app.labels.IssueLabel;
 import app.labels.TemporalSplit;
 import app.labels.port.LabelStore;
 import app.paper4.MergedPullRequest;
-import app.paper4.PullRequestOutcome;
 import app.paper4.port.MergedPullRequestSource;
 import java.time.Duration;
 import java.time.Instant;
@@ -19,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -28,18 +29,19 @@ class BuildPullRequestLabelsTaskTest {
 
   private static final Instant T0 = Instant.parse("2020-01-01T00:00:00Z");
 
+  /** Sem exame externo registrado: a fronteira fica ausente, sem fallback para o merge. */
   private static MergedPullRequest pr(
       final String id, final String project, final String authorId, final int hoursToMerge) {
-    // Sem revisao registrada: a fronteira cai no merge, que e a regra do fallback.
     final Instant merged = T0.plus(Duration.ofHours(hoursToMerge));
-    return new MergedPullRequest(id, project, authorId, T0, merged, merged, false, 10, 2, 3, 40);
+    return new MergedPullRequest(id, project, authorId, T0, merged,
+        Optional.empty(), Optional.empty(), 10, 2, 3, 40);
   }
 
-  private static MergedPullRequest reviewed(final String id, final String authorId,
-      final int hoursToReview, final int hoursToMerge) {
+  private static MergedPullRequest examined(final String id, final String authorId,
+      final int hoursToExam, final int hoursToMerge, final ExamOrigin origin) {
     return new MergedPullRequest(id, "demo", authorId, T0,
-        T0.plus(Duration.ofHours(hoursToMerge)), T0.plus(Duration.ofHours(hoursToReview)), true,
-        10, 2, 3, 40);
+        T0.plus(Duration.ofHours(hoursToMerge)),
+        Optional.of(T0.plus(Duration.ofHours(hoursToExam))), Optional.of(origin), 10, 2, 3, 40);
   }
 
   private static final class FakeSource implements MergedPullRequestSource {
@@ -218,62 +220,75 @@ class BuildPullRequestLabelsTaskTest {
   }
 
   @Test
-  @DisplayName("REVIEW_TO_MERGE measures from the review, and excludes what was never reviewed")
-  void reviewToMergeExcludesUnreviewed() {
-    final RecordingStore store = new RecordingStore();
-    final BuildPullRequestLabelsTask task = new BuildPullRequestLabelsTask(
-        new FakeSource(List.of(
-            reviewed("pr1", "alice", 6, 30),
-            pr("pr2", "demo", "alice", 30))),   // sem revisao: fronteira no merge
-        store, new FakeRegistry(Map.of("alice", "canonical-alice")),
-        PullRequestOutcome.REVIEW_TO_MERGE);
-
-    final BuildPullRequestLabelsTask.Report report = task.run();
-
-    assertEquals(1, report.withoutReview(),
-        "um PR sem revisao nao tem intervalo pos-revisao, e sair e mais honesto que valer zero");
-    assertEquals(1, report.written());
-    final IssueLabel label = store.readAll().get(0);
-    assertEquals(T0.plus(Duration.ofHours(6)), label.createdAt());
-    assertEquals(T0.plus(Duration.ofHours(30)), label.resolvedAt());
-    assertEquals(1.0, label.ttcDays(), 1e-9);
-  }
-
-  @Test
-  @DisplayName("OPEN_TO_REVIEW measures up to the review, and keeps what fell back to the merge")
-  void openToReviewKeepsTheFallback() {
-    final RecordingStore store = new RecordingStore();
-    final BuildPullRequestLabelsTask task = new BuildPullRequestLabelsTask(
-        new FakeSource(List.of(
-            reviewed("pr1", "alice", 6, 30),
-            pr("pr2", "demo", "alice", 48))),
-        store, new FakeRegistry(Map.of("alice", "canonical-alice")),
-        PullRequestOutcome.OPEN_TO_REVIEW);
-
-    final BuildPullRequestLabelsTask.Report report = task.run();
-
-    assertEquals(0, report.withoutReview(), "o fallback mantem a linha, nao a exclui");
-    assertEquals(2, report.written());
-    assertEquals(0.25, store.readAll().get(0).ttcDays(), 1e-9);
-    assertEquals(2.0, store.readAll().get(1).ttcDays(), 1e-9,
-        "sem revisao, o intervalo ate a fronteira e a vida inteira do PR");
-  }
-
-  @Test
-  @DisplayName("the outcome interval is opened-to-merged, matching MergedPullRequest exactly")
-  void outcomeIntervalMatchesOpenedToMerged() {
+  @DisplayName("sem exame externo o rotulo entra assim mesmo, com o total e sem as duas parcelas")
+  void keepsTheUnexaminedWithoutInventingComponents() {
     final RecordingStore store = new RecordingStore();
     final BuildPullRequestLabelsTask task = new BuildPullRequestLabelsTask(
         new FakeSource(List.of(pr("pr1", "demo", "alice", 48))), store,
         new FakeRegistry(Map.of("alice", "canonical-alice")));
 
+    final BuildPullRequestLabelsTask.Report report = task.run();
+
+    assertEquals(1, report.notExamined());
+    assertEquals(1, report.written(), "excluir aqui perderia 21,9% da populacao sem necessidade");
+    final IssueLabel label = store.readAll().get(0);
+    assertEquals(2.0, label.ttcDays(), 1e-9);
+    assertTrue(label.waitDays().isEmpty(), "zero afirmaria que alguem olhou no instante da abertura");
+    assertTrue(label.authorDays().isEmpty(), "e a vida inteira afirmaria que ninguem olhou nunca");
+    assertTrue(label.examOrigin().isEmpty());
+  }
+
+  @Test
+  @DisplayName("com exame, as duas parcelas somam o total exatamente")
+  void theTwoComponentsSumToTheWhole() {
+    final RecordingStore store = new RecordingStore();
+    final BuildPullRequestLabelsTask task = new BuildPullRequestLabelsTask(
+        new FakeSource(List.of(examined("pr1", "alice", 6, 30, ExamOrigin.REVIEW))), store,
+        new FakeRegistry(Map.of("alice", "canonical-alice")));
+
+    final BuildPullRequestLabelsTask.Report report = task.run();
+
+    assertEquals(1, report.examinedByReview());
+    assertEquals(0, report.notExamined());
+    final IssueLabel label = store.readAll().get(0);
+    assertEquals(0.25, label.waitDays().orElseThrow(), 1e-9);
+    assertEquals(1.0, label.authorDays().orElseThrow(), 1e-9);
+    assertEquals(label.ttcDays(), label.waitDays().orElseThrow() + label.authorDays().orElseThrow(),
+        1e-9, "a soma das parcelas e o desfecho, e e isso que torna somar as previsoes legitimo");
+  }
+
+  @Test
+  @DisplayName("a origem do exame e contada, e comentario conta tanto quanto revisao formal")
+  void countsBothOriginsOfExamination() {
+    final RecordingStore store = new RecordingStore();
+    final BuildPullRequestLabelsTask task = new BuildPullRequestLabelsTask(
+        new FakeSource(List.of(
+            examined("pr1", "alice", 6, 30, ExamOrigin.REVIEW),
+            examined("pr2", "alice", 2, 30, ExamOrigin.COMMENT),
+            pr("pr3", "demo", "alice", 30))),
+        store, new FakeRegistry(Map.of("alice", "canonical-alice")));
+
+    final BuildPullRequestLabelsTask.Report report = task.run();
+
+    assertEquals(1, report.examinedByReview());
+    assertEquals(1, report.examinedByComment());
+    assertEquals(1, report.notExamined());
+    assertEquals(3, report.written());
+  }
+
+  @Test
+  @DisplayName("o intervalo do rotulo e sempre abertura-merge, seja qual for o alvo do ajuste")
+  void theLabelIntervalIsAlwaysTheWholeLife() {
+    final RecordingStore store = new RecordingStore();
+    final BuildPullRequestLabelsTask task = new BuildPullRequestLabelsTask(
+        new FakeSource(List.of(examined("pr1", "alice", 6, 48, ExamOrigin.REVIEW))), store,
+        new FakeRegistry(Map.of("alice", "canonical-alice")));
+
     task.run();
 
     final IssueLabel label = store.readAll().get(0);
-    assertEquals(T0, label.createdAt());
+    assertEquals(T0, label.createdAt(), "a abertura e o que TemporalSplit corta, para os tres alvos");
     assertEquals(T0.plus(Duration.ofHours(48)), label.resolvedAt());
-    assertEquals(2.0, label.ttcDays(), 1e-9);
-    // Nao e primeiro commit: carrega a fronteira de revisao, aqui igual ao merge pelo fallback.
-    assertEquals(T0.plus(Duration.ofHours(48)), label.firstCommitAt());
+    assertEquals(T0.plus(Duration.ofHours(6)), label.examinedAt().orElseThrow());
   }
 }

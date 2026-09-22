@@ -1,6 +1,8 @@
 package app.paper4;
 
+import app.labels.ExamOrigin;
 import java.time.Instant;
+import java.util.Optional;
 
 /**
  * One merged pull request, before identity is resolved and before it becomes an
@@ -21,10 +23,13 @@ import java.time.Instant;
  * @param openedAt when the pull request was created. The reference instant every accumulated
  *     predictor is read as of, and the left edge of the outcome interval
  * @param mergedAt the earliest {@code merged} event. The right edge of the outcome interval
- * @param reviewAt the earliest review submitted on this pull request, falling back to
- *     {@code mergedAt} when none was recorded -- the rule Andre set. Never null, so an outcome
- *     defined against it is defined for every row; whether the fallback rows belong in a given
- *     outcome is a question for whoever picks it, and {@link #reviewed()} is how they tell
+ * @param examinedAt the earliest external examination inside {@code [openedAt, mergedAt]}: the
+ *     first formal review, or the first comment from someone who is not a commit author of this
+ *     pull request, whichever came first. <b>Empty</b> where the corpus records neither, which is
+ *     21,9% of merged pull requests -- and empty rather than falling back to the merge, because a
+ *     fallback would score those rows as waiting their whole life, which asserts that nobody ever
+ *     looked
+ * @param examOrigin which of the two recognised it, empty on the same rows
  * @param javaLinesAdded sum of {@code pull_request_file.additions} over paths ending {@code .java}
  * @param javaLinesDeleted sum of {@code pull_request_file.deletions} over paths ending {@code
  *     .java}
@@ -37,8 +42,8 @@ public record MergedPullRequest(
     String authorId,
     Instant openedAt,
     Instant mergedAt,
-    Instant reviewAt,
-    boolean reviewed,
+    Optional<Instant> examinedAt,
+    Optional<ExamOrigin> examOrigin,
     long javaLinesAdded,
     long javaLinesDeleted,
     int linkedCommits,
@@ -49,12 +54,8 @@ public record MergedPullRequest(
     return java.time.Duration.between(openedAt, mergedAt).toMillis() / 86_400_000.0;
   }
 
-  /** The interval {@code outcome} names, as a pair of instants. */
-  public Instant startOf(final PullRequestOutcome outcome) {
-    return outcome == PullRequestOutcome.REVIEW_TO_MERGE ? reviewAt : openedAt;
-  }
-
-  public Instant endOf(final PullRequestOutcome outcome) {
-    return outcome == PullRequestOutcome.OPEN_TO_REVIEW ? reviewAt : mergedAt;
+  /** Whether the decomposition into waiting and the cycle after it is defined for this row. */
+  public boolean examined() {
+    return examinedAt.isPresent();
   }
 }
