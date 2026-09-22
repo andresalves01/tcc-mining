@@ -22,9 +22,15 @@ import java.util.function.ToDoubleFunction;
 /**
  * Fits the Elastic Net on the training side and scores it against the references the study names.
  *
- * <p>Coefficients are estimated before the inner cut and the two penalty parameters are chosen
- * after it. <b>The held-out test set is never read</b> — the source this task is given has no
- * constant for it.
+ * <p>Two entry points, not one, and they read different partitions. {@link #run} chooses alpha and
+ * lambda on the inner split and never reads {@link Partition#HELD_OUT} — that half of an earlier
+ * version of this claim still holds. {@link #heldOut} does the opposite on purpose: it refits on
+ * the whole training side with the parameters {@code run} chose and reads
+ * {@code Partition.HELD_OUT} exactly once, by name. <b>Nothing in this class or in
+ * {@code FitCommand} stops a caller from invoking {@code heldOut} a second time</b> — determinism
+ * means an unchanged pipeline reproduces the same numbers, not that a changed one is refused. The
+ * one thing standing between that and reopening the set under different terms is the record of
+ * what was decided before the first call, kept outside this code.
  *
  * <p>The parameter grid is derived from the data rather than taken from convention, because the
  * library applies the penalty without normalising by the number of rows: a value that regularises

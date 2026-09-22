@@ -99,8 +99,10 @@ public enum Command {
   FIT("fit", new FitCommand(), """
       Fit the Elastic Net on the training side and score it against the
       references the study names. Chooses alpha and lambda on the inner
-      split. Reads only, writes nothing, and cannot read the held-out
-      test set -- there is no code path to it. Needs features first."""),
+      split. Reads only, writes nothing. Reaches the held-out set every
+      time it runs -- nothing in this command or in FitModelTask stops a
+      second invocation with a changed definition upstream of it from
+      opening it again under different terms. Needs features first."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both
