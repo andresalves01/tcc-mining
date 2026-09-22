@@ -84,6 +84,13 @@ public final class MongoObservations implements ObservationSource {
         final Number raw = features.get(column.field(), Number.class);
         final double value = raw == null ? 0 : raw.doubleValue();
         out[i] = column.log() ? Math.log1p(Math.max(value, 0)) : value;
+      } else if (column.name().equals(Columns.LINES_PER_COMMIT)) {
+        // Volume por commit. Um denominador zero e um par sem historico anterior, cujo volume
+        // tambem e zero: a razao vira zero, que e o mesmo valor que ln(1+0) daria, e o indicador
+        // dev_had_history ja separa esse caso de um volume medido em zero.
+        final double lines = number(features, "loc_tot_java");
+        final double commits = number(features, "extra_dev_commits");
+        out[i] = commits <= 0 ? 0 : Math.log1p(Math.max(lines, 0) / commits);
       } else if (column.name().equals("descricao ausente")) {
         out[i] = features.get("extra_desc_length") == null ? 1 : 0;
       } else if (column.name().equals("ligacoes ausentes")) {
@@ -93,6 +100,11 @@ public final class MongoObservations implements ObservationSource {
       }
     }
     return out;
+  }
+
+  private static double number(final Document features, final String field) {
+    final Number raw = features.get(field, Number.class);
+    return raw == null ? 0 : raw.doubleValue();
   }
 
   @Override

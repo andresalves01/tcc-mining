@@ -65,7 +65,21 @@ public final class Columns {
   }
 
   private static final List<String> ABSENT_ON_PULL_REQUESTS = List.of(
-      "ln(McCC_tot dev)", "ln(mu_M)", "ln(s_M)", "ln(Iss_dev carreira)");
+      "ln(McCC_tot dev)", "ln(mu_M)", "ln(s_M)", "ln(Iss_dev carreira)",
+      "ln(commits dev)", "descricao ausente");
+
+  /**
+   * Volume acumulado dividido por commits acumulados: o tamanho tipico da mudanca que a pessoa
+   * entrega. Derivada, nao lida de campo nenhum.
+   *
+   * <p>Existe porque as duas pernas de onde ela sai nao estavam medindo duas coisas. Ajustadas
+   * juntas no intervalo pos-revisao, {@code ln(LOC acum. dev)} tomou +0,594 contra -1,003 de
+   * {@code ln(commits dev)}: coeficientes de sinal oposto e magnitude parecida sao a assinatura de
+   * um contraste, nao de dois preditores. Retirar so os commits levou o volume de +0,594 a -0,054 e
+   * derrubou a ordenacao de desenvolvedores de 61,0% para 54,3%, o que confirma de onde vinha o
+   * sinal. Declarar a razao diretamente diz a mesma coisa com um nome que se pode ler.
+   */
+  public static final String LINES_PER_COMMIT = "ln(LOC por commit dev)";
 
   private static volatile Profile active = Profile.ISSUE;
 
@@ -95,9 +109,26 @@ public final class Columns {
 
   public static final List<Column> ALL = build();
 
-  private static final List<Column> PULL_REQUEST_COLUMNS = ALL.stream()
-      .filter(column -> !ABSENT_ON_PULL_REQUESTS.contains(column.name()))
-      .toList();
+  private static final List<Column> PULL_REQUEST_COLUMNS = pullRequestColumns();
+
+  /**
+   * O perfil de pull request e construido a partir de {@link #ALL}, nunca gravado nele: uma coluna
+   * acrescentada em {@code build()} apareceria tambem no perfil ISSUE e mudaria o estudo do TCC sem
+   * ninguem pedir.
+   */
+  private static List<Column> pullRequestColumns() {
+    final List<Column> columns = new ArrayList<>();
+    for (final Column column : ALL) {
+      if (ABSENT_ON_PULL_REQUESTS.contains(column.name())) {
+        continue;
+      }
+      columns.add(column);
+      if (column.name().equals("ln(LOC acum. dev)")) {
+        columns.add(new Column(LINES_PER_COMMIT, "", true, Group.DEV));
+      }
+    }
+    return List.copyOf(columns);
+  }
 
   private Columns() {}
 
