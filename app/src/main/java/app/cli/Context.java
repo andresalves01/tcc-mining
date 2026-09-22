@@ -14,6 +14,7 @@ import app.labels.port.LabelSource;
 import app.labels.port.LabelStore;
 import app.model.port.ObservationSource;
 import app.paper4.port.MergedPullRequestSource;
+import app.paper4.port.PullRequestExtraSource;
 import app.pipeline.port.Corpus;
 import app.pipeline.port.Progress;
 
@@ -61,4 +62,5 @@ public record Context(
     CommitComplexityStore externalComplexity,
     MergedPullRequestSource pullRequests,
     IssueAttributeSource pullRequestAttributes,
-    ContributionLedger pullRequestPresence) {}
+    ContributionLedger pullRequestPresence,
+    PullRequestExtraSource pullRequestExtras) {}

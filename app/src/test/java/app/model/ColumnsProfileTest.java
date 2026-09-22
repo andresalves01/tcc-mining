@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import app.labels.TtcTarget;
+import app.paper4.PullRequestExtras;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -21,6 +23,7 @@ class ColumnsProfileTest {
   @AfterEach
   void restoreDefault() {
     Columns.use(Columns.Profile.ISSUE);
+    Columns.target(TtcTarget.TOTAL);
   }
 
   @Test
@@ -50,6 +53,62 @@ class ColumnsProfileTest {
         "a derivada fica junto do volume de onde sai, para o grupo DEV ficar legivel");
     assertFalse(names.contains("descricao ausente"));
     assertFalse(names.contains("ln(McCC_tot dev)"));
+  }
+
+  @Test
+  @DisplayName("toda coluna do perfil que le campo de extras usa um nome que PullRequestExtras declara")
+  void everyExtraColumnNamesADeclaredField() {
+    Columns.use(Columns.Profile.PULL_REQUEST);
+    Columns.target(TtcTarget.AUTOR);
+
+    final List<String> declared = PullRequestExtras.FIELDS;
+    for (final Columns.Column column : Columns.all()) {
+      final String field = column.field();
+      if (field.startsWith("pr_") || field.startsWith("exame_")) {
+        assertTrue(declared.contains(field),
+            "campo '" + field + "' nao existe em PullRequestExtras: viraria coluna constante "
+                + "em silencio em vez de erro");
+      }
+    }
+  }
+
+  @Test
+  @DisplayName("as colunas do exame so existem no alvo AUTOR -- nos outros dois elas SAO o desfecho")
+  void examColumnsOnlyExistForTheAuthorCycle() {
+    Columns.use(Columns.Profile.PULL_REQUEST);
+
+    Columns.target(TtcTarget.AUTOR);
+    assertTrue(Columns.names().contains("ln(espera realizada)"));
+
+    Columns.target(TtcTarget.ESPERA);
+    assertFalse(Columns.names().contains("ln(espera realizada)"),
+        "a espera realizada E o desfecho ESPERA: ajustada ali ela tomou coeficiente 1,49 e zerou "
+            + "todo o resto, com correlacao de posto 1,000");
+    assertEquals(0, Columns.indicesOf(Columns.Group.EXAME).length);
+
+    Columns.target(TtcTarget.TOTAL);
+    assertFalse(Columns.names().contains("ln(espera realizada)"),
+        "o total e a soma das duas parcelas, entao uma parcela dele nao e preditor dele");
+    assertEquals(0, Columns.indicesOf(Columns.Group.EXAME).length);
+  }
+
+  @Test
+  @DisplayName("as colunas da fronteira do exame ficam num grupo proprio, nunca no do desenvolvedor")
+  void examColumnsAreTheirOwnGroup() {
+    Columns.use(Columns.Profile.PULL_REQUEST);
+    Columns.target(TtcTarget.AUTOR);
+
+    final List<String> names = Columns.names();
+    for (final int index : Columns.indicesOf(Columns.Group.EXAME)) {
+      assertTrue(names.get(index).contains("revisao") || names.get(index).contains("exame")
+              || names.get(index).contains("examinou") || names.get(index).contains("espera"),
+          names.get(index));
+    }
+    for (final int index : Columns.indicesOf(Columns.Group.DEV)) {
+      assertTrue(!names.get(index).contains("examinou"),
+          "o volume de quem examina nao e historia de quem escreveu: misturar os dois faria a "
+              + "ablacao 'so o desenvolvedor' creditar ao autor o que e do revisor");
+    }
   }
 
   @Test

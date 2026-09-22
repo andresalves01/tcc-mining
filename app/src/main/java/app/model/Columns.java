@@ -1,5 +1,7 @@
 package app.model;
 
+import app.labels.TtcTarget;
+import app.paper4.PullRequestExtras;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -22,7 +24,18 @@ import java.util.List;
 public final class Columns {
 
   /** Which part of the model a column belongs to, for the ablation the study asks for. */
-  public enum Group { TAREFA, DEV, CARGA, EQUIPE, CRIACAO }
+  public enum Group {
+    TAREFA, DEV, CARGA, EQUIPE, CRIACAO,
+
+    /**
+     * Conhecido so na fronteira do exame: o estado da primeira revisao, quem examinou, a espera que
+     * de fato houve. Legitimo como preditor do ciclo do autor, porque e passado em relacao ao
+     * inicio daquele intervalo -- e inutil para formar equipe, porque nada disso existe no instante
+     * em que se atribuiria a tarefa a alguem. Grupo proprio para a ablacao poder mostrar o modelo
+     * com e sem, que e a unica forma honesta de reportar os dois fatos juntos.
+     */
+    EXAME
+  }
 
   /**
    * Which column set a run uses. Set once at startup from configuration, never mid-run.
@@ -82,10 +95,27 @@ public final class Columns {
   public static final String LINES_PER_COMMIT = "ln(LOC por commit dev)";
 
   private static volatile Profile active = Profile.ISSUE;
+  private static volatile TtcTarget target = TtcTarget.TOTAL;
 
   /** Chosen once, in {@code App}, before any adapter reads a row. */
   public static void use(final Profile profile) {
     active = profile;
+  }
+
+  /**
+   * Which duration the run fits, because it decides whether the examination columns are observable.
+   *
+   * <p>Not a preference. {@link Group#EXAME} carries things that become true partway through the
+   * pull request's life, so for {@link TtcTarget#TOTAL} and {@link TtcTarget#ESPERA} they are not
+   * predictors at all -- they are the outcome, or part of it. Measured: fitted against
+   * {@code ESPERA}, the realised wait took coefficient 1.49 while every other column went to zero
+   * and the rank correlation hit 1.000, because {@code exame_espera_realizada} <i>is</i>
+   * {@code ttc_espera}. Against {@code TOTAL} it took 0.762, for the milder version of the same
+   * reason: the total is the two parts added up. Only the cycle after the examination has them
+   * strictly in its past.
+   */
+  public static void target(final TtcTarget chosen) {
+    target = chosen;
   }
 
   public static Profile profile() {
@@ -94,7 +124,10 @@ public final class Columns {
 
   /** The columns this run fits, in order. */
   public static List<Column> all() {
-    return active == Profile.PULL_REQUEST ? PULL_REQUEST_COLUMNS : ALL;
+    if (active != Profile.PULL_REQUEST) {
+      return ALL;
+    }
+    return target == TtcTarget.AUTOR ? PULL_REQUEST_COLUMNS : PULL_REQUEST_WITHOUT_EXAM;
   }
 
   /**
@@ -111,6 +144,11 @@ public final class Columns {
 
   private static final List<Column> PULL_REQUEST_COLUMNS = pullRequestColumns();
 
+  /** The same list minus everything that only becomes known once someone has looked. */
+  private static final List<Column> PULL_REQUEST_WITHOUT_EXAM = PULL_REQUEST_COLUMNS.stream()
+      .filter(column -> column.group() != Group.EXAME)
+      .toList();
+
   /**
    * O perfil de pull request e construido a partir de {@link #ALL}, nunca gravado nele: uma coluna
    * acrescentada em {@code build()} apareceria tambem no perfil ISSUE e mudaria o estudo do TCC sem
@@ -125,8 +163,29 @@ public final class Columns {
       columns.add(column);
       if (column.name().equals("ln(LOC acum. dev)")) {
         columns.add(new Column(LINES_PER_COMMIT, "", true, Group.DEV));
+        columns.add(new Column("ln(familiaridade arq.)",
+            PullRequestExtras.FAMILIARITY, true, Group.DEV));
+        columns.add(new Column("fracao arq. conhecidos",
+            PullRequestExtras.FAMILIARITY_SHARE, false, Group.DEV));
+      }
+      if (column.name().equals("ln(LOC tarefa)")) {
+        columns.add(new Column("ln(arquivos tarefa)", PullRequestExtras.FILES, true, Group.TAREFA));
+      }
+      if (column.name().equals("ln(tam. equipe)")) {
+        columns.add(new Column("ln(espera tipica do projeto)",
+            PullRequestExtras.PROJECT_WAIT, true, Group.EQUIPE));
       }
     }
+    columns.add(new Column("1a revisao pediu mudanca",
+        PullRequestExtras.EXAM_CHANGES_REQUESTED, false, Group.EXAME));
+    columns.add(new Column("1a revisao so comentou",
+        PullRequestExtras.EXAM_COMMENTED, false, Group.EXAME));
+    columns.add(new Column("exame foi comentario, nao revisao",
+        PullRequestExtras.EXAM_BY_COMMENT, false, Group.EXAME));
+    columns.add(new Column("ln(LOC acum. de quem examinou)",
+        PullRequestExtras.REVIEWER_VOLUME, true, Group.EXAME));
+    columns.add(new Column("ln(espera realizada)",
+        PullRequestExtras.REALISED_WAIT, true, Group.EXAME));
     return List.copyOf(columns);
   }
 

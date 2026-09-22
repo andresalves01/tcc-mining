@@ -22,6 +22,7 @@ import app.pipeline.mongo.MongoLabelStore;
 import app.pipeline.mongo.MongoObservations;
 import app.pipeline.mongo.MongoPersonRegistry;
 import app.pipeline.mongo.MongoPullRequestAttributes;
+import app.pipeline.mongo.MongoPullRequestExtras;
 import app.pipeline.mongo.MongoPullRequestPresence;
 import app.pipeline.mongo.MongoPullRequestSource;
 import com.mongodb.client.MongoClient;
@@ -90,6 +91,7 @@ public final class App {
     // Antes de qualquer adaptador construir uma linha: o conjunto de colunas e propriedade da
     // execucao inteira, e MongoObservations le Columns.all() para dimensionar cada vetor.
     Columns.use(config.columnProfile());
+    Columns.target(config.ttcTarget());
 
     System.out.println("=== " + command.token() + " ===");
     System.out.println("  " + config.describe()
@@ -135,7 +137,10 @@ public final class App {
         new MongoCommitComplexityStore(client, config.ledgerDb()),
         new MongoPullRequestSource(client, config.sourceDb()),
         new MongoPullRequestAttributes(client, config.sourceDb()),
-        new MongoPullRequestPresence(client, config.sourceDb(), config.ledgerDb()));
+        new MongoPullRequestPresence(client, config.sourceDb(), config.ledgerDb()),
+        new MongoPullRequestExtras(client, config.sourceDb(),
+            new MongoContributionLedger(client, config.ledgerDb()),
+            new MongoPersonRegistry(client, config.ledgerDb())));
   }
 
   private App() {}

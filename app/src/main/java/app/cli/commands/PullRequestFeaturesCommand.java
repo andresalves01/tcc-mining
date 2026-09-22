@@ -29,7 +29,8 @@ public final class PullRequestFeaturesCommand implements CommandRunner {
     // enxerga a janela. Ver MongoPullRequestPresence para os numeros que motivaram a separacao.
     final BuildFeaturesTask task = new BuildFeaturesTask(context.labelStore(),
         context.externalLedger(), context.externalComplexity(), context.pullRequestAttributes(),
-        context.featureStore(), context.progress(), context.pullRequestPresence());
+        context.featureStore(), context.progress(), context.pullRequestPresence(),
+        context.pullRequestExtras());
 
     final BuildFeaturesTask.Report report;
     try {
