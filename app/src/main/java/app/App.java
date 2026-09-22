@@ -126,7 +126,7 @@ public final class App {
         new MongoPersonRegistry(client, config.ledgerDb()),
         new MongoContributionLedger(client, config.ledgerDb()),
         new MongoCommitComplexityStore(client, config.ledgerDb()),
-        new MongoPullRequestSource(client, config.sourceDb(), config.ledgerDb()),
+        new MongoPullRequestSource(client, config.sourceDb()),
         new MongoPullRequestAttributes(client, config.sourceDb()),
         new MongoPullRequestPresence(client, config.sourceDb(), config.ledgerDb()));
   }

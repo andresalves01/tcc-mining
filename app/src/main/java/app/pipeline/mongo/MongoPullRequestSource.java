@@ -17,13 +17,12 @@ import org.bson.Document;
 import org.bson.types.ObjectId;
 
 /**
- * Reads merged pull requests from the published corpus, restricted to projects this study already
- * has issue labels for.
+ * Reads every merged pull request in the published corpus.
  *
- * <p><b>Two databases, on purpose.</b> Pull request data comes from the source corpus; which
- * projects qualify comes from the already-built {@code issue_label} in whatever database
- * {@code LEDGER_DB} names -- never {@code TARGET_DB}, which for this stage starts empty. See
- * {@link app.config.PipelineConfig#ledgerDb()}.
+ * <p>An earlier version restricted this to projects the issue study already had labels for. That
+ * restriction was measured and removed: it excluded exactly one pull request out of 18,786, because
+ * both populations come from the same 98-project corpus and overlap almost completely. Keeping it
+ * would have made this study depend on another study's funnel for nothing.
  *
  * <p><b>Why the outcome is opened-to-merged rather than first-commit-to-merged.</b> The natural
  * reading of "since work began" would anchor on the pull request's earliest commit. That commit's
@@ -49,28 +48,19 @@ public final class MongoPullRequestSource implements MergedPullRequestSource {
   private static final String PULL_REQUEST_FILE = "pull_request_file";
   private static final String PULL_REQUEST_SYSTEM = "pull_request_system";
   private static final String PROJECT = "project";
-  private static final String ISSUE_LABEL = "issue_label";
 
   private static final String MERGED = "merged";
 
   private final MongoDatabase source;
-  private final MongoDatabase ledger;
   private final String sourceName;
-  private final String ledgerName;
 
-  public MongoPullRequestSource(
-      final MongoClient client, final String sourceDb, final String ledgerDb) {
+  public MongoPullRequestSource(final MongoClient client, final String sourceDb) {
     this.source = client.getDatabase(sourceDb);
-    this.ledger = client.getDatabase(ledgerDb);
     this.sourceName = sourceDb;
-    this.ledgerName = ledgerDb;
   }
 
   @Override
   public List<MergedPullRequest> scan() {
-    final Set<String> labelledProjects = new HashSet<>(
-        ledger.getCollection(ISSUE_LABEL).distinct("project", String.class).into(new ArrayList<>()));
-
     final Map<String, String> projectNameById = new HashMap<>(1 << 8);
     for (final Document p : source.getCollection(PROJECT).find().projection(Projections.include("name"))) {
       projectNameById.put(p.getObjectId("_id").toHexString(), p.getString("name"));
@@ -133,8 +123,8 @@ public final class MongoPullRequestSource implements MergedPullRequestSource {
       }
       final ObjectId systemId = pr.getObjectId("pull_request_system_id");
       final String project = systemId == null ? null : projectBySystem.get(systemId.toHexString());
-      if (project == null || !labelledProjects.contains(project)) {
-        continue;
+      if (project == null) {
+        continue; // sem sistema de pull request resolvivel para um projeto nomeado
       }
       final Set<String> authors = authorsByPr.get(prId);
       final String author = authors != null && authors.size() == 1 ? authors.iterator().next() : null;
@@ -162,6 +152,6 @@ public final class MongoPullRequestSource implements MergedPullRequestSource {
 
   @Override
   public String describe() {
-    return sourceName + ".pull_request* (merged), projects from " + ledgerName + "." + ISSUE_LABEL;
+    return sourceName + ".pull_request* (merged)";
   }
 }
