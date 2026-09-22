@@ -97,6 +97,9 @@ public final class MongoLabelStore implements LabelStore {
     label.examOrigin().ifPresent(origin -> doc.append("exam_origin", origin.name()));
     label.waitDays().ifPresent(days -> doc.append("ttc_espera", days));
     label.authorDays().ifPresent(days -> doc.append("ttc_autor", days));
+    doc.append("ttc_util", label.workingDays());
+    label.workingWaitDays().ifPresent(days -> doc.append("ttc_espera_util", days));
+    label.workingAuthorDays().ifPresent(days -> doc.append("ttc_autor_util", days));
     return doc;
   }
 

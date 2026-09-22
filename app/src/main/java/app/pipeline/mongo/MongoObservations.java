@@ -58,6 +58,9 @@ public final class MongoObservations implements ObservationSource {
       case TOTAL -> "ttc_days";
       case ESPERA -> "ttc_espera";
       case AUTOR -> "ttc_autor";
+      case TOTAL_UTIL -> "ttc_util";
+      case ESPERA_UTIL -> "ttc_espera_util";
+      case AUTOR_UTIL -> "ttc_autor_util";
     };
   }
 

@@ -14,12 +14,16 @@ import java.util.Optional;
  * An adapter that resolved identity itself would duplicate that map's construction and could
  * silently disagree with it.
  *
- * @param authorId the single distinct commit author across every commit linked to this pull
- *     request, from {@code pull_request_commit.author_id} -- a field the GitHub API reports
- *     directly on each commit record, so it costs nothing to read even where the commit's own SHA
- *     has no match in the mined repository. {@code null} when the pull request had no commit with
- *     an author id, or more than one distinct author: both are exclusions, carried as one field
- *     rather than two, because nothing downstream needs to tell them apart
+ * @param authorId who this pull request is attributed to. First choice is the single distinct
+ *     commit author across every commit linked to it, from {@code pull_request_commit.author_id}
+ *     -- a field the GitHub API reports directly on each commit record, so it costs nothing to
+ *     read even where the commit's own SHA has no match in the mined repository. When that is
+ *     unavailable, {@code pull_request.creator_id} is the fallback, and {@link #identityFromCreator}
+ *     says so on that row. {@code null} only when neither exists
+ * @param identityFromCreator whether the fallback was used. Carried rather than hidden because the
+ *     two are not the same claim: the commit author wrote the code, the creator merely opened the
+ *     request, and on a pull request opened by a maintainer on someone else's behalf they differ.
+ *     Keeping the flag lets every result be recomputed with and without the recovered rows
  * @param openedAt when the pull request was created. The reference instant every accumulated
  *     predictor is read as of, and the left edge of the outcome interval
  * @param mergedAt the earliest {@code merged} event. The right edge of the outcome interval
@@ -40,6 +44,7 @@ public record MergedPullRequest(
     String pullRequestId,
     String projectName,
     String authorId,
+    boolean identityFromCreator,
     Instant openedAt,
     Instant mergedAt,
     Optional<Instant> examinedAt,

@@ -45,6 +45,36 @@ class TtcDecompositionTest {
   }
 
   @Test
+  @DisplayName("a versao util desconta o fim de semana e nada mais")
+  void workingVersionsRemoveWeekends() {
+    // sexta 03/01/2020 12:00 -> quarta 08/01 12:00: cinco dias de calendario, dois de fim de semana
+    final Instant sexta = Instant.parse("2020-01-03T12:00:00Z");
+    final IssueLabel atravessa = new IssueLabel("6100000000000000000000aa", "demo", sexta,
+        sexta.plus(Duration.ofDays(5)), "6100000000000000000000bb", sexta, 1, 10, 2, List.of(),
+        Optional.of(sexta.plus(Duration.ofDays(1))), Optional.of(ExamOrigin.REVIEW));
+
+    assertEquals(5.0, atravessa.durationOf(TtcTarget.TOTAL).orElseThrow(), 1e-9);
+    assertEquals(3.0, atravessa.durationOf(TtcTarget.TOTAL_UTIL).orElseThrow(), 1e-9);
+    // o exame caiu no sabado: a espera util e so a meia sexta-feira que houve antes dele
+    assertEquals(1.0, atravessa.durationOf(TtcTarget.ESPERA).orElseThrow(), 1e-9);
+    assertEquals(0.5, atravessa.durationOf(TtcTarget.ESPERA_UTIL).orElseThrow(), 1e-9);
+    assertEquals(atravessa.durationOf(TtcTarget.TOTAL_UTIL).orElseThrow(),
+        atravessa.durationOf(TtcTarget.ESPERA_UTIL).orElseThrow()
+            + atravessa.durationOf(TtcTarget.AUTOR_UTIL).orElseThrow(), 1e-9,
+        "as parcelas uteis tambem tem que somar o total util");
+  }
+
+  @Test
+  @DisplayName("sem exame, as parcelas uteis faltam pelo mesmo motivo que as de relogio")
+  void workingComponentsAreAbsentTogether() {
+    final IssueLabel semExame = label(Optional.empty());
+
+    assertTrue(semExame.durationOf(TtcTarget.TOTAL_UTIL).isPresent());
+    assertTrue(semExame.durationOf(TtcTarget.ESPERA_UTIL).isEmpty());
+    assertTrue(semExame.durationOf(TtcTarget.AUTOR_UTIL).isEmpty());
+  }
+
+  @Test
   @DisplayName("um rotulo de issue nao tem exame externo, e o construtor antigo diz isso sozinho")
   void issueLabelsCarryNoExamination() {
     final IssueLabel issue = new IssueLabel("6100000000000000000000aa", "demo", T0,

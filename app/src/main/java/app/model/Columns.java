@@ -137,7 +137,8 @@ public final class Columns {
     if (active != Profile.PULL_REQUEST) {
       return ALL;
     }
-    return target == TtcTarget.AUTOR ? PULL_REQUEST_COLUMNS : PULL_REQUEST_WITHOUT_EXAM;
+    return target == TtcTarget.AUTOR || target == TtcTarget.AUTOR_UTIL
+        ? PULL_REQUEST_COLUMNS : PULL_REQUEST_WITHOUT_EXAM;
   }
 
   /**

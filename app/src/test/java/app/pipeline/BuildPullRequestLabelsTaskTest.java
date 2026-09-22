@@ -33,13 +33,13 @@ class BuildPullRequestLabelsTaskTest {
   private static MergedPullRequest pr(
       final String id, final String project, final String authorId, final int hoursToMerge) {
     final Instant merged = T0.plus(Duration.ofHours(hoursToMerge));
-    return new MergedPullRequest(id, project, authorId, T0, merged,
+    return new MergedPullRequest(id, project, authorId, false, T0, merged,
         Optional.empty(), Optional.empty(), 10, 2, 3, 40);
   }
 
   private static MergedPullRequest examined(final String id, final String authorId,
       final int hoursToExam, final int hoursToMerge, final ExamOrigin origin) {
-    return new MergedPullRequest(id, "demo", authorId, T0,
+    return new MergedPullRequest(id, "demo", authorId, false, T0,
         T0.plus(Duration.ofHours(hoursToMerge)),
         Optional.of(T0.plus(Duration.ofHours(hoursToExam))), Optional.of(origin), 10, 2, 3, 40);
   }

@@ -27,6 +27,15 @@ public enum TtcTarget {
    */
   ESPERA,
 
+  /** Abertura ate o merge, com os fins de semana descontados. Ver {@link WorkingTime}. */
+  TOTAL_UTIL,
+
+  /** Abertura ate o primeiro exame, com os fins de semana descontados. */
+  ESPERA_UTIL,
+
+  /** Primeiro exame ate o merge, com os fins de semana descontados. */
+  AUTOR_UTIL,
+
   /**
    * Primeiro exame externo ate o merge. Onde o trabalho do autor se concentra, sem ser so isso --
    * tambem contem espera pela re-revisao e por quem aperta o botao. 24,2% dos pull requests

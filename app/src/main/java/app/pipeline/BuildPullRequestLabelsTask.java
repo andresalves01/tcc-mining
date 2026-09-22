@@ -56,6 +56,8 @@ public final class BuildPullRequestLabelsTask {
    *     one distinct author was linked
    * @param unresolvedIdentity a single commit author existed, but the registry holds no canonical
    *     id for them
+   * @param identityFromCreator rows attributed to whoever opened the request because no single
+   *     commit author was available. Counted so every result can be recomputed without them
    * @param written rows the store reports as written
    * @param examinedByReview labels whose boundary is a formal review
    * @param examinedByComment labels whose boundary is a comment from someone who is not a commit
@@ -65,7 +67,8 @@ public final class BuildPullRequestLabelsTask {
    */
   public record Report(
       int scanned, int noSingleAuthor, int unresolvedIdentity, long written,
-      int examinedByReview, int examinedByComment, int notExamined, int nonPositiveInterval) {}
+      int examinedByReview, int examinedByComment, int notExamined, int nonPositiveInterval,
+      int identityFromCreator) {}
 
   /** The one place this stage says what its complexity columns mean, visible in raw documents too. */
   public static final ChangedMethod ABSENT_COMPLEXITY =
@@ -92,6 +95,7 @@ public final class BuildPullRequestLabelsTask {
     final List<IssueLabel> labels = new ArrayList<>(merged.size());
     int noSingleAuthor = 0;
     int unresolvedIdentity = 0;
+    int fromCreator = 0;
     int byReview = 0;
     int byComment = 0;
     int notExamined = 0;
@@ -120,12 +124,15 @@ public final class BuildPullRequestLabelsTask {
       } else {
         byComment++;
       }
+      if (pr.identityFromCreator()) {
+        fromCreator++;
+      }
       labels.add(toLabel(pr, developer));
     }
 
     final long written = store.save(labels);
     return new Report(merged.size(), noSingleAuthor, unresolvedIdentity, written,
-        byReview, byComment, notExamined, nonPositiveInterval);
+        byReview, byComment, notExamined, nonPositiveInterval, fromCreator);
   }
 
   private static IssueLabel toLabel(final MergedPullRequest pr, final String developer) {

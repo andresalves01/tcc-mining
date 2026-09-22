@@ -152,7 +152,7 @@ public final class MongoPullRequestSource implements MergedPullRequestSource {
     final List<MergedPullRequest> out = new ArrayList<>(mergedAt.size());
     for (final Document pr : source.getCollection(PULL_REQUEST)
         .find().projection(Projections.include(
-            "pull_request_system_id", "created_at", "description"))) {
+            "pull_request_system_id", "created_at", "description", "creator_id"))) {
       final String prId = pr.getObjectId("_id").toHexString();
       final Instant merged = mergedAt.get(prId);
       if (merged == null) {
@@ -163,8 +163,18 @@ public final class MongoPullRequestSource implements MergedPullRequestSource {
       if (project == null) {
         continue; // sem sistema de pull request resolvivel para um projeto nomeado
       }
+      // Autor do commit quando ha um so; senao quem abriu o pedido. Ver MergedPullRequest para
+      // por que a diferenca e registrada em vez de apagada.
       final Set<String> authors = authorsByPr.get(prId);
-      final String author = authors != null && authors.size() == 1 ? authors.iterator().next() : null;
+      String author = authors != null && authors.size() == 1 ? authors.iterator().next() : null;
+      boolean fromCreator = false;
+      if (author == null) {
+        final ObjectId creator = pr.getObjectId("creator_id");
+        if (creator != null) {
+          author = creator.toHexString();
+          fromCreator = true;
+        }
+      }
       final long[] lines = javaLines.getOrDefault(prId, new long[2]);
       final String description = pr.getString("description");
 
@@ -180,6 +190,7 @@ public final class MongoPullRequestSource implements MergedPullRequestSource {
           prId,
           project,
           author,
+          fromCreator,
           opened,
           merged,
           Optional.ofNullable(exam),

@@ -37,6 +37,9 @@ public final class PullRequestLabelsCommand implements CommandRunner {
     }
     System.out.printf("  UTILIZAVEIS                          : %,d   (%.2f%%)%n",
         report.written(), 100.0 * report.written() / report.scanned());
+    System.out.printf("    destes, identidade por quem abriu  : %,d   (%.2f%%)%n",
+        report.identityFromCreator(),
+        100.0 * report.identityFromCreator() / Math.max(report.written(), 1));
 
     final int examined = report.examinedByReview() + report.examinedByComment();
     final long decomposable = report.written() == 0 ? 1 : report.written();

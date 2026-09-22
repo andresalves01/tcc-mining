@@ -78,12 +78,34 @@ public record IssueLabel(
         .orElseGet(OptionalDouble::empty);
   }
 
+  /** Da abertura a resolucao, sem os fins de semana. */
+  public double workingDays() {
+    return WorkingTime.daysBetween(createdAt, resolvedAt);
+  }
+
+  /** Da abertura ao primeiro exame, sem os fins de semana. Ausente pelo mesmo motivo de sempre. */
+  public OptionalDouble workingWaitDays() {
+    return examinedAt
+        .map(at -> OptionalDouble.of(WorkingTime.daysBetween(createdAt, at)))
+        .orElseGet(OptionalDouble::empty);
+  }
+
+  /** Do primeiro exame a resolucao, sem os fins de semana. */
+  public OptionalDouble workingAuthorDays() {
+    return examinedAt
+        .map(at -> OptionalDouble.of(WorkingTime.daysBetween(at, resolvedAt)))
+        .orElseGet(OptionalDouble::empty);
+  }
+
   /** The duration this fit treats as the outcome, absent where the row cannot supply it. */
   public OptionalDouble durationOf(final TtcTarget target) {
     return switch (target) {
       case TOTAL -> OptionalDouble.of(ttcDays());
       case ESPERA -> waitDays();
       case AUTOR -> authorDays();
+      case TOTAL_UTIL -> OptionalDouble.of(workingDays());
+      case ESPERA_UTIL -> workingWaitDays();
+      case AUTOR_UTIL -> workingAuthorDays();
     };
   }
 
