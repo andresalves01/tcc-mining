@@ -41,6 +41,19 @@ public record PullRequestExtras(Map<String, Double> values) {
    */
   public static final String PROJECT_WAIT = "pr_project_wait";
 
+  /**
+   * Conhecido na abertura: quem abriu e MEMBER do projeto. Referencia = CONTRIBUTOR, que e a
+   * maioria (3.252 de 4.957 rotulos de treino).
+   *
+   * <p>Nao e habilidade, e posicao formal, e entra exatamente por isso: sem ela, uma mediana
+   * historica baixa nao distingue "esta pessoa e rapida" de "o PR desta pessoa nao e segurado por
+   * ninguem". Medido em treino, ln(1+total): NONE 1,921, CONTRIBUTOR 1,518, MEMBER 1,305.
+   */
+  public static final String ASSOC_MEMBER = "pr_assoc_member";
+
+  /** Conhecido na abertura: quem abriu nao tem vinculo nenhum com o projeto (NONE). */
+  public static final String ASSOC_NONE = "pr_assoc_none";
+
   /** So na fronteira do exame: a primeira revisao pediu mudancas. Referencia = aprovada ou nenhuma. */
   public static final String EXAM_CHANGES_REQUESTED = "exame_changes_requested";
 
@@ -57,7 +70,7 @@ public record PullRequestExtras(Map<String, Double> values) {
   public static final String REALISED_WAIT = "exame_espera_realizada";
 
   public static final java.util.List<String> FIELDS = java.util.List.of(
-      FILES, FAMILIARITY, FAMILIARITY_SHARE, PROJECT_WAIT,
+      FILES, FAMILIARITY, FAMILIARITY_SHARE, PROJECT_WAIT, ASSOC_MEMBER, ASSOC_NONE,
       EXAM_CHANGES_REQUESTED, EXAM_COMMENTED, EXAM_BY_COMMENT, REVIEWER_VOLUME, REALISED_WAIT);
 
   public PullRequestExtras {

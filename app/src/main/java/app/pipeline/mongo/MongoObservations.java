@@ -4,6 +4,7 @@ import app.labels.TtcTarget;
 import app.model.Columns;
 import app.model.Observation;
 import app.model.Observations;
+import app.model.PairHistory;
 import app.model.Partition;
 import app.model.port.ObservationSource;
 import com.mongodb.client.MongoClient;
@@ -13,6 +14,7 @@ import com.mongodb.client.model.Projections;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Date;
 import java.util.Map;
 import org.bson.Document;
 import org.bson.conversions.Bson;
@@ -69,7 +71,33 @@ public final class MongoObservations implements ObservationSource {
       case HELD_OUT -> Filters.eq("split", "TEST");
     };
 
+    // De onde a mediana do par pode olhar. Nunca a particao que se esta pontuando: no protocolo
+    // interno o ajuste e FIT, no externo e TRAIN inteiro. Sem isso a coluna seria vazamento.
+    final Bson poolFilter = switch (partition) {
+      case FIT, SELECTION ->
+          Filters.and(Filters.eq("split", "TRAIN"), Filters.eq("split_inner", "TRAIN"));
+      case TRAIN_ALL, HELD_OUT -> Filters.eq("split", "TRAIN");
+    };
+
     final String field = outcomeField();
+    // Só o perfil de pull request declara a coluna; para o pipeline de issues isto seria uma
+    // varredura a mais de issue_label sem consumidor nenhum.
+    final boolean needsHistory = Columns.names().contains(Columns.PAIR_MEDIAN);
+    final List<PairHistory.Entry> pool = new ArrayList<>(needsHistory ? 1 << 14 : 0);
+    for (final Document label : needsHistory
+        ? target.getCollection(ISSUE_LABEL).find(poolFilter)
+            .projection(Projections.include(field, "project", "canonical_id", "created_at"))
+        : List.<Document>of()) {
+      final Double value = label.getDouble(field);
+      if (value == null || value <= 0) {
+        continue;
+      }
+      final String project = label.getString("project");
+      pool.add(new PairHistory.Entry(
+          label.getObjectId("canonical_id").toHexString() + '\u0000' + project,
+          project, label.getDate("created_at").getTime(), Math.log(value + 1e-6)));
+    }
+    final PairHistory history = PairHistory.of(pool);
     final Map<ObjectId, Double> outcome = new HashMap<>(1 << 15);
     int withoutOutcome = 0;
     for (final Document label : target.getCollection(ISSUE_LABEL)
@@ -105,12 +133,12 @@ public final class MongoObservations implements ObservationSource {
           features.getString("project"),
           features.getObjectId("canonical_id").toHexString(),
           outcome.get(features.getObjectId("_id")),
-          values(features)));
+          values(features, history)));
     }
     return new Observations(Columns.names(), rows, excluded, withoutOutcome);
   }
 
-  private static double[] values(final Document features) {
+  private static double[] values(final Document features, final PairHistory history) {
     final double[] out = new double[Columns.all().size()];
     final String type = features.getString("extra_issue_type");
     for (int i = 0; i < Columns.all().size(); i++) {
@@ -119,6 +147,12 @@ public final class MongoObservations implements ObservationSource {
         final Number raw = features.get(column.field(), Number.class);
         final double value = raw == null ? 0 : raw.doubleValue();
         out[i] = column.log() ? Math.log1p(Math.max(value, 0)) : value;
+      } else if (column.name().equals(Columns.PAIR_MEDIAN)) {
+        final String project = features.getString("project");
+        final Date at = features.getDate("created_at");
+        out[i] = history.medianFor(
+            features.getObjectId("canonical_id").toHexString() + '\u0000' + project,
+            project, at == null ? Long.MAX_VALUE : at.getTime());
       } else if (column.name().equals(Columns.LINES_PER_COMMIT)) {
         // Volume por commit. Um denominador zero e um par sem historico anterior, cujo volume
         // tambem e zero: a razao vira zero, que e o mesmo valor que ln(1+0) daria, e o indicador

@@ -66,7 +66,8 @@ public final class MongoPullRequestExtras implements PullRequestExtraSource {
 
   /** Um pull request reduzido ao que estes preditores precisam dele. */
   private record Row(String id, String project, String author, Instant opened,
-      Instant examined, String examState, String examiner, boolean byComment, List<String> paths) {}
+      Instant examined, String examState, String examiner, boolean byComment, List<String> paths,
+      String association) {}
 
   @Override
   public Map<String, PullRequestExtras> of(final Collection<String> ids) {
@@ -111,6 +112,8 @@ public final class MongoPullRequestExtras implements PullRequestExtraSource {
           row.paths().isEmpty() ? 0.0 : (double) overlap / row.paths().size());
 
       v.put(PullRequestExtras.PROJECT_WAIT, projectWait(row, byProject));
+      v.put(PullRequestExtras.ASSOC_MEMBER, "MEMBER".equals(row.association()) ? 1.0 : 0.0);
+      v.put(PullRequestExtras.ASSOC_NONE, "NONE".equals(row.association()) ? 1.0 : 0.0);
 
       if (row.examined() != null) {
         v.put(PullRequestExtras.REALISED_WAIT,
@@ -275,7 +278,8 @@ public final class MongoPullRequestExtras implements PullRequestExtraSource {
     // historico de arquivos e a espera tipica do projeto se constroem com eles tambem.
     final List<Row> rows = new ArrayList<>(mergedAt.size());
     for (final Document pr : source.getCollection("pull_request").find()
-        .projection(Projections.include("pull_request_system_id", "created_at"))) {
+        .projection(Projections.include(
+            "pull_request_system_id", "created_at", "author_association"))) {
       final String id = pr.getObjectId("_id").toHexString();
       final Instant merged = mergedAt.get(id);
       if (merged == null) {
@@ -311,7 +315,7 @@ public final class MongoPullRequestExtras implements PullRequestExtraSource {
             ? null : comment.getObjectId("author_id").toHexString();
       }
       rows.add(new Row(id, project, author, opened, examined, state, examiner, byComment,
-          pathsByPr.getOrDefault(id, List.of())));
+          pathsByPr.getOrDefault(id, List.of()), pr.getString("author_association")));
     }
     return rows;
   }

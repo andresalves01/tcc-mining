@@ -94,6 +94,16 @@ public final class Columns {
    */
   public static final String LINES_PER_COMMIT = "ln(LOC por commit dev)";
 
+  /**
+   * A duracao mediana passada daquele par (pessoa, projeto), como-de a abertura.
+   *
+   * <p>Derivada dos desfechos do lado do ajuste, nao de um campo de {@code issue_features} -- ver
+   * {@link PairHistory}, que e quem garante que ela seja estritamente anterior e nunca toque a
+   * particao que esta sendo pontuada. Ja entra em escala de logaritmo, porque e uma mediana de
+   * logaritmos: aplicar {@code ln(1+x)} nela de novo seria logaritmo de logaritmo.
+   */
+  public static final String PAIR_MEDIAN = "TTC mediano do par (passado)";
+
   private static volatile Profile active = Profile.ISSUE;
   private static volatile TtcTarget target = TtcTarget.TOTAL;
 
@@ -170,6 +180,11 @@ public final class Columns {
       }
       if (column.name().equals("ln(LOC tarefa)")) {
         columns.add(new Column("ln(arquivos tarefa)", PullRequestExtras.FILES, true, Group.TAREFA));
+      }
+      if (column.name().equals("ln(tempo de casa)")) {
+        columns.add(new Column("posicao=MEMBER", PullRequestExtras.ASSOC_MEMBER, false, Group.DEV));
+        columns.add(new Column("posicao=NONE", PullRequestExtras.ASSOC_NONE, false, Group.DEV));
+        columns.add(new Column(PAIR_MEDIAN, "", false, Group.DEV));
       }
       if (column.name().equals("ln(tam. equipe)")) {
         columns.add(new Column("ln(espera tipica do projeto)",
