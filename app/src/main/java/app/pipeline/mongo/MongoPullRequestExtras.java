@@ -67,7 +67,7 @@ public final class MongoPullRequestExtras implements PullRequestExtraSource {
   /** Um pull request reduzido ao que estes preditores precisam dele. */
   private record Row(String id, String project, String author, Instant opened,
       Instant examined, String examState, String examiner, boolean byComment, List<String> paths,
-      String association) {}
+      String association, String examinerAssociation) {}
 
   @Override
   public Map<String, PullRequestExtras> of(final Collection<String> ids) {
@@ -84,6 +84,10 @@ public final class MongoPullRequestExtras implements PullRequestExtraSource {
       list.sort(Comparator.comparing(Contribution::authoredAt));
     }
 
+    // Historico de arquivos por (pessoa canonica, projeto). Chaveado pelo canonico, e nao pelo id
+    // bruto, porque o revisor precisa ser encontrado neste mesmo indice -- ele aparece ali como
+    // autor de pull requests anteriores dele, e os dois ids so se encontram depois de resolvidos.
+    final Map<String, List<Row>> byPersonProject = new HashMap<>(1 << 12);
     // Historico de arquivos por (pessoa, projeto), ordenado por abertura, para a familiaridade.
     final Map<String, List<Row>> byAuthorProject = new HashMap<>(1 << 12);
     // Esperas por projeto, ordenadas por abertura, para a espera tipica.
@@ -92,10 +96,16 @@ public final class MongoPullRequestExtras implements PullRequestExtraSource {
       if (row.author() != null) {
         byAuthorProject.computeIfAbsent(row.author() + "\u0000" + row.project(),
             k -> new ArrayList<>()).add(row);
+        final String person = canonical.get(row.author());
+        if (person != null) {
+          byPersonProject.computeIfAbsent(person + "\u0000" + row.project(),
+              k -> new ArrayList<>()).add(row);
+        }
       }
       byProject.computeIfAbsent(row.project(), k -> new ArrayList<>()).add(row);
     }
     byAuthorProject.values().forEach(l -> l.sort(Comparator.comparing(Row::opened)));
+    byPersonProject.values().forEach(l -> l.sort(Comparator.comparing(Row::opened)));
     byProject.values().forEach(l -> l.sort(Comparator.comparing(Row::opened)));
 
     final Map<String, PullRequestExtras> out = new HashMap<>(wanted.size() * 2);
@@ -123,6 +133,19 @@ public final class MongoPullRequestExtras implements PullRequestExtraSource {
             "CHANGES_REQUESTED".equals(row.examState()) ? 1.0 : 0.0);
         v.put(PullRequestExtras.EXAM_COMMENTED, "COMMENTED".equals(row.examState()) ? 1.0 : 0.0);
         v.put(PullRequestExtras.REVIEWER_VOLUME, reviewerVolume(row, byReviewer, canonical));
+        v.put(PullRequestExtras.REVIEWER_ASSOC_MEMBER,
+            "MEMBER".equals(row.examinerAssociation()) ? 1.0 : 0.0);
+
+        final String reviewer = row.examiner() == null ? null : canonical.get(row.examiner());
+        final int seen = reviewerFamiliarity(row, reviewer, byPersonProject);
+        v.put(PullRequestExtras.REVIEWER_FAMILIARITY, (double) seen);
+        v.put(PullRequestExtras.REVIEWER_FAMILIARITY_SHARE,
+            row.paths().isEmpty() ? 0.0 : (double) seen / row.paths().size());
+
+        final List<Contribution> history = reviewer == null ? null : byReviewer.get(reviewer);
+        v.put(PullRequestExtras.REVIEWER_LINES_PER_COMMIT,
+            reviewerLinesPerCommit(history, row.examined()));
+        v.put(PullRequestExtras.REVIEWER_TENURE, reviewerTenure(history, row.examined()));
       }
       out.put(row.id(), new PullRequestExtras(v));
     }
@@ -172,6 +195,62 @@ public final class MongoPullRequestExtras implements PullRequestExtraSource {
     }
     waits.sort(Double::compare);
     return waits.get(waits.size() / 2);
+  }
+
+  /** Arquivos desta mudanca que quem examinou ja tinha tocado, em pull requests proprios. */
+  private static int reviewerFamiliarity(final Row row, final String reviewer,
+      final Map<String, List<Row>> byPersonProject) {
+
+    if (reviewer == null || row.paths().isEmpty()) {
+      return 0;
+    }
+    final List<Row> history = byPersonProject.get(reviewer + "\u0000" + row.project());
+    if (history == null) {
+      return 0;
+    }
+    final Set<String> seen = new HashSet<>();
+    for (final Row prior : history) {
+      if (!prior.opened().isBefore(row.examined())) {
+        break;
+      }
+      seen.addAll(prior.paths());
+    }
+    int overlap = 0;
+    for (final String path : row.paths()) {
+      if (seen.contains(path)) {
+        overlap++;
+      }
+    }
+    return overlap;
+  }
+
+  /** Tamanho tipico da mudanca de quem examinou, estritamente antes do exame. */
+  private static double reviewerLinesPerCommit(final List<Contribution> history,
+      final Instant examined) {
+
+    if (history == null) {
+      return 0;
+    }
+    long lines = 0;
+    int commits = 0;
+    for (final Contribution c : history) {
+      if (!c.authoredAt().isBefore(examined)) {
+        break;
+      }
+      lines += c.javaLinesAdded() + c.javaLinesDeleted();
+      commits++;
+    }
+    return commits == 0 ? 0 : (double) lines / commits;
+  }
+
+  /** Dias desde a primeira contribuicao de quem examinou ate o exame. */
+  private static double reviewerTenure(final List<Contribution> history, final Instant examined) {
+    if (history == null || history.isEmpty()) {
+      return 0;
+    }
+    final Instant first = history.get(0).authoredAt();
+    return first.isBefore(examined)
+        ? Duration.between(first, examined).toMillis() / 86_400_000.0 : 0;
   }
 
   /** Volume acumulado de quem examinou, estritamente antes do exame. */
@@ -234,7 +313,8 @@ public final class MongoPullRequestExtras implements PullRequestExtraSource {
 
     final Map<String, Document> firstReview = new HashMap<>(1 << 15);
     for (final Document r : source.getCollection("pull_request_review").find()
-        .projection(Projections.include("pull_request_id", "submitted_at", "state", "creator_id"))) {
+        .projection(Projections.include(
+            "pull_request_id", "submitted_at", "state", "creator_id", "author_association"))) {
       if (r.getDate("submitted_at") == null) {
         continue;
       }
@@ -307,15 +387,18 @@ public final class MongoPullRequestExtras implements PullRequestExtraSource {
       String state = review == null ? null : review.getString("state");
       String examiner = review == null || review.getObjectId("creator_id") == null
           ? null : review.getObjectId("creator_id").toHexString();
+      String examinerAssociation = review == null ? null : review.getString("author_association");
       if (commentAt != null && (examined == null || commentAt.isBefore(examined))) {
         examined = commentAt;
         byComment = true;
         state = null;
         examiner = comment.getObjectId("author_id") == null
             ? null : comment.getObjectId("author_id").toHexString();
+        examinerAssociation = null; // comentario nao carrega vinculo no mesmo formato
       }
       rows.add(new Row(id, project, author, opened, examined, state, examiner, byComment,
-          pathsByPr.getOrDefault(id, List.of()), pr.getString("author_association")));
+          pathsByPr.getOrDefault(id, List.of()), pr.getString("author_association"),
+          examinerAssociation));
     }
     return rows;
   }

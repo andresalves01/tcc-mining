@@ -200,6 +200,18 @@ public final class Columns {
         PullRequestExtras.EXAM_BY_COMMENT, false, Group.EXAME));
     columns.add(new Column("ln(LOC acum. de quem examinou)",
         PullRequestExtras.REVIEWER_VOLUME, true, Group.EXAME));
+    // Os construtos do autor, espelhados em quem examinou. Ver PullRequestExtras: entram por
+    // coerencia de especificacao, nao por desempenho, e podem piora-lo.
+    columns.add(new Column("ln(familiaridade de quem examinou)",
+        PullRequestExtras.REVIEWER_FAMILIARITY, true, Group.EXAME));
+    columns.add(new Column("fracao arq. conhecidos por quem examinou",
+        PullRequestExtras.REVIEWER_FAMILIARITY_SHARE, false, Group.EXAME));
+    columns.add(new Column("ln(LOC por commit de quem examinou)",
+        PullRequestExtras.REVIEWER_LINES_PER_COMMIT, true, Group.EXAME));
+    columns.add(new Column("ln(tempo de casa de quem examinou)",
+        PullRequestExtras.REVIEWER_TENURE, true, Group.EXAME));
+    columns.add(new Column("quem examinou e MEMBER",
+        PullRequestExtras.REVIEWER_ASSOC_MEMBER, false, Group.EXAME));
     columns.add(new Column("ln(espera realizada)",
         PullRequestExtras.REALISED_WAIT, true, Group.EXAME));
     return List.copyOf(columns);

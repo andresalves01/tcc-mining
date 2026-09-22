@@ -66,11 +66,42 @@ public record PullRequestExtras(Map<String, Double> values) {
   /** So na fronteira do exame: volume acumulado de quem examinou, lido do mesmo ledger. */
   public static final String REVIEWER_VOLUME = "exame_volume_revisor";
 
+  /**
+   * Os construtos do autor, espelhados em quem examinou.
+   *
+   * <p>Existem por coerencia de especificacao, nao por desempenho, e a distincao importa. O
+   * intervalo que este alvo mede -- do primeiro exame ao merge -- tem exatamente dois
+   * participantes: quem escreveu e quem revisou. Descrever um deles com sete colunas e o outro com
+   * uma era uma assimetria sem principio que a sustentasse.
+   *
+   * <p>Andre levantou a inconsistencia e aceitou de antemao que corrigi-la pode piorar o
+   * resultado. Decisao de especificacao nao se toma pelo numero que ela produz.
+   *
+   * <p>O espelho e no REVISOR e nao na equipe ativa, porque a equipe nao participa deste
+   * intervalo -- e porque agregar sobre sete pessoas achata a variacao, que e o que ja faz as
+   * quatro colunas de equipe existentes nao pagarem nada.
+   */
+  public static final String REVIEWER_FAMILIARITY = "exame_familiaridade_revisor";
+
+  /** Fracao dos arquivos da mudanca que quem examinou ja tinha tocado. */
+  public static final String REVIEWER_FAMILIARITY_SHARE = "exame_fam_frac_revisor";
+
+  /** Tamanho tipico da mudanca de quem examinou -- o analogo de ln(LOC por commit dev). */
+  public static final String REVIEWER_LINES_PER_COMMIT = "exame_loc_por_commit_revisor";
+
+  /** Tempo de casa de quem examinou, no projeto, ate o instante do exame. */
+  public static final String REVIEWER_TENURE = "exame_tempo_de_casa_revisor";
+
+  /** Quem examinou e MEMBER do projeto. De pull_request_review.author_association. */
+  public static final String REVIEWER_ASSOC_MEMBER = "exame_revisor_member";
+
   /** So na fronteira do exame: a espera que de fato houve, em dias. */
   public static final String REALISED_WAIT = "exame_espera_realizada";
 
   public static final java.util.List<String> FIELDS = java.util.List.of(
       FILES, FAMILIARITY, FAMILIARITY_SHARE, PROJECT_WAIT, ASSOC_MEMBER, ASSOC_NONE,
+      REVIEWER_FAMILIARITY, REVIEWER_FAMILIARITY_SHARE, REVIEWER_LINES_PER_COMMIT,
+      REVIEWER_TENURE, REVIEWER_ASSOC_MEMBER,
       EXAM_CHANGES_REQUESTED, EXAM_COMMENTED, EXAM_BY_COMMENT, REVIEWER_VOLUME, REALISED_WAIT);
 
   public PullRequestExtras {
