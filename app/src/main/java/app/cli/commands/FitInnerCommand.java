@@ -4,8 +4,10 @@ import app.cli.CommandFailedException;
 import app.cli.CommandRunner;
 import app.cli.Context;
 import app.model.Bounds;
+import app.model.DeveloperOrdering;
 import app.pipeline.FitModelTask;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Fits the Elastic Net on the training side and scores it against the inner selection only.
@@ -32,12 +34,86 @@ public final class FitInnerCommand implements CommandRunner {
     final FitModelTask task = new FitModelTask(context.observations(), context.progress());
     for (final Bounds bounds : List.of(Bounds.none(), Bounds.oneHourToOneYear())) {
       try {
-        FitCommand.print(task.run(bounds), bounds, "SELECAO INTERNA");
+        final FitModelTask.Report report = task.run(bounds);
+        FitCommand.print(report, bounds, "SELECAO INTERNA");
+        printAblationGradient(report);
+        printPerColumn(task, bounds, report);
       } catch (final FitModelTask.NoObservationsException e) {
         throw new CommandFailedException(List.of("  " + e.getMessage()));
       }
     }
     System.out.printf("%n  fit-inner nao chama FitModelTask.heldOut() em nenhum caminho --"
         + " o conjunto retido nao foi tocado por esta execucao.%n");
+  }
+
+  /**
+   * The ordering gradient for each ablation, not only its strictest point.
+   *
+   * <p>{@code fit} prints one number per ablation, taken at the tightest matching. That hides the
+   * question the gradient exists to answer: an ablation that orders well over any pair and falls to
+   * the coin once tasks are matched was reading the task, not the people.
+   */
+  private static void printAblationGradient(final FitModelTask.Report report) {
+    final List<DeveloperOrdering.Result> shape =
+        report.ablation().values().iterator().next().ordering();
+    if (shape == null) {
+      return;
+    }
+    System.out.printf("%n  ORDENAR DESENVOLVEDORES POR ABLACAO  (gradiente inteiro)%n");
+    System.out.printf("    %-26s", "");
+    for (final DeveloperOrdering.Result step : shape) {
+      System.out.printf(" %22s", abbreviate(step.matching()));
+    }
+    System.out.println();
+    System.out.printf("    %-26s", "pares");
+    for (final DeveloperOrdering.Result step : shape) {
+      System.out.printf(" %22s", String.format("%,d", step.pairs()));
+    }
+    System.out.println();
+    for (final Map.Entry<String, FitModelTask.Scored> entry : report.ablation().entrySet()) {
+      final List<DeveloperOrdering.Result> gradient = entry.getValue().ordering();
+      if (gradient == null) {
+        continue;
+      }
+      System.out.printf("    %-26s", entry.getKey());
+      for (final DeveloperOrdering.Result step : gradient) {
+        System.out.printf(" %21s%%", step.pairs() == 0 ? "--"
+            : String.format("%.1f", 100 * step.agreement()));
+      }
+      System.out.println();
+    }
+  }
+
+  /** What each predictor carries alone, which is not what its coefficient says it carries. */
+  private static void printPerColumn(final FitModelTask task, final Bounds bounds,
+      final FitModelTask.Report report) {
+
+    final Map<String, FitModelTask.Scored> byColumn =
+        task.perColumn(bounds, report.alpha(), report.lambda());
+    System.out.printf("%n  PODER PREDITIVO DE CADA FATOR, SOZINHO%n");
+    System.out.printf("    um modelo por coluna, mesmo alpha, mesmo lambda, mesmas particoes%n%n");
+    System.out.printf("    %-26s %9s %9s %14s %14s %14s%n",
+        "fator", "MAE d", "R2 log", "ordena tarefa", "ordena devs", "ordena devs");
+    System.out.printf("    %-26s %9s %9s %14s %14s %14s%n",
+        "", "", "", "", "(qualquer par)", "(estrito)");
+    for (final Map.Entry<String, FitModelTask.Scored> entry : byColumn.entrySet()) {
+      final FitModelTask.Scored scored = entry.getValue();
+      if (scored.metrics() == null) {
+        continue;
+      }
+      final List<DeveloperOrdering.Result> gradient = scored.ordering();
+      final DeveloperOrdering.Result loose = gradient.get(0);
+      final DeveloperOrdering.Result tight = gradient.get(gradient.size() - 1);
+      System.out.printf("    %-26s %9.2f %9.3f %14s %13s%% %13s%%%n",
+          entry.getKey(), scored.metrics().maeDays(), scored.metrics().r2Log(),
+          Double.isNaN(scored.metrics().rankCorrelation()) ? "--"
+              : String.format("%.3f", scored.metrics().rankCorrelation()),
+          loose.pairs() == 0 ? "--" : String.format("%.1f", 100 * loose.agreement()),
+          tight.pairs() == 0 ? "--" : String.format("%.1f", 100 * tight.agreement()));
+    }
+  }
+
+  private static String abbreviate(final String name) {
+    return name.length() <= 22 ? name : name.substring(0, 21) + ".";
   }
 }

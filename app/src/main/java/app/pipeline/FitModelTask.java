@@ -152,6 +152,37 @@ public final class FitModelTask {
     return evaluate(train, test, bounds, alpha, lambda);
   }
 
+  /**
+   * One model per single surviving column, each fitted and scored exactly like the group ablations
+   * are -- same partitions, same standardiser, same alpha and lambda.
+   *
+   * <p>Answers a different question from the coefficients. A standardised coefficient says what a
+   * column contributes <i>given the others</i>, which under collinearity can be large and mean
+   * nothing; this says what the column carries <i>on its own</i>. The two disagreeing is itself the
+   * finding when predictors are redundant.
+   *
+   * <p>Reads only the inner partitions. There is no path from here to {@link Partition#HELD_OUT}.
+   *
+   * @param alpha the mixing the inner sweep already chose, so every single-column model is
+   *     regularised identically to the full one and the comparison is not confounded by it
+   */
+  public Map<String, Scored> perColumn(final Bounds bounds, final double alpha,
+      final double lambda) {
+
+    final Observations fit = restrict(source.of(Partition.FIT), bounds);
+    final Observations selection = restrict(source.of(Partition.SELECTION), bounds);
+    if (fit.isEmpty() || selection.isEmpty()) {
+      throw new NoObservationsException(source.describe() + " under " + bounds.name());
+    }
+    final Standardizer standardizer = Standardizer.fittedOn(fit);
+    final Map<String, Scored> byColumn = new LinkedHashMap<>();
+    for (final String column : standardizer.columns()) {
+      byColumn.put(column,
+          ablateNamed(standardizer, fit, selection, alpha, lambda, List.of(column)));
+    }
+    return byColumn;
+  }
+
   /** Standardise on the first side, fit there, score on the second. Used by both entry points. */
   private Report evaluate(final Observations fit, final Observations selection,
       final Bounds bounds, final double alpha, final double lambda) {
@@ -228,6 +259,12 @@ public final class FitModelTask {
   /** The same, for a specification named by columns rather than by group. */
   private Scored ablateNamed(final Standardizer standardizer, final Observations fit,
       final Observations selection, final ElasticNetModel chosen, final List<String> wanted) {
+    return ablateNamed(standardizer, fit, selection, chosen.alpha(), chosen.lambda(), wanted);
+  }
+
+  private Scored ablateNamed(final Standardizer standardizer, final Observations fit,
+      final Observations selection, final double alpha, final double lambda,
+      final List<String> wanted) {
 
     final int[] keep = indicesOf(standardizer.columns(), wanted);
     if (keep.length == 0) {
@@ -240,7 +277,7 @@ public final class FitModelTask {
       names.add(standardizer.columns().get(i));
     }
     final ElasticNetModel model = ElasticNetModel.fit(x, outcome(fit.rows()), names,
-        chosen.alpha(), chosen.lambda());
+        alpha, lambda);
     final Map<Observation, Integer> where = index(selection.rows());
     return score(names.size() + " colunas", selection.rows(),
         row -> model.predict(xs[where.get(row)]));
