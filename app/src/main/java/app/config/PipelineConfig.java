@@ -1,6 +1,7 @@
 package app.config;
 
 import app.identity.Strictness;
+import app.paper4.PullRequestOutcome;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Optional;
@@ -20,6 +21,8 @@ import java.util.Optional;
  *     A stage that needs a fresh, empty {@code targetDb} while still reading an already-built
  *     ledger from elsewhere -- a paper branch deriving new labels from a different outcome, never
  *     writing to the database the ledger came from -- sets it explicitly instead
+ * @param pullRequestOutcome which interval of a pull request's life {@code pr-labels} measures.
+ *     Read only by that stage; every other one ignores it
  * @param costRatio {@code C_max / C_min}. A reporting parameter only: it is never written to the
  *     ledger, because the sensitivity analysis sweeps it and a stored cost would freeze one
  *     scenario into what otherwise reads as mined data
@@ -50,6 +53,7 @@ public record PipelineConfig(
     double trainShare,
     int minResolvedBeforeCut,
     Duration teamWindow,
+    PullRequestOutcome pullRequestOutcome,
     Optional<String> pilotProject) {
 
   public PipelineConfig {
@@ -77,6 +81,8 @@ public record PipelineConfig(
         Double.parseDouble(value("TRAIN_SHARE", "0.70")),
         Integer.parseInt(value("MIN_RESOLVED", "5")),
         Duration.ofDays(Long.parseLong(value("TEAM_WINDOW_DAYS", "90"))),
+        PullRequestOutcome.valueOf(
+            value("PR_OUTCOME", PullRequestOutcome.OPEN_TO_MERGE.name())),
         Optional.of(value("PILOT", "")).filter(pilot -> !pilot.isBlank()));
   }
 

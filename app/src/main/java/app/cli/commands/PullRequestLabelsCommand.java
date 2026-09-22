@@ -15,7 +15,8 @@ public final class PullRequestLabelsCommand implements CommandRunner {
   @Override
   public void run(final Context context) throws CommandFailedException {
     final BuildPullRequestLabelsTask task = new BuildPullRequestLabelsTask(
-        context.pullRequests(), context.labelStore(), context.externalRegistry());
+        context.pullRequests(), context.labelStore(), context.externalRegistry(),
+        context.config().pullRequestOutcome());
 
     final BuildPullRequestLabelsTask.Report report;
     try {
@@ -25,11 +26,20 @@ public final class PullRequestLabelsCommand implements CommandRunner {
     }
 
     System.out.printf("%n  ROTULOS POR PULL REQUEST%n%n");
+    System.out.printf("  desfecho medido                      : %s%n", report.outcome());
     System.out.printf("  PRs mesclados, escaneados            : %,d%n", report.scanned());
     System.out.printf("  sem autor de commit unico            : %,d   (%.2f%%)%n",
         report.noSingleAuthor(), 100.0 * report.noSingleAuthor() / report.scanned());
     System.out.printf("  autor sem identidade canonica         : %,d   (%.2f%%)%n",
         report.unresolvedIdentity(), 100.0 * report.unresolvedIdentity() / report.scanned());
+    if (report.withoutReview() > 0) {
+      System.out.printf("  sem revisao registrada               : %,d   (%.2f%%)%n",
+          report.withoutReview(), 100.0 * report.withoutReview() / report.scanned());
+    }
+    if (report.nonPositiveInterval() > 0) {
+      System.out.printf("  intervalo nao positivo               : %,d   (%.2f%%)%n",
+          report.nonPositiveInterval(), 100.0 * report.nonPositiveInterval() / report.scanned());
+    }
     System.out.printf("  UTILIZAVEIS                          : %,d   (%.2f%%)%n",
         report.written(), 100.0 * report.written() / report.scanned());
     System.out.printf("%n  gravou %,d linhas em %s%n", report.written(),

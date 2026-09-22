@@ -40,12 +40,13 @@ public final class MongoPullRequestSource implements MergedPullRequestSource {
   /** The collections this source opens, in the source database. */
   public static final Set<String> READS = Set.of(
       "pull_request", "pull_request_event", "pull_request_commit", "pull_request_file",
-      "pull_request_system", "project");
+      "pull_request_review", "pull_request_system", "project");
 
   private static final String PULL_REQUEST = "pull_request";
   private static final String PULL_REQUEST_EVENT = "pull_request_event";
   private static final String PULL_REQUEST_COMMIT = "pull_request_commit";
   private static final String PULL_REQUEST_FILE = "pull_request_file";
+  private static final String PULL_REQUEST_REVIEW = "pull_request_review";
   private static final String PULL_REQUEST_SYSTEM = "pull_request_system";
   private static final String PROJECT = "project";
 
@@ -99,6 +100,19 @@ public final class MongoPullRequestSource implements MergedPullRequestSource {
       }
     }
 
+    // A primeira revisao de cada PR. A fronteira entre esperar por revisor e o ciclo com o
+    // autor -- ver PullRequestOutcome. Ausente em 48,7% dos rotulos, que caem no merge.
+    final Map<String, Instant> firstReview = new HashMap<>(1 << 15);
+    for (final Document r : source.getCollection(PULL_REQUEST_REVIEW)
+        .find().projection(Projections.include("pull_request_id", "submitted_at"))) {
+      if (r.getDate("submitted_at") == null) {
+        continue;
+      }
+      final String prId = r.getObjectId("pull_request_id").toHexString();
+      final Instant at = r.getDate("submitted_at").toInstant();
+      firstReview.merge(prId, at, (a, b) -> a.isBefore(b) ? a : b);
+    }
+
     final Map<String, long[]> javaLines = new HashMap<>(1 << 15); // [added, deleted]
     for (final Document f : source.getCollection(PULL_REQUEST_FILE)
         .find().projection(Projections.include("pull_request_id", "path", "additions", "deletions"))) {
@@ -131,12 +145,20 @@ public final class MongoPullRequestSource implements MergedPullRequestSource {
       final long[] lines = javaLines.getOrDefault(prId, new long[2]);
       final String description = pr.getString("description");
 
+      final Instant opened = pr.getDate("created_at").toInstant();
+      // Fallback para o merge, e uma revisao fora do intervalo [abertura, merge] nao e fronteira
+      // de nada -- 30 rotulos tem revisao posterior ao merge e caem aqui.
+      final Instant review = firstReview.get(prId);
+      final boolean reviewed =
+          review != null && !review.isBefore(opened) && !review.isAfter(merged);
       out.add(new MergedPullRequest(
           prId,
           project,
           author,
-          pr.getDate("created_at").toInstant(),
+          opened,
           merged,
+          reviewed ? review : merged,
+          reviewed,
           lines[0],
           lines[1],
           commitCountByPr.getOrDefault(prId, 0),

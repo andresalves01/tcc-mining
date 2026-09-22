@@ -11,6 +11,7 @@ import app.labels.IssueLabel;
 import app.labels.TemporalSplit;
 import app.labels.port.LabelStore;
 import app.paper4.MergedPullRequest;
+import app.paper4.PullRequestOutcome;
 import app.paper4.port.MergedPullRequestSource;
 import java.time.Duration;
 import java.time.Instant;
@@ -29,8 +30,16 @@ class BuildPullRequestLabelsTaskTest {
 
   private static MergedPullRequest pr(
       final String id, final String project, final String authorId, final int hoursToMerge) {
-    return new MergedPullRequest(
-        id, project, authorId, T0, T0.plus(Duration.ofHours(hoursToMerge)), 10, 2, 3, 40);
+    // Sem revisao registrada: a fronteira cai no merge, que e a regra do fallback.
+    final Instant merged = T0.plus(Duration.ofHours(hoursToMerge));
+    return new MergedPullRequest(id, project, authorId, T0, merged, merged, false, 10, 2, 3, 40);
+  }
+
+  private static MergedPullRequest reviewed(final String id, final String authorId,
+      final int hoursToReview, final int hoursToMerge) {
+    return new MergedPullRequest(id, "demo", authorId, T0,
+        T0.plus(Duration.ofHours(hoursToMerge)), T0.plus(Duration.ofHours(hoursToReview)), true,
+        10, 2, 3, 40);
   }
 
   private static final class FakeSource implements MergedPullRequestSource {
@@ -209,6 +218,48 @@ class BuildPullRequestLabelsTaskTest {
   }
 
   @Test
+  @DisplayName("REVIEW_TO_MERGE measures from the review, and excludes what was never reviewed")
+  void reviewToMergeExcludesUnreviewed() {
+    final RecordingStore store = new RecordingStore();
+    final BuildPullRequestLabelsTask task = new BuildPullRequestLabelsTask(
+        new FakeSource(List.of(
+            reviewed("pr1", "alice", 6, 30),
+            pr("pr2", "demo", "alice", 30))),   // sem revisao: fronteira no merge
+        store, new FakeRegistry(Map.of("alice", "canonical-alice")),
+        PullRequestOutcome.REVIEW_TO_MERGE);
+
+    final BuildPullRequestLabelsTask.Report report = task.run();
+
+    assertEquals(1, report.withoutReview(),
+        "um PR sem revisao nao tem intervalo pos-revisao, e sair e mais honesto que valer zero");
+    assertEquals(1, report.written());
+    final IssueLabel label = store.readAll().get(0);
+    assertEquals(T0.plus(Duration.ofHours(6)), label.createdAt());
+    assertEquals(T0.plus(Duration.ofHours(30)), label.resolvedAt());
+    assertEquals(1.0, label.ttcDays(), 1e-9);
+  }
+
+  @Test
+  @DisplayName("OPEN_TO_REVIEW measures up to the review, and keeps what fell back to the merge")
+  void openToReviewKeepsTheFallback() {
+    final RecordingStore store = new RecordingStore();
+    final BuildPullRequestLabelsTask task = new BuildPullRequestLabelsTask(
+        new FakeSource(List.of(
+            reviewed("pr1", "alice", 6, 30),
+            pr("pr2", "demo", "alice", 48))),
+        store, new FakeRegistry(Map.of("alice", "canonical-alice")),
+        PullRequestOutcome.OPEN_TO_REVIEW);
+
+    final BuildPullRequestLabelsTask.Report report = task.run();
+
+    assertEquals(0, report.withoutReview(), "o fallback mantem a linha, nao a exclui");
+    assertEquals(2, report.written());
+    assertEquals(0.25, store.readAll().get(0).ttcDays(), 1e-9);
+    assertEquals(2.0, store.readAll().get(1).ttcDays(), 1e-9,
+        "sem revisao, o intervalo ate a fronteira e a vida inteira do PR");
+  }
+
+  @Test
   @DisplayName("the outcome interval is opened-to-merged, matching MergedPullRequest exactly")
   void outcomeIntervalMatchesOpenedToMerged() {
     final RecordingStore store = new RecordingStore();
@@ -222,7 +273,7 @@ class BuildPullRequestLabelsTaskTest {
     assertEquals(T0, label.createdAt());
     assertEquals(T0.plus(Duration.ofHours(48)), label.resolvedAt());
     assertEquals(2.0, label.ttcDays(), 1e-9);
-    // Structural placeholder, not a measurement -- see BuildPullRequestLabelsTask.toLabel().
-    assertEquals(T0, label.firstCommitAt());
+    // Nao e primeiro commit: carrega a fronteira de revisao, aqui igual ao merge pelo fallback.
+    assertEquals(T0.plus(Duration.ofHours(48)), label.firstCommitAt());
   }
 }

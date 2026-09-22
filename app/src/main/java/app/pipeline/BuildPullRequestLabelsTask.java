@@ -5,6 +5,7 @@ import app.labels.ChangedMethod;
 import app.labels.IssueLabel;
 import app.labels.port.LabelStore;
 import app.paper4.MergedPullRequest;
+import app.paper4.PullRequestOutcome;
 import app.paper4.port.MergedPullRequestSource;
 import java.util.ArrayList;
 import java.util.List;
@@ -58,7 +59,8 @@ public final class BuildPullRequestLabelsTask {
    * @param written rows the store reports as written
    */
   public record Report(
-      int scanned, int noSingleAuthor, int unresolvedIdentity, long written) {}
+      int scanned, int noSingleAuthor, int unresolvedIdentity, long written,
+      PullRequestOutcome outcome, int withoutReview, int nonPositiveInterval) {}
 
   /** The one place this stage says what its complexity columns mean, visible in raw documents too. */
   public static final ChangedMethod ABSENT_COMPLEXITY =
@@ -67,12 +69,19 @@ public final class BuildPullRequestLabelsTask {
   private final MergedPullRequestSource source;
   private final LabelStore store;
   private final PersonRegistry registry;
+  private final PullRequestOutcome outcome;
 
   public BuildPullRequestLabelsTask(
       final MergedPullRequestSource source, final LabelStore store, final PersonRegistry registry) {
+    this(source, store, registry, PullRequestOutcome.OPEN_TO_MERGE);
+  }
+
+  public BuildPullRequestLabelsTask(final MergedPullRequestSource source, final LabelStore store,
+      final PersonRegistry registry, final PullRequestOutcome outcome) {
     this.source = source;
     this.store = store;
     this.registry = registry;
+    this.outcome = outcome;
   }
 
   public Report run() {
@@ -85,6 +94,8 @@ public final class BuildPullRequestLabelsTask {
     final List<IssueLabel> labels = new ArrayList<>(merged.size());
     int noSingleAuthor = 0;
     int unresolvedIdentity = 0;
+    int withoutReview = 0;
+    int nonPositiveInterval = 0;
     for (final MergedPullRequest pr : merged) {
       if (pr.authorId() == null) {
         noSingleAuthor++;
@@ -95,26 +106,37 @@ public final class BuildPullRequestLabelsTask {
         unresolvedIdentity++;
         continue;
       }
-      labels.add(toLabel(pr, developer));
+      if (outcome == PullRequestOutcome.REVIEW_TO_MERGE && !pr.reviewed()) {
+        // Sem revisao a fronteira e o proprio merge, e o intervalo seria zero. Excluir e honesto;
+        // escorar num epsilon seria inventar trabalho que o registro nao mostra.
+        withoutReview++;
+        continue;
+      }
+      if (!pr.endOf(outcome).isAfter(pr.startOf(outcome))) {
+        nonPositiveInterval++;
+        continue;
+      }
+      labels.add(toLabel(pr, developer, outcome));
     }
 
     final long written = store.save(labels);
-    return new Report(merged.size(), noSingleAuthor, unresolvedIdentity, written);
+    return new Report(merged.size(), noSingleAuthor, unresolvedIdentity, written,
+        outcome, withoutReview, nonPositiveInterval);
   }
 
-  private static IssueLabel toLabel(final MergedPullRequest pr, final String developer) {
+  private static IssueLabel toLabel(final MergedPullRequest pr, final String developer,
+      final PullRequestOutcome outcome) {
     return new IssueLabel(
         pr.pullRequestId(),
         pr.projectName(),
-        pr.openedAt(),
-        pr.mergedAt(),
+        pr.startOf(outcome),
+        pr.endOf(outcome),
         developer,
-        // Structural placeholder, not a measurement: IssueLabel requires an Instant here, but this
-        // population has no reliable "first commit" -- see MergedPullRequestSource's javadoc for
-        // why. Equal to createdAt so it can never read as a positive interval. TemporalSplit never
-        // reads this field; MongoObservations never reads it back from storage either, so the
-        // placeholder reaches no computation, only the raw stored document.
-        pr.openedAt(),
+        // Nao e o primeiro commit -- essa data nao e recuperavel nesta populacao, ver
+        // MergedPullRequestSource. Carrega a fronteira de revisao, que e o que esta posicao
+        // significa aqui: um instante intermediario entre as duas pontas do intervalo. Nenhum
+        // calculo a le -- nem TemporalSplit nem MongoObservations -- so o documento gravado.
+        pr.reviewAt(),
         pr.linkedCommits(),
         pr.javaLinesAdded(),
         pr.javaLinesDeleted(),
