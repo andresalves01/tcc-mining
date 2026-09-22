@@ -40,6 +40,38 @@ public final class Baselines {
         / (double) scored.size();
   }
 
+  /**
+   * Prever toda tarefa de uma pessoa pela media dela, sem olhar a tarefa.
+   *
+   * <p>Deliberadamente ingenua: nao ve tamanho, nem equipe, nem revisao. Serve para responder uma
+   * pergunta que nenhuma outra referencia responde -- quanto de ordenacao de pessoas se consegue
+   * sabendo <i>so</i> quem e a pessoa.
+   *
+   * <p>De onde vem a media muda tudo, e por isso existem duas chamadas possiveis. Construida sobre
+   * o lado do ajuste, e um metodo honesto e comparavel ao modelo. Construida sobre as proprias
+   * linhas que estao sendo pontuadas, e um oraculo: usa a resposta para montar o palpite, nao pode
+   * ser usada para prever nada, e vale como TETO -- o maximo que qualquer metodo que ordene
+   * pessoas por um numero por pessoa poderia alcancar naquele conjunto.
+   */
+  public static ToDoubleFunction<Observation> perDeveloper(final List<Observation> from) {
+    final Map<String, Double> byDeveloper = meanBy(from, Observation::developer);
+    final double global = median(from.stream().map(Observation::logTtc).toList());
+    return row -> byDeveloper.getOrDefault(row.developer(), global);
+  }
+
+  private static Map<String, Double> meanBy(final List<Observation> rows,
+      final Function<Observation, String> key) {
+
+    final Map<String, List<Double>> grouped = new HashMap<>();
+    for (final Observation row : rows) {
+      grouped.computeIfAbsent(key.apply(row), k -> new ArrayList<>()).add(row.logTtc());
+    }
+    final Map<String, Double> means = new HashMap<>(grouped.size() * 2);
+    grouped.forEach((k, values) ->
+        means.put(k, values.stream().mapToDouble(Double::doubleValue).average().orElse(0)));
+    return means;
+  }
+
   public static ToDoubleFunction<Observation> perProject(final List<Observation> fit) {
     final Map<String, Double> byProject = medianBy(fit, Observation::project);
     final double global = median(fit.stream().map(Observation::logTtc).toList());

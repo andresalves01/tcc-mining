@@ -96,27 +96,31 @@ public final class FitCommand implements CommandRunner {
     System.out.printf("%n  ORDENAR DESENVOLVEDORES  (mesmo projeto, pessoas diferentes)%n");
     System.out.printf("    conforme as tarefas ficam parecidas, so a diferenca entre as"
         + " pessoas sobra%n%n");
+    // Cada celula traz o proprio denominador. Uma coluna unica de "pares" seria a contagem de UM
+    // dos preditores servindo de rotulo para todos, e eles diferem: um par cuja previsao empata
+    // nao decide nada e sai, e preditores diferentes empatam em pares diferentes. Comparar duas
+    // porcentagens sem os denominadores a vista foi um defeito real desta tabela.
     final List<DeveloperOrdering.Result> gradient =
         report.comparison().get(report.comparison().size() - 1).ordering();
-    System.out.printf("    %-34s %10s", "", "pares");
+    System.out.printf("    %-34s", "");
     for (final FitModelTask.Scored scored : report.comparison()) {
-      System.out.printf(" %14s", abbreviate(scored.name()));
+      System.out.printf(" %22s", abbreviate(scored.name()));
     }
     System.out.println();
     for (int i = 0; i < gradient.size(); i++) {
-      System.out.printf("    %-34s %10s", gradient.get(i).matching(),
-          String.format("%,d", gradient.get(i).pairs()));
+      System.out.printf("    %-34s", gradient.get(i).matching());
       for (final FitModelTask.Scored scored : report.comparison()) {
         final DeveloperOrdering.Result o = scored.ordering().get(i);
         // A prediction that does not vary between two people in the same project ties every
         // pair, and a tie decides nothing. That is the baseline's shape, not a score of zero.
-        System.out.printf(" %14s", o.pairs() == 0 ? "nao distingue"
-            : String.format("%.1f%%", 100 * o.agreement()));
+        System.out.printf(" %22s", o.pairs() == 0 ? "nao distingue"
+            : String.format("%.1f%% (%,d)", 100 * o.agreement(), o.pairs()));
       }
       System.out.println();
     }
     System.out.printf("%n    (50%% e a moeda. Os pares nao sao independentes entre si, entao os%n");
-    System.out.printf("     decimais nao devem ser lidos como precisao.)%n");
+    System.out.printf("     decimais nao devem ser lidos como precisao. Entre parenteses, os pares%n");
+    System.out.printf("     que cada preditor de fato decidiu.)%n");
 
     System.out.printf("%n  ABLACAO POR GRUPO DE PREDITORES%n");
     for (final Map.Entry<String, FitModelTask.Scored> entry : report.ablation().entrySet()) {
