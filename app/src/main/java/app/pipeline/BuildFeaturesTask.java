@@ -54,6 +54,7 @@ public final class BuildFeaturesTask {
   private final IssueAttributeSource attributes;
   private final FeatureStore store;
   private final Progress progress;
+  private final ContributionLedger presence;
 
   public BuildFeaturesTask(
       final LabelStore labels,
@@ -63,12 +64,32 @@ public final class BuildFeaturesTask {
       final FeatureStore store,
       final Progress progress) {
 
+    this(labels, ledger, complexity, attributes, store, progress, null);
+  }
+
+  /**
+   * @param presence where "who was active in this project inside the window" is read from, when
+   *     that is not the same observation the accumulated history comes from. {@code null} means it
+   *     is the ledger itself -- which is what every stage reading a single mined history does, and
+   *     is behaviour-identical to the constructor without this argument. See {@link AsOfLedger}'s
+   *     three-argument constructor for why the two can diverge
+   */
+  public BuildFeaturesTask(
+      final LabelStore labels,
+      final ContributionLedger ledger,
+      final CommitComplexityStore complexity,
+      final IssueAttributeSource attributes,
+      final FeatureStore store,
+      final Progress progress,
+      final ContributionLedger presence) {
+
     this.labels = labels;
     this.ledger = ledger;
     this.complexity = complexity;
     this.attributes = attributes;
     this.store = store;
     this.progress = progress;
+    this.presence = presence;
   }
 
   public Report run(final Duration teamWindow) {
@@ -85,9 +106,14 @@ public final class BuildFeaturesTask {
       throw new LedgerEmptyException(ledger.describe());
     }
     final Map<String, CommitComplexity> perCommit = complexity.readAll();
-    final AsOfLedger asOf = new AsOfLedger(contributions, perCommit);
+    final List<Contribution> active = presence == null ? contributions : presence.readAll();
+    final AsOfLedger asOf = new AsOfLedger(contributions, perCommit, active);
     final OpenIssues open = new OpenIssues(stored);
     progress.detail("%,d contributions indexed", contributions.size());
+    if (presence != null) {
+      progress.detail("%,d rows of activity from %s decide the active team instead",
+          active.size(), presence.describe());
+    }
     progress.detail(perCommit.isEmpty()
         ? "no per-commit complexity in " + complexity.describe()
             + " -- McCC_tot, mu_M and s_M will be absent; run complexity to build it"

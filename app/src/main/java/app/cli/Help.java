@@ -45,6 +45,7 @@ public final class Help {
           MONGO_URI         mongodb://127.0.0.1:27017
           SOURCE_DB         smartshark_2_2      read-only
           TARGET_DB         smartshark_tcc      written to; must differ from SOURCE_DB
+          LEDGER_DB         = TARGET_DB          pr-labels, pr-features: read-only ledger/registry
           WORK_DIR          build/identity-work
           JIRA_CACHE_DIR    build/jira-cache
           JIRA_DELAY_MS     250                 pause between issue-tracker requests

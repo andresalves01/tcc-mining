@@ -31,6 +31,10 @@ import java.util.Set;
  * asymmetry is deliberate. The funnel already removed bot-authored labels, so filtering the
  * developer side could only ever zero a row silently; the active team, in contrast, is defined by
  * the study as the humans who committed inside the window.
+ *
+ * <p>Accumulation and presence can also come from <i>different sources</i>, which the three-argument
+ * constructor exists for. They are different questions -- depth against recency -- and in this
+ * corpus the observation windows behind them do not coincide.
  */
 public final class AsOfLedger {
 
@@ -52,17 +56,48 @@ public final class AsOfLedger {
    */
   public AsOfLedger(final Collection<Contribution> ledger,
       final Map<String, CommitComplexity> complexityByCommit) {
+    this(ledger, complexityByCommit, ledger);
+  }
+
+  /**
+   * The same two indexes, built from two different observations of the same projects.
+   *
+   * <p>Accumulation and presence are different questions, and nothing requires one source to answer
+   * both. {@code ledger} answers "how much has this person done here", which wants depth and is
+   * best served by the whole commit history. {@code presence} answers "who was around", which wants
+   * recency and is only as good as how far the observation reaches.
+   *
+   * <p>They are separable because in this corpus they genuinely diverge: git history is mined to a
+   * median last commit of 2018-12-25 per project, while pull request records run to 2021. Reading
+   * presence from the commit ledger for a task created in 2020 reports an empty team for every
+   * project, not because the project went quiet but because the corpus stopped watching -- measured
+   * at 83.6% of one such test partition. Passing pull request activity as {@code presence} and the
+   * commit ledger as {@code ledger} answers each question from the source that can still see it.
+   *
+   * <p>The two-argument constructor passes the same collection for both, which is what every stage
+   * that reads a single mined history does, and is behaviour-identical to before this constructor
+   * existed.
+   *
+   * @param presence rows that count as being present in a project inside a window. Bots are
+   *     excluded from it, exactly as they are when it is the ledger itself
+   */
+  public AsOfLedger(final Collection<Contribution> ledger,
+      final Map<String, CommitComplexity> complexityByCommit,
+      final Collection<Contribution> presence) {
     this.complexityAvailable = !complexityByCommit.isEmpty();
     final Map<String, List<Contribution>> byPair = new HashMap<>(1 << 12);
-    final Map<String, List<Contribution>> byProject = new HashMap<>(1 << 8);
     for (final Contribution c : ledger) {
       if (c.canonicalId() == null || c.projectName() == null || c.authoredAt() == null) {
         continue; // a row missing any of the three cannot be placed in time or attributed
       }
       byPair.computeIfAbsent(key(c.canonicalId(), c.projectName()), k -> new ArrayList<>()).add(c);
-      if (!c.bot()) {
-        byProject.computeIfAbsent(c.projectName(), k -> new ArrayList<>()).add(c);
+    }
+    final Map<String, List<Contribution>> byProject = new HashMap<>(1 << 8);
+    for (final Contribution c : presence) {
+      if (c.canonicalId() == null || c.projectName() == null || c.authoredAt() == null || c.bot()) {
+        continue;
       }
+      byProject.computeIfAbsent(c.projectName(), k -> new ArrayList<>()).add(c);
     }
     this.pairs = new HashMap<>(byPair.size() * 2);
     byPair.forEach((k, commits) -> pairs.put(k, new Pair(commits, complexityByCommit,

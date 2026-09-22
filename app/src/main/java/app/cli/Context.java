@@ -60,4 +60,5 @@ public record Context(
     ContributionLedger externalLedger,
     CommitComplexityStore externalComplexity,
     MergedPullRequestSource pullRequests,
-    IssueAttributeSource pullRequestAttributes) {}
+    IssueAttributeSource pullRequestAttributes,
+    ContributionLedger pullRequestPresence) {}

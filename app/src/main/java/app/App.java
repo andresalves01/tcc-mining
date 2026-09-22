@@ -21,6 +21,7 @@ import app.pipeline.mongo.MongoLabelStore;
 import app.pipeline.mongo.MongoObservations;
 import app.pipeline.mongo.MongoPersonRegistry;
 import app.pipeline.mongo.MongoPullRequestAttributes;
+import app.pipeline.mongo.MongoPullRequestPresence;
 import app.pipeline.mongo.MongoPullRequestSource;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
@@ -126,7 +127,8 @@ public final class App {
         new MongoContributionLedger(client, config.ledgerDb()),
         new MongoCommitComplexityStore(client, config.ledgerDb()),
         new MongoPullRequestSource(client, config.sourceDb(), config.ledgerDb()),
-        new MongoPullRequestAttributes(client, config.sourceDb()));
+        new MongoPullRequestAttributes(client, config.sourceDb()),
+        new MongoPullRequestPresence(client, config.sourceDb(), config.ledgerDb()));
   }
 
   private App() {}

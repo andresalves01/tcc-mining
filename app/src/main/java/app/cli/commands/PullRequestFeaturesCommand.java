@@ -24,9 +24,12 @@ public final class PullRequestFeaturesCommand implements CommandRunner {
   public void run(final Context context) throws CommandFailedException {
     final Duration window = context.config().teamWindow();
 
+    // Hibrido: a experiencia acumulada continua vindo do ledger de commits, que e a fonte
+    // profunda; a presenca na equipe vem dos proprios pull requests, que e a fonte que ainda
+    // enxerga a janela. Ver MongoPullRequestPresence para os numeros que motivaram a separacao.
     final BuildFeaturesTask task = new BuildFeaturesTask(context.labelStore(),
         context.externalLedger(), context.externalComplexity(), context.pullRequestAttributes(),
-        context.featureStore(), context.progress());
+        context.featureStore(), context.progress(), context.pullRequestPresence());
 
     final BuildFeaturesTask.Report report;
     try {
