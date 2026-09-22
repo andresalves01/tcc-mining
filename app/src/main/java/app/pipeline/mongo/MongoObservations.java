@@ -76,10 +76,10 @@ public final class MongoObservations implements ObservationSource {
   }
 
   private static double[] values(final Document features) {
-    final double[] out = new double[Columns.ALL.size()];
+    final double[] out = new double[Columns.all().size()];
     final String type = features.getString("extra_issue_type");
-    for (int i = 0; i < Columns.ALL.size(); i++) {
-      final Columns.Column column = Columns.ALL.get(i);
+    for (int i = 0; i < Columns.all().size(); i++) {
+      final Columns.Column column = Columns.all().get(i);
       if (!column.field().isEmpty()) {
         final Number raw = features.get(column.field(), Number.class);
         final double value = raw == null ? 0 : raw.doubleValue();

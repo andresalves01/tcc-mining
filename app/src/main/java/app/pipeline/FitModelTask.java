@@ -251,7 +251,7 @@ public final class FitModelTask {
 
     final List<String> wanted = new ArrayList<>();
     for (final int i : Columns.indicesOf(groups)) {
-      wanted.add(Columns.ALL.get(i).name());
+      wanted.add(Columns.all().get(i).name());
     }
     return ablateNamed(standardizer, fit, selection, chosen, wanted);
   }

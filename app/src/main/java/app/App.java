@@ -6,6 +6,7 @@ import app.cli.ConsoleProgress;
 import app.cli.Context;
 import app.cli.Help;
 import app.config.PipelineConfig;
+import app.model.Columns;
 import app.pipeline.jira.JiraChangelogSource;
 import app.pipeline.port.Progress;
 import app.pipeline.mongo.GridFsGitIdentitySource;
@@ -86,8 +87,14 @@ public final class App {
       return;
     }
 
+    // Antes de qualquer adaptador construir uma linha: o conjunto de colunas e propriedade da
+    // execucao inteira, e MongoObservations le Columns.all() para dimensionar cada vetor.
+    Columns.use(config.columnProfile());
+
     System.out.println("=== " + command.token() + " ===");
-    System.out.println("  " + config.describe());
+    System.out.println("  " + config.describe()
+        + (config.columnProfile() == Columns.Profile.ISSUE ? ""
+            : "   colunas: " + config.columnProfile()));
     System.out.println();
 
     try (MongoClient client = MongoClients.create(config.mongoUri())) {

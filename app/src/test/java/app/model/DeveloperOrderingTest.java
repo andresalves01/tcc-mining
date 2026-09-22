@@ -18,11 +18,11 @@ class DeveloperOrderingTest {
   private static Observation row(final String developer, final double ttc,
       final double size, final double description, final String type) {
 
-    final double[] values = new double[Columns.ALL.size()];
+    final double[] values = new double[Columns.all().size()];
     values[Columns.taskSize()] = size;
     values[Columns.descriptionLength()] = description;
     for (final int i : Columns.typeIndices()) {
-      values[i] = Columns.ALL.get(i).name().equals("tipo=" + type) ? 1 : 0;
+      values[i] = Columns.all().get(i).name().equals("tipo=" + type) ? 1 : 0;
     }
     return new Observation(developer + ttc, "p", developer, ttc, values);
   }
@@ -99,7 +99,7 @@ class DeveloperOrderingTest {
   @DisplayName("people in different projects are never compared")
   void projectsAreKeptApart() {
     final Observation elsewhere =
-        new Observation("x", "outro", "bob", 1.0, new double[Columns.ALL.size()]);
+        new Observation("x", "outro", "bob", 1.0, new double[Columns.all().size()]);
     final DeveloperOrdering.Result result = DeveloperOrdering.of(
         List.of(row("alice", 10, 0, 0, "Bug"), elsewhere), Observation::logTtc,
         DeveloperOrdering.Matching.ANY);
