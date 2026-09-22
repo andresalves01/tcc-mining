@@ -14,6 +14,12 @@ import java.util.Optional;
  *
  * @param targetDb written to; must differ from {@code sourceDb} so reconstructed documents can
  *     never be mistaken for ones that shipped in the published release
+ * @param ledgerDb read-only source for the identity registry, the contribution ledger and the
+ *     per-commit complexity table. Defaults to {@code targetDb}, which reproduces every existing
+ *     command's behaviour exactly: they all read the ledger from the same database they write to.
+ *     A stage that needs a fresh, empty {@code targetDb} while still reading an already-built
+ *     ledger from elsewhere -- a paper branch deriving new labels from a different outcome, never
+ *     writing to the database the ledger came from -- sets it explicitly instead
  * @param costRatio {@code C_max / C_min}. A reporting parameter only: it is never written to the
  *     ledger, because the sensitivity analysis sweeps it and a stored cost would freeze one
  *     scenario into what otherwise reads as mined data
@@ -33,6 +39,7 @@ public record PipelineConfig(
     String mongoUri,
     String sourceDb,
     String targetDb,
+    String ledgerDb,
     Path workDir,
     Path jiraCacheDir,
     Duration jiraDelay,
@@ -54,10 +61,12 @@ public record PipelineConfig(
   }
 
   public static PipelineConfig fromEnvironment() {
+    final String targetDb = value("TARGET_DB", "smartshark_tcc");
     return new PipelineConfig(
         value("MONGO_URI", "mongodb://127.0.0.1:27017"),
         value("SOURCE_DB", "smartshark_2_2"),
-        value("TARGET_DB", "smartshark_tcc"),
+        targetDb,
+        value("LEDGER_DB", targetDb),
         Path.of(value("WORK_DIR", "build/identity-work")),
         Path.of(value("JIRA_CACHE_DIR", "build/jira-cache")),
         Duration.ofMillis(Long.parseLong(value("JIRA_DELAY_MS", "250"))),
