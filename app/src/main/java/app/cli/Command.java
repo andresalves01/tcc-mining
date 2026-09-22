@@ -6,6 +6,7 @@ import app.cli.commands.CheckCommand;
 import app.cli.commands.ComplexityCommand;
 import app.cli.commands.FeaturesCommand;
 import app.cli.commands.FitCommand;
+import app.cli.commands.FitInnerCommand;
 import app.cli.commands.FunnelCommand;
 import app.cli.commands.HarvestJiraCommand;
 import app.cli.commands.PullRequestFeaturesCommand;
@@ -95,6 +96,12 @@ public enum Command {
       BuildFeaturesTask itself, unmodified -- only the databases behind
       it differ: the ledger and complexity table are read from
       LEDGER_DB, never written to. Needs pr-labels and split first."""),
+
+  FIT_INNER("fit-inner", new FitInnerCommand(), """
+      Fit and score against the inner selection only -- never calls
+      FitModelTask.heldOut, no code path to it at all. For changing a
+      definition and re-scoring freely while a specification is still
+      being worked out. Needs features first."""),
 
   FIT("fit", new FitCommand(), """
       Fit the Elastic Net on the training side and score it against the

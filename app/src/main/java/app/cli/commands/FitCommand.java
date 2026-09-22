@@ -33,7 +33,14 @@ public final class FitCommand implements CommandRunner {
     }
   }
 
-  private static void print(final FitModelTask.Report report, final Bounds bounds,
+  /**
+   * Package-visible rather than private: {@link FitInnerCommand} reuses this formatting for the
+   * inner-selection half only, so the two commands cannot silently drift apart in what they print
+   * for the same kind of report. Safe to share because printing a {@link FitModelTask.Report} that
+   * already exists never calls {@link FitModelTask#heldOut} itself -- that call happens, or does
+   * not, entirely in the caller.
+   */
+  static void print(final FitModelTask.Report report, final Bounds bounds,
       final String partition) {
 
     System.out.printf("%n%n  ===================================================================%n");
