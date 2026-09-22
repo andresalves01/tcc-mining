@@ -60,14 +60,15 @@ public final class FitInnerCommand implements CommandRunner {
       return;
     }
     System.out.printf("%n  ORDENAR DESENVOLVEDORES POR ABLACAO  (gradiente inteiro)%n");
+    System.out.printf("    cada celula traz a concordancia e, entre parenteses, os pares que a%n");
+    System.out.printf("    produziram. Elas mudam por linha: um par cuja previsao empata nao%n");
+    System.out.printf("    decide nada e sai. Um modelo que so ve a tarefa empata quase tudo%n");
+    System.out.printf("    quando o filtro ja igualou as tarefas, entao pontua em muito menos%n");
+    System.out.printf("    pares -- as porcentagens de linhas diferentes nao sao comparaveis%n");
+    System.out.printf("    entre si sem olhar o denominador.%n%n");
     System.out.printf("    %-26s", "");
     for (final DeveloperOrdering.Result step : shape) {
       System.out.printf(" %22s", abbreviate(step.matching()));
-    }
-    System.out.println();
-    System.out.printf("    %-26s", "pares");
-    for (final DeveloperOrdering.Result step : shape) {
-      System.out.printf(" %22s", String.format("%,d", step.pairs()));
     }
     System.out.println();
     for (final Map.Entry<String, FitModelTask.Scored> entry : report.ablation().entrySet()) {
@@ -77,8 +78,8 @@ public final class FitInnerCommand implements CommandRunner {
       }
       System.out.printf("    %-26s", entry.getKey());
       for (final DeveloperOrdering.Result step : gradient) {
-        System.out.printf(" %21s%%", step.pairs() == 0 ? "--"
-            : String.format("%.1f", 100 * step.agreement()));
+        System.out.printf(" %22s", step.pairs() == 0 ? "--"
+            : String.format("%.1f%% (%,d)", 100 * step.agreement(), step.pairs()));
       }
       System.out.println();
     }
@@ -92,9 +93,11 @@ public final class FitInnerCommand implements CommandRunner {
         task.perColumn(bounds, report.alpha(), report.lambda());
     System.out.printf("%n  PODER PREDITIVO DE CADA FATOR, SOZINHO%n");
     System.out.printf("    um modelo por coluna, mesmo alpha, mesmo lambda, mesmas particoes%n%n");
-    System.out.printf("    %-26s %9s %9s %14s %14s %14s%n",
+    System.out.printf("    as duas ultimas colunas trazem os pares entre parenteses, pelo mesmo%n");
+    System.out.printf("    motivo: um fator que empata muito pontua em poucos pares.%n%n");
+    System.out.printf("    %-26s %9s %9s %14s %20s %20s%n",
         "fator", "MAE d", "R2 log", "ordena tarefa", "ordena devs", "ordena devs");
-    System.out.printf("    %-26s %9s %9s %14s %14s %14s%n",
+    System.out.printf("    %-26s %9s %9s %14s %20s %20s%n",
         "", "", "", "", "(qualquer par)", "(estrito)");
     for (final Map.Entry<String, FitModelTask.Scored> entry : byColumn.entrySet()) {
       final FitModelTask.Scored scored = entry.getValue();
@@ -104,12 +107,14 @@ public final class FitInnerCommand implements CommandRunner {
       final List<DeveloperOrdering.Result> gradient = scored.ordering();
       final DeveloperOrdering.Result loose = gradient.get(0);
       final DeveloperOrdering.Result tight = gradient.get(gradient.size() - 1);
-      System.out.printf("    %-26s %9.2f %9.3f %14s %13s%% %13s%%%n",
+      System.out.printf("    %-26s %9.2f %9.3f %14s %20s %20s%n",
           entry.getKey(), scored.metrics().maeDays(), scored.metrics().r2Log(),
           Double.isNaN(scored.metrics().rankCorrelation()) ? "--"
               : String.format("%.3f", scored.metrics().rankCorrelation()),
-          loose.pairs() == 0 ? "--" : String.format("%.1f", 100 * loose.agreement()),
-          tight.pairs() == 0 ? "--" : String.format("%.1f", 100 * tight.agreement()));
+          loose.pairs() == 0 ? "--"
+              : String.format("%.1f%% (%,d)", 100 * loose.agreement(), loose.pairs()),
+          tight.pairs() == 0 ? "--"
+              : String.format("%.1f%% (%,d)", 100 * tight.agreement(), tight.pairs()));
     }
   }
 
