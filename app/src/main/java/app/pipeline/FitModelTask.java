@@ -202,12 +202,16 @@ public final class FitModelTask {
     comparison.add(score("mediana do projeto", selection.rows(), Baselines.perProject(fit.rows())));
     comparison.add(score("REFERENCIA 3.6: mediana do par", selection.rows(),
         Baselines.perPair(fit.rows())));
-    comparison.add(score("media da pessoa, do treino", selection.rows(),
+    comparison.add(score("repetir: media da pessoa", selection.rows(),
         Baselines.perDeveloper(fit.rows())));
+    comparison.add(score("repetir: mediana do tamanho", selection.rows(),
+        Baselines.perTaskSize(fit.rows())));
     comparison.add(score("modelo completo", selection.rows(), model));
     // Ultima linha de proposito: e um oraculo, nao um concorrente. Ver Baselines.perDeveloper.
-    comparison.add(score("TETO: media da pessoa no proprio conjunto", selection.rows(),
+    comparison.add(score("TETO pessoa: no proprio conjunto", selection.rows(),
         Baselines.perDeveloper(selection.rows())));
+    comparison.add(score("TETO tamanho: no proprio conjunto", selection.rows(),
+        Baselines.perTaskSize(selection.rows())));
 
     final Map<String, Scored> ablation = new LinkedHashMap<>();
     ablation.put("so a tarefa", ablate(standardizer, fit, selection, chosen, Columns.Group.TAREFA));

@@ -72,6 +72,43 @@ public final class Baselines {
     return means;
   }
 
+  /**
+   * Prever cada tarefa pela mediana historica das tarefas de tamanho parecido.
+   *
+   * <p>O analogo, do lado da tarefa, de {@link #perDeveloper}. Uma pessoa e uma entidade que se
+   * repete e por isso da para "repetir o que ela fez antes"; uma tarefa nao. Repetir, aqui, e
+   * agrupar tarefas parecidas e devolver a mediana do grupo -- uma tabela de consulta por tamanho,
+   * sem modelo nenhum.
+   *
+   * <p>Os grupos sao decis do tamanho da tarefa calculados <b>so no lado do ajuste</b>, pelo mesmo
+   * motivo que toda referencia aqui e: um corte derivado das linhas que se esta pontuando deixaria
+   * a referencia ver a resposta. Dez grupos e escolha declarada antes de ver o resultado, e nao
+   * foi variada depois: com poucos grupos a tabela vira a mediana global, com muitos ela decora.
+   */
+  public static ToDoubleFunction<Observation> perTaskSize(final List<Observation> fit) {
+    final int buckets = 10;
+    final int column = Columns.taskSize();
+    final List<Double> sizes = fit.stream()
+        .map(row -> row.values()[column]).sorted().toList();
+    final double[] cuts = new double[buckets - 1];
+    for (int i = 1; i < buckets; i++) {
+      cuts[i - 1] = sizes.get((int) ((long) i * sizes.size() / buckets));
+    }
+    final Map<Integer, Double> byBucket = medianBy(fit, row -> String.valueOf(bucketOf(row.values()[column], cuts)))
+        .entrySet().stream()
+        .collect(java.util.stream.Collectors.toMap(e -> Integer.valueOf(e.getKey()), Map.Entry::getValue));
+    final double global = median(fit.stream().map(Observation::logTtc).toList());
+    return row -> byBucket.getOrDefault(bucketOf(row.values()[column], cuts), global);
+  }
+
+  private static int bucketOf(final double size, final double[] cuts) {
+    int bucket = 0;
+    while (bucket < cuts.length && size >= cuts[bucket]) {
+      bucket++;
+    }
+    return bucket;
+  }
+
   public static ToDoubleFunction<Observation> perProject(final List<Observation> fit) {
     final Map<String, Double> byProject = medianBy(fit, Observation::project);
     final double global = median(fit.stream().map(Observation::logTtc).toList());
