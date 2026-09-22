@@ -221,6 +221,14 @@ public final class FitModelTask {
         Columns.Group.TAREFA, Columns.Group.DEV, Columns.Group.EQUIPE, Columns.Group.CRIACAO));
     ablation.put("sem a equipe", ablate(standardizer, fit, selection, chosen,
         Columns.Group.TAREFA, Columns.Group.DEV, Columns.Group.CARGA, Columns.Group.CRIACAO));
+    // Tudo menos o exame: o tamanho do diff entra, aceitando que ele so e conhecido na abertura
+    // para os 75,8% de pull requests cujos commits todos precedem a abertura. Para os outros
+    // 24,2% ele cresce depois, e o corpus nao permite reconstruir o diff no instante da abertura
+    // -- pull_request_file nao tem data e a juncao por hash de commit falha na maioria.
+    ablation.put("sem o exame", ablate(standardizer, fit, selection, chosen,
+        Columns.Group.TAREFA, Columns.Group.DEV, Columns.Group.CARGA, Columns.Group.EQUIPE,
+        Columns.Group.CRIACAO));
+    // Nem exame nem tamanho: o unico recorte estritamente anterior a abertura.
     ablation.put("conhecido na criacao", ablate(standardizer, fit, selection, chosen,
         Columns.Group.DEV, Columns.Group.CARGA, Columns.Group.EQUIPE, Columns.Group.CRIACAO));
     // The columns the mongosh prototype fitted, so the two can be put side by side.
