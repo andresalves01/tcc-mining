@@ -130,10 +130,30 @@ public final class TemporalSplit {
    * <p>Resolution alone decides it. A label created before the cut but still open at it taught
    * nobody anything by that instant, so it cannot count towards the history that makes its author
    * eligible.
+   *
+   * <p><b>{@code minResolved <= 0} means no eligibility rule at all</b>, which is not the same as
+   * asking for zero resolutions. A pair with nothing resolved before the cut never reaches the
+   * tally below, so a plain {@code count >= 0} would still exclude exactly the pairs the threshold
+   * exists to exclude: the rule would look disabled and keep running. The population that drops the
+   * inherited-history requirement needs every pair eligible, so it is answered here, before
+   * anything is counted.
+   *
+   * <p>The requirement belongs to the developer-ordering experiment, which keys on the canonical
+   * commit author and needs a prior median to compare against. A study that keys on
+   * {@code pull_request.creator_id} and reads absence of history as an observable value has no use
+   * for it, and applying it anyway would drop the least frequent authors and projects -- which is
+   * most of what such a study is about.
    */
   private static Set<Pair> eligiblePairs(final List<IssueLabel> labels, final Instant cut,
       final int minResolved) {
 
+    if (minResolved <= 0) {
+      final Set<Pair> everyone = new HashSet<>();
+      for (final IssueLabel label : labels) {
+        everyone.add(pairOf(label));
+      }
+      return everyone;
+    }
     final Map<Pair, Long> resolved = new HashMap<>();
     for (final IssueLabel label : labels) {
       if (label.resolvedAt().isBefore(cut)) {

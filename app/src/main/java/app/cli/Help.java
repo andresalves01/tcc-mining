@@ -46,6 +46,11 @@ public final class Help {
           SOURCE_DB         smartshark_2_2      read-only
           TARGET_DB         smartshark_tcc      written to; must differ from SOURCE_DB
           LEDGER_DB         = TARGET_DB          pr-labels, pr-features: read-only ledger/registry
+          UNITS_DB          = TARGET_DB          Artigo 5: read-only merged pull requests
+          PAPER5_DB         smartshark_paper5   Artigo 5: written to; its own database
+          CACHE             (unset)             Artigo 5: file paper5-extract writes and
+                                                paper5-fit-inner reads, to avoid re-mining
+          ORACULO           (unset)             Artigo 5: reference extraction to diff against
           WORK_DIR          build/identity-work
           JIRA_CACHE_DIR    build/jira-cache
           JIRA_DELAY_MS     250                 pause between issue-tracker requests
@@ -55,6 +60,7 @@ public final class Help {
           COST_RATIO        1.7283              C_max / C_min, reporting only
           TRAIN_SHARE       0.70                split: the quantile of issue creation to cut at
           MIN_RESOLVED      5                   split: resolutions a (dev, project) needs first
+                                                0 turns the rule off -- every pair is eligible
           TEAM_WINDOW_DAYS  90                  features: how far back the active team is read
           TTC_TARGET        TOTAL               | ESPERA | AUTOR  (+ _UTIL: sem fins de semana)
           COLUMNS           ISSUE               | PULL_REQUEST (sem as quatro que nao pagam)

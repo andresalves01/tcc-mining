@@ -15,6 +15,8 @@ import app.labels.port.LabelStore;
 import app.model.port.ObservationSource;
 import app.paper4.port.MergedPullRequestSource;
 import app.paper4.port.PullRequestExtraSource;
+import app.paper5.port.TableSource;
+import app.paper5.port.UnitSource;
 import app.pipeline.port.Corpus;
 import app.pipeline.port.Progress;
 
@@ -63,4 +65,6 @@ public record Context(
     MergedPullRequestSource pullRequests,
     IssueAttributeSource pullRequestAttributes,
     ContributionLedger pullRequestPresence,
-    PullRequestExtraSource pullRequestExtras) {}
+    PullRequestExtraSource pullRequestExtras,
+    UnitSource units,
+    TableSource paper5Tables) {}

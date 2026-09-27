@@ -34,7 +34,18 @@ import java.util.Optional;
  *     that volume is measured in the same language {@code McCC} is
  * @param trainShare the quantile of issue creation instants that separates past from future
  * @param minResolvedBeforeCut how many labels a developer must have resolved before the cut to be
- *     carried into it. Applied to both sides of the split, though it does not bite both equally
+ *     carried into it. Applied to both sides of the split, though it does not bite both equally.
+ *     <b>Zero turns the rule off entirely</b>, which is the frozen population of the Yu/Chouchen
+ *     replication: that study keys on {@code creator_id} and reads absence of history as an
+ *     observable value, so the requirement -- which belongs to the developer-ordering experiment --
+ *     would only drop its least frequent authors and projects
+ * @param unitsDb where the Yu/Chouchen replication reads its already-built merged pull requests
+ *     from, read-only. Defaults to {@code targetDb}, so every command that predates it behaves
+ *     exactly as before; that study points it at the frozen database of the previous paper and
+ *     writes its own output somewhere else entirely
+ * @param paper5Db where the Yu/Chouchen replication writes its attributes and results. Its own
+ *     database by specification: the corpus and both previous papers' databases are read-only to
+ *     it, and no stage of it may add a column to them
  * @param teamWindow how far back a commit still counts as presence on the active team. It bounds
  *     participation observed and deliberately does not discount its members' accumulated
  *     experience: someone who committed yesterday brings their whole history with them
@@ -47,6 +58,8 @@ public record PipelineConfig(
     String sourceDb,
     String targetDb,
     String ledgerDb,
+    String unitsDb,
+    String paper5Db,
     Path workDir,
     Path jiraCacheDir,
     Duration jiraDelay,
@@ -67,6 +80,14 @@ public record PipelineConfig(
           "TARGET_DB must differ from SOURCE_DB ('" + sourceDb + "'): writing reconstructed data "
               + "into the source would make provenance unrecoverable");
     }
+    // The same argument, for the one other database this codebase writes to. PAPER5_DB holding
+    // the corpus, the thesis ledger or the frozen units of the previous paper would put a drop()
+    // one command away from data no stage here can rebuild.
+    if (paper5Db.equals(sourceDb) || paper5Db.equals(unitsDb) || paper5Db.equals(ledgerDb)) {
+      throw new IllegalArgumentException(
+          "PAPER5_DB must differ from SOURCE_DB, UNITS_DB and LEDGER_DB (got '" + paper5Db
+              + "'): the replication writes there and reads the other three, which are frozen");
+    }
   }
 
   public static PipelineConfig fromEnvironment() {
@@ -76,6 +97,8 @@ public record PipelineConfig(
         value("SOURCE_DB", "smartshark_2_2"),
         targetDb,
         value("LEDGER_DB", targetDb),
+        value("UNITS_DB", targetDb),
+        value("PAPER5_DB", "smartshark_paper5"),
         Path.of(value("WORK_DIR", "build/identity-work")),
         Path.of(value("JIRA_CACHE_DIR", "build/jira-cache")),
         Duration.ofMillis(Long.parseLong(value("JIRA_DELAY_MS", "250"))),

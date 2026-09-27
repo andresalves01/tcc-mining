@@ -133,6 +133,42 @@ class TemporalSplitTest {
   }
 
   @Test
+  @DisplayName("zero turns the rule off, which is not the same as asking for zero resolutions")
+  void zeroMeansNoEligibilityRuleAtAll() {
+    final List<IssueLabel> labels = new ArrayList<>(corpus("veteran"));
+    labels.add(label("newcomer", 40, 41));
+
+    final TemporalSplit.Split withRule = TemporalSplit.of(labels, 0.70, 5);
+    final TemporalSplit.Split withoutRule = TemporalSplit.of(labels, 0.70, 0);
+
+    assertEquals(1, withRule.outer().insufficientFuture().size(),
+        "the newcomer has nothing resolved before the cut, so the rule drops them");
+    assertTrue(withoutRule.outer().insufficientPast().isEmpty()
+            && withoutRule.outer().insufficientFuture().isEmpty(),
+        "with the rule off nobody is dropped for history -- a pair with no resolution before the "
+            + "cut never reaches the tally, so counting >= 0 would still drop exactly them");
+    assertEquals(2, withoutRule.outer().eligiblePairs());
+    assertTrue(withoutRule.outer().future().stream()
+            .anyMatch(label -> "newcomer".equals(label.canonicalAuthorId())),
+        "and the label they were dropped for is back on the side its creation instant puts it");
+  }
+
+  @Test
+  @DisplayName("turning the rule off moves no label across the cut, and does not move the cut")
+  void turningTheRuleOffChangesOnlyEligibility() {
+    final List<IssueLabel> labels = new ArrayList<>(corpus("a", "b"));
+    labels.add(label("a", 5, 40));
+
+    final TemporalSplit.Split withRule = TemporalSplit.of(labels, 0.70, 3);
+    final TemporalSplit.Split withoutRule = TemporalSplit.of(labels, 0.70, 0);
+
+    assertEquals(withRule.outer().cut(), withoutRule.outer().cut(),
+        "the cut is a quantile of creation and never consulted history");
+    assertEquals(withRule.outer().crossing().size(), withoutRule.outer().crossing().size(),
+        "crossing is a property of the label, decided before eligibility is consulted");
+  }
+
+  @Test
   @DisplayName("the cut is taken from creation instants, not from resolutions")
   void cutIsAnchoredOnCreation() {
     // Creation is the instant the prediction is anchored to. Cutting on resolution would let an

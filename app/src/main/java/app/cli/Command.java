@@ -9,6 +9,9 @@ import app.cli.commands.FitCommand;
 import app.cli.commands.FitInnerCommand;
 import app.cli.commands.FunnelCommand;
 import app.cli.commands.HarvestJiraCommand;
+import app.cli.commands.Paper5ExtractCommand;
+import app.cli.commands.Paper5FitInnerCommand;
+import app.cli.commands.Paper5PopulationCommand;
 import app.cli.commands.PullRequestFeaturesCommand;
 import app.cli.commands.PullRequestLabelsCommand;
 import app.cli.commands.ReconstructPeopleCommand;
@@ -110,6 +113,29 @@ public enum Command {
       time it runs -- nothing in this command or in FitModelTask stops a
       second invocation with a changed definition upstream of it from
       opening it again under different terms. Needs features first."""),
+
+  PAPER5_POPULATION("paper5-population", new Paper5PopulationCommand(), """
+      Artigo 5: print the population of the Yu/Chouchen replication --
+      every partition, with projects and distinct creator_id. Reads
+      UNITS_DB (the frozen merged pull requests) and SOURCE_DB, and
+      writes nothing. MIN_RESOLVED=0 turns the inherited-history rule
+      off, which is this study's frozen population."""),
+
+  PAPER5_EXTRACT("paper5-extract", new Paper5ExtractCommand(), """
+      Artigo 5: compute every pre-merge construct for the whole
+      population and print coverage, with the temporal class of each
+      one beside it. Reads UNITS_DB and SOURCE_DB, writes nothing.
+      With ORACULO=<path> it also diffs the result against the
+      reference extraction the validation produced in Python."""),
+
+  PAPER5_FIT_INNER("paper5-fit-inner", new Paper5FitInnerCommand(), """
+      Artigo 5: fit every cell of the grid -- three families by three
+      profiles, plus the literature profile without area_hotness_90d --
+      with Elastic Net and Extra Trees, scored against the inner
+      selection of the training side. Reports MAE in hours and days,
+      the gap against the mandatory baseline, and Spearman. There is no
+      paper5-fit: no code path here reaches the reserved set. Reads the
+      file CACHE points at; writes nothing."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both

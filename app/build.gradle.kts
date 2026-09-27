@@ -27,6 +27,12 @@ dependencies {
         exclude(group = "org.duckdb")
         exclude(group = "com.epam", module = "parso")
     }
+    // Extra Trees, which Smile does not have: it ships RandomForest and GradientTreeBoost and no
+    // extremely randomised variant. Tribuo's ExtraTreesTrainer takes a CART regression tree built
+    // with useRandomSplitPoints, which is the definition the specification asks for. Pulled in
+    // transitively with tribuo-common-tree.
+    implementation(libs.tribuo.regression.tree)
+
     implementation("org.apache.spark:spark-core_2.12:3.5.0")
     implementation("org.apache.spark:spark-sql_2.12:3.5.0")
     
