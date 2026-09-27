@@ -67,4 +67,5 @@ public record Context(
     ContributionLedger pullRequestPresence,
     PullRequestExtraSource pullRequestExtras,
     UnitSource units,
-    TableSource paper5Tables) {}
+    TableSource paper5Tables,
+    app.paper5.port.ResultStore paper5Results) {}

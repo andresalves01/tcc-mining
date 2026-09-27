@@ -106,12 +106,67 @@ public final class Paper5ReservedCommand implements CommandRunner {
         .sorted(Comparator.comparingDouble(r -> r.score().maeHours()))
         .forEach(r -> print(r.score()));
 
+    // Gravado depois de impresso, e nunca em lugar de imprimir: se o banco recusar a escrita, o
+    // resultado da leitura unica ja esta na saida e nao se perde por causa de um erro de conexao.
+    final String execucao = persist(context, report);
+    System.out.printf("%n  gravado em %s, execucao %s%n",
+        context.config().paper5Db(), execucao);
+
     if (!report.dropped().isEmpty()) {
       System.out.printf("%n  colunas retiradas por serem constantes no treino:%n");
       report.dropped().forEach(line -> System.out.printf("    %s%n", line));
     }
     System.out.printf("%n  o conjunto reservado foi pontuado uma vez, com a especificacao"
         + " congelada antes de ser aberto.%n");
+  }
+
+  /** Everything the report printed, as documents, so the database says the same as the page. */
+  private static String persist(final Context context, final Paper5ReservedTask.Report report) {
+    final Map<String, Object> run = new java.util.LinkedHashMap<>(
+        Paper5ReservedTask.frozenSpecification());
+    run.put("estagio", "conjunto reservado, leitura unica");
+    run.put("linhas_treino", report.trainingRows());
+    run.put("linhas_reservadas", report.reservedRows());
+    run.put("projetos_sem_treino", report.baselineFellBack());
+    run.put("alvo_mediana_horas", report.outcome().medianHours());
+    run.put("alvo_media_horas", report.outcome().meanHours());
+    run.put("colunas_constantes_retiradas", report.dropped());
+
+    final List<Map<String, Object>> rows = new java.util.ArrayList<>();
+    rows.add(scoreRow("referencia", report.baseline()));
+    rows.add(scoreRow("referencia", report.constant()));
+    for (final Paper5ReservedTask.Result result : report.results()) {
+      final Map<String, Object> row = scoreRow("especificacao", result.score());
+      row.put("familia", result.family().name());
+      row.put("alpha", result.alpha());
+      row.put("lambda", result.lambda());
+      row.put("colunas", result.columns());
+      // Os pesos vao inteiros, nao os vinte maiores que a tela mostra: a tela e um resumo e o
+      // banco e o registro.
+      final List<Map<String, Object>> weights = new java.util.ArrayList<>();
+      for (final Paper5ReservedTask.Weight weight : result.weights()) {
+        weights.add(Map.of("coluna", weight.column(), "coeficiente", weight.coefficient()));
+      }
+      row.put("pesos", weights);
+      rows.add(row);
+    }
+    return context.paper5Results().record(run, rows);
+  }
+
+  private static Map<String, Object> scoreRow(final String tipo,
+      final app.paper5.model.Score score) {
+
+    final Map<String, Object> row = new java.util.LinkedHashMap<>();
+    row.put("tipo", tipo);
+    row.put("rotulo", score.label());
+    row.put("n", score.n());
+    row.put("mae_horas", score.maeHours());
+    row.put("mae_dias", score.maeDays());
+    row.put("ganho_horas", score.gainHours());
+    row.put("ganho_percentual", score.gainPercent());
+    row.put("ganho_sobre_constante_percentual", score.gainOverConstantPercent());
+    row.put("spearman", score.spearman());
+    return row;
   }
 
   private static void print(final app.paper5.model.Score score) {
