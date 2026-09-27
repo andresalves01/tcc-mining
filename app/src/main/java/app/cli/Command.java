@@ -11,6 +11,7 @@ import app.cli.commands.FunnelCommand;
 import app.cli.commands.HarvestJiraCommand;
 import app.cli.commands.Paper5ExtractCommand;
 import app.cli.commands.Paper5FitInnerCommand;
+import app.cli.commands.Paper5ReservedCommand;
 import app.cli.commands.Paper5PopulationCommand;
 import app.cli.commands.PullRequestFeaturesCommand;
 import app.cli.commands.PullRequestLabelsCommand;
@@ -133,9 +134,17 @@ public enum Command {
       profiles, plus the literature profile without area_hotness_90d --
       with Elastic Net and Extra Trees, scored against the inner
       selection of the training side. Reports MAE in hours and days,
-      the gap against the mandatory baseline, and Spearman. There is no
-      paper5-fit: no code path here reaches the reserved set. Reads the
-      file CACHE points at; writes nothing."""),
+      the gap against the mandatory baseline, and Spearman. Reads the
+      file CACHE points at; writes nothing. This is the development
+      stage: the reserved set is reached only by paper5-reservado."""),
+
+  PAPER5_RESERVED("paper5-reservado", new Paper5ReservedCommand(), """
+      Artigo 5: score the reserved partition ONCE, against the
+      specification frozen in REGISTRO-PREVIO.md before this command
+      existed. Refits the five specifications on the whole training
+      side with the alphas and lambdas the registration fixed, reports
+      what each variable weighed, and only then scores the reserved
+      rows. Searches for nothing. Reads CACHE and A4."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both
