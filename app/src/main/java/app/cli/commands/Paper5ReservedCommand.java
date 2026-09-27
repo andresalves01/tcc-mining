@@ -98,8 +98,9 @@ public final class Paper5ReservedCommand implements CommandRunner {
     }
 
     System.out.printf("%n%n  O RESULTADO NO CONJUNTO RESERVADO%n%n");
-    System.out.printf("  %-44s %6s %9s %9s %9s %8s %11s %9s%n",
-        "especificacao", "n", "MAE h", "MAE dias", "ganho h", "ganho %", "vs const %", "Spearman");
+    System.out.printf("  %-44s %6s %9s %9s %9s %8s %11s %9s %9s%n",
+        "especificacao", "n", "MAE h", "MAE dias", "ganho h", "ganho %", "vs const %", "Spearman",
+        "par a par");
     print(report.baseline());
     print(report.constant());
     report.results().stream()
@@ -166,12 +167,14 @@ public final class Paper5ReservedCommand implements CommandRunner {
     row.put("ganho_percentual", score.gainPercent());
     row.put("ganho_sobre_constante_percentual", score.gainOverConstantPercent());
     row.put("spearman", score.spearman());
+    row.put("acerto_par_a_par", score.pairwise());
     return row;
   }
 
   private static void print(final app.paper5.model.Score score) {
-    System.out.printf("  %-44s %6d %9.2f %9.2f %+9.2f %+7.1f%% %+10.1f%% %9.3f%n",
+    System.out.printf("  %-44s %6d %9.2f %9.2f %+9.2f %+7.1f%% %+10.1f%% %9.3f %8.1f%%%n",
         score.label(), score.n(), score.maeHours(), score.maeDays(),
-        score.gainHours(), score.gainPercent(), score.gainOverConstantPercent(), score.spearman());
+        score.gainHours(), score.gainPercent(), score.gainOverConstantPercent(), score.spearman(),
+        100 * score.pairwise());
   }
 }

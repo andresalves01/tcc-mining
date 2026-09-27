@@ -103,9 +103,9 @@ public final class Paper5FitInnerCommand implements CommandRunner {
     System.out.printf("    a media e %.1f vezes a mediana: a distribuicao e assimetrica e o MAE"
         + " e dominado pela cauda.%n", outcome.meanHours() / outcome.medianHours());
 
-    System.out.printf("%n  %-58s %6s %9s %9s %9s %8s %10s %9s%n",
+    System.out.printf("%n  %-58s %6s %9s %9s %9s %8s %10s %9s %9s%n",
         "familia / perfil | algoritmo", "n", "MAE h", "MAE dias", "ganho h", "ganho %",
-        "vs const %", "Spearman");
+        "vs const %", "Spearman", "par a par");
     print(report.oracleConstant());
     print(report.constant());
     print(report.baseline());
@@ -117,6 +117,7 @@ public final class Paper5FitInnerCommand implements CommandRunner {
               fitted.settings(), fitted.selectedColumns(), fitted.columns().size());
         });
 
+    printPairedComparison(report);
     printContributions(report);
 
     System.out.printf("%n  cobertura dos tres preditores herdados do Artigo 4"
@@ -168,9 +169,52 @@ public final class Paper5FitInnerCommand implements CommandRunner {
     }
   }
 
+  /**
+   * Whether the order the table prints survives resampling the rows it was measured on.
+   *
+   * <p>Restricted to the profile the registration froze and to Elastic Net, because those are the
+   * rows of the table anyone will compare. Printing it for all forty-six cells would bury the one
+   * comparison that matters under a thousand that nobody asked.
+   */
+  private static void printPairedComparison(final Paper5FitTask.Report report) {
+    final List<Paper5FitTask.Fitted> compared = report.fits().stream()
+        .filter(f -> "Elastic Net".equals(f.algorithm()))
+        .filter(f -> f.cell().profile() == app.pipeline.Paper5ReservedTask.PROFILE)
+        .filter(f -> f.cell().excluded().isEmpty())
+        .sorted(Comparator.comparingDouble(f -> f.score().maeHours()))
+        .toList();
+    if (compared.size() < 2) {
+      return;
+    }
+    System.out.printf("%n%n  A ORDEM DA TABELA SOBREVIVE AO RUIDO? -- %s, Elastic Net%n",
+        app.pipeline.Paper5ReservedTask.PROFILE);
+    System.out.printf("  reamostragem pareada das mesmas %,d linhas, %d sorteios, semente %d.%n",
+        report.selectionRows(), app.paper5.model.Bootstrap.DRAWS,
+        app.paper5.model.Bootstrap.SEED);
+    System.out.printf("  'vence' e a fracao de sorteios em que o primeiro errou menos."
+        + " Intervalo contendo zero = empate nestas linhas.%n%n");
+
+    final List<String> labels = compared.stream()
+        .map(f -> f.cell().family().toString()).toList();
+    final List<double[]> errors = compared.stream()
+        .map(f -> app.paper5.model.Bootstrap.errors(f.predictedHours(), report.observedHours()))
+        .toList();
+
+    System.out.printf("    %-24s %-24s %8s %10s %22s%n",
+        "especificacao", "contra", "vence", "dif. media", "intervalo de 95%");
+    for (final app.paper5.model.Bootstrap.Comparison c
+        : app.paper5.model.Bootstrap.allPairs(labels, errors)) {
+
+      System.out.printf("    %-24s %-24s %7.1f%% %+10.2f   [%+7.2f, %+7.2f] %s%n",
+          c.a(), c.b(), 100 * c.winRate(), c.meanGap(), c.lowGap(), c.highGap(),
+          c.indistinguishable() ? "EMPATE" : "");
+    }
+  }
+
   private static void print(final app.paper5.model.Score score) {
-    System.out.printf("  %-58s %6d %9.2f %9.2f %+9.2f %+7.1f%% %+9.1f%% %9.3f%n",
+    System.out.printf("  %-58s %6d %9.2f %9.2f %+9.2f %+7.1f%% %+9.1f%% %9.3f %8.1f%%%n",
         score.label(), score.n(), score.maeHours(), score.maeDays(),
-        score.gainHours(), score.gainPercent(), score.gainOverConstantPercent(), score.spearman());
+        score.gainHours(), score.gainPercent(), score.gainOverConstantPercent(), score.spearman(),
+        100 * score.pairwise());
   }
 }

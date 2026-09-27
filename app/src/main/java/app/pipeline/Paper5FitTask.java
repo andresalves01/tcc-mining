@@ -76,8 +76,14 @@ public final class Paper5FitTask {
    *     columns" are different facts and a reader needs the second one
    * @param settings the chosen hyperparameters, in the words the estimator uses
    */
+  /**
+   * @param predictedHours one prediction per scored row, kept so two cells can be compared on the
+   *     same rows. Without it a difference of one hour between two specifications cannot be told
+   *     from noise, and the table would invite reading a ranking into it anyway
+   */
   public record Fitted(Cell cell, String algorithm, Score score, List<String> columns,
-      String settings, int selectedColumns, List<Contribution> contributions) {}
+      String settings, int selectedColumns, List<Contribution> contributions,
+      double[] predictedHours) {}
 
   /**
    * What one column of the design matrix did, for the report to print beside the cell.
@@ -112,7 +118,8 @@ public final class Paper5FitTask {
       int baselineFellBack,
       List<String> dropped,
       List<String> unfitted,
-      List<HistoryCoverage> historyCoverage) {}
+      List<HistoryCoverage> historyCoverage,
+      double[] observedHours) {}
 
   private final Progress progress;
 
@@ -272,7 +279,7 @@ public final class Paper5FitTask {
     return new Report(baselineScore, constantScore, oracleScore, outcome,
         List.copyOf(fits), fitUnits.size(), scoreUnits.size(),
         baseline.fellBackOn(scoreUnits), List.copyOf(dropped), List.copyOf(unfitted),
-        List.copyOf(coverage));
+        List.copyOf(coverage), observed);
   }
 
   /**
@@ -324,9 +331,13 @@ public final class Paper5FitTask {
       contributions.add(new Contribution(matrix.columns().get(i), weights[i], ownSpearman[i],
           best.selected(i)));
     }
+    final double[] predicted = new double[xs.length];
+    for (int i = 0; i < xs.length; i++) {
+      predicted[i] = DesignMatrix.hours(best.predict(xs[i]));
+    }
     return new Fitted(cell, "Elastic Net", bestScore, matrix.columns(),
         String.format("alpha=%.2f lambda=%.4g", best.alpha(), best.lambda()),
-        best.selectedCount(), List.copyOf(contributions));
+        best.selectedCount(), List.copyOf(contributions), predicted);
   }
 
   private Fitted extraTrees(final Cell cell, final DesignMatrix matrix, final double[][] x,
@@ -357,8 +368,12 @@ public final class Paper5FitTask {
     if (best == null) {
       return null;
     }
+    final double[] predicted = new double[xs.length];
+    for (int i = 0; i < xs.length; i++) {
+      predicted[i] = DesignMatrix.hours(best.predict(xs[i]));
+    }
     return new Fitted(cell, "Extra Trees", bestScore, matrix.columns(),
-        best.settings().toString(), matrix.columns().size(), List.of());
+        best.settings().toString(), matrix.columns().size(), List.of(), predicted);
   }
 
   /** One scoring path for both estimators, so the two can never differ by how they were measured. */

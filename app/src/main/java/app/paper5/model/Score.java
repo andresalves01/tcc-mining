@@ -23,12 +23,17 @@ import java.util.List;
  *     baseline is <b>worse</b> than that constant, so a gain measured only against it flatters every
  *     model in the table. The specification names the project median as the reference; it does not
  *     forbid saying what the reference is worth
- * @param spearman correlation between predicted and observed duration. Secondary, and never to be
- *     turned into a percentage of correct answers or compared with the developer ordering of the
- *     previous paper, which measures something else
+ * @param spearman correlation between predicted and observed duration. Secondary, and never
+ *     compared with the developer ordering of the previous paper, which measures something else
+ * @param pairwise the share of pull request pairs the model orders correctly: of every two rows
+ *     whose true durations differ, how often it says the slower one is slower. Added on 27/09/2026,
+ *     before the reserved partition was opened, because the rank correlation beside it is not a
+ *     number a reader can act on and this one is. Half is the coin; it is the same quantity the
+ *     previous paper reported for ordering people, where the answer was 49,6%
  */
 public record Score(String label, int n, double maeHours, double maeDays,
-    double gainHours, double gainPercent, double gainOverConstantPercent, double spearman) {
+    double gainHours, double gainPercent, double gainOverConstantPercent, double spearman,
+    double pairwise) {
 
   /**
    * @param predictedHours one prediction per row, in hours, on the original scale
@@ -52,7 +57,43 @@ public record Score(String label, int n, double maeHours, double maeDays,
         constantMaeHours == 0 ? 0 : 100.0 * (constantMaeHours - maeHours) / constantMaeHours,
         // Reused rather than reimplemented: the same ranking correlation the previous paper used,
         // so that a difference between the two studies is never an artefact of two tie rules.
-        Metrics.spearman(predictedHours, observedHours));
+        Metrics.spearman(predictedHours, observedHours),
+        pairwiseAccuracy(predictedHours, observedHours));
+  }
+
+  /**
+   * Of every pair of rows whose true durations differ, the share the prediction orders correctly.
+   *
+   * <p>Pairs tied in the truth are skipped rather than counted as wrong: there is no right answer
+   * to give for two pull requests that took the same time. A pair tied in the <b>prediction</b> is
+   * counted as half, because the model gave no ordering and guessing would be a coin -- scoring it
+   * as correct would reward a model that predicts one constant with a perfect score.
+   */
+  static double pairwiseAccuracy(final double[] predicted, final double[] observed) {
+    // Todos os pares de 1.865 linhas sao 1,7 milhao, e este metodo e chamado uma vez por tentativa
+    // de parametro. O laco e escrito com comparacoes diretas, sem signum e sem ramos extras, porque
+    // a diferenca entre 10 e 25 nanossegundos por par decide se a rodada leva um minuto ou vinte.
+    long comparable = 0;
+    long correct = 0;
+    long tiedGuess = 0;
+    for (int i = 0; i < observed.length; i++) {
+      final double oi = observed[i];
+      final double pi = predicted[i];
+      for (int j = i + 1; j < observed.length; j++) {
+        final double oj = observed[j];
+        if (oi == oj) {
+          continue;
+        }
+        comparable++;
+        final double pj = predicted[j];
+        if (pi == pj) {
+          tiedGuess++;
+        } else if ((oi > oj) == (pi > pj)) {
+          correct++;
+        }
+      }
+    }
+    return comparable == 0 ? Double.NaN : (correct + 0.5 * tiedGuess) / comparable;
   }
 
   /** A reference scores itself, so its row of the table comes out of the same code path. */
