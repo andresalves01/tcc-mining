@@ -231,6 +231,22 @@ public final class FitModelTask {
     // Nem exame nem tamanho: o unico recorte estritamente anterior a abertura.
     ablation.put("conhecido na criacao", ablate(standardizer, fit, selection, chosen,
         Columns.Group.DEV, Columns.Group.CARGA, Columns.Group.EQUIPE, Columns.Group.CRIACAO));
+    // O mesmo recorte "conhecido na criacao", menos as duas colunas condicionadas ao conjunto
+    // FINAL de arquivos deste pull request. Pedida pela Investigacao E do handout de 27/09/2026:
+    // "conhecido na criacao" retira o grupo TAREFA e com ele ln(LOC tarefa) e ln(arquivos tarefa),
+    // mas ln(familiaridade arq.) e fracao arq. conhecidos estao no grupo DEV e sobrevivem -- e as
+    // duas contam arquivos do conjunto final, que pull_request_file nao datar impede de reconstruir
+    // na abertura. Ver papers/04-pull-requests/replicacoes/validacao-yu-chouchen/.
+    final List<String> criacaoEstrita = new ArrayList<>();
+    for (final int i : Columns.indicesOf(Columns.Group.DEV, Columns.Group.CARGA,
+        Columns.Group.EQUIPE, Columns.Group.CRIACAO)) {
+      final String name = Columns.all().get(i).name();
+      if (!name.equals("ln(familiaridade arq.)") && !name.equals("fracao arq. conhecidos")) {
+        criacaoEstrita.add(name);
+      }
+    }
+    ablation.put("conhecido na criacao, estrito",
+        ablateNamed(standardizer, fit, selection, chosen, criacaoEstrita));
     // The columns the mongosh prototype fitted, so the two can be put side by side.
     ablation.put("colunas do prototipo", ablateNamed(standardizer, fit, selection, chosen,
         Columns.PROTOTYPE));
