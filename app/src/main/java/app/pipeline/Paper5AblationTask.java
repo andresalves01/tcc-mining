@@ -103,12 +103,17 @@ public final class Paper5AblationTask {
     for (int i = 0; i < baselineHours.length; i++) {
       baselineHours[i] = baseline.predictHours(scoreUnits.get(i));
     }
-    final Score baselineScore = Score.reference("referencia: mediana do projeto",
-        baselineHours, observed, baseline.constantHours());
     final double[] constantHours = new double[scoreUnits.size()];
     java.util.Arrays.fill(constantHours, baseline.constantHours());
+    final double constantMae = Paper5AuditTask.mae(constantHours, observed);
+    // Corrigido em 28/09/2026: o quarto argumento e o ERRO da constante nestas linhas, nao o valor
+    // que ela preve. Antes passava-se a previsao (68,2 h), e a coluna "ganho sobre a constante" das
+    // duas linhas de referencia saia -262% e -235% em vez de -8,3% e 0. As linhas dos modelos nunca
+    // foram afetadas: elas ja recebiam o erro da constante.
+    final Score baselineScore = Score.reference("referencia: mediana do projeto",
+        baselineHours, observed, constantMae);
     final Score constantScore = Score.reference("calibracao: constante",
-        constantHours, observed, baseline.constantHours());
+        constantHours, observed, constantMae);
 
     final History history = History.learnedOn(fitUnits);
     for (int i = 0; i < fitRows.size(); i++) {

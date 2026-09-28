@@ -17,4 +17,17 @@ public interface PullRequestExtraSource {
   Map<String, PullRequestExtras> of(java.util.Collection<String> pullRequestIds);
 
   String describe();
+
+  /**
+   * Auditoria temporal de 28/09/2026, somente leitura: para cada pull request, o que a espera
+   * tipica do projeto e a familiaridade leram que so se soube depois da abertura.
+   *
+   * <p>Cada vetor, por id: [0] PRs do projeto usados na espera; [1] desses, examinados em t0 ou
+   * depois; [2] desses, mesclados em t0 ou depois; [3] 1 se a espera muda usando so PRs examinados
+   * e mesclados antes de t0; [4] PRs anteriores do autor usados na familiaridade; [5] desses,
+   * mesclados em t0 ou depois; [6] 1 se a familiaridade muda usando so os mesclados antes de t0.
+   */
+  default Map<String, long[]> temporalAudit(final java.util.Collection<String> pullRequestIds) {
+    throw new UnsupportedOperationException(describe() + " nao implementa a auditoria temporal");
+  }
 }

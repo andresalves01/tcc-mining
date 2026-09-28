@@ -10,6 +10,8 @@ import app.cli.commands.FitInnerCommand;
 import app.cli.commands.FunnelCommand;
 import app.cli.commands.HarvestJiraCommand;
 import app.cli.commands.Paper5AblationCommand;
+import app.cli.commands.Paper5AuditCommand;
+import app.cli.commands.Paper5TemporalAuditCommand;
 import app.cli.commands.Paper5CheckCommand;
 import app.cli.commands.Paper5ExtractCommand;
 import app.cli.commands.Paper5FitInnerCommand;
@@ -161,6 +163,22 @@ public enum Command {
       side with the alphas and lambdas the registration fixed, reports
       what each variable weighed, and only then scores the reserved
       rows. Searches for nothing. Reads CACHE and A4."""),
+
+  PAPER5_AUDIT("paper5-auditoria", new Paper5AuditCommand(), """
+      Artigo 5, auditoria de 28/09/2026: reruns the registered reserved
+      task unchanged, proves a second fitting path identical to it bit
+      for bit, writes every reserved prediction to PREVISOES, and prints
+      the post-opening readings -- per-project ordering, project-level
+      intervals, the historical project mean, and the families without
+      the columns that read the future. Searches for nothing. Reads
+      CACHE and A4; appends the audit to PAPER5_DB."""),
+
+  PAPER5_TEMPORAL_AUDIT("paper5-auditoria-temporal", new Paper5TemporalAuditCommand(), """
+      Artigo 5, auditoria de 28/09/2026: for every unit, how many of the
+      pull requests behind the project's typical wait and the author's
+      file familiarity were examined or merged at or after t0, and
+      whether the value changes using only what was known. Reads
+      UNITS_DB and SOURCE_DB; writes the counts to SAIDA, nothing else."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both

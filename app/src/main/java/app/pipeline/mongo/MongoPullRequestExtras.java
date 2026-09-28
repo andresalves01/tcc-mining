@@ -67,7 +67,7 @@ public final class MongoPullRequestExtras implements PullRequestExtraSource {
   /** Um pull request reduzido ao que estes preditores precisam dele. */
   private record Row(String id, String project, String author, Instant opened,
       Instant examined, String examState, String examiner, boolean byComment, List<String> paths,
-      String association, String examinerAssociation) {}
+      String association, String examinerAssociation, Instant merged) {}
 
   @Override
   public Map<String, PullRequestExtras> of(final Collection<String> ids) {
@@ -398,9 +398,85 @@ public final class MongoPullRequestExtras implements PullRequestExtraSource {
       }
       rows.add(new Row(id, project, author, opened, examined, state, examiner, byComment,
           pathsByPr.getOrDefault(id, List.of()), pr.getString("author_association"),
-          examinerAssociation));
+          examinerAssociation, merged));
     }
     return rows;
+  }
+
+  @Override
+  public Map<String, long[]> temporalAudit(final Collection<String> ids) {
+    final Set<String> wanted = new HashSet<>(ids);
+    final List<Row> rows = scan(wanted);
+    final Map<String, List<Row>> byAuthorProject = new HashMap<>(1 << 12);
+    final Map<String, List<Row>> byProject = new HashMap<>(1 << 8);
+    for (final Row row : rows) {
+      if (row.author() != null) {
+        byAuthorProject.computeIfAbsent(row.author() + "\u0000" + row.project(),
+            k -> new ArrayList<>()).add(row);
+      }
+      byProject.computeIfAbsent(row.project(), k -> new ArrayList<>()).add(row);
+    }
+    byAuthorProject.values().forEach(l -> l.sort(Comparator.comparing(Row::opened)));
+    byProject.values().forEach(l -> l.sort(Comparator.comparing(Row::opened)));
+
+    final Map<String, long[]> out = new HashMap<>(wanted.size() * 2);
+    for (final Row row : rows) {
+      if (!wanted.contains(row.id())) {
+        continue;
+      }
+      final long[] a = new long[7];
+      final Instant t0 = row.opened();
+      // Espera tipica: exatamente o laco de projectWait, contando o que ele usou.
+      final Instant from = t0.minus(PROJECT_WINDOW);
+      final List<Double> known = new ArrayList<>();
+      for (final Row other : byProject.get(row.project())) {
+        if (!other.opened().isBefore(t0)) {
+          break;
+        }
+        if (other.opened().isBefore(from) || other.examined() == null) {
+          continue;
+        }
+        a[0]++;
+        if (!other.examined().isBefore(t0)) {
+          a[1]++;
+        }
+        if (!other.merged().isBefore(t0)) {
+          a[2]++;
+        }
+        if (other.examined().isBefore(t0) && other.merged().isBefore(t0)) {
+          known.add(Duration.between(other.opened(), other.examined()).toMillis() / 86_400_000.0);
+        }
+      }
+      known.sort(Double::compare);
+      final double corrected = known.isEmpty() ? 0.0 : known.get(known.size() / 2);
+      a[3] = corrected == projectWait(row, byProject) ? 0 : 1;
+      // Familiaridade: o laco de familiarity, contando os anteriores mesclados depois de t0.
+      final List<Row> history = row.author() == null ? null
+          : byAuthorProject.get(row.author() + "\u0000" + row.project());
+      if (history != null && !row.paths().isEmpty()) {
+        final Set<String> seenKnown = new HashSet<>();
+        for (final Row prior : history) {
+          if (!prior.opened().isBefore(t0)) {
+            break;
+          }
+          a[4]++;
+          if (!prior.merged().isBefore(t0)) {
+            a[5]++;
+          } else {
+            seenKnown.addAll(prior.paths());
+          }
+        }
+        int overlapKnown = 0;
+        for (final String path : row.paths()) {
+          if (seenKnown.contains(path)) {
+            overlapKnown++;
+          }
+        }
+        a[6] = overlapKnown == familiarity(row, byAuthorProject) ? 0 : 1;
+      }
+      out.put(row.id(), a);
+    }
+    return out;
   }
 
   private static Instant inside(final Instant at, final Instant from, final Instant to) {

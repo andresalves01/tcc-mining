@@ -78,6 +78,15 @@ public final class Baseline {
     return fell;
   }
 
+  /** The prediction for every scored row, in order. */
+  public double[] projectOf(final List<? extends Unit> scored) {
+    final double[] out = new double[scored.size()];
+    for (int i = 0; i < out.length; i++) {
+      out[i] = predictHours(scored.get(i));
+    }
+    return out;
+  }
+
   public int projects() {
     return projects;
   }
