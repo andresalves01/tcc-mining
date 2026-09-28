@@ -107,6 +107,49 @@ public final class Paper5ReservedCommand implements CommandRunner {
         .sorted(Comparator.comparingDouble(r -> r.score().maeHours()))
         .forEach(r -> print(r.score()));
 
+    System.out.printf("%n%n  ONDE O ERRO VIVE%n");
+    System.out.printf("  %-26s %9s %9s %9s %9s %9s %14s%n",
+        "especificacao", "MAE", "mediana", "p75", "p90", "p99", "sem o decil+");
+    for (final Paper5ReservedTask.Result r : report.results()) {
+      final var e = app.paper5.model.Breakdown.errors(r.predictedHours(), report.observedHours());
+      System.out.printf("  %-26s %9.1f %9.1f %9.1f %9.1f %9.1f %9.1f (n=%d)%n",
+          r.family(), e.mae(), e.p50(), e.p75(), e.p90(), e.p99(), e.trimmedMae(), e.trimmedN());
+    }
+    System.out.printf("%n%n  O CORPO DA DISTRIBUICAO: entre o quartil de baixo e o decil de cima%n");
+    System.out.printf("  as referencias sao cortadas nas MESMAS linhas.%n%n");
+    System.out.printf("  %-26s %6s %12s %11s %13s %9s %10s%n",
+        "modelo", "n", "dur. mediana", "erro medio", "erro mediano", "Spearman", "par a par");
+    for (final Paper5ReservedTask.Result r : report.results()) {
+      final var c = app.paper5.model.Breakdown.body(r.predictedHours(), report.observedHours(),
+          0.25, 0.90);
+      System.out.printf("  %-26s %6d %10.1f h %9.1f h %11.1f h %9.3f %9.1f%%%n",
+          r.family(), c.n(), c.medianTruth(), c.mae(), c.medianError(), c.spearman(),
+          100 * c.pairwise());
+    }
+    final var corpoBase = app.paper5.model.Breakdown.body(report.baselineHours(),
+        report.observedHours(), 0.25, 0.90);
+    System.out.printf("  %-26s %6d %10.1f h %9.1f h %11.1f h %9.3f %9.1f%%%n",
+        "referencia: med. projeto", corpoBase.n(), corpoBase.medianTruth(), corpoBase.mae(),
+        corpoBase.medianError(), corpoBase.spearman(), 100 * corpoBase.pairwise());
+    final var corpoConst = app.paper5.model.Breakdown.body(report.constantHours(),
+        report.observedHours(), 0.25, 0.90);
+    System.out.printf("  %-26s %6d %10.1f h %9.1f h %11.1f h %9.3f %9.1f%%%n",
+        "calibracao: constante", corpoConst.n(), corpoConst.medianTruth(), corpoConst.mae(),
+        corpoConst.medianError(), corpoConst.spearman(), 100 * corpoConst.pairwise());
+    System.out.printf("  (faixa: de %.1f h a %.1f h)%n", corpoBase.lowHours(),
+        corpoBase.highHours());
+
+    for (final Paper5ReservedTask.Result r : report.results()) {
+      System.out.printf("%n  %s -- erro por faixa de duracao real%n", r.family());
+      System.out.printf("    %-20s %6s %14s %12s %14s%n",
+          "faixa", "n", "duracao mediana", "erro medio", "erro mediano");
+      for (final app.paper5.model.Breakdown.Band b
+          : app.paper5.model.Breakdown.byTruth(r.predictedHours(), report.observedHours())) {
+        System.out.printf("    %-20s %6d %13.1f h %10.1f h %12.1f h%n",
+            b.label(), b.n(), b.medianTruth(), b.mae(), b.medianError());
+      }
+    }
+
     System.out.printf("%n%n  A ORDEM ACIMA SOBREVIVE AO RUIDO?%n");
     System.out.printf("  reamostragem pareada das mesmas %,d linhas reservadas, %d sorteios,"
         + " semente %d.%n", report.reservedRows(), app.paper5.model.Bootstrap.DRAWS,

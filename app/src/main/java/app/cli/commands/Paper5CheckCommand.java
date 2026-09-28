@@ -66,6 +66,8 @@ public final class Paper5CheckCommand implements CommandRunner {
       print(m.frozen().family() + " (" + m.columns() + " col)", m.score());
     }
 
+    printBreakdown(report);
+
     System.out.printf("%n%n  QUAIS VARIAVEIS ORDENAM, UMA A UMA%n");
     System.out.printf("  ordenando as linhas so por aquela coluna, quantos pares ela acerta."
         + " 50%% e a moeda.%n");
@@ -99,6 +101,68 @@ public final class Paper5CheckCommand implements CommandRunner {
           c.indistinguishable() ? "EMPATE" : "");
     }
     System.out.printf("%n  nada foi escrito, e o conjunto reservado nao foi alcancado.%n");
+  }
+
+  /** As previsoes da referencia, reconstruidas do proprio Score para poder recorta-las. */
+  private static double[] baselinePredictions(final Paper5CheckTask.Report report) {
+    return report.baselineHours();
+  }
+
+  /** Onde o erro vive: a distribuicao dele, e o erro por faixa de duracao real. */
+  private static void printBreakdown(final Paper5CheckTask.Report report) {
+    System.out.printf("%n%n  ONDE O ERRO VIVE%n");
+    System.out.printf("  a media do erro nao descreve o pull request tipico: ela mistura acertos"
+        + " em muitas linhas%n  com enganos enormes em poucas. Abaixo, a distribuicao do proprio"
+        + " erro.%n%n");
+    System.out.printf("  %-26s %9s %9s %9s %9s %9s %14s%n",
+        "modelo", "MAE", "mediana", "p75", "p90", "p99", "sem o decil+");
+    for (final Paper5CheckTask.Measured m : report.measured()) {
+      final var e = app.paper5.model.Breakdown.errors(m.predictedHours(), report.observedHours());
+      System.out.printf("  %-26s %9.1f %9.1f %9.1f %9.1f %9.1f %9.1f (n=%d)%n",
+          m.frozen().family().toString().length() > 26
+              ? m.frozen().family().toString().substring(0, 26) : m.frozen().family(),
+          e.mae(), e.p50(), e.p75(), e.p90(), e.p99(), e.trimmedMae(), e.trimmedN());
+    }
+
+    System.out.printf("%n%n  O CORPO DA DISTRIBUICAO: entre o quartil de baixo e o decil de cima%n");
+    System.out.printf("  fora os que mesclaram quase na hora e fora a cauda longa. As referencias"
+        + " sao cortadas nas%n  MESMAS linhas -- comparar um modelo num subconjunto facil contra"
+        + " uma referencia no todo%n  seria comparar duas perguntas diferentes.%n%n");
+    final var corpoRef = app.paper5.model.Breakdown.body(
+        report.baseline().n() > 0 ? baselinePredictions(report) : new double[0],
+        report.observedHours(), 0.25, 0.90);
+    System.out.printf("  %-26s %6s %12s %11s %13s %9s %10s%n",
+        "modelo", "n", "dur. mediana", "erro medio", "erro mediano", "Spearman", "par a par");
+    for (final Paper5CheckTask.Measured m : report.measured()) {
+      final var c = app.paper5.model.Breakdown.body(m.predictedHours(), report.observedHours(),
+          0.25, 0.90);
+      System.out.printf("  %-26s %6d %10.1f h %9.1f h %11.1f h %9.3f %9.1f%%%n",
+          m.frozen().family(), c.n(), c.medianTruth(), c.mae(), c.medianError(),
+          c.spearman(), 100 * c.pairwise());
+      if (m == report.measured().get(0)) {
+        System.out.printf("  %-26s %6s %10s %9s %11s %9s %9s%n", "  (faixa: de "
+            + String.format("%.1f", c.lowHours()) + " h a "
+            + String.format("%.1f", c.highHours()) + " h)", "", "", "", "", "", "");
+      }
+    }
+    System.out.printf("  %-26s %6d %10.1f h %9.1f h %11.1f h %9.3f %9.1f%%%n",
+        "referencia: med. projeto", corpoRef.n(), corpoRef.medianTruth(), corpoRef.mae(),
+        corpoRef.medianError(), corpoRef.spearman(), 100 * corpoRef.pairwise());
+
+    System.out.printf("%n%n  O ERRO POR FAIXA DE DURACAO REAL%n");
+    System.out.printf("  faixas cortadas na VERDADE, nunca na previsao -- cortar na previsao"
+        + " deixaria o modelo%n  escolher os proprios casos faceis. Todos sao avaliados nas"
+        + " mesmas linhas de cada faixa.%n");
+    for (final Paper5CheckTask.Measured m : report.measured()) {
+      System.out.printf("%n  %s%n", m.frozen().family());
+      System.out.printf("    %-20s %6s %14s %12s %14s%n",
+          "faixa", "n", "duracao mediana", "erro medio", "erro mediano");
+      for (final app.paper5.model.Breakdown.Band b
+          : app.paper5.model.Breakdown.byTruth(m.predictedHours(), report.observedHours())) {
+        System.out.printf("    %-20s %6d %13.1f h %10.1f h %12.1f h%n",
+            b.label(), b.n(), b.medianTruth(), b.mae(), b.medianError());
+      }
+    }
   }
 
   private static void print(final String label, final app.paper5.model.Score score) {

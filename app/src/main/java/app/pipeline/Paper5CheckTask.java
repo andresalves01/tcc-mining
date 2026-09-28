@@ -60,7 +60,7 @@ public final class Paper5CheckTask {
 
   public record Report(Score baseline, Score constant, Score.Outcome outcome,
       List<Measured> measured, List<Bootstrap.Comparison> comparisons,
-      int fitRows, int selectionRows, double[] observedHours) {}
+      int fitRows, int selectionRows, double[] observedHours, double[] baselineHours) {}
 
   /**
    * The parameters the sweep chose for the strict profile, for reading the other side of the line.
@@ -189,6 +189,6 @@ public final class Paper5CheckTask {
 
     return new Report(baselineScore, constantScore, Score.Outcome.of(observed),
         List.copyOf(ordered), Bootstrap.allPairs(labels, errors),
-        fitUnits.size(), scoreUnits.size(), observed);
+        fitUnits.size(), scoreUnits.size(), observed, baselineHours);
   }
 }

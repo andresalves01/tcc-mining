@@ -77,7 +77,10 @@ public final class Paper5ReservedTask {
       int trainingRows,
       int reservedRows,
       int baselineFellBack,
-      List<String> dropped) {}
+      List<String> dropped,
+      double[] observedHours,
+      double[] baselineHours,
+      double[] constantHours) {}
 
   private final app.pipeline.port.Progress progress;
 
@@ -205,7 +208,8 @@ public final class Paper5ReservedTask {
 
     return new Report(baselineScore, constantScore, Score.Outcome.of(observed),
         List.copyOf(ordered), comparisons, trainUnits.size(), reservedUnits.size(),
-        baseline.fellBackOn(reservedUnits), List.copyOf(dropped));
+        baseline.fellBackOn(reservedUnits), List.copyOf(dropped), observed,
+        baselineHours, constantHours);
   }
 
   /** The registration's own facts, printed beside the numbers so the two travel together. */
