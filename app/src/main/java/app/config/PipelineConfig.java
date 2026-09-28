@@ -46,6 +46,8 @@ import java.util.Optional;
  * @param paper5Db where the Yu/Chouchen replication writes its attributes and results. Its own
  *     database by specification: the corpus and both previous papers' databases are read-only to
  *     it, and no stage of it may add a column to them
+ * @param paper6Db where the transposition of the same method to issue labels writes its results.
+ *     Its own database, refused if it names any database the codebase reads
  * @param teamWindow how far back a commit still counts as presence on the active team. It bounds
  *     participation observed and deliberately does not discount its members' accumulated
  *     experience: someone who committed yesterday brings their whole history with them
@@ -60,6 +62,7 @@ public record PipelineConfig(
     String ledgerDb,
     String unitsDb,
     String paper5Db,
+    String paper6Db,
     Path workDir,
     Path jiraCacheDir,
     Duration jiraDelay,
@@ -88,6 +91,13 @@ public record PipelineConfig(
           "PAPER5_DB must differ from SOURCE_DB, UNITS_DB and LEDGER_DB (got '" + paper5Db
               + "'): the replication writes there and reads the other three, which are frozen");
     }
+    // The transposition reads the thesis labels from TARGET_DB and never writes there. Its own
+    // output going into any database it reads, or into the PR study's, would be the same mistake.
+    if (java.util.List.of(sourceDb, targetDb, unitsDb, ledgerDb, paper5Db).contains(paper6Db)) {
+      throw new IllegalArgumentException(
+          "PAPER6_DB must differ from SOURCE_DB, TARGET_DB, UNITS_DB, LEDGER_DB and PAPER5_DB (got '"
+              + paper6Db + "'): the transposition writes there and only there");
+    }
   }
 
   public static PipelineConfig fromEnvironment() {
@@ -99,6 +109,7 @@ public record PipelineConfig(
         value("LEDGER_DB", targetDb),
         value("UNITS_DB", targetDb),
         value("PAPER5_DB", "smartshark_paper5"),
+        value("PAPER6_DB", "smartshark_paper6"),
         Path.of(value("WORK_DIR", "build/identity-work")),
         Path.of(value("JIRA_CACHE_DIR", "build/jira-cache")),
         Duration.ofMillis(Long.parseLong(value("JIRA_DELAY_MS", "250"))),

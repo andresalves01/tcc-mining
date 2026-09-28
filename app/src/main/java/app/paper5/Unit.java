@@ -23,7 +23,8 @@ import java.time.Instant;
  * @param mergedAt the right edge of the outcome
  */
 public record Unit(
-    String pullRequestId, String project, String creatorId, Instant openedAt, Instant mergedAt) {
+    String pullRequestId, String project, String creatorId, Instant openedAt, Instant mergedAt)
+    implements Outcome {
 
   /**
    * The outcome, in hours, which is the scale the specification reports MAE on.

@@ -1,6 +1,6 @@
 package app.paper5.model;
 
-import app.paper5.Unit;
+import app.paper5.Outcome;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -33,10 +33,10 @@ public final class Baseline {
     this.projects = projects;
   }
 
-  public static Baseline learnedOn(final List<Unit> fit) {
+  public static Baseline learnedOn(final List<? extends Outcome> fit) {
     final Map<String, List<Double>> hours = new HashMap<>();
     final List<Double> all = new ArrayList<>(fit.size());
-    for (final Unit unit : fit) {
+    for (final Outcome unit : fit) {
       final double value = unit.durationHours();
       hours.computeIfAbsent(unit.project(), key -> new ArrayList<>()).add(value);
       all.add(value);
@@ -63,14 +63,14 @@ public final class Baseline {
   }
 
   /** The prediction, in hours, which is the scale the primary metric is reported on. */
-  public double predictHours(final Unit unit) {
+  public double predictHours(final Outcome unit) {
     return byProject.getOrDefault(unit.project(), global);
   }
 
   /** How many scored rows fell back to the global median, which the report has to state. */
-  public int fellBackOn(final List<Unit> scored) {
+  public int fellBackOn(final List<? extends Outcome> scored) {
     int fell = 0;
-    for (final Unit unit : scored) {
+    for (final Outcome unit : scored) {
       if (!byProject.containsKey(unit.project())) {
         fell++;
       }

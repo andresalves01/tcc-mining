@@ -48,6 +48,7 @@ public final class Help {
           LEDGER_DB         = TARGET_DB          pr-labels, pr-features: read-only ledger/registry
           UNITS_DB          = TARGET_DB          Artigo 5: read-only merged pull requests
           PAPER5_DB         smartshark_paper5   Artigo 5: written to; its own database
+          PAPER6_DB         smartshark_paper6   transposicao para issues: written to; its own
           CACHE             (unset)             Artigo 5: file paper5-extract writes and
                                                 paper5-fit-inner reads, to avoid re-mining
           ORACULO           (unset)             Artigo 5: reference extraction to diff against

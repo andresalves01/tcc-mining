@@ -30,7 +30,7 @@ public record Attribute(
     Set<Family> families,
     TemporalClass temporalClass,
     boolean absenceIndicator,
-    String origin) {
+    String origin) implements Construct {
 
   /** What shape the value takes in the design matrix. */
   public enum Kind {

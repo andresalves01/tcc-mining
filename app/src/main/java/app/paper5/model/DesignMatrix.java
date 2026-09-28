@@ -2,7 +2,8 @@ package app.paper5.model;
 
 import app.paper5.Attribute;
 import app.paper5.Row;
-import app.paper5.Unit;
+import app.paper5.Construct;
+import app.paper5.Outcome;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -38,7 +39,7 @@ import java.util.TreeSet;
 public final class DesignMatrix {
 
   /** The outcome, on the scale the models are fitted on. */
-  public static double target(final Unit unit) {
+  public static double target(final Outcome unit) {
     return Math.log1p(unit.durationHours());
   }
 
@@ -88,11 +89,12 @@ public final class DesignMatrix {
    * @param fit the rows every parameter is learned from. Never the rows being scored
    * @param attributes the cell's constructs, already filtered by family, profile and exclusion
    */
-  public static DesignMatrix fittedOn(final List<Row> fit, final List<Attribute> attributes) {
+  public static DesignMatrix fittedOn(final List<Row> fit,
+      final List<? extends Construct> attributes) {
     final List<Term> terms = new ArrayList<>();
     final List<String> dropped = new ArrayList<>();
 
-    for (final Attribute attribute : attributes) {
+    for (final Construct attribute : attributes) {
       if (attribute.kind() == Attribute.Kind.CATEGORICAL) {
         addCategorical(fit, attribute, terms, dropped);
         continue;
@@ -121,7 +123,7 @@ public final class DesignMatrix {
     return new DesignMatrix(terms.stream().map(Term::name).toList(), dropped, terms);
   }
 
-  private static void addCategorical(final List<Row> fit, final Attribute attribute,
+  private static void addCategorical(final List<Row> fit, final Construct attribute,
       final List<Term> terms, final List<String> dropped) {
 
     final TreeSet<Double> levels = new TreeSet<>();
