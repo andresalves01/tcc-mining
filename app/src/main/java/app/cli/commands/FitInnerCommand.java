@@ -34,7 +34,7 @@ public final class FitInnerCommand implements CommandRunner {
     final FitModelTask task = new FitModelTask(context.observations(), context.progress());
     for (final Bounds bounds : List.of(Bounds.none(), Bounds.oneHourToOneYear())) {
       try {
-        final FitModelTask.Report report = task.run(bounds);
+        final FitModelTask.Report report = task.run(bounds, app.model.Population.all());
         FitCommand.print(report, bounds, "SELECAO INTERNA");
         printAblationGradient(report);
         printPerColumn(task, bounds, report);

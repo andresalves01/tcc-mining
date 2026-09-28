@@ -7,30 +7,101 @@ import app.model.Bounds;
 import app.model.DeveloperOrdering;
 import app.model.ElasticNetModel;
 import app.model.Metrics;
+import app.model.Population;
 import app.pipeline.FitModelTask;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 /** Fits the Elastic Net on the training side and scores it. Reads only; writes nothing. */
 public final class FitCommand implements CommandRunner {
 
+  /**
+   * The population arms, in the order they are reported.
+   *
+   * <p>All four were fixed in {@code papers/01-ttc-semantics/PRE-REGISTRO-ANALISE5.md} before any
+   * of them was run, and all four are printed. Neither the set nor the order is chosen by what the
+   * scores turn out to be.
+   */
+  private static final List<Population> POPULATIONS = List.of(
+      Population.all(),
+      Population.withoutPostdated(),
+      Population.withoutImmediateByMinute(),
+      Population.withoutImmediateByHour());
+
+  /** One line of the cross-arm table, so the eight reports can be read as a comparison. */
+  private record Summary(String population, String bounds, String partition, int n,
+      double mae, double r2, double ordering, double withinTwo, double referenceMae) {}
+
   @Override
   public void run(final Context context) throws CommandFailedException {
-    // Both arms from one run. Whether to restrict the sample to a coherent duration band is still
-    // open, and reporting only one of them would make the other impossible to put beside it.
+    // Both duration arms and all four population arms from one run. Which population a study of
+    // issue lifetime is actually modelling is the question; reporting one arm would make the
+    // others impossible to put beside it.
     final FitModelTask task = new FitModelTask(context.observations(), context.progress());
-    for (final Bounds bounds : List.of(Bounds.none(), Bounds.oneHourToOneYear())) {
-      try {
-        // The inner selection chooses the parameters; the held-out partition is then scored once
-        // with them, refitted over the whole training side. Re-sweeping there would let the
-        // held-out outcomes pick their own model.
-        final FitModelTask.Report inner = task.run(bounds);
-        print(inner, bounds, "SELECAO INTERNA");
-        print(task.heldOut(bounds, inner.alpha(), inner.lambda()), bounds, "TESTE EXTERNO");
-      } catch (final FitModelTask.NoObservationsException e) {
-        throw new CommandFailedException(List.of("  " + e.getMessage()));
+    final List<Summary> summaries = new ArrayList<>();
+    for (final Population population : POPULATIONS) {
+      for (final Bounds bounds : List.of(Bounds.none(), Bounds.oneHourToOneYear())) {
+        try {
+          // The inner selection chooses the parameters; the held-out partition is then scored once
+          // with them, refitted over the whole training side. Re-sweeping there would let the
+          // held-out outcomes pick their own model.
+          final FitModelTask.Report inner = task.run(bounds, population);
+          print(inner, bounds, "SELECAO INTERNA");
+          summaries.add(summarise(inner, "selecao interna"));
+          final FitModelTask.Report held =
+              task.heldOut(bounds, population, inner.alpha(), inner.lambda());
+          print(held, bounds, "TESTE EXTERNO");
+          summaries.add(summarise(held, "teste externo"));
+        } catch (final FitModelTask.NoObservationsException e) {
+          throw new CommandFailedException(List.of("  " + e.getMessage()));
+        }
       }
     }
+    printSummary(summaries);
+  }
+
+  private static Summary summarise(final FitModelTask.Report report, final String partition) {
+    Metrics model = null;
+    double referenceMae = Double.NaN;
+    for (final FitModelTask.Scored scored : report.comparison()) {
+      if (scored.name().equals("modelo completo")) {
+        model = scored.metrics();
+      } else if (scored.name().startsWith("REFERENCIA")) {
+        referenceMae = scored.metrics().maeDays();
+      }
+    }
+    final List<DeveloperOrdering.Result> gradient =
+        report.comparison().get(report.comparison().size() - 1).ordering();
+    return new Summary(report.population().name(), report.bounds().name(), partition,
+        model.n(), model.maeDays(), model.r2Log(), model.rankCorrelation(),
+        model.withinFactorTwo(), referenceMae);
+  }
+
+  /**
+   * The cross-arm table. This is what analysis 5 actually asks for: not whether one arm scores
+   * better, but whether the population being modelled changes materially with an assumption that
+   * issue-lifetime studies do not usually state.
+   */
+  private static void printSummary(final List<Summary> summaries) {
+    System.out.printf("%n%n  ===================================================================%n");
+    System.out.printf("  ANALISE 5 -- AS QUATRO POPULACOES LADO A LADO%n");
+    System.out.printf("  ===================================================================%n%n");
+    System.out.printf("  Limiares fixados em PRE-REGISTRO-ANALISE5.md antes de qualquer%n");
+    System.out.printf("  execucao. O teste externo foi lido uma vez por arm, com%n");
+    System.out.printf("  hiperparametros congelados vindos da divisao interna.%n%n");
+    System.out.printf("  %-24s %-18s %-15s %7s %8s %8s %8s %9s %9s%n",
+        "populacao", "duracao", "particao", "n", "MAE d", "ref MAE", "R2 log",
+        "ordena", "dentro 2x");
+    System.out.printf("  %s%n", "-".repeat(124));
+    for (final Summary s : summaries) {
+      System.out.printf("  %-24s %-18s %-15s %7d %8.2f %8.2f %8.3f %9s %8.1f%%%n",
+          s.population(), s.bounds(), s.partition(), s.n(), s.mae(), s.referenceMae(), s.r2(),
+          Double.isNaN(s.ordering()) ? "--" : String.format("%.3f", s.ordering()),
+          100 * s.withinTwo());
+    }
+    System.out.printf("%n  'ref MAE' e a referencia 3.6, a mediana do par (desenvolvedor,"
+        + " projeto).%n");
   }
 
   /**

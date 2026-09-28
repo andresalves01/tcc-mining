@@ -103,8 +103,11 @@ public final class MongoObservations implements ObservationSource {
     final PairHistory history = PairHistory.of(pool);
     final Map<ObjectId, Double> outcome = new HashMap<>(1 << 15);
     int withoutOutcome = 0;
+    // Resolution minus first linked commit, which Population selects on. Read here rather than
+    // recomputed downstream because both instants live on the label and nowhere else.
+    final Map<ObjectId, Double> postCommit = new HashMap<>(1 << 15);
     for (final Document label : target.getCollection(ISSUE_LABEL)
-        .find(filter).projection(Projections.include(field))) {
+        .find(filter).projection(Projections.include(field, "resolved_at", "first_commit_at"))) {
       final Double value = label.getDouble(field);
       // Sem exame externo registrado nao ha as duas parcelas, e a linha sai deste alvo -- sem sair
       // do alvo TOTAL, onde ela e tao observada quanto qualquer outra. E a decomposicao que e
@@ -119,7 +122,12 @@ public final class MongoObservations implements ObservationSource {
         withoutOutcome++;
         continue;
       }
-      outcome.put(label.getObjectId("_id"), value);
+      final ObjectId id = label.getObjectId("_id");
+      outcome.put(id, value);
+      final java.util.Date resolved = label.getDate("resolved_at");
+      final java.util.Date first = label.getDate("first_commit_at");
+      postCommit.put(id, resolved == null || first == null ? Double.NaN
+          : (resolved.getTime() - first.getTime()) / 86_400_000.0);
     }
 
     final List<Observation> rows = new ArrayList<>(outcome.size());
@@ -136,7 +144,8 @@ public final class MongoObservations implements ObservationSource {
           features.getString("project"),
           features.getObjectId("canonical_id").toHexString(),
           outcome.get(features.getObjectId("_id")),
-          values(features, history)));
+          values(features, history),
+          postCommit.getOrDefault(features.getObjectId("_id"), Double.NaN)));
     }
     return new Observations(Columns.names(), rows, excluded, withoutOutcome);
   }

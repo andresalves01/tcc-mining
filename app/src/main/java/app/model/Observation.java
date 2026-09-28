@@ -7,9 +7,23 @@ package app.model;
  * @param values in the order of the column names that came with them, already transformed but not
  *     yet standardised -- scaling uses the fit side's statistics and so belongs to the fit, not to
  *     the reader
+ * @param postCommitDays resolution minus the first linked commit, in fractional days, negative
+ *     when the commit postdates the resolution. {@link Population} reads it to select the sample
+ *     and nothing else does: it is measured after the fact and is not a predictor. NaN means the
+ *     source did not carry it, which only the unrestricted population tolerates.
  */
 public record Observation(
-    String issueId, String project, String developer, double ttcDays, double[] values) {
+    String issueId, String project, String developer, double ttcDays, double[] values,
+    double postCommitDays) {
+
+  /**
+   * For callers that do not know the post-commit interval -- the in-memory doubles in the tests.
+   * Real sources carry it, and {@link Population} refuses such a row wherever the value matters.
+   */
+  public Observation(final String issueId, final String project, final String developer,
+      final double ttcDays, final double[] values) {
+    this(issueId, project, developer, ttcDays, values, Double.NaN);
+  }
 
   /** The outcome on the scale the model is fitted on. */
   public double logTtc() {

@@ -5,6 +5,7 @@ import app.cli.commands.CanonicalizeCommand;
 import app.cli.commands.CheckCommand;
 import app.cli.commands.ComplexityCommand;
 import app.cli.commands.FeaturesCommand;
+import app.cli.commands.ExperimentsCommand;
 import app.cli.commands.FitCommand;
 import app.cli.commands.FitInnerCommand;
 import app.cli.commands.FunnelCommand;
@@ -161,6 +162,12 @@ public enum Command {
       side with the alphas and lambdas the registration fixed, reports
       what each variable weighed, and only then scores the reserved
       rows. Searches for nothing. Reads CACHE and A4."""),
+
+  EXPERIMENTS("experiments", new ExperimentsCommand(), """
+      Print one row per held-out observation, per population, with the
+      Elastic Net and gradient-boosting predictions and the three
+      references. Hyperparameters are chosen on the inner split only.
+      Reads only, writes nothing -- redirect the output. Needs features."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both
