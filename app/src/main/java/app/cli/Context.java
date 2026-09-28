@@ -68,4 +68,5 @@ public record Context(
     PullRequestExtraSource pullRequestExtras,
     UnitSource units,
     TableSource paper5Tables,
-    app.paper5.port.ResultStore paper5Results) {}
+    app.paper5.port.ResultStore paper5Results,
+    app.paper5.port.Artigo4TableSource artigo4Tables) {}

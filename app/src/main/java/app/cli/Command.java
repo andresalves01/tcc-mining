@@ -11,6 +11,7 @@ import app.cli.commands.FunnelCommand;
 import app.cli.commands.HarvestJiraCommand;
 import app.cli.commands.Paper5AblationCommand;
 import app.cli.commands.Paper5AuditCommand;
+import app.cli.commands.Paper5CorrectionCommand;
 import app.cli.commands.Paper5TemporalAuditCommand;
 import app.cli.commands.Paper5CheckCommand;
 import app.cli.commands.Paper5ExtractCommand;
@@ -179,6 +180,13 @@ public enum Command {
       file familiarity were examined or merged at or after t0, and
       whether the value changes using only what was known. Reads
       UNITS_DB and SOURCE_DB; writes the counts to SAIDA, nothing else."""),
+
+  PAPER5_CORRECTION("paper5-correcao-a4", new Paper5CorrectionCommand(), """
+      Artigo 5, correction of 28/09/2026: recomputes the previous paper's
+      columns under the registered rule and the corrected one, requires
+      the registered rule to reproduce the stored export A4, and writes
+      the corrected export to SAIDA. Reads SOURCE_DB, LEDGER_DB and
+      UNITS_DB; writes only the file."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both
