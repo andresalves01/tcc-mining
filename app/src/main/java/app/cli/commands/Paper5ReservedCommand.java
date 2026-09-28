@@ -107,6 +107,20 @@ public final class Paper5ReservedCommand implements CommandRunner {
         .sorted(Comparator.comparingDouble(r -> r.score().maeHours()))
         .forEach(r -> print(r.score()));
 
+    System.out.printf("%n%n  A ORDEM ACIMA SOBREVIVE AO RUIDO?%n");
+    System.out.printf("  reamostragem pareada das mesmas %,d linhas reservadas, %d sorteios,"
+        + " semente %d.%n", report.reservedRows(), app.paper5.model.Bootstrap.DRAWS,
+        app.paper5.model.Bootstrap.SEED);
+    System.out.printf("  intervalo contendo zero = as duas sao indistinguiveis nestas linhas,"
+        + " qualquer que seja a ordem da tabela.%n%n");
+    System.out.printf("    %-24s %-24s %8s %11s %22s%n",
+        "especificacao", "contra", "vence", "dif. media", "intervalo de 95%");
+    for (final app.paper5.model.Bootstrap.Comparison c : report.comparisons()) {
+      System.out.printf("    %-24s %-24s %7.1f%% %+11.2f   [%+7.2f, %+7.2f]  %s%n",
+          c.a(), c.b(), 100 * c.winRate(), c.meanGap(), c.lowGap(), c.highGap(),
+          c.indistinguishable() ? "EMPATE" : "");
+    }
+
     // Gravado depois de impresso, e nunca em lugar de imprimir: se o banco recusar a escrita, o
     // resultado da leitura unica ja esta na saida e nao se perde por causa de um erro de conexao.
     final String execucao = persist(context, report);
@@ -132,6 +146,20 @@ public final class Paper5ReservedCommand implements CommandRunner {
     run.put("alvo_mediana_horas", report.outcome().medianHours());
     run.put("alvo_media_horas", report.outcome().meanHours());
     run.put("colunas_constantes_retiradas", report.dropped());
+    final List<Map<String, Object>> noise = new java.util.ArrayList<>();
+    for (final app.paper5.model.Bootstrap.Comparison c : report.comparisons()) {
+      final Map<String, Object> row = new java.util.LinkedHashMap<>();
+      row.put("a", c.a());
+      row.put("b", c.b());
+      row.put("fracao_em_que_a_vence", c.winRate());
+      row.put("diferenca_media_horas", c.meanGap());
+      row.put("intervalo_95_baixo", c.lowGap());
+      row.put("intervalo_95_alto", c.highGap());
+      row.put("indistinguiveis", c.indistinguishable());
+      noise.add(row);
+    }
+    run.put("teste_de_ruido", noise);
+    run.put("teste_de_ruido_sorteios", app.paper5.model.Bootstrap.DRAWS);
 
     final List<Map<String, Object>> rows = new java.util.ArrayList<>();
     rows.add(scoreRow("referencia", report.baseline()));

@@ -9,6 +9,7 @@ import app.cli.commands.FitCommand;
 import app.cli.commands.FitInnerCommand;
 import app.cli.commands.FunnelCommand;
 import app.cli.commands.HarvestJiraCommand;
+import app.cli.commands.Paper5CheckCommand;
 import app.cli.commands.Paper5ExtractCommand;
 import app.cli.commands.Paper5FitInnerCommand;
 import app.cli.commands.Paper5ReservedCommand;
@@ -137,6 +138,14 @@ public enum Command {
       the gap against the mandatory baseline, and Spearman. Reads the
       file CACHE points at; writes nothing. This is the development
       stage: the reserved set is reached only by paper5-reservado."""),
+
+  PAPER5_CHECK("paper5-conferencia", new Paper5CheckCommand(), """
+      Artigo 5: measure the five frozen specifications on the inner
+      selection, with the alphas and lambdas from the registration and
+      no search -- five fits instead of sixteen hundred. Reports the
+      pairwise ordering accuracy and whether the table's order survives
+      resampling. Reads CACHE and A4; writes nothing; the reserved set
+      is not reached."""),
 
   PAPER5_RESERVED("paper5-reservado", new Paper5ReservedCommand(), """
       Artigo 5: score the reserved partition ONCE, against the

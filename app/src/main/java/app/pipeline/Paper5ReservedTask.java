@@ -58,15 +58,22 @@ public final class Paper5ReservedTask {
   /** One coefficient of one refitted model, in the standardised scale, with its sign. */
   public record Weight(String column, double coefficient) {}
 
-  /** One specification: what it weighed on the training side, and how it did on the reserved one. */
+  /**
+   * One specification: what it weighed on the training side, and how it did on the reserved one.
+   *
+   * @param predictedHours one prediction per reserved row, kept so two specifications can be
+   *     compared on the same rows. Without it the table's order is just an order, and a gap of one
+   *     hour in two hundred would be read as a ranking it may not support
+   */
   public record Result(Family family, double alpha, double lambda, List<String> columns,
-      List<Weight> weights, Score score) {}
+      List<Weight> weights, Score score, double[] predictedHours) {}
 
   public record Report(
       Score baseline,
       Score constant,
       Score.Outcome outcome,
       List<Result> results,
+      List<app.paper5.model.Bootstrap.Comparison> comparisons,
       int trainingRows,
       int reservedRows,
       int baselineFellBack,
@@ -181,11 +188,23 @@ public final class Paper5ReservedTask {
       results.add(new Result(frozen.family(), frozen.alpha(), frozen.lambda(), matrix.columns(),
           List.copyOf(weights),
           Score.of(cell.label(), predicted, observed, baselineScore.maeHours(),
-              constantScore.maeHours())));
+              constantScore.maeHours()),
+          predicted));
     }
 
+    // The same noise test the registration promises, on the rows that will be reported. Ordered by
+    // error first, so the comparison reads down the table the reader is looking at.
+    final List<Result> ordered = new ArrayList<>(results);
+    ordered.sort(java.util.Comparator.comparingDouble(r -> r.score().maeHours()));
+    final List<app.paper5.model.Bootstrap.Comparison> comparisons =
+        app.paper5.model.Bootstrap.allPairs(
+            ordered.stream().map(r -> r.family().toString()).toList(),
+            ordered.stream()
+                .map(r -> app.paper5.model.Bootstrap.errors(r.predictedHours(), observed))
+                .toList());
+
     return new Report(baselineScore, constantScore, Score.Outcome.of(observed),
-        List.copyOf(results), trainUnits.size(), reservedUnits.size(),
+        List.copyOf(ordered), comparisons, trainUnits.size(), reservedUnits.size(),
         baseline.fellBackOn(reservedUnits), List.copyOf(dropped));
   }
 
