@@ -11,6 +11,7 @@ import app.cli.commands.FunnelCommand;
 import app.cli.commands.HarvestJiraCommand;
 import app.cli.commands.Paper5AblationCommand;
 import app.cli.commands.Paper5AuditCommand;
+import app.cli.commands.Paper5CorrectedReservedCommand;
 import app.cli.commands.Paper5CorrectedSweepCommand;
 import app.cli.commands.Paper5CorrectionCommand;
 import app.cli.commands.Paper5TemporalAuditCommand;
@@ -195,6 +196,13 @@ public enum Command {
       columns -- first proving it reproduces the registered choice with
       the registered columns, then with the corrected ones. Reads CACHE,
       A4 and A4_CORRIGIDO; writes nothing; the reserved set is not read."""),
+
+  PAPER5_CORRECTED_RESERVED("paper5-reservado-corrigido", new Paper5CorrectedReservedCommand(), """
+      Artigo 5, correction of 28/09/2026: scores the reserved rows ONCE
+      with the corrected columns and the pairs frozen in the addendum of
+      REGISTRO-DA-CORRECAO.md, beside the three unaffected registered
+      specifications. Reads CACHE, A4, A4_CORRIGIDO; writes PREVISOES and
+      appends to PAPER5_DB."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both

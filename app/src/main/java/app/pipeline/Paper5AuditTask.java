@@ -282,7 +282,7 @@ public final class Paper5AuditTask {
     return out;
   }
 
-  private static WithinProject withinProject(final Named n,
+  static WithinProject withinProject(final Named n,
       final Map<String, List<Integer>> rowsOf, final double[] observed) {
 
     long comparable = 0;
@@ -338,13 +338,13 @@ public final class Paper5AuditTask {
   /** Projects with fewer rows than this are pooled but left out of the per-project mean. */
   public static final int MIN_ROWS_FOR_MEAN = 20;
 
-  private static Clustered clusteredMae(final Named a, final Named b,
+  static Clustered clusteredMae(final Named a, final Named b,
       final List<List<Integer>> clusters, final double[] observed) {
     return clustered(a.label(), b.label(), clusters, observed.length,
         rows -> meanOver(rows, a.hours(), observed) - meanOver(rows, b.hours(), observed));
   }
 
-  private static Clustered clusteredGain(final Named model, final Named constant,
+  static Clustered clusteredGain(final Named model, final Named constant,
       final List<List<Integer>> clusters, final double[] observed) {
     return clustered(model.label(), constant.label(), clusters, observed.length, rows -> {
       final double ref = meanOver(rows, constant.hours(), observed);
@@ -352,7 +352,7 @@ public final class Paper5AuditTask {
     });
   }
 
-  private static Clustered clusteredSpearman(final Named a, final Named b,
+  static Clustered clusteredSpearman(final Named a, final Named b,
       final List<List<Integer>> clusters, final double[] observed) {
     return clustered(a.label(), b.label(), clusters, observed.length, rows -> {
       final double[] pa = new double[rows.size()];

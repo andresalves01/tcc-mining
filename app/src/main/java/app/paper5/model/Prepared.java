@@ -84,6 +84,20 @@ public record Prepared(List<Unit> fitUnits, List<Row> fitRows, List<Unit> scoreU
         observed);
   }
 
+  /** The standardised coefficients of one fit with given parameters, by column. */
+  public java.util.Map<String, Double> weights(final Cell cell, final double alpha,
+      final double lambda) {
+    final DesignMatrix matrix = DesignMatrix.fittedOn(fitRows, cell.attributes());
+    final ElasticNetModel model =
+        ElasticNetModel.fit(matrix.applyAll(fitRows), y, matrix.columns(), alpha, lambda);
+    final java.util.Map<String, Double> out = new java.util.LinkedHashMap<>();
+    final double[] c = model.coefficients();
+    for (int i = 0; i < c.length; i++) {
+      out.put(matrix.columns().get(i), c[i]);
+    }
+    return out;
+  }
+
   /** One fit with given parameters and a prediction per scored row, in hours. Searches nothing. */
   public double[] predict(final Cell cell, final double alpha, final double lambda) {
     final DesignMatrix matrix = DesignMatrix.fittedOn(fitRows, cell.attributes());
