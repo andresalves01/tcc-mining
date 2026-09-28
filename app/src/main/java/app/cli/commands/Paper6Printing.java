@@ -133,7 +133,8 @@ final class Paper6Printing {
         + "ordenar as linhas so por ela. Abaixo de 50 = ordena ao contrario%n");
     r.alone().stream()
         .sorted((a, b) -> Double.compare(Math.abs(b.pairwise() - 0.5), Math.abs(a.pairwise() - 0.5)))
-        .forEach(a -> System.out.printf("    %-40s %6.1f%n", a.column(), 100 * a.pairwise()));
+        .forEach(a -> System.out.printf("    %-40s %6.1f%s%n", a.column(), 100 * a.pairwise(),
+            categorical(a.column())));
 
     System.out.printf("%n  PESO DE CADA COLUNA NO AJUSTE (coeficiente padronizado | rho proprio)%n");
     for (final var e : r.evaluated()) {
@@ -148,6 +149,19 @@ final class Paper6Printing {
               c.coefficient(), c.ownSpearman(), c.selected() ? "" : "   (zerada)"));
     }
     return rows;
+  }
+
+  /**
+   * A categorical column sorted by its code orders the rows by an arbitrary numbering -- weekday,
+   * hour and type have no order. Priority is the exception: its codes follow Blocker to Trivial.
+   */
+  private static String categorical(final String column) {
+    final var attribute = app.paper6.Attributes.byName(column);
+    if (attribute.kind() != app.paper5.Attribute.Kind.CATEGORICAL) {
+      return "";
+    }
+    return column.equals("priority_at_open") ? "   [categorica ordinal: Blocker a Trivial]"
+        : "   [categorica: a ordem do codigo nao tem sentido, ignorar]";
   }
 
   private static <T> List<T> concat(final List<T> a, final List<T> b) {
