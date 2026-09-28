@@ -72,9 +72,12 @@ class AttributesTest {
     assertEquals(Set.of(Family.YU_PRE_COMPAT), friday.families());
     assertFalse(names(Attributes.of(Family.COMBINED_PRE, Profile.LITERATURE_COMPATIBLE))
         .contains("friday_effect"));
-    assertEquals(41, Attributes.all().size(),
+    assertEquals(42, Attributes.all().size(),
         "vinte e duas na uniao da literatura, mais friday_effect que ela descarta, mais as dezoito "
-            + "do Artigo 4");
+            + "do Artigo 4, mais linhas alteradas -- derivada, de familia nenhuma, so para a "
+            + "ablacao do tamanho");
+    assertTrue(Attributes.byName("lines_changed_at_open").families().isEmpty(),
+        "a derivada nao pode entrar em cenario nenhum: ela e o adversario, nao um construto");
   }
 
   @Test

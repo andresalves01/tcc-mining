@@ -250,6 +250,16 @@ public final class Attributes {
         ARTIGO4, TemporalClass.LIMPO, true,
         "desfechos anteriores do par pessoa-projeto, so do lado do ajuste -- o TTC mediano do par"));
 
+    // -- derivada, e de familia NENHUMA: existe so para a ablacao do tamanho --------------------
+    //    Linhas ALTERADAS, que e a soma de adicionadas e removidas. Nenhum dos tres artigos a
+    //    declara -- eles contam as duas pernas em separado --, entao ela nao entra em cenario
+    //    algum. Entra como adversario: a pergunta "os conjuntos da literatura, sem o tamanho,
+    //    ganham de um modelo que e so o tamanho?" precisa que o tamanho seja UMA coluna, e a
+    //    grandeza que um leitor chama de tamanho de uma mudanca e o total mexido, nao metade dele.
+    all.add(new Attribute("ABL", "lines_changed_at_open", Kind.NUMERIC, Transform.LOG1P,
+        Set.of(), TemporalClass.ESTAVEL_MEDIDO_ABERTURA_MERGE, false,
+        "derivada: additions_at_open + deletions_at_open -- so para a ablacao, fora dos cenarios"));
+
     return List.copyOf(all);
   }
 

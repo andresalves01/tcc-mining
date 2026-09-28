@@ -9,6 +9,7 @@ import app.cli.commands.FitCommand;
 import app.cli.commands.FitInnerCommand;
 import app.cli.commands.FunnelCommand;
 import app.cli.commands.HarvestJiraCommand;
+import app.cli.commands.Paper5AblationCommand;
 import app.cli.commands.Paper5CheckCommand;
 import app.cli.commands.Paper5ExtractCommand;
 import app.cli.commands.Paper5FitInnerCommand;
@@ -146,6 +147,12 @@ public enum Command {
       pairwise ordering accuracy and whether the table's order survives
       resampling. Reads CACHE and A4; writes nothing; the reserved set
       is not reached."""),
+
+  PAPER5_ABLATION("paper5-ablacao", new Paper5AblationCommand(), """
+      Artigo 5: strip the size of the change out of each specification
+      and put what is left against a model that is only the size --
+      lines changed, added plus deleted. Development side; the reserved
+      partition is not reopened. Reads CACHE and A4, writes nothing."""),
 
   PAPER5_RESERVED("paper5-reservado", new Paper5ReservedCommand(), """
       Artigo 5: score the reserved partition ONCE, against the
