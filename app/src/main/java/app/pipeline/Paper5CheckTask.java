@@ -33,11 +33,50 @@ import java.util.List;
 public final class Paper5CheckTask {
 
   public record Measured(Paper5ReservedTask.Frozen frozen, Score score, int columns,
-      double[] predictedHours) {}
+      double[] predictedHours, List<Alone> alone) {}
+
+  /**
+   * What one column orders on its own, which is a different question from what it weighs.
+   *
+   * <p>The coefficients of the fit answer "what does the model use", and they come from minimising
+   * squared error on the log scale -- not from ordering. This answers "how well does this column
+   * order by itself": sort the scored rows by it and count the pairs it gets right.
+   *
+   * <p>For ordering, a one-variable model <b>is</b> the variable: any fit on a single column is
+   * monotone in it, so it ranks the rows identically. That makes this table the answer to both
+   * questions at once -- which columns carry the ordering, and what a one-variable model would reach.
+   *
+   * @param accuracy pairs ordered correctly when the rows are sorted by this column ascending.
+   *     Below half means the column orders in reverse -- more of it goes with a faster pull request
+   *     -- which is information, not a failure, so the raw figure is reported rather than folded
+   */
+  public record Alone(String column, double accuracy) {
+
+    /** How far from the coin, in points, whichever direction it points. */
+    public double power() {
+      return Math.abs(accuracy - 0.5) * 100;
+    }
+  }
 
   public record Report(Score baseline, Score constant, Score.Outcome outcome,
       List<Measured> measured, List<Bootstrap.Comparison> comparisons,
       int fitRows, int selectionRows, double[] observedHours) {}
+
+  /**
+   * The parameters the sweep chose for the strict profile, for reading the other side of the line.
+   *
+   * <p><b>Not frozen and not part of the registration</b>, which fixed one profile only. They exist
+   * so the same two questions can be asked of the reading that admits nothing but dated evidence --
+   * the reading where the size of the change, which carries most of the ordering, is absent. That
+   * comparison is the point of the whole study, and answering it on the development side costs
+   * nothing and commits nothing.
+   */
+  private static final List<Paper5ReservedTask.Frozen> STRICT = List.of(
+      new Paper5ReservedTask.Frozen(app.paper5.Family.COMBINADO_MAIS_ARTIGO4, 0.10, 2846),
+      new Paper5ReservedTask.Frozen(app.paper5.Family.CONTRIBUICAO_PROPRIA, 0.50, 2846),
+      new Paper5ReservedTask.Frozen(app.paper5.Family.CHOUCHEN_CORE_10, 0.50, 765.8),
+      new Paper5ReservedTask.Frozen(app.paper5.Family.COMBINED_PRE, 0.95, 1706),
+      new Paper5ReservedTask.Frozen(app.paper5.Family.YU_PRE_COMPAT, 0.95, 1450));
 
   private final app.pipeline.port.Progress progress;
 
@@ -45,7 +84,17 @@ public final class Paper5CheckTask {
     this.progress = progress;
   }
 
+  /** Which reading to measure, and with which parameters. */
+  public static List<Paper5ReservedTask.Frozen> parametersFor(final app.paper5.Profile profile) {
+    return profile == app.paper5.Profile.STRICT_T0 ? STRICT : Paper5ReservedTask.FROZEN;
+  }
+
   public Report run(final List<RowCache.Entry> entries, final Artigo4Features artigo4) {
+    return run(entries, artigo4, Paper5ReservedTask.PROFILE);
+  }
+
+  public Report run(final List<RowCache.Entry> entries, final Artigo4Features artigo4,
+      final app.paper5.Profile profile) {
     final List<Unit> fitUnits = new ArrayList<>();
     final List<Row> fitRows = new ArrayList<>();
     final List<Unit> scoreUnits = new ArrayList<>();
@@ -103,9 +152,10 @@ public final class Paper5CheckTask {
 
     final List<Measured> measured = new ArrayList<>();
     int done = 0;
-    for (final Paper5ReservedTask.Frozen frozen : Paper5ReservedTask.FROZEN) {
-      final Cell cell = Cell.of(frozen.family(), Paper5ReservedTask.PROFILE);
-      progress.item(++done, Paper5ReservedTask.FROZEN.size(), cell.label(), "um ajuste so");
+    final List<Paper5ReservedTask.Frozen> parameters = parametersFor(profile);
+    for (final Paper5ReservedTask.Frozen frozen : parameters) {
+      final Cell cell = Cell.of(frozen.family(), profile);
+      progress.item(++done, parameters.size(), cell.label(), "um ajuste so");
 
       final DesignMatrix matrix = DesignMatrix.fittedOn(fitRows, cell.attributes());
       final ElasticNetModel model = ElasticNetModel.fit(matrix.applyAll(fitRows), y,
@@ -115,10 +165,19 @@ public final class Paper5CheckTask {
       for (int i = 0; i < xs.length; i++) {
         predicted[i] = DesignMatrix.hours(model.predict(xs[i]));
       }
+      final List<Alone> alone = new ArrayList<>(matrix.columns().size());
+      for (int c = 0; c < matrix.columns().size(); c++) {
+        final double[] column = new double[xs.length];
+        for (int i = 0; i < xs.length; i++) {
+          column[i] = xs[i][c];
+        }
+        alone.add(new Alone(matrix.columns().get(c),
+            Score.pairwiseAccuracy(column, observed)));
+      }
       measured.add(new Measured(frozen,
           Score.of(cell.label(), predicted, observed, baselineScore.maeHours(),
               constantScore.maeHours()),
-          matrix.columns().size(), predicted));
+          matrix.columns().size(), predicted, List.copyOf(alone)));
     }
 
     final List<Measured> ordered = new ArrayList<>(measured);

@@ -69,7 +69,7 @@ public record Score(String label, int n, double maeHours, double maeDays,
    * counted as half, because the model gave no ordering and guessing would be a coin -- scoring it
    * as correct would reward a model that predicts one constant with a perfect score.
    */
-  static double pairwiseAccuracy(final double[] predicted, final double[] observed) {
+  public static double pairwiseAccuracy(final double[] predicted, final double[] observed) {
     // Todos os pares de 1.865 linhas sao 1,7 milhao, e este metodo e chamado uma vez por tentativa
     // de parametro. O laco e escrito com comparacoes diretas, sem signum e sem ramos extras, porque
     // a diferenca entre 10 e 25 nanossegundos por par decide se a rodada leva um minuto ou vinte.
