@@ -11,6 +11,7 @@ import app.cli.commands.FunnelCommand;
 import app.cli.commands.HarvestJiraCommand;
 import app.cli.commands.Paper5AblationCommand;
 import app.cli.commands.Paper5AuditCommand;
+import app.cli.commands.Paper5CorrectedSweepCommand;
 import app.cli.commands.Paper5CorrectionCommand;
 import app.cli.commands.Paper5TemporalAuditCommand;
 import app.cli.commands.Paper5CheckCommand;
@@ -187,6 +188,13 @@ public enum Command {
       the registered rule to reproduce the stored export A4, and writes
       the corrected export to SAIDA. Reads SOURCE_DB, LEDGER_DB and
       UNITS_DB; writes only the file."""),
+
+  PAPER5_CORRECTED_SWEEP("paper5-varredura-corrigida", new Paper5CorrectedSweepCommand(), """
+      Artigo 5, correction of 28/09/2026: the development sweep, on the
+      inner selection, for the two families with the previous paper's
+      columns -- first proving it reproduces the registered choice with
+      the registered columns, then with the corrected ones. Reads CACHE,
+      A4 and A4_CORRIGIDO; writes nothing; the reserved set is not read."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both
