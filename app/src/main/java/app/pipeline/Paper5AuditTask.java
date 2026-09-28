@@ -47,14 +47,19 @@ public final class Paper5AuditTask {
    *   <li>{@code iss_dev}, {@code iss_team}: every open pull request they count is one that would
    *       be merged after {@code t0} -- that is what being a unit means;
    *   <li>{@code loc_tot_java}, {@code a4_loc_por_commit}, {@code extra_dev_commits},
-   *       {@code extra_dev_tenure_days}, {@code mu_l}, {@code s_l}, {@code extra_team_size}: the
-   *       commit history is cut by authorship date, and a fork's commits are authored before the
-   *       opening but reach the repository only at the merge -- very often the pull request's own.
+   *       {@code extra_dev_tenure_days}, {@code mu_l}, {@code s_l}: the commit history is cut by
+   *       authorship date, and a fork's commits are authored before the opening but reach the
+   *       repository only at the merge -- very often the pull request's own.
    * </ul>
+   *
+   * <p>{@code extra_team_size} was in this set when {@code 83-auditoria-final.txt} was produced, by
+   * mistake: the pull-request pipeline takes the active team from who opened pull requests, which is
+   * known at t0. Removed on 28/09/2026; the sensitivity in that output is superseded by the
+   * correction of the columns.
    */
   public static final Set<String> VAZADAS = Set.of("pr_project_wait", "pr_familiarity",
       "pr_familiarity_share", "iss_dev", "iss_team", "loc_tot_java", "a4_loc_por_commit",
-      "extra_dev_commits", "extra_dev_tenure_days", "mu_l", "s_l", "extra_team_size");
+      "extra_dev_commits", "extra_dev_tenure_days", "mu_l", "s_l");
 
   public static final int DRAWS = 2_000;
   public static final long SEED = 20260927L;
