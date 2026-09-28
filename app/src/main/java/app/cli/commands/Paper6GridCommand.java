@@ -42,9 +42,12 @@ public final class Paper6GridCommand implements CommandRunner {
     System.out.printf("%n  PARAMETROS ESCOLHIDOS (copiar como literais para o registro)%n");
     for (final Paper6GridTask.Timed t : report.fits()) {
       final Fitting.Fitted f = t.fitted();
-      System.out.printf("    new Frozen(\"%s\", %.2f, %s),   // %d colunas, %d selecionadas, %.0f s%n",
-          f.cell().label(), f.alpha(), Double.toString(f.lambda()), f.columns().size(),
-          f.selected(), t.millis() / 1000.0);
+      final double[] spread = f.spread();
+      System.out.printf("    new Frozen(\"%s\", %.2f, %s),   // degrau %d de %d%s; previsoes p10/p50/p90 "
+          + "%.0f/%.0f/%.0f h; %d colunas, %.0f s%n", f.cell().label(), f.alpha(),
+          Double.toString(f.lambda()), f.step(), Fitting.LAMBDA_STEPS,
+          f.step() == 0 ? " = TOPO, TUDO ZERADO" : "", spread[0], spread[1], spread[2],
+          f.columns().size(), t.millis() / 1000.0);
     }
 
     System.out.printf("%n  PESO DE CADA COLUNA (coeficiente padronizado | rho proprio no ajuste)%n");

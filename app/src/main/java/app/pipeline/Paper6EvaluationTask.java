@@ -151,7 +151,7 @@ public final class Paper6EvaluationTask {
 
   private static Fitting.Fitted asFitted(final Score score, final double[] hours) {
     return new Fitting.Fitted(new Cell(score.label(), null, null, List.of()), Double.NaN,
-        Double.NaN, List.of(), List.of(), List.of(), 0, hours, score);
+        Double.NaN, List.of(), List.of(), List.of(), 0, hours, score, -1);
   }
 
   private static Evaluated evaluate(final Fitting.Fitted fitted, final List<String> projects,

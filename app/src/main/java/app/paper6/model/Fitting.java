@@ -53,9 +53,23 @@ public final class Fitting {
   public record Contribution(String column, double coefficient, double ownSpearman,
       boolean selected) {}
 
+  /**
+   * @param step which penalty of its mixture's grid the sweep chose: 0 is the top, where every
+   *     coefficient is zero and the model is a constant; -1 when the parameters were given, not
+   *     swept
+   */
   public record Fitted(Cell cell, double alpha, double lambda, List<String> columns,
       List<String> dropped, List<Contribution> contributions, int selected,
-      double[] predictedHours, Score score) {}
+      double[] predictedHours, Score score, int step) {
+
+    /** The 10th, 50th and 90th percentiles of the predictions, in hours: how much they spread. */
+    public double[] spread() {
+      final double[] sorted = predictedHours.clone();
+      java.util.Arrays.sort(sorted);
+      final int n = sorted.length;
+      return new double[] {sorted[n / 10], sorted[n / 2], sorted[Math.min(n - 1, 9 * n / 10)]};
+    }
+  }
 
   private Fitting() {}
 
@@ -113,12 +127,23 @@ public final class Fitting {
     return largest;
   }
 
-  /** The penalties the sweep tries, for one fitting side. */
-  public static double[] lambdas(final double[][] x, final double[] y) {
-    final double max = largestPenalty(x, y);
+  /**
+   * The penalties the sweep tries for one mixture, from the point where every coefficient is zero
+   * down four decades.
+   *
+   * <p>The top is {@code 2 * max|X'(y - mean)| / alpha}, not the pull-request study's
+   * {@code max|X'(y - mean)|}. The estimator hands {@code alpha * lambda} to the L1 term of an
+   * objective whose squared error is not halved, so that is where the last coefficient dies --
+   * {@code LambdaAnchorTest} pins it. Anchored without the factor, the grid stopped between two and
+   * twenty times short of it, and on the first run thirteen of twenty cells chose its topmost value:
+   * the selection was pressing against the edge of a grid that ended too early. Found on the inner
+   * selection, before any registration and before the reserved rows existed for this study.
+   */
+  public static double[] lambdas(final double[][] x, final double[] y, final double alpha) {
+    final double top = 2 * largestPenalty(x, y) / alpha;
     final double[] out = new double[LAMBDA_STEPS];
     for (int s = 0; s < LAMBDA_STEPS; s++) {
-      out[s] = max * Math.pow(LAMBDA_FLOOR_RATIO, (double) s / (LAMBDA_STEPS - 1));
+      out[s] = top * Math.pow(LAMBDA_FLOOR_RATIO, (double) s / (LAMBDA_STEPS - 1));
     }
     return out;
   }
@@ -136,9 +161,12 @@ public final class Fitting {
     final double[] y = target(sides.fitUnits());
     ElasticNetModel best = null;
     double bestMae = Double.POSITIVE_INFINITY;
+    int bestStep = -1;
     for (final double alpha : ALPHAS) {
-      for (final double lambda : lambdas(x, y)) {
-        final ElasticNetModel model = ElasticNetModel.fit(x, y, matrix.columns(), alpha, lambda);
+      final double[] grid = lambdas(x, y, alpha);
+      for (int step = 0; step < grid.length; step++) {
+        final ElasticNetModel model =
+            ElasticNetModel.fit(x, y, matrix.columns(), alpha, grid[step]);
         double sum = 0;
         for (int i = 0; i < xs.length; i++) {
           sum += Math.abs(DesignMatrix.hours(model.predict(xs[i])) - sides.observed()[i]);
@@ -146,10 +174,12 @@ public final class Fitting {
         if (sum / xs.length < bestMae) {
           bestMae = sum / xs.length;
           best = model;
+          bestStep = step;
         }
       }
     }
-    return result(cell, matrix, x, y, xs, best, sides.observed(), baselineMae, constantMae);
+    return result(cell, matrix, x, y, xs, best, sides.observed(), baselineMae, constantMae,
+        bestStep);
   }
 
   /** One fit with given parameters: what the check and the reserved run do. Searches nothing. */
@@ -161,12 +191,12 @@ public final class Fitting {
     final double[] y = target(sides.fitUnits());
     final ElasticNetModel model = ElasticNetModel.fit(x, y, matrix.columns(), alpha, lambda);
     return result(cell, matrix, x, y, matrix.applyAll(sides.scoreRows()), model,
-        sides.observed(), baselineMae, constantMae);
+        sides.observed(), baselineMae, constantMae, -1);
   }
 
   private static Fitted result(final Cell cell, final DesignMatrix matrix, final double[][] x,
       final double[] y, final double[][] xs, final ElasticNetModel model, final double[] observed,
-      final double baselineMae, final double constantMae) {
+      final double baselineMae, final double constantMae, final int step) {
 
     final double[] weights = model.coefficients();
     final List<Contribution> contributions = new ArrayList<>(weights.length);
@@ -184,7 +214,7 @@ public final class Fitting {
     }
     return new Fitted(cell, model.alpha(), model.lambda(), matrix.columns(), matrix.dropped(),
         List.copyOf(contributions), model.selectedCount(), predicted,
-        Score.of(cell.label(), predicted, observed, baselineMae, constantMae));
+        Score.of(cell.label(), predicted, observed, baselineMae, constantMae), step);
   }
 
   static double[] target(final List<IssueUnit> units) {
