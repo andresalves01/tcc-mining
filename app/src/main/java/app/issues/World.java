@@ -21,6 +21,8 @@ import java.util.Set;
  *       (Al-Zubaidi) when the reason at that instant is Fixed;
  *   <li>a commit is <b>visible</b> at the first merge of a pull request that contains it, else at its
  *       commit date, never before it was authored; merge commits do not count;
+ *   <li>each change counts once: copies of a commit on other branches collapse into the copy visible
+ *       first (decision 19, {@link #oncePerChange});
  *   <li>a person is the thesis's canonical identity when there is one, else the raw id;
  *   <li>a person's Git identity is <b>known at t</b> when they had a visible commit, in any project,
  *       before t -- the Jira–Git bridge alone would use commits made later.
@@ -188,6 +190,7 @@ public final class World {
   private void indexCommits() {
     final Map<String, List<Commit>> byProject = new HashMap<>();
     final Map<String, List<Commit>> byPerson = new HashMap<>();
+    final List<Commit> candidates = new ArrayList<>();
     for (final Corpus.Commit c : corpus.commits()) {
       if (c.parents() > 1 || c.project() == null || c.authoredAt() == null) {
         continue;
@@ -199,16 +202,21 @@ public final class World {
       final String who = person(c.author());
       final Corpus.Contribution k = corpus.contributions().get(c.id());
       final boolean bot = (k != null && k.bot()) || personIsBot(c.author());
-      final Commit commit = new Commit(c.id(), c.project(), c.hash(), who, bot, at, visible,
+      candidates.add(new Commit(c.id(), c.project(), c.hash(), who, bot, at, visible,
           k != null && k.javaFiles() > 0, k == null ? 0 : k.javaAdded() + k.javaDeleted(),
-          corpus.complexity().get(c.id()), c.linked());
+          corpus.complexity().get(c.id()), c.linked()));
+    }
+    for (final Commit commit : oncePerChange(candidates)) {
+      final String who = commit.who();
+      final long visible = commit.visible();
       allCommits.add(commit);
-      byProject.computeIfAbsent(c.project(), p -> new ArrayList<>()).add(commit);
+      byProject.computeIfAbsent(commit.project(), p -> new ArrayList<>()).add(commit);
       if (who != null) {
-        byPerson.computeIfAbsent(who + "\u0000" + c.project(), p -> new ArrayList<>()).add(commit);
+        byPerson.computeIfAbsent(who + "\u0000" + commit.project(), p -> new ArrayList<>())
+            .add(commit);
         firstCommitAny.merge(who, visible, Math::min);
       }
-      for (final String issue : c.linked()) {
+      for (final String issue : commit.linked()) {
         linked.computeIfAbsent(issue, i -> new ArrayList<>()).add(commit);
       }
     }
@@ -240,6 +248,47 @@ public final class World {
       }
       history.put(k, new History(times, loc, mccc, java, covered, ids));
     });
+  }
+
+  /**
+   * Decision 19: each change counts once. Copies of one change -- a cherry-pick or a backport to
+   * another branch -- share the person, the project, the authoring instant and the Java lines, with
+   * different hashes. The copy visible first stays (the id breaks ties), carrying the issues every
+   * copy links; the others leave every count. A commit without an author is never a copy. The rule
+   * is a heuristic: the corpus keeps no patch, so two distinct commits by the same person in the
+   * same second with the same lines would be merged. Keeps the input order.
+   */
+  static List<Commit> oncePerChange(final List<Commit> candidates) {
+    final Map<String, List<Commit>> groups = new HashMap<>();
+    for (final Commit c : candidates) {
+      final String key = c.who() == null ? "\u0001" + c.id()
+          : c.who() + "\u0000" + c.project() + "\u0000" + c.authoredAt() + "\u0000" + c.loc();
+      groups.computeIfAbsent(key, k -> new ArrayList<>(1)).add(c);
+    }
+    final Map<String, Commit> kept = new HashMap<>(groups.size() * 2);
+    for (final List<Commit> group : groups.values()) {
+      group.sort((a, b) -> a.visible() != b.visible() ? Long.compare(a.visible(), b.visible())
+          : a.id().compareTo(b.id()));
+      Commit first = group.get(0);
+      if (group.size() > 1) {
+        final java.util.LinkedHashSet<String> issues = new java.util.LinkedHashSet<>(first.linked());
+        for (final Commit other : group.subList(1, group.size())) {
+          issues.addAll(other.linked());
+        }
+        first = new Commit(first.id(), first.project(), first.hash(), first.who(), first.bot(),
+            first.authoredAt(), first.visible(), first.java(), first.loc(), first.mccc(),
+            List.copyOf(issues));
+      }
+      kept.put(first.id(), first);
+    }
+    final List<Commit> out = new ArrayList<>(kept.size());
+    for (final Commit c : candidates) {
+      final Commit k = kept.get(c.id());
+      if (k != null) {
+        out.add(k);
+      }
+    }
+    return out;
   }
 
   /**

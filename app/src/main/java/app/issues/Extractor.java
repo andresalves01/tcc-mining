@@ -74,11 +74,8 @@ public final class Extractor {
         wanted.add(ex.who() + "\u0000" + u.project());
       }
     }
-    for (final Corpus.Commit c : world.corpus.commits()) {
-      if (c.parents() > 1 || c.project() == null || c.authoredAt() == null) {
-        continue;
-      }
-      final String who = world.person(c.author());
+    for (final World.Commit c : world.commits()) {
+      final String who = c.who();
       if (who == null || !wanted.contains(who + "\u0000" + c.project())) {
         continue;
       }
@@ -86,20 +83,13 @@ public final class Extractor {
       if (files == null) {
         continue;
       }
-      final long visible = visibleOf(c);
+      final long visible = c.visible();
       final Map<Integer, Long> touch =
           firstTouch.computeIfAbsent(who + "\u0000" + c.project(), k -> new HashMap<>());
       for (final int f : files) {
         touch.merge(f, visible, Math::min);
       }
     }
-  }
-
-  private long visibleOf(final Corpus.Commit c) {
-    final long at = c.authoredAt();
-    final long committed = c.committedAt() != null ? c.committedAt() : at;
-    final Long merge = world.corpus.prMerge().get(c.hash());
-    return World.visible(at, committed, merge);
   }
 
   /** The retrospective executor's first commit, or null: the person the conditioned reference uses. */

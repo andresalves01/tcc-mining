@@ -168,6 +168,39 @@ class StudyTest {
   }
 
   @Test
+  @DisplayName("a change copied to another branch counts once: the copy visible first stays, with "
+      + "the issues every copy links")
+  void copiedChange() {
+    final Fixture f = new Fixture();
+    f.issue("a", "P-1", T0, "r");
+    f.resolve("a", T0 + 10 * D, "Fixed");
+    f.issue("b", "P-2", T0, "r");
+    f.resolve("b", T0 + 10 * D, "Fixed");
+    f.issue("z", "P-3", T0 + 5 * D, "r");
+    f.resolve("z", T0 + 6 * D, "Fixed");
+    // one change authored once, applied to two branches: c1 reached the repository first
+    f.commit("c1", "dev", T0 + D, T0 + D, "b");
+    f.commit("c2", "dev", T0 + D, T0 + 2 * D, "a");
+    // same person, same lines, another instant: a different change
+    f.commit("c3", "dev", T0 + 3 * D, T0 + 3 * D);
+    final Corpus corpus = f.build();
+    final Universe u = Universe.of(corpus);
+    final World w = new World(u, corpus);
+    final Extractor e = new Extractor(w, u.studied());
+
+    assertEquals(List.of("c1", "c3"), w.commits().stream().map(World.Commit::id).toList());
+    assertEquals(List.of("b", "a"), w.commits().get(0).linked());
+    final Map<String, Double> a = e.row(u.unit("a"), Initial.of(u.issue("a"), u.events("a"),
+        null), null);
+    assertEquals(5.0, a.get("A15_change_loc"), "the kept copy links both issues");
+    assertEquals(10.0, a.get("A15w_change_loc_whole"), "the lines enter once");
+    assertEquals(1.0, a.get("K08_commit_refs"));
+    final Map<String, Double> z = e.row(u.unit("z"), Initial.of(u.issue("z"), u.events("z"),
+        null), null);
+    assertEquals(2.0, z.get("K16_project_commits_90d"), "c1 and c3; c2 is the same change as c1");
+  }
+
+  @Test
   @DisplayName("text measures agree with Python: Unicode spaces split words, code blocks and URLs "
       + "are removed before cleaning counts, fog needs a word")
   void text() {
