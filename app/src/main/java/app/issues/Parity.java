@@ -87,7 +87,9 @@ public final class Parity {
         continue;
       }
       for (final Map.Entry<String, Double> c : e.getValue().entrySet()) {
-        final String name = RENAMED.getOrDefault(c.getKey(), c.getKey());
+        // an export that carries A15w itself (the secondary study's) names A15 as Java does
+        final String name = e.getValue().containsKey("A15w_change_loc_whole") ? c.getKey()
+            : RENAMED.getOrDefault(c.getKey(), c.getKey());
         if (!j.containsKey(name)) {
           continue;
         }
