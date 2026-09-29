@@ -106,8 +106,9 @@ final class IssuesPrinting {
 
     System.out.printf("%n  GANHO COM INTERVALO DE 95%% REAMOSTRANDO PROJETOS INTEIROS (%d sorteios)%n",
         app.issues.model.ProjectBootstrap.DRAWS);
+    final boolean started = r.population() == Population.IN_PROGRESS;
     System.out.printf("  %-52s %24s %24s %24s%n", "especificacao", "sobre mediana do projeto",
-        "sobre a constante", "sobre o par (so C2)");
+        "sobre a constante", started ? "sobre a mediana do par" : "sobre o par (so C2)");
     for (final var e : concat(r.references(), r.evaluated())) {
       System.out.printf("  %-52s %24s %24s %24s%n", e.fitted().score().label(),
           interval(e.overProject()), interval(e.overConstant()), interval(e.overPair()));
@@ -159,10 +160,12 @@ final class IssuesPrinting {
           b.medianError(), b.spearman(), 100 * b.pairwise());
     }
 
-    System.out.printf("%n  FAMILIA CONTRA FAMILIA, NA CRIACAO (C1)%n");
+    System.out.printf("%n  FAMILIA CONTRA FAMILIA, %s (C1)%n",
+        started ? "NO PRIMEIRO IN PROGRESS" : "NA CRIACAO");
     gaps(r.familiesByProjects());
     comparisons(r.families());
-    System.out.printf("%n  C2 POR BLOCO CONTRA C1 DA MESMA FAMILIA (decisao 14: conteudo justifica "
+    System.out.printf(started ? "%n  C1 + CONTEUDO CONTRA C1 DA MESMA FAMILIA (P5: sem exposicao)%n"
+        : "%n  C2 POR BLOCO CONTRA C1 DA MESMA FAMILIA (decisao 14: conteudo justifica "
         + "decompor; exposicao nao)%n");
     gaps(r.blocksByProjects());
     comparisons(r.blocks());
