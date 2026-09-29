@@ -236,7 +236,7 @@ public final class FitModelTask {
     // "conhecido na criacao" retira o grupo TAREFA e com ele ln(LOC tarefa) e ln(arquivos tarefa),
     // mas ln(familiaridade arq.) e fracao arq. conhecidos estao no grupo DEV e sobrevivem -- e as
     // duas contam arquivos do conjunto final, que pull_request_file nao datar impede de reconstruir
-    // na abertura. Ver papers/04-pull-requests/replicacoes/validacao-yu-chouchen/.
+    // na abertura. Ver papers/pull-requests/replicacoes/validacao-yu-chouchen/.
     final List<String> criacaoEstrita = new ArrayList<>();
     for (final int i : Columns.indicesOf(Columns.Group.DEV, Columns.Group.CARGA,
         Columns.Group.EQUIPE, Columns.Group.CRIACAO)) {

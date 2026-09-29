@@ -8,7 +8,7 @@ import java.util.List;
 
 /**
  * Builds {@code issue_label} from merged pull requests instead of resolved issues -- the desfecho
- * under test in Artigo 4. See {@code papers/04-pull-requests/PLANO.md} for why.
+ * under test in Artigo 4. See {@code papers/pull-requests/PLANO.md} for why.
  */
 public final class PullRequestLabelsCommand implements CommandRunner {
 

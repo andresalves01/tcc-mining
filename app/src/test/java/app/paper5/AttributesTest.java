@@ -21,7 +21,7 @@ import org.junit.jupiter.api.Test;
 class AttributesTest {
 
   private static final Path MATRIZ = Path.of(
-      "papers/04-pull-requests/replicacoes/validacao-yu-chouchen/MATRIZ-ATRIBUTOS.csv");
+      "papers/pull-requests/replicacoes/validacao-yu-chouchen/MATRIZ-ATRIBUTOS.csv");
 
   @Test
   @DisplayName("the grid has the sizes the specification fixed, in every cell")
