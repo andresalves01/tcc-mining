@@ -23,6 +23,7 @@ import app.cli.commands.Paper5ReservedCommand;
 import app.cli.commands.IssuesExtractCommand;
 import app.cli.commands.IssuesCheckCommand;
 import app.cli.commands.IssuesGridCommand;
+import app.cli.commands.IssuesReservedCommand;
 import app.cli.commands.Paper5PopulationCommand;
 import app.cli.commands.PullRequestFeaturesCommand;
 import app.cli.commands.PullRequestLabelsCommand;
@@ -195,6 +196,15 @@ public enum Command {
       resampled intervals, bands of the true duration, C2 by block, the
       sensitivities -- on the inner selection with the parameters in
       PARAMETROS. Optimistic by construction; the outer test is not read."""),
+
+  ISSUES_RESERVED("issues-reservado", new IssuesReservedCommand(), """
+      Issue duration: the one scoring of the outer test that
+      REGISTRO-PREVIO.md lays out. Refuses unless the matrix and the
+      parameters match their registered SHA-256 and every side and subset
+      has its registered size; then refits each cell on the whole outer
+      training side (lambda scaled by decision 20), prints the weights and
+      scores the test, all three populations. Reads CACHE, PARAMETROS and
+      NUNCA_PONTUADAS; writes PREVISOES; records the run in ISSUES_DB."""),
 
   PAPER5_AUDIT("paper5-auditoria", new Paper5AuditCommand(), """
       Artigo 5, auditoria de 28/09/2026: reruns the registered reserved

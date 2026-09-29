@@ -6,6 +6,7 @@ import app.paper5.model.Score;
 import app.issues.Attribute;
 import app.issues.Attributes;
 import app.issues.Family;
+import app.issues.IssueUnit;
 import app.issues.RowCache;
 import app.issues.Scenario;
 import app.issues.Universe.Population;
@@ -16,17 +17,26 @@ import app.issues.model.References;
 import app.issues.model.Window;
 import app.pipeline.port.Progress;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
+import java.util.TreeSet;
 
 /**
  * Fits the chosen specifications of one population and reads them every way the plan names.
  * Searches for nothing: every alpha and lambda arrives from the grid.
  *
- * <p>Only {@link Fitting.Mode#INNER} is reachable from a command until the registration exists: it
- * fits on the inner training half and scores the inner selection. <b>The parameters were chosen on
- * that same selection</b>, so these numbers are optimistic -- they compare families, scenarios and
- * blocks, and estimate nothing.
+ * <p>{@link Fitting.Mode#INNER} fits on the inner training half and scores the inner selection.
+ * <b>The parameters were chosen on that same selection</b>, so those numbers are optimistic -- they
+ * compare families, scenarios and blocks, and estimate nothing.
+ *
+ * <p>{@link Fitting.Mode#RESERVED} is the one run {@code REGISTRO-PREVIO.md} lays out, reached only
+ * from {@code issues-reservado}: every cell is refitted on the whole outer training side with its
+ * alpha and the lambda of decision 20, the references are learned on that same side, and the
+ * outer test is scored once. No recalibration is computed (decision 22).
  */
 public final class IssuesEvaluationTask {
 
@@ -54,11 +64,44 @@ public final class IssuesEvaluationTask {
       List<Breakdown.Band> baseBands, List<Breakdown.Band> bands, Breakdown.Body baseBody,
       Breakdown.Body body, double[] baseSpread, double[] spread) {}
 
+  /**
+   * Decision 17: of the two references, the main one is the one that errs less on the inner
+   * selection of the population -- a rule, so another corpus chooses by itself. A tie, which these
+   * numbers never reach, goes to the constant, the simpler of the two.
+   */
+  public record MainReference(double constantMaeHours, double projectMaeHours) {
+
+    public boolean constant() {
+      return constantMaeHours <= projectMaeHours;
+    }
+
+    public String name() {
+      return constant() ? "constante" : "mediana do projeto";
+    }
+  }
+
+  /** One specification's reading on a subset of the scored rows, with the same predictions. */
+  public record SubsetRow(Score score, ProjectBootstrap.Interval overProject,
+      ProjectBootstrap.Interval overConstant) {}
+
+  /** The scored rows never scored by an earlier study (REGISTRO-PREVIO.md, section 3). */
+  public record Subset(int n, List<SubsetRow> rows) {}
+
+  /**
+   * @param innerFitRows the rows the chosen lambdas were fitted on, which decision 20 scales by
+   * @param familiesByProjects the tie criterion; {@code families}, by rows, is the narrower reading
+   * @param unseenProjects projects of the scored side with no fitting row: there the project median
+   *     is the constant
+   * @param neverScored null when not asked for
+   */
   public record Report(Population population, Fitting.Mode mode, int fitRows, int scoredRows,
-      Score.Outcome outcome, Score project, Score constant, Score pair,
-      List<Evaluated> references, List<Evaluated> evaluated, List<Bootstrap.Comparison> families,
-      List<Bootstrap.Comparison> blocks, List<Sensitivity> sensitivities,
-      List<Recalibrated> recalibrated) {}
+      int innerFitRows, Score.Outcome outcome, Score project, Score constant, Score pair,
+      MainReference main, List<Evaluated> references, List<Evaluated> evaluated,
+      List<Bootstrap.Comparison> families, List<ProjectBootstrap.Gap> familiesByProjects,
+      List<Bootstrap.Comparison> blocks, List<ProjectBootstrap.Gap> blocksByProjects,
+      List<Sensitivity> sensitivities, List<Recalibrated> recalibrated,
+      Set<String> unseenProjects, int unseenRows, Subset neverScored, List<IssueUnit> scoredUnits,
+      double[] observed) {}
 
   private final Progress progress;
 
@@ -68,8 +111,25 @@ public final class IssuesEvaluationTask {
 
   public Report run(final List<RowCache.Entry> entries, final List<Frozen> frozen,
       final Population population, final Fitting.Mode mode) {
+    return run(entries, frozen, population, mode, null);
+  }
+
+  /**
+   * @param neverScored ids of the scored rows to read again on their own, with the same
+   *     predictions; null for none
+   */
+  public Report run(final List<RowCache.Entry> entries, final List<Frozen> frozen,
+      final Population population, final Fitting.Mode mode, final Set<String> neverScored) {
 
     final Fitting.Sides sides = Fitting.sides(entries, mode, population);
+    // the inner cut decides the main reference and is what the chosen lambdas were fitted on;
+    // under RESERVED it is read again from the training side, which holds all of it
+    final Fitting.Sides inner = mode == Fitting.Mode.INNER ? sides
+        : Fitting.sides(entries, Fitting.Mode.INNER, population);
+    final References innerRefs = References.learnedOn(inner.fitUnits());
+    final MainReference main = new MainReference(
+        Fitting.mae(innerRefs.constant(inner.observed().length), inner.observed()),
+        Fitting.mae(innerRefs.projectHours(inner.scoreUnits()), inner.observed()));
     final double[] observed = sides.observed();
     final List<String> projects = sides.projects();
     final References refs = References.learnedOn(sides.fitUnits());
@@ -96,11 +156,18 @@ public final class IssuesEvaluationTask {
 
     final List<Evaluated> evaluated = new ArrayList<>();
     final List<Frozen> mine = frozen.stream().filter(f -> f.population() == population).toList();
+    // decision 20: under RESERVED the penalty is the chosen one times the ratio of rows
+    final Map<String, Double> lambdas = new HashMap<>();
+    for (final Frozen f : mine) {
+      lambdas.put(f.cell(), mode == Fitting.Mode.INNER ? f.lambda()
+          : Fitting.finalLambda(f.lambda(), sides.fitUnits().size(), inner.fitUnits().size()));
+    }
     int done = 0;
     for (final Frozen f : mine) {
-      progress.item(++done, mine.size(), population + " " + f.cell(), "selecao interna");
+      progress.item(++done, mine.size(), population + " " + f.cell(),
+          mode == Fitting.Mode.INNER ? "selecao interna" : "reajuste no treino externo");
       final Fitting.Fitted fitted = Fitting.frozen(Cell.byLabel(f.cell()), sides, f.alpha(),
-          f.lambda(), project.maeHours(), constantMae);
+          lambdas.get(f.cell()), project.maeHours(), constantMae);
       evaluated.add(evaluate(fitted, projects, projectHours, constantHours, pairHours, observed));
     }
 
@@ -111,17 +178,26 @@ public final class IssuesEvaluationTask {
         atCreation.stream().map(e -> e.fitted().cell().label()).toList(),
         atCreation.stream().map(e -> Bootstrap.errors(e.fitted().predictedHours(), observed))
             .toList());
+    final List<ProjectBootstrap.Gap> familiesByProjects = new ArrayList<>();
+    for (int i = 0; i < atCreation.size(); i++) {
+      for (int j = i + 1; j < atCreation.size(); j++) {
+        familiesByProjects.add(gap(projects, atCreation.get(i), atCreation.get(j), observed));
+      }
+    }
     // each C2 reading against C1 of the same family: which block carries the gain (decision 14)
     final List<Bootstrap.Comparison> blocks = new ArrayList<>();
+    final List<ProjectBootstrap.Gap> blocksByProjects = new ArrayList<>();
     for (final Evaluated upper : evaluated) {
       final Cell cell = upper.fitted().cell();
       if (cell.scenario() == Scenario.C1) {
         continue;
       }
-      find(evaluated, cell.family(), Scenario.C1).ifPresent(lower -> blocks.add(
-          Bootstrap.compare(cell.label(), Bootstrap.errors(upper.fitted().predictedHours(),
-              observed), lower.fitted().cell().label(),
-              Bootstrap.errors(lower.fitted().predictedHours(), observed))));
+      find(evaluated, cell.family(), Scenario.C1).ifPresent(lower -> {
+        blocks.add(Bootstrap.compare(cell.label(), Bootstrap.errors(
+            upper.fitted().predictedHours(), observed), lower.fitted().cell().label(),
+            Bootstrap.errors(lower.fitted().predictedHours(), observed)));
+        blocksByProjects.add(gap(projects, upper, lower, observed));
+      });
     }
 
     // sensitivities, same parameters: the whole commit in A15, and without the moved issues
@@ -138,8 +214,8 @@ public final class IssuesEvaluationTask {
         final Cell variant = new Cell(cell.label() + " [A15 = commit inteiro]", cell.family(),
             cell.scenario(), whole);
         sensitivities.add(new Sensitivity("A15 com o commit inteiro", cell.label(),
-            scoreOf(evaluated, cell), Fitting.frozen(variant, sides, f.alpha(), f.lambda(),
-                project.maeHours(), constantMae).score()));
+            scoreOf(evaluated, cell), Fitting.frozen(variant, sides, f.alpha(),
+                lambdas.get(f.cell()), project.maeHours(), constantMae).score()));
       }
     }
     final List<RowCache.Entry> unmoved =
@@ -156,12 +232,13 @@ public final class IssuesEvaluationTask {
         continue;
       }
       sensitivities.add(new Sensitivity("sem as issues movidas entre projetos Jira", cell.label(),
-          scoreOf(evaluated, cell), Fitting.frozen(cell, still, f.alpha(), f.lambda(),
-              stillProject, stillConstant).score()));
+          scoreOf(evaluated, cell), Fitting.frozen(cell, still, f.alpha(),
+              lambdas.get(f.cell()), stillProject, stillConstant).score()));
     }
 
     final List<Recalibrated> recalibrated = new ArrayList<>();
-    for (final Evaluated e : evaluated) {
+    // decision 22: the reserved predictions are the model's own, and nothing recalibrates them
+    for (final Evaluated e : mode == Fitting.Mode.INNER ? evaluated : List.<Evaluated>of()) {
       final Fitting.Fitted f = e.fitted();
       final double[] hours = f.recalibration().predictedHours();
       final Fitting.Fitted asIf = new Fitting.Fitted(f.cell(), f.alpha(), f.lambda(), f.columns(),
@@ -174,9 +251,75 @@ public final class IssuesEvaluationTask {
           Breakdown.body(hours, observed, 0.25, 0.90), f.spread(), asIf.spread()));
     }
 
+    final Set<String> seen = new HashSet<>();
+    sides.fitUnits().forEach(u -> seen.add(u.project()));
+    final Set<String> unseen = new TreeSet<>();
+    int unseenRows = 0;
+    for (final IssueUnit u : sides.scoreUnits()) {
+      if (!seen.contains(u.project())) {
+        unseen.add(u.project());
+        unseenRows++;
+      }
+    }
+
+    final Subset subset = neverScored == null ? null
+        : subset(sides.scoreUnits(), neverScored, references, evaluated, observed, projectHours,
+            constantHours);
+
     return new Report(population, mode, sides.fitUnits().size(), sides.scoreUnits().size(),
-        Score.Outcome.of(observed), project, constant, pair, references, List.copyOf(evaluated),
-        families, List.copyOf(blocks), List.copyOf(sensitivities), List.copyOf(recalibrated));
+        inner.fitUnits().size(), Score.Outcome.of(observed), project, constant, pair, main,
+        references, List.copyOf(evaluated), families, List.copyOf(familiesByProjects),
+        List.copyOf(blocks), List.copyOf(blocksByProjects), List.copyOf(sensitivities),
+        List.copyOf(recalibrated), unseen, unseenRows, subset, sides.scoreUnits(), observed);
+  }
+
+  private static ProjectBootstrap.Gap gap(final List<String> projects, final Evaluated a,
+      final Evaluated b, final double[] observed) {
+    return ProjectBootstrap.compare(projects, a.fitted().cell().label(),
+        Bootstrap.errors(a.fitted().predictedHours(), observed), b.fitted().cell().label(),
+        Bootstrap.errors(b.fitted().predictedHours(), observed));
+  }
+
+  /** The same predictions, read only on the rows whose id is in {@code ids}. */
+  static Subset subset(final List<IssueUnit> scored, final Set<String> ids,
+      final List<Evaluated> references, final List<Evaluated> evaluated, final double[] observed,
+      final double[] projectHours, final double[] constantHours) {
+    final List<Integer> kept = new ArrayList<>();
+    for (int i = 0; i < scored.size(); i++) {
+      if (ids.contains(scored.get(i).issueId())) {
+        kept.add(i);
+      }
+    }
+    if (kept.isEmpty()) {
+      return new Subset(0, List.of());
+    }
+    final double[] o = pick(observed, kept);
+    final double[] p = pick(projectHours, kept);
+    final double[] c = pick(constantHours, kept);
+    final List<String> projects = kept.stream().map(i -> scored.get(i).project()).toList();
+    final double projectMae = Fitting.mae(p, o);
+    final double constantMae = Fitting.mae(c, o);
+    final List<SubsetRow> rows = new ArrayList<>();
+    for (final Evaluated e : concat(references, evaluated)) {
+      final double[] h = pick(e.fitted().predictedHours(), kept);
+      rows.add(new SubsetRow(Score.of(e.fitted().score().label(), h, o, projectMae, constantMae),
+          ProjectBootstrap.gain(projects, h, p, o), ProjectBootstrap.gain(projects, h, c, o)));
+    }
+    return new Subset(kept.size(), List.copyOf(rows));
+  }
+
+  private static double[] pick(final double[] values, final List<Integer> rows) {
+    final double[] out = new double[rows.size()];
+    for (int k = 0; k < out.length; k++) {
+      out[k] = values[rows.get(k)];
+    }
+    return out;
+  }
+
+  private static <T> List<T> concat(final List<T> a, final List<T> b) {
+    final List<T> out = new ArrayList<>(a);
+    out.addAll(b);
+    return out;
   }
 
   private static Optional<Evaluated> find(final List<Evaluated> evaluated, final Family family,

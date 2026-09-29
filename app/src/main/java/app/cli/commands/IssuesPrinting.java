@@ -154,11 +154,12 @@ final class IssuesPrinting {
           b.medianError(), b.spearman(), 100 * b.pairwise());
     }
 
-    System.out.printf("%n  FAMILIA CONTRA FAMILIA, NA CRIACAO (C1) -- reamostragem pareada de linhas, "
-        + "%d sorteios%n", app.paper5.model.Bootstrap.DRAWS);
+    System.out.printf("%n  FAMILIA CONTRA FAMILIA, NA CRIACAO (C1)%n");
+    gaps(r.familiesByProjects());
     comparisons(r.families());
     System.out.printf("%n  C2 POR BLOCO CONTRA C1 DA MESMA FAMILIA (decisao 14: conteudo justifica "
         + "decompor; exposicao nao)%n");
+    gaps(r.blocksByProjects());
     comparisons(r.blocks());
 
     System.out.printf("%n  SENSIBILIDADES (mesmos parametros)%n");
@@ -170,6 +171,16 @@ final class IssuesPrinting {
           100 * s.changed().pairwise());
     }
 
+    if (!r.recalibrated().isEmpty()) {
+      recalibration(r);
+    }
+    if (r.mode() == app.issues.model.Fitting.Mode.INNER) {
+      weights(r);
+    }
+    return rows;
+  }
+
+  private static void recalibration(final IssuesEvaluationTask.Report r) {
     System.out.printf("%n  RECALIBRACAO LINEAR EM LOG, AO LADO DO MODELO (pedida em 29/09/2026, "
         + "para decidir depois de ver; nao substitui o modelo)%n");
     System.out.printf("  log1p(h) = a + b * previsao em log, com a e b por minimos quadrados no "
@@ -195,10 +206,14 @@ final class IssuesPrinting {
           c.body().mae()));
       System.out.println(line);
     }
+  }
 
-    System.out.printf("%n  PESO DE CADA COLUNA NO AJUSTE (coeficiente padronizado | rho proprio)%n");
+  /** What each column weighed in each fit: a description of the fit, read from the fitting side. */
+  static void weights(final IssuesEvaluationTask.Report r) {
+    System.out.printf("%n  PESO DE CADA COLUNA NO AJUSTE (coeficiente padronizado | rho proprio, "
+        + "ambos no lado de ajuste)%n");
     for (final var e : r.evaluated()) {
-      System.out.printf("  -- %s  (alpha %.2f, lambda %.4g)%n", e.fitted().cell().label(),
+      System.out.printf("  -- %s  (alpha %.2f, lambda %.6g)%n", e.fitted().cell().label(),
           e.fitted().alpha(), e.fitted().lambda());
       if (!e.fitted().dropped().isEmpty()) {
         System.out.printf("     retiradas por serem constantes: %s%n", e.fitted().dropped());
@@ -208,7 +223,6 @@ final class IssuesPrinting {
           .forEach(c -> System.out.printf("     %-44s %+9.4f | %+.3f%s%n", c.column(),
               c.coefficient(), c.ownSpearman(), c.selected() ? "" : "   (zerada)"));
     }
-    return rows;
   }
 
   private static String spread(final double[] p) {
@@ -221,11 +235,24 @@ final class IssuesPrinting {
     return out;
   }
 
-  private static String interval(final app.issues.model.ProjectBootstrap.Interval i) {
+  static String interval(final app.issues.model.ProjectBootstrap.Interval i) {
     return String.format("%+6.1f [%+6.1f, %+6.1f]", i.gain(), i.low(), i.high());
   }
 
+  /** The registered tie criterion: the paired interval from resampling whole projects. */
+  private static void gaps(final List<app.issues.model.ProjectBootstrap.Gap> list) {
+    System.out.printf("  reamostragem pareada de PROJETOS, %d sorteios (criterio registrado: "
+        + "intervalo com zero = empate); dif. = MAE(A) - MAE(B), negativa quando A erra menos%n",
+        app.issues.model.ProjectBootstrap.DRAWS);
+    for (final var g : list) {
+      System.out.printf("    %-30s x %-30s  dif. %+8.2f h  IC [%+8.2f, %+8.2f]  %s%n", g.a(),
+          g.b(), g.gapHours(), g.low(), g.high(), g.tied() ? "EMPATE" : "distinguivel");
+    }
+  }
+
   private static void comparisons(final List<app.paper5.model.Bootstrap.Comparison> list) {
+    System.out.printf("  reamostragem pareada de LINHAS, %d sorteios (leitura mais estreita, ao "
+        + "lado)%n", app.paper5.model.Bootstrap.DRAWS);
     for (final var c : list) {
       System.out.printf("    %-30s x %-30s  A ganha em %5.1f%%  dif. media %+8.2f h  IC [%+8.2f, "
           + "%+8.2f]  %s%n", c.a(), c.b(), 100 * c.winRate(), c.meanGap(), c.lowGap(), c.highGap(),
