@@ -46,7 +46,7 @@ import java.util.Optional;
  * @param paper5Db where the Yu/Chouchen replication writes its attributes and results. Its own
  *     database by specification: the corpus and both previous papers' databases are read-only to
  *     it, and no stage of it may add a column to them
- * @param paper6Db where the issue-duration study records its runs ({@code smartshark_issues}; the
+ * @param issuesDb where the issue-duration study records its runs ({@code smartshark_issues}; the
  *     earlier issue study's runs stay in {@code smartshark_paper6}, untouched).
  *     Its own database, refused if it names any database the codebase reads
  * @param teamWindow how far back a commit still counts as presence on the active team. It bounds
@@ -63,7 +63,7 @@ public record PipelineConfig(
     String ledgerDb,
     String unitsDb,
     String paper5Db,
-    String paper6Db,
+    String issuesDb,
     Path workDir,
     Path jiraCacheDir,
     Duration jiraDelay,
@@ -94,10 +94,10 @@ public record PipelineConfig(
     }
     // The transposition reads the thesis labels from TARGET_DB and never writes there. Its own
     // output going into any database it reads, or into the PR study's, would be the same mistake.
-    if (java.util.List.of(sourceDb, targetDb, unitsDb, ledgerDb, paper5Db).contains(paper6Db)) {
+    if (java.util.List.of(sourceDb, targetDb, unitsDb, ledgerDb, paper5Db).contains(issuesDb)) {
       throw new IllegalArgumentException(
-          "PAPER6_DB must differ from SOURCE_DB, TARGET_DB, UNITS_DB, LEDGER_DB and PAPER5_DB (got '"
-              + paper6Db + "'): the transposition writes there and only there");
+          "ISSUES_DB must differ from SOURCE_DB, TARGET_DB, UNITS_DB, LEDGER_DB and PAPER5_DB (got '"
+              + issuesDb + "'): the transposition writes there and only there");
     }
   }
 
@@ -110,7 +110,7 @@ public record PipelineConfig(
         value("LEDGER_DB", targetDb),
         value("UNITS_DB", targetDb),
         value("PAPER5_DB", "smartshark_paper5"),
-        value("PAPER6_DB", "smartshark_issues"),
+        value("ISSUES_DB", "smartshark_issues"),
         Path.of(value("WORK_DIR", "build/identity-work")),
         Path.of(value("JIRA_CACHE_DIR", "build/jira-cache")),
         Duration.ofMillis(Long.parseLong(value("JIRA_DELAY_MS", "250"))),

@@ -20,9 +20,9 @@ import app.cli.commands.Paper5CheckCommand;
 import app.cli.commands.Paper5ExtractCommand;
 import app.cli.commands.Paper5FitInnerCommand;
 import app.cli.commands.Paper5ReservedCommand;
-import app.cli.commands.Paper6ExtractCommand;
-import app.cli.commands.Paper6CheckCommand;
-import app.cli.commands.Paper6GridCommand;
+import app.cli.commands.IssuesExtractCommand;
+import app.cli.commands.IssuesCheckCommand;
+import app.cli.commands.IssuesGridCommand;
 import app.cli.commands.Paper5PopulationCommand;
 import app.cli.commands.PullRequestFeaturesCommand;
 import app.cli.commands.PullRequestLabelsCommand;
@@ -177,20 +177,20 @@ public enum Command {
       references. Hyperparameters are chosen on the inner split only.
       Reads only, writes nothing -- redirect the output. Needs features."""),
 
-  PAPER6_EXTRACT("paper6-extrair", new Paper6ExtractCommand(), """
+  ISSUES_EXTRACT("issues-extrair", new IssuesExtractCommand(), """
       Issue duration: build the three populations (Fixed, the main one;
       broad; inherited) and every column in both scenarios, and run the
       gates -- the thesis split, time travel, parity with the Python
       specification in PARIDADE. Writes the cache to CACHE only if every
-      gate passed; records a summary in PAPER6_DB; reads everything else."""),
+      gate passed; records a summary in ISSUES_DB; reads everything else."""),
 
-  PAPER6_GRID("paper6-grade", new Paper6GridCommand(), """
+  ISSUES_GRID("issues-grade", new IssuesGridCommand(), """
       Issue duration: sweep the eleven cells of each population with
       Elastic Net on the inner selection. Writes the chosen parameters to
-      PARAMETROS; reads CACHE; records the run in PAPER6_DB. The outer test
+      PARAMETROS; reads CACHE; records the run in ISSUES_DB. The outer test
       rows are refused."""),
 
-  PAPER6_CHECK("paper6-conferencia", new Paper6CheckCommand(), """
+  ISSUES_CHECK("issues-conferencia", new IssuesCheckCommand(), """
       Issue duration: every reading of the plan -- references, project-
       resampled intervals, bands of the true duration, C2 by block, the
       sensitivities -- on the inner selection with the parameters in

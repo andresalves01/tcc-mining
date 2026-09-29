@@ -1,7 +1,7 @@
 package app.pipeline.mongo;
 
-import app.paper6.Corpus;
-import app.paper6.port.StudySource;
+import app.issues.Corpus;
+import app.issues.port.StudySource;
 import app.pipeline.port.Progress;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoDatabase;
@@ -318,7 +318,7 @@ public final class MongoStudySource implements StudySource {
     out.forEach((issue, t) -> {
       final List<Corpus.Event> ordered = new ArrayList<>(changes.getOrDefault(issue, List.of()));
       result.put(issue, new Corpus.Text(t.title(), t.description(),
-          app.paper6.Initial.ordered(ordered)));
+          app.issues.Initial.ordered(ordered)));
     });
     return result;
   }

@@ -23,7 +23,7 @@ class PipelineConfigTest {
       final String sourceDb, final String targetDb, final String ledgerDb) {
     return new PipelineConfig(
         "mongodb://127.0.0.1:27017", sourceDb, targetDb, ledgerDb, targetDb, "smartshark_paper5",
-        "smartshark_paper6",
+        "smartshark_issues",
         Path.of("build/work"), Path.of("build/cache"),
         Duration.ofMillis(250), Strictness.EMAIL_AND_FULL_NAME, 1.0, 1.7283, true, 0.70, 5,
         Duration.ofDays(90), Columns.Profile.ISSUE, TtcTarget.TOTAL,

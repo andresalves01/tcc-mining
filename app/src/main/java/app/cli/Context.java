@@ -69,6 +69,6 @@ public record Context(
     UnitSource units,
     TableSource paper5Tables,
     app.paper5.port.ResultStore paper5Results,
-    app.paper6.port.StudySource study,
-    app.paper5.port.ResultStore paper6Results,
+    app.issues.port.StudySource study,
+    app.paper5.port.ResultStore issuesResults,
     app.paper5.port.Artigo4TableSource artigo4Tables) {}
