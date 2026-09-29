@@ -84,9 +84,9 @@ public final class Attributes {
     a.add(c2("K07", "K07_mentions", KIKAS, EXPOSICAO, LOG1P, false));
     a.add(c2("K08", "K08_commit_refs", KIKAS, EXPOSICAO, LOG1P, false));
     a.add(c2("K10", "K10_mean_comment_words", KIKAS, EXPOSICAO, LOG1P, true));
-    a.add(c2("K17c2", "K17c2_project_issues_14d_obs", KIKAS, EXPOSICAO, LOG1P, false));
-    a.add(c2("K18c2", "K18c2_project_created_closed_14d_obs", KIKAS, EXPOSICAO, LOG1P, false));
-    a.add(c2("K19c2", "K19c2_project_commits_14d_obs", KIKAS, EXPOSICAO, LOG1P, false));
+    a.add(c2("K17", "K17c2_project_issues_14d_obs", KIKAS, EXPOSICAO, LOG1P, false));
+    a.add(c2("K18", "K18c2_project_created_closed_14d_obs", KIKAS, EXPOSICAO, LOG1P, false));
+    a.add(c2("K19", "K19c2_project_commits_14d_obs", KIKAS, EXPOSICAO, LOG1P, false));
     a.add(c2("K20", "K20_participant_commits", KIKAS, EXPOSICAO, LOG1P, false));
     a.add(c2("K21", "K21_participant_committers", KIKAS, EXPOSICAO, LOG1P, false));
 
