@@ -281,6 +281,21 @@ class StudyTest {
 
     assertEquals(1.0, row.get("A11_exec_commits"), "dev's one commit before t0");
     assertEquals(1.0, row.get("A13_exec_open_load"), "b, not a itself, not c");
+    // a changelog whose assignment does not chain to the stored assignee: the stored value says
+    // dev, the change set someone else; the issue was not counted, so it is not left out either
+    final Fixture g = new Fixture();
+    g.assigned("x", "P-1", T0, "r", "dev");
+    g.events.add(new Corpus.Event("x", T0 + D, "assignee_id", "r", null, "dev2", "1%%0"));
+    g.events.add(new Corpus.Event("x", t0, "status", "dev", "Open", "In Progress", "2%%0"));
+    g.resolve("x", t0 + 5 * D, "Fixed");
+    final Corpus broken = g.build();
+    final Universe ub = Universe.of(broken);
+    final Universe.Unit ux = ub.unit(Universe.Population.IN_PROGRESS, "x");
+    final Initial.Values ix = Initial.at(ub.issue("x"), ub.events("x"), null, ux.start());
+    assertEquals("dev", ix.assignee());
+    assertEquals(0.0, new Extractor(new World(ub, broken), Set.of("x")).row(ux, ix, null,
+        new Extractor.At(ux.start(), "dev", Set.of("r"))).get("A13_exec_open_load"),
+        "never negative");
     assertEquals(1.0, row.get("K20c1_participant_commits_14d"), "s commented before t0");
     assertEquals(1.0, row.get("K21c1_participant_committers_14d"));
     assertEquals(1.0, row.get("ASG_present_c1"));

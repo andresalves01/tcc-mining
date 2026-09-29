@@ -45,6 +45,7 @@ public final class Extractor {
   private final Map<String, long[][]> executorOpen = new HashMap<>();
   private final Map<String, Map<Integer, Long>> firstTouch = new HashMap<>();
   private Map<String, long[][]> assignedOpen;
+  private final Map<String, List<Object[]>> ownAssigned = new HashMap<>();
 
   /**
    * Where a row of the secondary study is read.
@@ -169,7 +170,7 @@ public final class Extractor {
    * P14: the issues of the project open at {@code t} whose assignee at {@code t} is {@code who},
    * all of them read from the changelog in strict t0. An assignee holds from just after the change
    * that set it to the change that replaced it; an issue is open from just after its creation to its
-   * first resolution. The caller leaves the issue itself out.
+   * first resolution. The caller leaves the issue itself out with {@link #ownAssignedAt}.
    */
   int assignedOpenAt(final String who, final String project, final long t) {
     if (assignedOpen == null) {
@@ -177,6 +178,24 @@ public final class Extractor {
     }
     final long[][] a = assignedOpen.get(who + "\u0000" + project);
     return a == null ? 0 : World.lowerBound(a[0], t) - World.lowerBound(a[1], t);
+  }
+
+  /**
+   * 1 when {@link #assignedOpenAt} counted the issue itself, read from the same intervals. A
+   * changelog whose assignments do not chain to the stored value would otherwise make the load
+   * negative: the assignee at t0 comes from the stored value, the intervals from the changes.
+   */
+  int ownAssignedAt(final String issue, final String who, final String project, final long t) {
+    if (assignedOpen == null) {
+      assignedOpen = assignedIntervals();
+    }
+    final String key = who + "\u0000" + project;
+    for (final Object[] x : ownAssigned.getOrDefault(issue, List.of())) {
+      if (key.equals(x[0]) && (long) x[1] < t && (long) x[2] >= t) {
+        return 1;
+      }
+    }
+    return 0;
   }
 
   private Map<String, long[][]> assignedIntervals() {
@@ -201,8 +220,10 @@ public final class Extractor {
           final long lo = Math.max(from, created);
           final long hi = Math.min(to, closes);
           if (lo < hi) {
-            by.computeIfAbsent(world.person(current) + "\u0000" + issue.project(),
-                x -> new ArrayList<>()).add(new long[] {lo, hi});
+            final String key = world.person(current) + "\u0000" + issue.project();
+            by.computeIfAbsent(key, x -> new ArrayList<>()).add(new long[] {lo, hi});
+            ownAssigned.computeIfAbsent(id, x -> new ArrayList<>())
+                .add(new Object[] {key, lo, hi});
           }
         }
         if (k < changes.size()) {
@@ -495,10 +516,9 @@ public final class Extractor {
     } else if (person == null) {
       v.put("A13_exec_open_load", null);
     } else {
-      // P14; the issue itself is left out when it is open and assigned to the person at t0
-      final String own = Initial.norm(init.assignee());
-      final boolean self = own != null && person.equals(world.person(own)) && u.created() < t0;
-      v.put("A13_exec_open_load", (double) (assignedOpenAt(person, p, t0) - (self ? 1 : 0)));
+      // P14, the issue itself left out when it was counted
+      v.put("A13_exec_open_load", (double) (assignedOpenAt(person, p, t0)
+          - ownAssignedAt(u.id(), person, p, t0)));
     }
     if (ex != null) {
       double whole = 0;
