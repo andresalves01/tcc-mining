@@ -69,15 +69,36 @@ public final class IssuesEvaluationTask {
    * selection of the population -- a rule, so another corpus chooses by itself. A tie, which these
    * numbers never reach, goes to the constant, the simpler of the two.
    */
-  public record MainReference(double constantMaeHours, double projectMaeHours) {
+  public record MainReference(double constantMaeHours, double projectMaeHours,
+      double pairMaeHours) {
+
+    /** The main study's rule: two candidates. */
+    public MainReference(final double constantMaeHours, final double projectMaeHours) {
+      this(constantMaeHours, projectMaeHours, Double.NaN);
+    }
 
     public boolean constant() {
-      return constantMaeHours <= projectMaeHours;
+      return constantMaeHours <= projectMaeHours
+          && (Double.isNaN(pairMaeHours) || constantMaeHours <= pairMaeHours);
     }
 
+    /**
+     * The one that errs least; ties go to the simpler one. In the secondary study the pair median
+     * is a third candidate (P12), because the executor is known at t0 there.
+     */
     public String name() {
-      return constant() ? "constante" : "mediana do projeto";
+      if (constant()) {
+        return "constante";
+      }
+      return Double.isNaN(pairMaeHours) || projectMaeHours <= pairMaeHours ? "mediana do projeto"
+          : "mediana do par executor-projeto";
     }
+  }
+
+  /** P16: the secondary study's rows that went back from In Progress to Open. */
+  static boolean paused(final RowCache.Entry e) {
+    final Double v = e.row().values().get(IssuesInProgressExtractTask.PAUSED);
+    return v != null && v == 1.0;
   }
 
   /** One specification's reading on a subset of the scored rows, with the same predictions. */
@@ -127,9 +148,12 @@ public final class IssuesEvaluationTask {
     final Fitting.Sides inner = mode == Fitting.Mode.INNER ? sides
         : Fitting.sides(entries, Fitting.Mode.INNER, population);
     final References innerRefs = References.learnedOn(inner.fitUnits());
+    final boolean started = population == Population.IN_PROGRESS;
     final MainReference main = new MainReference(
         Fitting.mae(innerRefs.constant(inner.observed().length), inner.observed()),
-        Fitting.mae(innerRefs.projectHours(inner.scoreUnits()), inner.observed()));
+        Fitting.mae(innerRefs.projectHours(inner.scoreUnits()), inner.observed()),
+        started ? Fitting.mae(innerRefs.pairHours(inner.scoreUnits()), inner.observed())
+            : Double.NaN);
     final double[] observed = sides.observed();
     final List<String> projects = sides.projects();
     final References refs = References.learnedOn(sides.fitUnits());
@@ -143,8 +167,9 @@ public final class IssuesEvaluationTask {
     final Score constant = Score.reference(String.format(
         "referencia: constante = mediana do ajuste (%.1f h)", refs.constantHours()),
         constantHours, observed, constantMae);
-    final Score pair = Score.reference(
-        "referencia condicionada (so C2): mediana do par executor-projeto", pairHours, observed,
+    final Score pair = Score.reference(started
+        ? "referencia: mediana do par executor-projeto (executor de t0)"
+        : "referencia condicionada (so C2): mediana do par executor-projeto", pairHours, observed,
         constantMae);
     final List<Evaluated> references = List.of(
         evaluate(asFitted(project, projectHours), projects, projectHours, constantHours,
@@ -218,8 +243,10 @@ public final class IssuesEvaluationTask {
                 lambdas.get(f.cell()), project.maeHours(), constantMae).score()));
       }
     }
-    final List<RowCache.Entry> unmoved =
-        entries.stream().filter(e -> !e.unit().moved()).toList();
+    // the main study reads its C1 cells without the moved issues; the secondary study reads every
+    // cell without the paused ones (P16)
+    final List<RowCache.Entry> unmoved = entries.stream()
+        .filter(e -> started ? !paused(e) : !e.unit().moved()).toList();
     final Fitting.Sides still = Fitting.sides(unmoved, mode, population);
     final References stillRefs = References.learnedOn(still.fitUnits());
     final double stillConstant = Fitting.mae(stillRefs.constant(still.observed().length),
@@ -228,17 +255,21 @@ public final class IssuesEvaluationTask {
         still.observed());
     for (final Frozen f : mine) {
       final Cell cell = Cell.byLabel(f.cell(), population);
-      if (cell.scenario() != Scenario.C1) {
+      if (!started && cell.scenario() != Scenario.C1) {
         continue;
       }
-      sensitivities.add(new Sensitivity("sem as issues movidas entre projetos Jira", cell.label(),
+      sensitivities.add(new Sensitivity(started
+          ? "sem as issues que voltam de In Progress para Open"
+          : "sem as issues movidas entre projetos Jira", cell.label(),
           scoreOf(evaluated, cell), Fitting.frozen(cell, still, f.alpha(),
               lambdas.get(f.cell()), stillProject, stillConstant).score()));
     }
 
     final List<Recalibrated> recalibrated = new ArrayList<>();
     // decision 22: the reserved predictions are the model's own, and nothing recalibrates them
-    for (final Evaluated e : mode == Fitting.Mode.INNER ? evaluated : List.<Evaluated>of()) {
+    // it was asked for the main study's inner selection only
+    for (final Evaluated e : mode == Fitting.Mode.INNER && !started ? evaluated
+        : List.<Evaluated>of()) {
       final Fitting.Fitted f = e.fitted();
       final double[] hours = f.recalibration().predictedHours();
       final Fitting.Fitted asIf = new Fitting.Fitted(f.cell(), f.alpha(), f.lambda(), f.columns(),

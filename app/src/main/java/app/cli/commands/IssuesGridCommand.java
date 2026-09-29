@@ -20,13 +20,19 @@ public final class IssuesGridCommand implements CommandRunner {
 
   @Override
   public void run(final Context context) throws CommandFailedException {
-    final var entries = IssuesPrinting.cache();
+    sweep(context, IssuesPrinting.cache(), IssuesPrinting.populations(), "issues-grade");
+  }
+
+  /** The grid on the given populations of a cache; the secondary study calls it too. */
+  static void sweep(final Context context, final List<app.issues.RowCache.Entry> entries,
+      final java.util.Collection<Population> populations, final String stage)
+      throws CommandFailedException {
     final StringBuilder params = new StringBuilder("# populacao\tcelula\talpha\tlambda -- "
         + "escritos por issues-grade na selecao interna\n");
     final List<Map<String, Object>> rows = new ArrayList<>();
     final Map<Population, IssuesGridTask.Report> reports =
         new java.util.EnumMap<>(Population.class);
-    for (final Population population : IssuesPrinting.populations()) {
+    for (final Population population : populations) {
       final IssuesGridTask.Report report =
           new IssuesGridTask(context.progress()).run(entries, population);
       reports.put(population, report);
@@ -70,7 +76,7 @@ public final class IssuesGridCommand implements CommandRunner {
     }
     System.out.printf("%n  GRADE INTEIRA: MAE (h) na selecao interna de cada alpha em cada degrau "
         + "(0 = topo, modelo constante), e a distancia do melhor de cada alpha ao escolhido%n");
-    for (final Population population : IssuesPrinting.populations()) {
+    for (final Population population : populations) {
       final IssuesGridTask.Report report = reports.get(population);
       System.out.printf("%n  -- %s%n", IssuesPrinting.name(population));
       for (final IssuesGridTask.Timed t : report.fits()) {
@@ -103,7 +109,7 @@ public final class IssuesGridCommand implements CommandRunner {
       }
     }
     final Map<String, Object> run = new LinkedHashMap<>();
-    run.put("etapa", "issues-grade");
+    run.put("etapa", stage);
     run.put("teste_externo", "nao lido");
     System.out.printf("%n  execucao registrada em ISSUES_DB: %s%n",
         context.issuesResults().record(run, rows));

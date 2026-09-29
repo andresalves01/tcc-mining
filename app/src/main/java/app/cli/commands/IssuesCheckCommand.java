@@ -21,7 +21,13 @@ public final class IssuesCheckCommand implements CommandRunner {
 
   @Override
   public void run(final Context context) throws CommandFailedException {
-    final var entries = IssuesPrinting.cache();
+    check(context, IssuesPrinting.cache(), IssuesPrinting.populations(), "issues-conferencia");
+  }
+
+  /** Every reading on the given populations of a cache; the secondary study calls it too. */
+  static void check(final Context context, final List<app.issues.RowCache.Entry> entries,
+      final java.util.Collection<Population> populations, final String stage)
+      throws CommandFailedException {
     final String params = System.getenv("PARAMETROS");
     if (params == null || params.isBlank()) {
       throw new CommandFailedException(List.of("  sem parametros: rode issues-grade com "
@@ -29,7 +35,7 @@ public final class IssuesCheckCommand implements CommandRunner {
     }
     final List<IssuesEvaluationTask.Frozen> frozen = parse(params);
     final List<Map<String, Object>> rows = new ArrayList<>();
-    for (final Population population : IssuesPrinting.populations()) {
+    for (final Population population : populations) {
       final IssuesEvaluationTask.Report report = new IssuesEvaluationTask(context.progress())
           .run(entries, frozen, population, Fitting.Mode.INNER);
       System.out.printf("%n  DURACAO DE ISSUES -- SELECAO INTERNA -- %s%n",
@@ -38,10 +44,16 @@ public final class IssuesCheckCommand implements CommandRunner {
           + "comparar familias, cenarios e blocos, nao para estimar desempenho)%n", params);
       System.out.printf("  ajuste %,d linhas, pontuadas %,d linhas; o teste externo nao e lido%n",
           report.fitRows(), report.scoredRows());
+      if (population == Population.IN_PROGRESS) {
+        System.out.printf("  referencia principal pela regra (P12: menor MAE na selecao interna "
+            + "entre tres): %s (constante %.2f h, mediana do projeto %.2f h, mediana do par "
+            + "%.2f h)%n", report.main().name().toUpperCase(), report.main().constantMaeHours(),
+            report.main().projectMaeHours(), report.main().pairMaeHours());
+      }
       rows.addAll(IssuesPrinting.evaluation(report));
     }
     final Map<String, Object> run = new LinkedHashMap<>();
-    run.put("etapa", "issues-conferencia");
+    run.put("etapa", stage);
     run.put("parametros", params);
     run.put("teste_externo", "nao lido");
     System.out.printf("%n  execucao registrada em ISSUES_DB: %s%n",

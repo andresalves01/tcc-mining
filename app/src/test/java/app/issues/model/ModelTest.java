@@ -47,6 +47,25 @@ class ModelTest {
   }
 
   @Test
+  @DisplayName("the secondary study's development mode never reaches its outer test rows either")
+  void innerNeverSeesTheTestRowsFromTheStart() {
+    final Instant t0 = Instant.parse("2015-01-01T00:00:00Z");
+    final List<RowCache.Entry> entries = new ArrayList<>();
+    final String[][] parts = {{"TRAIN", "TRAIN"}, {"TRAIN", "TEST"}, {"TEST", ""}};
+    for (int i = 0; i < parts.length; i++) {
+      final Map<Population, String[]> p = new EnumMap<>(Population.class);
+      p.put(Population.IN_PROGRESS, parts[i]);
+      entries.add(new RowCache.Entry(new IssueUnit("i" + i, "K-" + i, "p", "r", "e", t0,
+          t0.plusSeconds(7200), "Fixed", false, t0.plusSeconds(3600)),
+          new Row("i" + i, Map.of(), Set.of()), p));
+    }
+    final Fitting.Sides inner = Fitting.sides(entries, Fitting.Mode.INNER, Population.IN_PROGRESS);
+    assertEquals(List.of("i0"), inner.fitUnits().stream().map(IssueUnit::issueId).toList());
+    assertEquals(List.of("i1"), inner.scoreUnits().stream().map(IssueUnit::issueId).toList());
+    assertEquals(1.0, inner.observed()[0], 1e-9, "one hour from the In Progress");
+  }
+
+  @Test
   @DisplayName("a row outside the population is in neither side")
   void otherPopulationsAreIgnored() {
     final List<RowCache.Entry> entries = List.of(entry("a", "TRAIN", "TRAIN", 1),

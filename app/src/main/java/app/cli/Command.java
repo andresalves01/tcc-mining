@@ -23,7 +23,9 @@ import app.cli.commands.Paper5ReservedCommand;
 import app.cli.commands.IssuesExtractCommand;
 import app.cli.commands.IssuesCheckCommand;
 import app.cli.commands.IssuesGridCommand;
+import app.cli.commands.IssuesInProgressCheckCommand;
 import app.cli.commands.IssuesInProgressExtractCommand;
+import app.cli.commands.IssuesInProgressGridCommand;
 import app.cli.commands.IssuesReservedCommand;
 import app.cli.commands.Paper5PopulationCommand;
 import app.cli.commands.PullRequestFeaturesCommand;
@@ -204,6 +206,18 @@ public enum Command {
       and parity with the Python specification in PARIDADE. Writes the
       cache to CACHE only if every gate passed; records a summary in
       ISSUES_DB; reads everything else."""),
+
+  ISSUES_IN_PROGRESS_GRID("issues-andamento-grade", new IssuesInProgressGridCommand(), """
+      Issue duration from the first In Progress: sweep the six cells on the
+      inner selection. Writes PARAMETROS; reads CACHE; records the run in
+      ISSUES_DB. The outer test rows are refused."""),
+
+  ISSUES_IN_PROGRESS_CHECK("issues-andamento-conferencia", new IssuesInProgressCheckCommand(),
+      """
+      Issue duration from the first In Progress: every reading on the inner
+      selection with the parameters in PARAMETROS, the main reference chosen
+      among three (P12). Optimistic by construction; the outer test is not
+      read."""),
 
   ISSUES_RESERVED("issues-reservado", new IssuesReservedCommand(), """
       Issue duration: the one scoring of the outer test that
