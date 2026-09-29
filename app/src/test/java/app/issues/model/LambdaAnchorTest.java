@@ -51,4 +51,15 @@ class LambdaAnchorTest {
           "alpha " + alpha + ": a decade below the top the effects are alive, got " + largestBelow);
     }
   }
+
+  @Test
+  @DisplayName("decision 20: the final lambda keeps the penalty per row the selection chose")
+  void finalLambdaScalesWithRows() {
+    final double chosen = 21_349.030328587574;
+    final double scaled = Fitting.finalLambda(chosen, 83_742, 56_302);
+    org.junit.jupiter.api.Assertions.assertEquals(chosen / 56_302, scaled / 83_742, 1e-12);
+    org.junit.jupiter.api.Assertions.assertEquals(chosen, Fitting.finalLambda(chosen, 10, 10));
+    org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+        () -> Fitting.finalLambda(chosen, 0, 10));
+  }
 }

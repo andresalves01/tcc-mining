@@ -211,6 +211,25 @@ public final class Fitting {
         bestStep, List.copyOf(trials));
   }
 
+  /**
+   * Decision 20, registered before the reserved rows are scored: the penalty of the final fit is
+   * the chosen one times the ratio of rows. The estimator sums the squared error over rows instead
+   * of averaging it, so the same lambda on the whole training side would penalise less per row than
+   * the selection chose; scaled, each row weighs against the penalty as it did when it was chosen.
+   * Alpha is kept. The final predictions are the model's own: no recalibration (decision 22).
+   *
+   * @param chosen the lambda chosen on the inner selection
+   * @param finalRows the rows the final model is fitted on: the whole outer training side
+   * @param innerFitRows the rows the chosen lambda was fitted on: the inner fitting side
+   */
+  public static double finalLambda(final double chosen, final int finalRows,
+      final int innerFitRows) {
+    if (finalRows <= 0 || innerFitRows <= 0) {
+      throw new IllegalArgumentException("row counts must be positive");
+    }
+    return chosen * finalRows / (double) innerFitRows;
+  }
+
   /** One fit with given parameters: what the check and the reserved run do. Searches nothing. */
   public static Fitted frozen(final Cell cell, final Sides sides, final double alpha,
       final double lambda, final double baselineMae, final double constantMae) {
