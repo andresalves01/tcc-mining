@@ -49,7 +49,7 @@ public final class Registration {
     if (parameterLines != PARAMETER_LINES) {
       out.add("parametros: " + parameterLines + " linhas, registradas " + PARAMETER_LINES);
     }
-    for (final Population p : Population.values()) {
+    for (final Population p : Population.MAIN) {
       final Sizes f = found.get(p);
       if (f == null) {
         out.add(p + ": nao conferida");

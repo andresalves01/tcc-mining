@@ -25,6 +25,9 @@ public final class Parity {
   /** Columns whose Python name differs from the Java one. */
   static final Map<String, String> RENAMED = Map.of("A15_change_loc", "A15w_change_loc_whole");
 
+  /** The population flags an export may carry, by the name of their column. */
+  static final Set<String> POPULATIONS = Set.of("fixed", "ampla", "herdada", "andamento");
+
   public record Spec(Map<String, Set<String>> populations, Map<String, Map<String, Double>> rows) {}
 
   /** Per column: compared values, mismatches, and a few examples. */
@@ -39,9 +42,13 @@ public final class Parity {
   public static Spec read(final Path path) throws IOException {
     final List<String> lines = Files.readAllLines(path, StandardCharsets.UTF_8);
     final String[] header = lines.get(0).split("\t", -1);
+    // the population flags come first, after the id: the main export has three, the secondary
+    // study's has its own
     final Map<String, Set<String>> populations = new LinkedHashMap<>();
-    for (final String p : List.of("fixed", "ampla", "herdada")) {
-      populations.put(p, new java.util.HashSet<>());
+    int first = 1;
+    while (first < header.length && POPULATIONS.contains(header[first])) {
+      populations.put(header[first], new java.util.HashSet<>());
+      first++;
     }
     final Map<String, Map<String, Double>> rows = new HashMap<>(lines.size() * 2);
     for (final String line : lines.subList(1, lines.size())) {
@@ -50,17 +57,13 @@ public final class Parity {
       }
       final String[] f = line.split("\t", -1);
       final String id = f[0];
-      if ("1".equals(f[1])) {
-        populations.get("fixed").add(id);
-      }
-      if ("1".equals(f[2])) {
-        populations.get("ampla").add(id);
-      }
-      if ("1".equals(f[3])) {
-        populations.get("herdada").add(id);
+      for (int i = 1; i < first; i++) {
+        if ("1".equals(f[i])) {
+          populations.get(header[i]).add(id);
+        }
       }
       final Map<String, Double> row = new HashMap<>();
-      for (int i = 4; i < header.length; i++) {
+      for (int i = first; i < header.length; i++) {
         row.put(header[i], f[i].isEmpty() ? null : Double.parseDouble(f[i]));
       }
       rows.put(id, row);

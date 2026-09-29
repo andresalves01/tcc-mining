@@ -50,6 +50,29 @@ public final class Initial {
         links(field(events, "issue_links"), issue.links()).initial);
   }
 
+  /**
+   * What the issue said about itself at {@code t0}, in strict t0: only the changes stamped at or
+   * after {@code t0} are undone. The secondary study reads this at the first In Progress. The main
+   * study keeps {@link #of}, which undoes every change -- one event of the corpus is stamped before
+   * its issue's creation, and {@code of} must stay what it was when the main matrix was frozen.
+   */
+  public static Values at(final Corpus.Issue issue, final List<Corpus.Event> events,
+      final Corpus.Text text, final long t0) {
+    final Corpus.Text from = text == null ? null
+        : new Corpus.Text(text.title(), text.description(), since(text.changes(), t0));
+    return of(issue, since(events, t0), from);
+  }
+
+  static List<Corpus.Event> since(final List<Corpus.Event> events, final long t0) {
+    final List<Corpus.Event> out = new ArrayList<>();
+    for (final Corpus.Event e : events) {
+      if (e.at() != null && e.at() >= t0) {
+        out.add(e);
+      }
+    }
+    return out;
+  }
+
   /** Events in changelog order: instant, then Jira changelog id and index. */
   public static List<Corpus.Event> ordered(final List<Corpus.Event> events) {
     final Map<String, List<Corpus.Event>> by = Universe.changelog(events);
@@ -72,7 +95,7 @@ public final class Initial {
    * Python's {@code str.strip()}, then blank as absent. Java's {@code strip} keeps the no-break
    * space and a few others Python removes; the parity gate found it on 1,407 descriptions.
    */
-  static String norm(final String value) {
+  public static String norm(final String value) {
     if (value == null) {
       return null;
     }

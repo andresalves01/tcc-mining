@@ -32,8 +32,14 @@ class StudyTest {
     int ext = 1;
 
     void issue(final String id, final String key, final long created, final String reporter) {
-      issues.add(new Corpus.Issue(id, key, "p", created, reporter, reporter, null, "Bug", "Major",
-          null, List.of(), List.of()));
+      assigned(id, key, created, reporter, null);
+    }
+
+    /** An issue whose stored assignee is the last one its changelog sets. */
+    void assigned(final String id, final String key, final long created, final String reporter,
+        final String assignee) {
+      issues.add(new Corpus.Issue(id, key, "p", created, reporter, reporter, assignee, "Bug",
+          "Major", null, List.of(), List.of()));
     }
 
     void resolve(final String id, final long at, final String reason) {
@@ -198,6 +204,92 @@ class StudyTest {
     final Map<String, Double> z = e.row(u.unit("z"), Initial.of(u.issue("z"), u.events("z"),
         null), null);
     assertEquals(2.0, z.get("K16_project_commits_90d"), "c1 and c3; c2 is the same change as c1");
+  }
+
+  @Test
+  @DisplayName("in progress: the first In Progress before the resolution starts the duration and "
+      + "the split cuts on it; one after the resolution does not count")
+  void inProgressPopulation() {
+    final Fixture f = new Fixture();
+    for (int i = 0; i < 10; i++) {
+      f.issue("i" + i, "P-" + i, T0, "r");
+      f.events.add(new Corpus.Event("i" + i, T0 + i * D, "status", "dev", "Open", "In Progress",
+          (f.ext++) + "%%0"));
+      f.resolve("i" + i, T0 + i * D + (i == 5 ? 10 * D : D / 2), "Fixed");
+    }
+    f.issue("late", "P-90", T0, "r");
+    f.resolve("late", T0 + D, "Fixed");
+    f.events.add(new Corpus.Event("late", T0 + 2 * D, "status", "dev", "Resolved", "In Progress",
+        (f.ext++) + "%%0"));
+    final Universe u = Universe.of(f.build());
+
+    assertEquals(10, u.population(Universe.Population.IN_PROGRESS).size(), "late is left out");
+    final Universe.Unit i3 = u.unit(Universe.Population.IN_PROGRESS, "i3");
+    assertEquals(T0 + 3 * D, i3.start());
+    assertEquals("dev", i3.startedBy());
+    assertEquals(12.0, i3.durationHours(), 1e-9, "from the In Progress, not from the creation");
+    assertEquals(T0, u.unit("i3").start(), "the main study's unit still starts at creation");
+    final Universe.Split s = u.split(Universe.Population.IN_PROGRESS, 0.70);
+    assertEquals(T0 + 6 * D, s.cut(), "cut on the In Progress instants, all created at T0");
+    assertEquals(Universe.Part.CROSSES, s.outer().get("i5"));
+    assertEquals(Universe.Part.TEST, s.outer().get("i6"));
+  }
+
+  @Test
+  @DisplayName("strict t0 at the In Progress: changes before it stand, the one at it is undone")
+  void initialAtStart() {
+    final Corpus.Issue issue = new Corpus.Issue("a", "P-1", "p", T0, "r", "r", "dev", "Bug",
+        "Critical", null, List.of(), List.of());
+    final long t0 = T0 + 2 * D;
+    final List<Corpus.Event> events = List.of(
+        new Corpus.Event("a", T0 + D, "assignee_id", "r", null, "dev", "1%%0"),
+        new Corpus.Event("a", T0 + D, "priority", "r", "Minor", "Major", "1%%1"),
+        new Corpus.Event("a", t0, "priority", "dev", "Major", "Critical", "2%%0"));
+    final Initial.Values v = Initial.at(issue, events, null, t0);
+    assertEquals("dev", v.assignee(), "assigned the day before the In Progress");
+    assertEquals("Major", v.priority(), "raised the day before; the change at t0 is undone");
+    assertEquals("Minor", Initial.of(issue, events, null).priority(), "creation is untouched");
+  }
+
+  @Test
+  @DisplayName("at the In Progress: the executor's history and load are the known person's, an "
+      + "assignment after t0 is not load, and the participants' commits count until t0")
+  void executorAtStart() {
+    final Fixture f = new Fixture();
+    final long t0 = T0 + 10 * D;
+    f.assigned("a", "P-1", T0, "r", "dev");
+    f.events.add(new Corpus.Event("a", T0 + D, "assignee_id", "r", null, "dev", "1%%0"));
+    f.events.add(new Corpus.Event("a", t0, "status", "dev", "Open", "In Progress", "2%%0"));
+    f.resolve("a", t0 + 5 * D, "Fixed");
+    f.assigned("b", "P-2", T0, "r", "dev");          // open, assigned to dev before t0: load
+    f.events.add(new Corpus.Event("b", T0 + 2 * D, "assignee_id", "r", null, "dev", "3%%0"));
+    f.assigned("c", "P-3", T0, "r", "dev");          // assigned to dev only after t0: not load
+    f.events.add(new Corpus.Event("c", t0 + D, "assignee_id", "r", null, "dev", "4%%0"));
+    f.comments.add(new Corpus.Comment("a", "s", T0 + 3 * D, 5));      // before t0: participant
+    f.comments.add(new Corpus.Comment("a", "z", t0 + D, 5));          // after t0: not
+    f.commit("c1", "dev", T0 - 20 * D, T0 - 20 * D);
+    f.commit("c2", "s", t0 - 3 * D, t0 - 3 * D);
+    f.commit("c3", "z", t0 - 2 * D, t0 - 2 * D);
+    final Corpus corpus = f.build();
+    final Universe u = Universe.of(corpus);
+    final World w = new World(u, corpus);
+    final Extractor e = new Extractor(w, Set.of("a"));
+    final Universe.Unit unit = u.unit(Universe.Population.IN_PROGRESS, "a");
+    final Initial.Values init = Initial.at(u.issue("a"), u.events("a"), null, unit.start());
+    final Map<String, Double> row = e.row(unit, init, null,
+        new Extractor.At(unit.start(), "dev", Set.of("r", "s")));
+
+    assertEquals(1.0, row.get("A11_exec_commits"), "dev's one commit before t0");
+    assertEquals(1.0, row.get("A13_exec_open_load"), "b, not a itself, not c");
+    assertEquals(1.0, row.get("K20c1_participant_commits_14d"), "s commented before t0");
+    assertEquals(1.0, row.get("K21c1_participant_committers_14d"));
+    assertEquals(1.0, row.get("ASG_present_c1"));
+
+    final Map<String, Double> unknown = e.row(unit, init, null,
+        new Extractor.At(unit.start(), "nobody", Set.of("r")));
+    assertNull(unknown.get("A11_exec_commits"), "no Git identity at t0: unknown, not zero");
+    assertEquals(0.0, unknown.get("A13_exec_open_load"), "the load is read from the changelog");
+    assertNull(unknown.get("K20c1_participant_commits_14d"), "no participant known in Git");
   }
 
   @Test

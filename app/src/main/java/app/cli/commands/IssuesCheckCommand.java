@@ -58,7 +58,7 @@ public final class IssuesCheckCommand implements CommandRunner {
           continue;
         }
         final String[] f = line.split("\t");
-        Cell.byLabel(f[1]);
+        Cell.byLabel(f[1], Population.valueOf(f[0]));
         out.add(new IssuesEvaluationTask.Frozen(Population.valueOf(f[0]), f[1],
             Double.parseDouble(f[2]), Double.parseDouble(f[3])));
       }

@@ -23,6 +23,7 @@ import app.cli.commands.Paper5ReservedCommand;
 import app.cli.commands.IssuesExtractCommand;
 import app.cli.commands.IssuesCheckCommand;
 import app.cli.commands.IssuesGridCommand;
+import app.cli.commands.IssuesInProgressExtractCommand;
 import app.cli.commands.IssuesReservedCommand;
 import app.cli.commands.Paper5PopulationCommand;
 import app.cli.commands.PullRequestFeaturesCommand;
@@ -196,6 +197,13 @@ public enum Command {
       resampled intervals, bands of the true duration, C2 by block, the
       sensitivities -- on the inner selection with the parameters in
       PARAMETROS. Optimistic by construction; the outer test is not read."""),
+
+  ISSUES_IN_PROGRESS_EXTRACT("issues-andamento-extrair", new IssuesInProgressExtractCommand(), """
+      Issue duration from the first In Progress (papers/issues-in-progress):
+      the FIXED issues read at that instant, the split on it, time travel
+      and parity with the Python specification in PARIDADE. Writes the
+      cache to CACHE only if every gate passed; records a summary in
+      ISSUES_DB; reads everything else."""),
 
   ISSUES_RESERVED("issues-reservado", new IssuesReservedCommand(), """
       Issue duration: the one scoring of the outer test that

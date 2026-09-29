@@ -63,7 +63,7 @@ public final class IssuesReservedCommand implements CommandRunner {
     // every gate, for every population, before any row of the test is scored
     final Map<Population, Registration.Sizes> found = new EnumMap<>(Population.class);
     final List<String> problems = new ArrayList<>();
-    for (final Population p : Population.values()) {
+    for (final Population p : Population.MAIN) {
       final Fitting.Sides outer = Fitting.sides(entries, Fitting.Mode.RESERVED, p);
       final Fitting.Sides inner = Fitting.sides(entries, Fitting.Mode.INNER, p);
       final Set<String> test = new HashSet<>();
@@ -85,7 +85,7 @@ public final class IssuesReservedCommand implements CommandRunner {
     System.out.printf("  matriz     %s  sha256 %s%n", cache, matrixSha);
     System.out.printf("  parametros %s  sha256 %s (%d linhas)%n", params, paramsSha,
         frozen.size());
-    for (final Population p : Population.values()) {
+    for (final Population p : Population.MAIN) {
       final Registration.Sizes s = found.get(p);
       System.out.printf("  %-24s treino %,7d  teste %,6d  ajuste/selecao internos %,6d / %,6d  "
           + "nunca pontuadas %,6d%n", IssuesPrinting.name(p), s.train(), s.test(), s.innerFit(),
@@ -103,7 +103,7 @@ public final class IssuesReservedCommand implements CommandRunner {
     final List<Map<String, Object>> rows = new ArrayList<>();
     final StringBuilder predictions = new StringBuilder();
     final Map<String, Object> mains = new LinkedHashMap<>();
-    for (final Population p : Population.values()) {
+    for (final Population p : Population.MAIN) {
       // the registration reads the never-scored subset on the main and the broad populations only
       final IssuesEvaluationTask.Report r = new IssuesEvaluationTask(context.progress()).run(
           entries, frozen, p, Fitting.Mode.RESERVED,

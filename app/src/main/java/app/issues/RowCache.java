@@ -24,10 +24,9 @@ import java.util.Set;
 public final class RowCache {
 
   private static final String SEP = "\t";
-  private static final List<String> FIXED = List.of("id", "chave", "projeto", "relator",
-      "executor", "criada_em", "resolvida_em", "motivo", "movida",
-      "fixed_externa", "fixed_interna", "ampla_externa", "ampla_interna",
-      "herdada_externa", "herdada_interna");
+  private static final List<String> BASE = List.of("id", "chave", "projeto", "relator",
+      "executor", "criada_em", "resolvida_em", "motivo", "movida");
+  private static final String STARTED = "iniciada_em";
 
   /** An issue, its columns, and per population its {@code [outer, inner]} verdicts. */
   public record Entry(IssueUnit unit, Row row, Map<Population, String[]> parts) {
@@ -45,24 +44,55 @@ public final class RowCache {
 
   private RowCache() {}
 
+  /** The prefix of a population's two partition columns. */
+  static String prefix(final Population p) {
+    return switch (p) {
+      case FIXED -> "fixed";
+      case BROAD -> "ampla";
+      case INHERITED -> "herdada";
+      case IN_PROGRESS -> "andamento";
+    };
+  }
+
   private static String text(final String s) {
     return s == null ? "" : s;
   }
 
+  /** The main study's cache: the three populations, the duration from creation. */
   public static void write(final Path path, final List<Entry> entries, final List<String> columns)
       throws IOException {
+    write(path, entries, columns, Population.MAIN);
+  }
+
+  /**
+   * One cache for the given populations. The start instant is written only when a population's
+   * duration does not start at creation, so the main study's file keeps its layout byte for byte.
+   */
+  public static void write(final Path path, final List<Entry> entries, final List<String> columns,
+      final List<Population> populations) throws IOException {
+    final boolean started = populations.contains(Population.IN_PROGRESS);
     final StringBuilder out = new StringBuilder(1 << 24);
-    out.append(String.join(SEP, FIXED));
+    out.append(String.join(SEP, BASE));
+    if (started) {
+      out.append(SEP).append(STARTED);
+    }
+    for (final Population p : populations) {
+      out.append(SEP).append(prefix(p)).append("_externa").append(SEP).append(prefix(p))
+          .append("_interna");
+    }
     columns.forEach(column -> out.append(SEP).append(column));
     out.append('\n');
     for (final Entry entry : entries) {
       final IssueUnit u = entry.unit();
       out.append(String.join(SEP, u.issueId(), u.key(), u.project(), text(u.reporter()),
           text(u.executor()), u.createdAt().toString(), u.resolvedAt().toString(),
-          text(u.reason()), u.moved() ? "1" : "0",
-          entry.outer(Population.FIXED), entry.inner(Population.FIXED),
-          entry.outer(Population.BROAD), entry.inner(Population.BROAD),
-          entry.outer(Population.INHERITED), entry.inner(Population.INHERITED)));
+          text(u.reason()), u.moved() ? "1" : "0"));
+      if (started) {
+        out.append(SEP).append(u.startedAt().toString());
+      }
+      for (final Population p : populations) {
+        out.append(SEP).append(entry.outer(p)).append(SEP).append(entry.inner(p));
+      }
       for (final String column : columns) {
         out.append(SEP);
         final Double value = entry.row().values().get(column);
@@ -76,13 +106,32 @@ public final class RowCache {
     Files.writeString(path, out.toString(), StandardCharsets.UTF_8);
   }
 
+  /** Reads either study's cache: the partitions and the start are found by column name. */
   public static List<Entry> read(final Path path) throws IOException {
     final List<String> lines = Files.readAllLines(path, StandardCharsets.UTF_8);
     if (lines.isEmpty()) {
       throw new IOException(path + " esta vazio");
     }
     final String[] header = lines.get(0).split(SEP, -1);
-    final int fixed = FIXED.size();
+    final Map<String, Integer> at = new HashMap<>();
+    for (int i = 0; i < header.length; i++) {
+      at.put(header[i], i);
+    }
+    for (int i = 0; i < BASE.size(); i++) {
+      if (!BASE.get(i).equals(header[i])) {
+        throw new IOException(path + ": coluna " + i + " deveria ser " + BASE.get(i));
+      }
+    }
+    final Integer started = at.get(STARTED);
+    final Map<Population, Integer> partAt = new EnumMap<>(Population.class);
+    int fixed = BASE.size() + (started == null ? 0 : 1);
+    for (final Population p : Population.values()) {
+      final Integer k = at.get(prefix(p) + "_externa");
+      if (k != null) {
+        partAt.put(p, k);
+        fixed = Math.max(fixed, k + 2);
+      }
+    }
     final List<Entry> entries = new ArrayList<>(lines.size());
     for (final String line : lines.subList(1, lines.size())) {
       if (line.isBlank()) {
@@ -100,11 +149,11 @@ public final class RowCache {
       }
       absent.removeIf(name -> name.endsWith("_ausente"));
       final Map<Population, String[]> parts = new EnumMap<>(Population.class);
-      put(parts, Population.FIXED, f[9], f[10]);
-      put(parts, Population.BROAD, f[11], f[12]);
-      put(parts, Population.INHERITED, f[13], f[14]);
+      partAt.forEach((p, k) -> put(parts, p, f[k], f[k + 1]));
+      final Instant created = Instant.parse(f[5]);
       entries.add(new Entry(new IssueUnit(f[0], f[1], f[2], empty(f[3]), empty(f[4]),
-          Instant.parse(f[5]), Instant.parse(f[6]), empty(f[7]), "1".equals(f[8])),
+          created, Instant.parse(f[6]), empty(f[7]), "1".equals(f[8]),
+          started == null ? created : Instant.parse(f[started])),
           new Row(f[0], values, absent), parts));
     }
     return entries;

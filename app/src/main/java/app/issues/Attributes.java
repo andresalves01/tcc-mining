@@ -129,6 +129,34 @@ public final class Attributes {
     return ALL.stream().filter(a -> a.inCell(family, scenario)).toList();
   }
 
+  /**
+   * The executor's columns, which the secondary study reads at t0 for the person known then: they
+   * join C1 there (P10), while the rest of the content block stays after the fact.
+   */
+  public static final Set<String> EXECUTOR_AT_START = Set.of("A09_exec_loc_tot",
+      "A10_exec_mccc_tot", "A10c_exec_mccc_coverage", "A11_exec_commits", "A12_exec_tenure_days",
+      "A13_exec_open_load");
+
+  /**
+   * The columns of one cell of the secondary study: C1 plus the executor at t0, and in
+   * {@link Scenario#C1_CONTEUDO} the rest of the content block. No exposure (P5).
+   */
+  public static List<Attribute> ofInProgress(final Family family, final Scenario scenario) {
+    if (scenario != Scenario.C1 && scenario != Scenario.C1_CONTEUDO) {
+      throw new IllegalArgumentException("the secondary study reads C1 and C1 + content only");
+    }
+    return ALL.stream().filter(a -> {
+      final boolean mine = family == Family.UNIAO ? a.inUnion() : a.family() == family;
+      if (!mine) {
+        return false;
+      }
+      if (a.atCreation() || EXECUTOR_AT_START.contains(a.name())) {
+        return true;
+      }
+      return scenario == Scenario.C1_CONTEUDO && a.block() == Scenario.Block.CONTEUDO;
+    }).toList();
+  }
+
   public static Attribute byName(final String name) {
     return ALL.stream().filter(a -> a.name().equals(name)).findFirst()
         .orElseThrow(() -> new IllegalArgumentException("no attribute " + name));

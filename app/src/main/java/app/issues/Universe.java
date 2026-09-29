@@ -37,25 +37,48 @@ public final class Universe {
   public static final Set<String> RESOLVED = Set.of("Resolved", "Closed");
   public static final Set<String> MOVE_FIELDS = Set.of("Key", "Project", "project");
 
-  /** The three populations of the study, in the order the report prints them. */
+  /** The populations of both studies; the main study reads the first three, in this order. */
   public enum Population {
     /** Main: resolved as Fixed at the first resolution. */
     FIXED,
     /** Sensitivity: any reason. */
     BROAD,
     /** Conditional: the previous study's labels, code-linked, Δ₂ ≥ 0, one per key. */
-    INHERITED
+    INHERITED,
+    /**
+     * The secondary study (papers/issues-in-progress): FIXED issues with a status change to In
+     * Progress in [creation, first resolution); their duration starts at the first such change.
+     */
+    IN_PROGRESS;
+
+    /** The main study's populations, which every one of its commands reads. */
+    public static final List<Population> MAIN = List.of(FIXED, BROAD, INHERITED);
   }
+
+  /** The status that marks the declared start of the work in the secondary study. */
+  public static final String IN_PROGRESS_STATUS = "In Progress";
 
   /** Where one issue landed under one cut. */
   public enum Part { TRAIN, TEST, CROSSES }
 
-  /** One issue with its outcome, as every later stage sees it. */
+  /**
+   * One issue with its outcome, as every later stage sees it.
+   *
+   * @param start where the duration starts and what the split cuts on: the creation in the main
+   *     study's populations, the first In Progress in {@link Population#IN_PROGRESS}
+   * @param startedBy the raw author of the change that started it, null when it is the creation
+   */
   public record Unit(String id, String key, String project, String reporter, long created,
-      long resolved, String reason, boolean moved) {
+      long resolved, String reason, boolean moved, long start, String startedBy) {
+
+    /** A unit whose duration starts at its creation. */
+    public Unit(final String id, final String key, final String project, final String reporter,
+        final long created, final long resolved, final String reason, final boolean moved) {
+      this(id, key, project, reporter, created, resolved, reason, moved, created, null);
+    }
 
     public double durationHours() {
-      return (resolved - created) / 3_600_000.0;
+      return (resolved - start) / 3_600_000.0;
     }
   }
 
@@ -64,17 +87,19 @@ public final class Universe {
   private final List<String> universe;
   private final Map<String, Unit> units;
   private final Map<Population, List<String>> populations;
+  private final Map<String, Unit> started;
   private final Map<String, Integer> funnel;
 
   private Universe(final Map<String, Corpus.Issue> issues,
       final Map<String, List<Corpus.Event>> changelog, final List<String> universe,
       final Map<String, Unit> units, final Map<Population, List<String>> populations,
-      final Map<String, Integer> funnel) {
+      final Map<String, Unit> started, final Map<String, Integer> funnel) {
     this.issues = issues;
     this.changelog = changelog;
     this.universe = universe;
     this.units = units;
     this.populations = populations;
+    this.started = started;
     this.funnel = funnel;
   }
 
@@ -176,7 +201,35 @@ public final class Universe {
     populations.put(Population.FIXED, List.copyOf(fixed));
     populations.put(Population.BROAD, List.copyOf(broad));
     populations.put(Population.INHERITED, List.copyOf(inherited));
-    return new Universe(issues, changelog, List.copyOf(universe), units, populations, funnel);
+
+    // the secondary study: kept out of the funnel, which the main study's report prints
+    final Map<String, Unit> started = new HashMap<>();
+    final List<String> inProgress = new ArrayList<>();
+    for (final String id : fixed) {
+      final Unit u = units.get(id);
+      final Corpus.Event e =
+          firstInProgress(changelog.getOrDefault(id, List.of()), u.created(), u.resolved());
+      if (e != null) {
+        started.put(id, new Unit(id, u.key(), u.project(), u.reporter(), u.created(),
+            u.resolved(), u.reason(), u.moved(), e.at(), e.author()));
+        inProgress.add(id);
+      }
+    }
+    populations.put(Population.IN_PROGRESS, List.copyOf(inProgress));
+    return new Universe(issues, changelog, List.copyOf(universe), units, populations, started,
+        funnel);
+  }
+
+  /** The first status change to In Progress with its instant in {@code [from, to)}, or null. */
+  public static Corpus.Event firstInProgress(final List<Corpus.Event> events, final long from,
+      final long to) {
+    for (final Corpus.Event e : events) {
+      if ("status".equals(e.field()) && IN_PROGRESS_STATUS.equals(e.newValue()) && e.at() != null
+          && e.at() >= from && e.at() < to) {
+        return e;
+      }
+    }
+    return null;
   }
 
   // ------------------------------------------------------------------ rules
@@ -296,10 +349,10 @@ public final class Universe {
   public record Split(long cut, long innerCut, Map<String, Part> outer, Map<String, Part> inner) {}
 
   /**
-   * The rule of {@code app.labels.TemporalSplit} with no eligibility: the cut is the creation at
-   * position int(0.70 (n − 1)); created before and resolved before is training; created before and
-   * resolved at or after crosses and is set aside; created at or after is test. The same rule again
-   * on the training side gives the inner split.
+   * The rule of {@code app.labels.TemporalSplit} with no eligibility: the cut is the start at
+   * position int(0.70 (n − 1)); started before and resolved before is training; started before and
+   * resolved at or after crosses and is set aside; started at or after is test. The same rule again
+   * on the training side gives the inner split. The start is the creation in the main study.
    */
   public Split split(final Population population, final double share) {
     final List<Unit> rows = population(population);
@@ -311,14 +364,14 @@ public final class Universe {
   }
 
   static long cutOf(final List<Unit> rows, final double share) {
-    final long[] created = rows.stream().mapToLong(Unit::created).sorted().toArray();
-    return created[(int) (share * (created.length - 1))];
+    final long[] start = rows.stream().mapToLong(Unit::start).sorted().toArray();
+    return start[(int) (share * (start.length - 1))];
   }
 
   static Map<String, Part> parts(final List<Unit> rows, final long cut) {
     final Map<String, Part> out = new HashMap<>(rows.size() * 2);
     for (final Unit u : rows) {
-      out.put(u.id(), u.created() < cut ? (u.resolved() < cut ? Part.TRAIN : Part.CROSSES)
+      out.put(u.id(), u.start() < cut ? (u.resolved() < cut ? Part.TRAIN : Part.CROSSES)
           : Part.TEST);
     }
     return out;
@@ -364,11 +417,18 @@ public final class Universe {
   }
 
   public List<Unit> population(final Population population) {
-    return populations.get(population).stream().map(units::get).toList();
+    final Map<String, Unit> from = population == Population.IN_PROGRESS ? started : units;
+    return populations.get(population).stream().map(from::get).toList();
   }
 
+  /** The unit of an issue as the main study's populations see it: its duration from creation. */
   public Unit unit(final String id) {
     return units.get(id);
+  }
+
+  /** The unit of an issue in one population: in IN_PROGRESS it starts at the first In Progress. */
+  public Unit unit(final Population population, final String id) {
+    return population == Population.IN_PROGRESS ? started.get(id) : units.get(id);
   }
 
   public Corpus.Issue issue(final String id) {
@@ -379,10 +439,10 @@ public final class Universe {
     return changelog.getOrDefault(id, List.of());
   }
 
-  /** Every issue any population holds. */
+  /** Every issue the main study's populations hold. */
   public Set<String> studied() {
     final Set<String> out = new HashSet<>();
-    populations.values().forEach(out::addAll);
+    Population.MAIN.forEach(p -> out.addAll(populations.get(p)));
     return out;
   }
 }

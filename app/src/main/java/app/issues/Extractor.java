@@ -22,6 +22,12 @@ import java.util.Set;
  * <p><b>C1</b> reads only what existed at the creation instant t0. <b>C2</b> adds columns measured in
  * {@code [t0, t1)}, where t1 is the first resolution -- always new columns, never a C1 value
  * replaced. A value that cannot be computed is {@code null}, never zero.
+ *
+ * <p>The secondary study ({@code papers/issues-in-progress/DESENHO.md}) reads the same columns at
+ * another instant, given by {@link At}: t0 is the first In Progress, the executor is the person
+ * known then, and the participants are those who took part before it. Only t0 moves (P11); the
+ * executor's columns are that person's (P10), A13 counts the issues assigned to them (P14), and
+ * K20c1/K21c1 sum over the participants (P13).
  */
 public final class Extractor {
 
@@ -38,6 +44,15 @@ public final class Extractor {
   private final Map<String, Long> firstInteraction = new HashMap<>();
   private final Map<String, long[][]> executorOpen = new HashMap<>();
   private final Map<String, Map<Integer, Long>> firstTouch = new HashMap<>();
+  private Map<String, long[][]> assignedOpen;
+
+  /**
+   * Where a row of the secondary study is read.
+   *
+   * @param executor the canonical person known at t0 (P8), or null
+   * @param participants the canonical people who took part in the issue before t0 (P13)
+   */
+  public record At(long t0, String executor, Set<String> participants) {}
 
   /**
    * Builds what every row needs from the whole universe: first interactions, the retrospective
@@ -150,6 +165,59 @@ public final class Extractor {
     return a == null ? 0 : World.lowerBound(a[0], t) - World.lowerBound(a[1], t);
   }
 
+  /**
+   * P14: the issues of the project open at {@code t} whose assignee at {@code t} is {@code who},
+   * all of them read from the changelog in strict t0. An assignee holds from just after the change
+   * that set it to the change that replaced it; an issue is open from just after its creation to its
+   * first resolution. The caller leaves the issue itself out.
+   */
+  int assignedOpenAt(final String who, final String project, final long t) {
+    if (assignedOpen == null) {
+      assignedOpen = assignedIntervals();
+    }
+    final long[][] a = assignedOpen.get(who + "\u0000" + project);
+    return a == null ? 0 : World.lowerBound(a[0], t) - World.lowerBound(a[1], t);
+  }
+
+  private Map<String, long[][]> assignedIntervals() {
+    final Map<String, List<long[]>> by = new HashMap<>();
+    for (final String id : universe.universe()) {
+      final Corpus.Issue issue = universe.issue(id);
+      final long created = issue.created();
+      final Long resolved = Universe.firstResolution(universe.events(id));
+      final long closes = resolved == null ? Long.MAX_VALUE : resolved;
+      final List<Corpus.Event> changes = new ArrayList<>();
+      for (final Corpus.Event e : universe.events(id)) {
+        if ("assignee_id".equals(e.field()) && e.at() != null) {
+          changes.add(e);
+        }
+      }
+      String current = changes.isEmpty() ? Initial.norm(issue.assignee())
+          : Initial.norm(changes.get(0).oldValue());
+      long from = Long.MIN_VALUE;
+      for (int k = 0; k <= changes.size(); k++) {
+        final long to = k < changes.size() ? changes.get(k).at() : Long.MAX_VALUE;
+        if (current != null) {
+          final long lo = Math.max(from, created);
+          final long hi = Math.min(to, closes);
+          if (lo < hi) {
+            by.computeIfAbsent(world.person(current) + "\u0000" + issue.project(),
+                x -> new ArrayList<>()).add(new long[] {lo, hi});
+          }
+        }
+        if (k < changes.size()) {
+          from = to;
+          current = Initial.norm(changes.get(k).newValue());
+        }
+      }
+    }
+    final Map<String, long[][]> out = new HashMap<>(by.size() * 2);
+    by.forEach((k, list) -> out.put(k, new long[][] {
+        list.stream().mapToLong(x -> x[0]).sorted().toArray(),
+        list.stream().mapToLong(x -> x[1]).sorted().toArray()}));
+    return out;
+  }
+
   static Double median(final List<Double> values) {
     if (values.isEmpty()) {
       return null;
@@ -180,12 +248,21 @@ public final class Extractor {
     return b ? 1.0 : 0.0;
   }
 
-  /** Every column of one studied issue. Null values are absences. */
+  /** Every column of one studied issue, at its creation. Null values are absences. */
   public Map<String, Double> row(final Universe.Unit u, final Initial.Values init,
       final Corpus.Label label) {
+    return row(u, init, label, null);
+  }
+
+  /**
+   * Every column of one issue, at its creation when {@code at} is null (the main study) and at
+   * {@code at.t0()} otherwise, with {@code init} read at that same instant.
+   */
+  public Map<String, Double> row(final Universe.Unit u, final Initial.Values init,
+      final Corpus.Label label, final At at) {
     final Map<String, Double> v = new LinkedHashMap<>();
     final String p = u.project();
-    final long t0 = u.created();
+    final long t0 = at == null ? u.created() : at.t0();
     final long t1 = u.resolved();
     final String rep = world.person(u.reporter());
 
@@ -249,9 +326,26 @@ public final class Extractor {
     v.put("K17_project_issues_14d", (double) world.countCreated(p, t0 - WINDOW_14, t0));
     v.put("K18_project_created_closed_14d", (double) world.createdIn(p, t0 - WINDOW_14, t0)
         .stream().filter(c -> c.resolved() != null && c.resolved() < t0).count());
-    final Integer rc = known ? world.personCommitsIn(rep, p, t0 - WINDOW_14, t0) : null;
-    v.put("K20c1_participant_commits_14d", rc == null ? null : (double) rc);
-    v.put("K21c1_participant_committers_14d", rc == null ? null : bool(rc > 0));
+    if (at == null) {
+      final Integer rc = known ? world.personCommitsIn(rep, p, t0 - WINDOW_14, t0) : null;
+      v.put("K20c1_participant_commits_14d", rc == null ? null : (double) rc);
+      v.put("K21c1_participant_committers_14d", rc == null ? null : bool(rc > 0));
+    } else {
+      // P13: over the participants whose Git identity was known at t0; unknown if none was
+      int commits = 0;
+      int committers = 0;
+      boolean anyKnown = false;
+      for (final String who : at.participants().stream().sorted().toList()) {
+        if (world.gitKnownAt(who, t0)) {
+          anyKnown = true;
+          final int c = world.personCommitsIn(who, p, t0 - WINDOW_14, t0);
+          commits += c;
+          committers += c > 0 ? 1 : 0;
+        }
+      }
+      v.put("K20c1_participant_commits_14d", anyKnown ? (double) commits : null);
+      v.put("K21c1_participant_committers_14d", anyKnown ? (double) committers : null);
+    }
     v.put("K19_project_commits_14d", (double) world.countCommits(p, t0 - WINDOW_14, t0));
     v.put("D01_backlog_open", (double) world.openAt(p, t0));
     final List<Double> waits = new ArrayList<>();
@@ -371,8 +465,18 @@ public final class Extractor {
     final List<World.Commit> exCommits = executorCommits(u.id(), t1);
     final String ex = exCommits.isEmpty() ? null : exCommits.get(0).who();
     v.put("EXE_known", bool(ex != null));
-    if (ex != null) {
-      final World.PersonHistory h = world.personHistory(ex, p, t0);
+    // the person the executor's columns describe: the retrospective one in the main study, the one
+    // known at t0 in the secondary study, where the change's columns stay retrospective (P10)
+    final String person = at == null ? ex : at.executor();
+    boolean personKnown = person != null;
+    if (at != null) {
+      // decision 9 read at t0: without a Git identity known then, the history is unknown, not zero
+      personKnown = person != null && world.gitKnownAt(person, t0);
+      v.put("EXE0_known", bool(person != null));
+      v.put("EXE0_git_known_t0", bool(personKnown));
+    }
+    if (personKnown) {
+      final World.PersonHistory h = world.personHistory(person, p, t0);
       v.put("A09_exec_loc_tot", (double) h.loc());
       v.put("A10_exec_mccc_tot", h.mccc());
       v.put("A10c_exec_mccc_coverage",
@@ -380,7 +484,23 @@ public final class Extractor {
       v.put("A11_exec_commits", (double) h.commits());
       v.put("A12_exec_tenure_days",
           h.first() == null ? 0.0 : (t0 - h.first()) / (double) World.DAY);
-      v.put("A13_exec_open_load", (double) executorOpenAt(ex, p, t0));
+    } else {
+      for (final String k : List.of("A09_exec_loc_tot", "A10_exec_mccc_tot",
+          "A10c_exec_mccc_coverage", "A11_exec_commits", "A12_exec_tenure_days")) {
+        v.put(k, null);
+      }
+    }
+    if (at == null) {
+      v.put("A13_exec_open_load", ex == null ? null : (double) executorOpenAt(ex, p, t0));
+    } else if (person == null) {
+      v.put("A13_exec_open_load", null);
+    } else {
+      // P14; the issue itself is left out when it is open and assigned to the person at t0
+      final String own = Initial.norm(init.assignee());
+      final boolean self = own != null && person.equals(world.person(own)) && u.created() < t0;
+      v.put("A13_exec_open_load", (double) (assignedOpenAt(person, p, t0) - (self ? 1 : 0)));
+    }
+    if (ex != null) {
       double whole = 0;
       double shared = 0;
       final Set<Integer> files = new HashSet<>();
@@ -405,10 +525,8 @@ public final class Extractor {
         v.put("D08_file_familiarity", null);
       }
     } else {
-      for (final String k : List.of("A09_exec_loc_tot", "A10_exec_mccc_tot",
-          "A10c_exec_mccc_coverage", "A11_exec_commits", "A12_exec_tenure_days",
-          "A13_exec_open_load", "A15_change_loc", "A15w_change_loc_whole", "D07_files_changed",
-          "D08_file_familiarity")) {
+      for (final String k : List.of("A15_change_loc", "A15w_change_loc_whole",
+          "D07_files_changed", "D08_file_familiarity")) {
         v.put(k, null);
       }
     }

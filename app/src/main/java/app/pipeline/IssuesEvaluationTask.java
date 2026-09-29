@@ -166,7 +166,7 @@ public final class IssuesEvaluationTask {
     for (final Frozen f : mine) {
       progress.item(++done, mine.size(), population + " " + f.cell(),
           mode == Fitting.Mode.INNER ? "selecao interna" : "reajuste no treino externo");
-      final Fitting.Fitted fitted = Fitting.frozen(Cell.byLabel(f.cell()), sides, f.alpha(),
+      final Fitting.Fitted fitted = Fitting.frozen(Cell.byLabel(f.cell(), population), sides, f.alpha(),
           lambdas.get(f.cell()), project.maeHours(), constantMae);
       evaluated.add(evaluate(fitted, projects, projectHours, constantHours, pairHours, observed));
     }
@@ -203,7 +203,7 @@ public final class IssuesEvaluationTask {
     // sensitivities, same parameters: the whole commit in A15, and without the moved issues
     final List<Sensitivity> sensitivities = new ArrayList<>();
     for (final Frozen f : mine) {
-      final Cell cell = Cell.byLabel(f.cell());
+      final Cell cell = Cell.byLabel(f.cell(), population);
       if (cell.attributes().stream().anyMatch(a -> a.name().equals("A15_change_loc"))) {
         final List<Attribute> whole = new ArrayList<>();
         for (final Attribute a : cell.attributes()) {
@@ -227,7 +227,7 @@ public final class IssuesEvaluationTask {
     final double stillProject = Fitting.mae(stillRefs.projectHours(still.scoreUnits()),
         still.observed());
     for (final Frozen f : mine) {
-      final Cell cell = Cell.byLabel(f.cell());
+      final Cell cell = Cell.byLabel(f.cell(), population);
       if (cell.scenario() != Scenario.C1) {
         continue;
       }

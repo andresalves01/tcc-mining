@@ -4,6 +4,7 @@ import app.issues.Attribute;
 import app.issues.Attributes;
 import app.issues.Family;
 import app.issues.Scenario;
+import app.issues.Universe;
 import java.util.List;
 
 /**
@@ -41,6 +42,36 @@ public record Cell(String label, Family family, Scenario scenario, List<Attribut
 
   public static Cell byLabel(final String label) {
     return grid().stream().filter(c -> c.label().equals(label)).findFirst()
+        .orElseThrow(() -> new IllegalArgumentException("no such cell: " + label));
+  }
+
+  /**
+   * The six cells of the secondary study (papers/issues-in-progress, P5 and P6): every family at
+   * the first In Progress, and the own family and the union with the content block. Kikas has no
+   * content column, so no second cell.
+   */
+  public static List<Cell> gridInProgress() {
+    return List.of(
+        inProgress(Family.ALZUBAIDI, Scenario.C1),
+        inProgress(Family.KIKAS, Scenario.C1),
+        inProgress(Family.PROPRIA, Scenario.C1),
+        inProgress(Family.PROPRIA, Scenario.C1_CONTEUDO),
+        inProgress(Family.UNIAO, Scenario.C1),
+        inProgress(Family.UNIAO, Scenario.C1_CONTEUDO));
+  }
+
+  private static Cell inProgress(final Family family, final Scenario scenario) {
+    return new Cell(family + " / " + scenario, family, scenario,
+        Attributes.ofInProgress(family, scenario));
+  }
+
+  /** The grid a population is read with. */
+  public static List<Cell> grid(final Universe.Population population) {
+    return population == Universe.Population.IN_PROGRESS ? gridInProgress() : grid();
+  }
+
+  public static Cell byLabel(final String label, final Universe.Population population) {
+    return grid(population).stream().filter(c -> c.label().equals(label)).findFirst()
         .orElseThrow(() -> new IllegalArgumentException("no such cell: " + label));
   }
 }

@@ -19,6 +19,10 @@ import java.util.Set;
  * <b>naive</b> rule -- the final outcome instead of the one known at t0, the author date instead of
  * visibility -- must disagree somewhere, which proves the sample holds the adversarial case. The
  * Java twin of {@code analises/40_viagem.py}.
+ *
+ * <p>The instant is each unit's start: the creation in the main study, the first In Progress in
+ * the secondary one, where {@code at} also brings the executor and the participants known then, and
+ * the executor's history and the participants' commits are checked too.
  */
 public final class TimeTravel {
 
@@ -45,6 +49,12 @@ public final class TimeTravel {
   }
 
   public static List<Check> run(final World world, final List<Universe.Unit> population, final Map<String, Map<String, Double>> rows) {
+    return run(world, population, rows, null);
+  }
+
+  /** @param at per issue, what the secondary study read at its start; null in the main study */
+  public static List<Check> run(final World world, final List<Universe.Unit> population,
+      final Map<String, Map<String, Double>> rows, final Map<String, Extractor.At> at) {
     final Universe universe = world.universe;
     final List<Universe.Unit> sorted = new ArrayList<>(population);
     sorted.sort((a, b) -> a.id().compareTo(b.id()));
@@ -82,7 +92,7 @@ public final class TimeTravel {
 
     for (final Universe.Unit u : sample) {
       final Map<String, Double> v = rows.get(u.id());
-      final long t0 = u.created();
+      final long t0 = u.start();
       final String p = u.project();
       final String rep = world.person(u.reporter());
       // ---- the truncated project
@@ -290,15 +300,80 @@ public final class TimeTravel {
         }
         add(tallies, "K13_creator_commits_90d", known ? (double) k13 : null, v,
             (double) k13naive);
-        add(tallies, "K20c1_participant_commits_14d", known ? (double) k20 : null, v,
-            (double) k20naive);
+        if (at == null) {
+          add(tallies, "K20c1_participant_commits_14d", known ? (double) k20 : null, v,
+              (double) k20naive);
+        }
         add(tallies, "K13x_reporter_no_commit_ever", anyInProject ? 0.0 : 1.0, v, null);
       }
+    }
+    if (at != null) {
+      startChecks(tallies, sample, rows, at, personCommits);
     }
     final List<Check> out = new ArrayList<>();
     tallies.forEach((k, t) -> out.add(new Check(k, t.same, t.total, t.naive,
         List.copyOf(t.examples))));
     return out;
+  }
+
+  /**
+   * The secondary study's own columns on the truncated view: the executor's history in the project
+   * and the participants' commits in the fourteen days before t0, both by visibility, against the
+   * naive author date.
+   */
+  private static void startChecks(final Map<String, Tally> tallies,
+      final List<Universe.Unit> sample, final Map<String, Map<String, Double>> rows,
+      final Map<String, Extractor.At> at, final Map<String, List<World.Commit>> personCommits) {
+    for (final Universe.Unit u : sample) {
+      final Map<String, Double> v = rows.get(u.id());
+      final Extractor.At a = at.get(u.id());
+      final long t0 = a.t0();
+      final String p = u.project();
+      final long w14 = t0 - Extractor.WINDOW_14;
+      final String ex = a.executor();
+      boolean exKnown = false;
+      int n = 0;
+      long loc = 0;
+      int nNaive = 0;
+      Long first = null;
+      for (final World.Commit c : ex == null ? List.<World.Commit>of()
+          : personCommits.getOrDefault(ex, List.of())) {
+        exKnown |= c.visible() < t0;
+        if (!c.project().equals(p)) {
+          continue;
+        }
+        if (c.visible() < t0) {
+          n++;
+          loc += c.loc();
+          first = first == null ? c.visible() : Math.min(first, c.visible());
+        }
+        nNaive += c.authoredAt() < t0 ? 1 : 0;
+      }
+      add(tallies, "A11_exec_commits", exKnown ? (double) n : null, v, (double) nNaive);
+      add(tallies, "A09_exec_loc_tot", exKnown ? (double) loc : null, v, null);
+      add(tallies, "A12_exec_tenure_days", !exKnown ? null
+          : first == null ? 0.0 : (t0 - first) / (double) World.DAY, v, null);
+      int k20 = 0;
+      int k20naive = 0;
+      boolean anyKnown = false;
+      for (final String who : a.participants()) {
+        boolean known = false;
+        int mine = 0;
+        for (final World.Commit c : personCommits.getOrDefault(who, List.of())) {
+          known |= c.visible() < t0;
+          if (c.project().equals(p)) {
+            mine += c.visible() >= w14 && c.visible() < t0 ? 1 : 0;
+            k20naive += c.authoredAt() >= w14 && c.authoredAt() < t0 ? 1 : 0;
+          }
+        }
+        if (known) {
+          anyKnown = true;
+          k20 += mine;
+        }
+      }
+      add(tallies, "K20c1_participant_commits_14d", anyKnown ? (double) k20 : null, v,
+          (double) k20naive);
+    }
   }
 
   private static void add(final Map<String, Tally> tallies, final String column,

@@ -35,12 +35,16 @@ final class IssuesPrinting {
   static Set<Population> populations() throws CommandFailedException {
     final String env = System.getenv("POPULACOES");
     if (env == null || env.isBlank()) {
-      return EnumSet.allOf(Population.class);
+      return EnumSet.copyOf(Population.MAIN);
     }
     final Set<Population> out = EnumSet.noneOf(Population.class);
     try {
       for (final String p : env.split(",")) {
-        out.add(Population.valueOf(p.strip()));
+        final Population population = Population.valueOf(p.strip());
+        if (!Population.MAIN.contains(population)) {
+          throw new IllegalArgumentException(p);
+        }
+        out.add(population);
       }
     } catch (final IllegalArgumentException e) {
       throw new CommandFailedException(List.of("  POPULACOES aceita FIXED, BROAD, INHERITED"));
@@ -53,6 +57,7 @@ final class IssuesPrinting {
       case FIXED -> "SO FIXED (principal)";
       case BROAD -> "AMPLA (sensibilidade)";
       case INHERITED -> "HERDADA (condicional)";
+      case IN_PROGRESS -> "SO FIXED, A PARTIR DO IN PROGRESS";
     };
   }
 

@@ -40,7 +40,7 @@ public final class IssuesGridTask {
     final Score constant = Score.reference(String.format("referencia: constante = mediana do "
         + "ajuste (%.1f h)", refs.constantHours()), refs.constant(observed.length), observed,
         constantMae);
-    final List<Cell> cells = Cell.grid();
+    final List<Cell> cells = Cell.grid(population);
     final List<Timed> fits = new ArrayList<>();
     int done = 0;
     for (final Cell cell : cells) {

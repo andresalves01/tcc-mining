@@ -86,7 +86,7 @@ public final class IssuesExtractTask {
     final int thesis = Universe.thesisSplitMismatches(corpus.labels(), SHARE, 5);
     final Map<Population, Universe.Split> splits = new EnumMap<>(Population.class);
     final List<SplitSummary> summaries = new ArrayList<>();
-    for (final Population p : Population.values()) {
+    for (final Population p : Population.MAIN) {
       final Universe.Split s = universe.split(p, SHARE);
       splits.put(p, s);
       summaries.add(summary(p, universe.population(p).size(), s));
@@ -134,13 +134,13 @@ public final class IssuesExtractTask {
     final List<String> columns = Attributes.stored();
     final List<RowCache.Entry> entries = new ArrayList<>(ordered.size());
     final Map<Population, Set<String>> members = new EnumMap<>(Population.class);
-    for (final Population p : Population.values()) {
+    for (final Population p : Population.MAIN) {
       members.put(p, ids(universe, p));
     }
     for (final String id : ordered) {
       final Universe.Unit u = universe.unit(id);
       final Map<Population, String[]> parts = new EnumMap<>(Population.class);
-      for (final Population p : Population.values()) {
+      for (final Population p : Population.MAIN) {
         if (members.get(p).contains(id)) {
           final Universe.Split s = splits.get(p);
           final Universe.Part outer = s.outer().get(id);
@@ -195,7 +195,7 @@ public final class IssuesExtractTask {
     }
   }
 
-  private static SplitSummary summary(final Population p, final int rows, final Universe.Split s) {
+  static SplitSummary summary(final Population p, final int rows, final Universe.Split s) {
     int train = 0;
     int test = 0;
     int crosses = 0;
