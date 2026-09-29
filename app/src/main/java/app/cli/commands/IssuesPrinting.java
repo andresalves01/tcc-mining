@@ -170,6 +170,32 @@ final class IssuesPrinting {
           100 * s.changed().pairwise());
     }
 
+    System.out.printf("%n  RECALIBRACAO LINEAR EM LOG, AO LADO DO MODELO (pedida em 29/09/2026, "
+        + "para decidir depois de ver; nao substitui o modelo)%n");
+    System.out.printf("  log1p(h) = a + b * previsao em log, com a e b por minimos quadrados no "
+        + "ajuste; monotona: Spearman e par a par nao mudam%n");
+    System.out.printf("  %-26s %7s %6s %9s %9s  %-24s %-24s %-16s %-16s%n", "celula", "a", "b",
+        "MAE h", "recal.", "vs cte % (modelo)", "vs cte % (recal.)", "p10/p50/p90 mod.",
+        "p10/p50/p90 rec.");
+    for (final var c : r.recalibrated()) {
+      System.out.printf("  %-26s %7.3f %6.3f %9.2f %9.2f  %-24s %-24s %-16s %-16s%n", c.cell(),
+          c.a(), c.b(), c.base().maeHours(), c.recalibrated().maeHours(),
+          interval(c.baseOverConstant()), interval(c.overConstant()), spread(c.baseSpread()),
+          spread(c.spread()));
+    }
+    System.out.printf("%n  RECALIBRACAO POR FAIXA DA DURACAO REAL (MAE em horas: modelo -> "
+        + "recalibrada)%n");
+    for (final var c : r.recalibrated()) {
+      final StringBuilder line = new StringBuilder(String.format("  %-26s", c.cell()));
+      for (int i = 0; i < c.bands().size(); i++) {
+        line.append(String.format("  %7.1f -> %7.1f", c.baseBands().get(i).mae(),
+            c.bands().get(i).mae()));
+      }
+      line.append(String.format("   corpo p25-p90 %6.1f -> %6.1f", c.baseBody().mae(),
+          c.body().mae()));
+      System.out.println(line);
+    }
+
     System.out.printf("%n  PESO DE CADA COLUNA NO AJUSTE (coeficiente padronizado | rho proprio)%n");
     for (final var e : r.evaluated()) {
       System.out.printf("  -- %s  (alpha %.2f, lambda %.4g)%n", e.fitted().cell().label(),
@@ -183,6 +209,10 @@ final class IssuesPrinting {
               c.coefficient(), c.ownSpearman(), c.selected() ? "" : "   (zerada)"));
     }
     return rows;
+  }
+
+  private static String spread(final double[] p) {
+    return String.format("%.0f/%.0f/%.0f", p[0], p[1], p[2]);
   }
 
   private static <T> List<T> concat(final List<T> a, final List<T> b) {

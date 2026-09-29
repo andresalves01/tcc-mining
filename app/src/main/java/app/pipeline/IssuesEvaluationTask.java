@@ -45,10 +45,20 @@ public final class IssuesEvaluationTask {
   /** A sensitivity: the same cell and parameters under a changed reading. */
   public record Sensitivity(String what, String cell, Score base, Score changed) {}
 
+  /**
+   * The log recalibration beside the model it recalibrates (see {@link Fitting.Recalibration}):
+   * measured to be judged after seeing, never used in place of the model.
+   */
+  public record Recalibrated(String cell, double a, double b, Score base, Score recalibrated,
+      ProjectBootstrap.Interval baseOverConstant, ProjectBootstrap.Interval overConstant,
+      List<Breakdown.Band> baseBands, List<Breakdown.Band> bands, Breakdown.Body baseBody,
+      Breakdown.Body body, double[] baseSpread, double[] spread) {}
+
   public record Report(Population population, Fitting.Mode mode, int fitRows, int scoredRows,
       Score.Outcome outcome, Score project, Score constant, Score pair,
       List<Evaluated> references, List<Evaluated> evaluated, List<Bootstrap.Comparison> families,
-      List<Bootstrap.Comparison> blocks, List<Sensitivity> sensitivities) {}
+      List<Bootstrap.Comparison> blocks, List<Sensitivity> sensitivities,
+      List<Recalibrated> recalibrated) {}
 
   private final Progress progress;
 
@@ -150,9 +160,23 @@ public final class IssuesEvaluationTask {
               stillProject, stillConstant).score()));
     }
 
+    final List<Recalibrated> recalibrated = new ArrayList<>();
+    for (final Evaluated e : evaluated) {
+      final Fitting.Fitted f = e.fitted();
+      final double[] hours = f.recalibration().predictedHours();
+      final Fitting.Fitted asIf = new Fitting.Fitted(f.cell(), f.alpha(), f.lambda(), f.columns(),
+          f.dropped(), f.contributions(), f.selected(), hours, f.score(), f.step());
+      recalibrated.add(new Recalibrated(f.cell().label(), f.recalibration().a(),
+          f.recalibration().b(), f.score(), Score.of(f.cell().label() + " [recalibrada]", hours,
+              observed, project.maeHours(), constantMae), e.overConstant(),
+          ProjectBootstrap.gain(projects, hours, constantHours, observed), e.bands(),
+          Breakdown.byTruth(hours, observed), e.body(),
+          Breakdown.body(hours, observed, 0.25, 0.90), f.spread(), asIf.spread()));
+    }
+
     return new Report(population, mode, sides.fitUnits().size(), sides.scoreUnits().size(),
         Score.Outcome.of(observed), project, constant, pair, references, List.copyOf(evaluated),
-        families, List.copyOf(blocks), List.copyOf(sensitivities));
+        families, List.copyOf(blocks), List.copyOf(sensitivities), List.copyOf(recalibrated));
   }
 
   private static Optional<Evaluated> find(final List<Evaluated> evaluated, final Family family,

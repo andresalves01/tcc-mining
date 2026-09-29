@@ -61,7 +61,17 @@ public final class Fitting {
    */
   public record Fitted(Cell cell, double alpha, double lambda, List<String> columns,
       List<String> dropped, List<Contribution> contributions, int selected,
-      double[] predictedHours, Score score, int step) {
+      double[] predictedHours, Score score, int step, List<Trial> trials,
+      Recalibration recalibration) {
+
+    /** A reference or a given prediction: nothing was swept and nothing recalibrated. */
+    public Fitted(final Cell cell, final double alpha, final double lambda,
+        final List<String> columns, final List<String> dropped,
+        final List<Contribution> contributions, final int selected, final double[] predictedHours,
+        final Score score, final int step) {
+      this(cell, alpha, lambda, columns, dropped, contributions, selected, predictedHours, score,
+          step, List.of(), null);
+    }
 
     /** The 10th, 50th and 90th percentiles of the predictions, in hours: how much they spread. */
     public double[] spread() {
@@ -71,6 +81,19 @@ public final class Fitting {
       return new double[] {sorted[n / 10], sorted[n / 2], sorted[Math.min(n - 1, 9 * n / 10)]};
     }
   }
+
+  /** One point of the grid: the scored side's error of the fit with this mixture and penalty. */
+  public record Trial(double alpha, int step, double lambda, double maeHours) {}
+
+  /**
+   * A linear recalibration on the log scale, measured beside the model and never in place of it
+   * (asked on 29/09/2026, to be judged after seeing): {@code log1p(hours) = a + b * z}, where
+   * {@code z} is the model's own prediction on that scale, with {@code a} and {@code b} fitted by
+   * least squares on the fitting side's in-sample predictions. With {@code b > 1} it undoes part of
+   * the penalty's shrinking. It is monotone, so the ordering -- Spearman, pairwise -- cannot
+   * change; only the error in hours and its spread over bands can.
+   */
+  public record Recalibration(double a, double b, double[] predictedHours) {}
 
   private Fitting() {}
 
@@ -166,6 +189,7 @@ public final class Fitting {
     ElasticNetModel best = null;
     double bestMae = Double.POSITIVE_INFINITY;
     int bestStep = -1;
+    final List<Trial> trials = new ArrayList<>();
     for (final double alpha : ALPHAS) {
       final double[] grid = lambdas(x, y, alpha);
       for (int step = 0; step < grid.length; step++) {
@@ -175,6 +199,7 @@ public final class Fitting {
         for (int i = 0; i < xs.length; i++) {
           sum += Math.abs(DesignMatrix.hours(model.predict(xs[i])) - sides.observed()[i]);
         }
+        trials.add(new Trial(alpha, step, grid[step], sum / xs.length));
         if (sum / xs.length < bestMae) {
           bestMae = sum / xs.length;
           best = model;
@@ -183,7 +208,7 @@ public final class Fitting {
       }
     }
     return result(cell, matrix, x, y, xs, best, sides.observed(), baselineMae, constantMae,
-        bestStep);
+        bestStep, List.copyOf(trials));
   }
 
   /** One fit with given parameters: what the check and the reserved run do. Searches nothing. */
@@ -195,12 +220,13 @@ public final class Fitting {
     final double[] y = target(sides.fitUnits());
     final ElasticNetModel model = ElasticNetModel.fit(x, y, matrix.columns(), alpha, lambda);
     return result(cell, matrix, x, y, matrix.applyAll(sides.scoreRows()), model,
-        sides.observed(), baselineMae, constantMae, -1);
+        sides.observed(), baselineMae, constantMae, -1, List.of());
   }
 
   private static Fitted result(final Cell cell, final DesignMatrix matrix, final double[][] x,
       final double[] y, final double[][] xs, final ElasticNetModel model, final double[] observed,
-      final double baselineMae, final double constantMae, final int step) {
+      final double baselineMae, final double constantMae, final int step,
+      final List<Trial> trials) {
 
     final double[] weights = model.coefficients();
     final List<Contribution> contributions = new ArrayList<>(weights.length);
@@ -218,7 +244,37 @@ public final class Fitting {
     }
     return new Fitted(cell, model.alpha(), model.lambda(), matrix.columns(), matrix.dropped(),
         List.copyOf(contributions), model.selectedCount(), predicted,
-        Score.of(cell.label(), predicted, observed, baselineMae, constantMae), step);
+        Score.of(cell.label(), predicted, observed, baselineMae, constantMae), step, trials,
+        recalibrate(model, x, y, xs));
+  }
+
+  /** Least squares of the fitting side's target on the model's in-sample predictions, applied. */
+  static Recalibration recalibrate(final ElasticNetModel model, final double[][] x,
+      final double[] y, final double[][] xs) {
+    final double[] z = new double[x.length];
+    double mz = 0;
+    double my = 0;
+    for (int i = 0; i < x.length; i++) {
+      z[i] = model.predict(x[i]);
+      mz += z[i];
+      my += y[i];
+    }
+    mz /= x.length;
+    my /= x.length;
+    double cov = 0;
+    double var = 0;
+    for (int i = 0; i < x.length; i++) {
+      cov += (z[i] - mz) * (y[i] - my);
+      var += (z[i] - mz) * (z[i] - mz);
+    }
+    // a constant model has nothing to stretch: it stays as it is
+    final double b = var <= 1e-12 ? 1.0 : cov / var;
+    final double a = var <= 1e-12 ? 0.0 : my - b * mz;
+    final double[] hours = new double[xs.length];
+    for (int i = 0; i < xs.length; i++) {
+      hours[i] = DesignMatrix.hours(a + b * model.predict(xs[i]));
+    }
+    return new Recalibration(a, b, hours);
   }
 
   static double[] target(final List<IssueUnit> units) {

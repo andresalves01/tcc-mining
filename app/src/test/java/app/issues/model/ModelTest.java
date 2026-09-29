@@ -122,4 +122,30 @@ class ModelTest {
     assertTrue(Cell.of(Family.UNIAO, Scenario.C1_EXPOSICAO).attributes().stream()
         .noneMatch(a -> a.block() == Scenario.Block.CONTEUDO));
   }
+
+  @Test
+  @DisplayName("the log recalibration stretches a shrunk model back and keeps a constant one as is")
+  void recalibrationUndoesShrinking() {
+    final int n = 200;
+    final double[][] x = new double[n][1];
+    final double[] y = new double[n];
+    for (int i = 0; i < n; i++) {
+      x[i][0] = (i - n / 2.0) / (n / 4.0);
+      y[i] = 3 + x[i][0];
+    }
+    final app.model.ElasticNetModel shrunk =
+        app.model.ElasticNetModel.fit(x, y, List.of("x"), 0.95, 150.0);
+    final double[][] xs = {{1.0}, {-1.0}};
+    final Fitting.Recalibration r = Fitting.recalibrate(shrunk, x, y, xs);
+    assertTrue(shrunk.predict(xs[0]) < 4.0, "the penalty shrank the slope");
+    assertTrue(r.b() > 1.0, "b > 1 stretches it back: " + r.b());
+    assertEquals(Math.expm1(4.0), r.predictedHours()[0], 1e-6);
+    assertEquals(Math.expm1(2.0), r.predictedHours()[1], 1e-6);
+
+    final app.model.ElasticNetModel flat =
+        app.model.ElasticNetModel.fit(x, y, List.of("x"), 0.95, 1e9);
+    final Fitting.Recalibration none = Fitting.recalibrate(flat, x, y, xs);
+    assertEquals(1.0, none.b());
+    assertEquals(0.0, none.a());
+  }
 }

@@ -24,9 +24,12 @@ public final class IssuesGridCommand implements CommandRunner {
     final StringBuilder params = new StringBuilder("# populacao\tcelula\talpha\tlambda -- "
         + "escritos por issues-grade na selecao interna\n");
     final List<Map<String, Object>> rows = new ArrayList<>();
+    final Map<Population, IssuesGridTask.Report> reports =
+        new java.util.EnumMap<>(Population.class);
     for (final Population population : IssuesPrinting.populations()) {
       final IssuesGridTask.Report report =
           new IssuesGridTask(context.progress()).run(entries, population);
+      reports.put(population, report);
       System.out.printf("%n  DURACAO DE ISSUES -- GRADE NA SELECAO INTERNA -- %s%n",
           IssuesPrinting.name(population));
       System.out.printf("  ajuste interno %,d linhas, selecao interna %,d linhas; o teste externo "
@@ -65,6 +68,31 @@ public final class IssuesGridCommand implements CommandRunner {
             t.millis() / 1000.0);
       }
     }
+    System.out.printf("%n  GRADE INTEIRA: MAE (h) na selecao interna de cada alpha em cada degrau "
+        + "(0 = topo, modelo constante), e a distancia do melhor de cada alpha ao escolhido%n");
+    for (final Population population : IssuesPrinting.populations()) {
+      final IssuesGridTask.Report report = reports.get(population);
+      System.out.printf("%n  -- %s%n", IssuesPrinting.name(population));
+      for (final IssuesGridTask.Timed t : report.fits()) {
+        final Fitting.Fitted f = t.fitted();
+        System.out.printf("    %s (escolhido: alpha %.2f, degrau %d, MAE %.2f h)%n",
+            f.cell().label(), f.alpha(), f.step(), f.score().maeHours());
+        for (final double alpha : Fitting.ALPHAS) {
+          final StringBuilder line = new StringBuilder(String.format("      alpha %.2f:", alpha));
+          double best = Double.POSITIVE_INFINITY;
+          for (final Fitting.Trial trial : f.trials()) {
+            if (trial.alpha() == alpha) {
+              line.append(String.format(" %7.1f", trial.maeHours()));
+              best = Math.min(best, trial.maeHours());
+            }
+          }
+          line.append(String.format("   melhor %+6.2f h do escolhido",
+              best - f.score().maeHours()));
+          System.out.println(line);
+        }
+      }
+    }
+
     final String out = System.getenv("PARAMETROS");
     if (out != null && !out.isBlank()) {
       try {
