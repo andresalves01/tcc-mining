@@ -3,72 +3,44 @@ package app.paper6.model;
 import app.paper6.Attribute;
 import app.paper6.Attributes;
 import app.paper6.Family;
-import app.paper6.Profile;
-import app.paper6.TemporalClass;
-import java.util.ArrayList;
+import app.paper6.Scenario;
 import java.util.List;
 
 /**
- * One cell of the grid: a named set of constructs.
+ * One cell of the grid: a family read under a scenario.
  *
- * <p>Most cells are a family read under a profile. Two are not, and exist for the ablation: the
- * block that describes the person who did the work, alone, and the block that describes the work,
- * alone. They are fitted and frozen like every other cell, so the ablation reaches the reserved set
- * under the same registration instead of being a development-side footnote.
+ * <p>Eleven, declared before anything ran. Al-Zubaidi has nothing after creation, so only its C1
+ * cell. Kikas's C2 additions are all exposure, so its C2 cell already is C1 plus exposure. The own
+ * family and the union are read in all four scenarios, which is what separates the content block
+ * from the exposure block (decision 14).
  */
-public record Cell(String label, Family family, Profile profile, List<Attribute> attributes) {
-
-  public static final String SO_ATRIBUICAO = "SO_ATRIBUICAO (so o bloco da pessoa que fez)";
-  public static final String SO_DESFECHO = "SO_DESFECHO (so a mudanca que resolveu)";
+public record Cell(String label, Family family, Scenario scenario, List<Attribute> attributes) {
 
   public Cell {
     attributes = List.copyOf(attributes);
   }
 
-  public static Cell of(final Family family, final Profile profile) {
-    return new Cell(family + " / " + profile, family, profile, Attributes.of(family, profile));
+  public static Cell of(final Family family, final Scenario scenario) {
+    return new Cell(family + " / " + scenario, family, scenario, Attributes.of(family, scenario));
   }
 
-  static Cell block(final String label, final TemporalClass temporalClass) {
-    return new Cell(label, null, null, Attributes.all().stream()
-        .filter(a -> a.temporalClass() == temporalClass).toList());
+  public static List<Cell> grid() {
+    return List.of(
+        of(Family.ALZUBAIDI, Scenario.C1),
+        of(Family.KIKAS, Scenario.C1),
+        of(Family.KIKAS, Scenario.C2),
+        of(Family.PROPRIA, Scenario.C1),
+        of(Family.PROPRIA, Scenario.C1_CONTEUDO),
+        of(Family.PROPRIA, Scenario.C1_EXPOSICAO),
+        of(Family.PROPRIA, Scenario.C2),
+        of(Family.UNIAO, Scenario.C1),
+        of(Family.UNIAO, Scenario.C1_CONTEUDO),
+        of(Family.UNIAO, Scenario.C1_EXPOSICAO),
+        of(Family.UNIAO, Scenario.C2));
   }
 
-  /**
-   * Every family under every profile, minus two kinds of cell, both reported by name.
-   *
-   * <p>An <b>empty</b> cell -- the triage family has nothing dated, so nothing under the strict
-   * profile. A <b>repeated</b> cell -- where a profile adds no construct to that family, the cell is
-   * the one below it, and fitting it again would spend an hour to print the same number twice.
-   */
-  public static List<Cell> grid(final List<String> skipped) {
-    final List<Cell> cells = new ArrayList<>();
-    for (final Family family : Family.values()) {
-      List<Attribute> previous = null;
-      for (final Profile profile : Profile.values()) {
-        final Cell cell = of(family, profile);
-        if (cell.attributes().isEmpty()) {
-          skipped.add(cell.label() + ": vazia");
-        } else if (cell.attributes().equals(previous)) {
-          skipped.add(cell.label() + ": igual ao degrau anterior");
-        } else {
-          cells.add(cell);
-        }
-        previous = cell.attributes();
-      }
-    }
-    cells.add(block(SO_ATRIBUICAO, TemporalClass.CONDICIONADO_A_ATRIBUICAO));
-    cells.add(block(SO_DESFECHO, TemporalClass.OBSERVAVEL_APENAS_NO_DESFECHO));
-    return List.copyOf(cells);
-  }
-
-  /** Finds a cell of {@link #grid} by its label, which is how the registration names them. */
   public static Cell byLabel(final String label) {
-    for (final Cell cell : grid(new ArrayList<>())) {
-      if (cell.label().equals(label)) {
-        return cell;
-      }
-    }
-    throw new IllegalArgumentException("no such cell: " + label);
+    return grid().stream().filter(c -> c.label().equals(label)).findFirst()
+        .orElseThrow(() -> new IllegalArgumentException("no such cell: " + label));
   }
 }

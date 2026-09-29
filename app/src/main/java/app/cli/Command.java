@@ -23,7 +23,6 @@ import app.cli.commands.Paper5ReservedCommand;
 import app.cli.commands.Paper6ExtractCommand;
 import app.cli.commands.Paper6CheckCommand;
 import app.cli.commands.Paper6GridCommand;
-import app.cli.commands.Paper6ReservedCommand;
 import app.cli.commands.Paper5PopulationCommand;
 import app.cli.commands.PullRequestFeaturesCommand;
 import app.cli.commands.PullRequestLabelsCommand;
@@ -179,31 +178,24 @@ public enum Command {
       Reads only, writes nothing -- redirect the output. Needs features."""),
 
   PAPER6_EXTRACT("paper6-extrair", new Paper6ExtractCommand(), """
-      Transposicao para issues: build the population (every issue label
-      except those resolved before their first linked commit), compute
-      every construct with the issue fields replayed to creation, and
-      check the changelog, the split and time travel. Writes the cache
-      to CACHE and a summary to PAPER6_DB; reads everything else."""),
+      Issue duration: build the three populations (Fixed, the main one;
+      broad; inherited) and every column in both scenarios, and run the
+      gates -- the thesis split, time travel, parity with the Python
+      specification in PARIDADE. Writes the cache to CACHE only if every
+      gate passed; records a summary in PAPER6_DB; reads everything else."""),
 
   PAPER6_GRID("paper6-grade", new Paper6GridCommand(), """
-      Transposicao para issues: sweep every cell of the grid -- six
-      families by four profiles, plus the two ablation blocks -- with
-      Elastic Net on the inner selection of the training side. Prints the
-      chosen parameters as literals for the registration. Reads CACHE,
-      records the run in PAPER6_DB; the reserved rows are refused."""),
+      Issue duration: sweep the eleven cells of each population with
+      Elastic Net on the inner selection. Writes the chosen parameters to
+      PARAMETROS; reads CACHE; records the run in PAPER6_DB. The outer test
+      rows are refused."""),
 
   PAPER6_CHECK("paper6-conferencia", new Paper6CheckCommand(), """
-      Transposicao para issues: every reading the registration names --
-      references, project-resampled intervals, error percentiles, the
-      1 h to 365 d range read without filtering, ablation blocks, noise
-      tests -- on the inner selection with fixed parameters. Reads
-      CACHE (and PARAMETROS before the registration exists); the
-      reserved rows are refused."""),
+      Issue duration: every reading of the plan -- references, project-
+      resampled intervals, bands of the true duration, C2 by block, the
+      sensitivities -- on the inner selection with the parameters in
+      PARAMETROS. Optimistic by construction; the outer test is not read."""),
 
-  PAPER6_RESERVED("paper6-reservado", new Paper6ReservedCommand(), """
-      Transposicao para issues: score the reserved rows ONCE, with the
-      literals REGISTRO-PREVIO.md froze. Refuses while none are frozen.
-      Reads CACHE, appends the run to PAPER6_DB."""),
   PAPER5_AUDIT("paper5-auditoria", new Paper5AuditCommand(), """
       Artigo 5, auditoria de 28/09/2026: reruns the registered reserved
       task unchanged, proves a second fitting path identical to it bit

@@ -5,43 +5,21 @@ import java.time.Duration;
 import java.time.Instant;
 
 /**
- * One resolved issue as the transposition sees it.
+ * One studied issue with its outcome.
  *
- * <p>Two people on one row, on purpose. {@code reporterId} is whoever opened the issue, known at
- * creation, and the literature's constructs describe them. {@code authorId} is the canonical author
- * of the commits linked to it, the person the author's own specification describes -- and the reason
- * that specification's developer columns sit in their own temporal class.
- *
- * @param key the Jira key, such as {@code JENA-1234}, so the text constructs can tell a reference to
- *     another issue from the issue naming itself
- * @param commits the linked commits, and the two line counts after it, are the change that resolved
- *     the issue: known only at the end, and read only by the ceiling profile
+ * @param reporter the canonical person who opened it, known at creation
+ * @param executor the canonical author of the first linked commit visible before the resolution,
+ *     empty when there is none: known only afterwards, read only by the conditioned reference
+ * @param reason the resolution in force at the first resolution (Fixed, Duplicate, ...)
+ * @param moved whether the issue changed Jira project at some point (the sensitivity without them)
  */
-public record IssueUnit(
-    String issueId,
-    String key,
-    String project,
-    String reporterId,
-    String authorId,
-    Instant createdAt,
-    Instant resolvedAt,
-    Instant firstCommitAt,
-    int commits,
-    long javaLinesAdded,
-    long javaLinesDeleted) implements Outcome {
+public record IssueUnit(String issueId, String key, String project, String reporter,
+    String executor, Instant createdAt, Instant resolvedAt, String reason, boolean moved)
+    implements Outcome {
 
-  /** Hours, the scale the primary table is reported on, like the pull-request study. */
+  /** Hours from creation to the first resolution. */
   @Override
   public double durationHours() {
     return Duration.between(createdAt, resolvedAt).toMillis() / 3_600_000.0;
-  }
-
-  /**
-   * Resolution minus the first linked commit. Negative means the issue was marked resolved before
-   * any of the code that resolved it existed -- resolved outside its branch's lifecycle, which is
-   * the one thing this study excludes.
-   */
-  public double postCommitHours() {
-    return Duration.between(firstCommitAt, resolvedAt).toMillis() / 3_600_000.0;
   }
 }

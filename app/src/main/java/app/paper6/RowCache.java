@@ -1,12 +1,14 @@
 package app.paper6;
 
 import app.paper5.Row;
+import app.paper6.Universe.Population;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -14,40 +16,53 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The extracted population on disk, so fitting does not re-read the corpus.
+ * The extraction on disk, so the grid does not re-read the corpus.
  *
- * <p>The pull-request study's cache, with an issue's fields. Absence is an empty field and comes
- * back as absence; a zero is a zero. A working file under the paper's own folder, never a database
- * anyone else depends on.
+ * <p>One line per studied issue, with its outer and inner verdict under each population (empty when
+ * the issue is not in it). Absence is an empty field and comes back as absence; a zero is a zero.
  */
 public final class RowCache {
 
   private static final String SEP = "\t";
-  private static final int FIXED = 13;
+  private static final List<String> FIXED = List.of("id", "chave", "projeto", "relator",
+      "executor", "criada_em", "resolvida_em", "motivo", "movida",
+      "fixed_externa", "fixed_interna", "ampla_externa", "ampla_interna",
+      "herdada_externa", "herdada_interna");
 
-  /**
-   * @param outer {@code TRAIN} or {@code TEST}; {@code TEST} is the reserved set
-   * @param inner the second cut's verdict on the outer training side, empty elsewhere
-   */
-  public record Entry(IssueUnit unit, Row row, String outer, String inner) {}
+  /** An issue, its columns, and per population its {@code [outer, inner]} verdicts. */
+  public record Entry(IssueUnit unit, Row row, Map<Population, String[]> parts) {
+
+    public String outer(final Population population) {
+      final String[] p = parts.get(population);
+      return p == null ? "" : p[0];
+    }
+
+    public String inner(final Population population) {
+      final String[] p = parts.get(population);
+      return p == null ? "" : p[1];
+    }
+  }
 
   private RowCache() {}
 
+  private static String text(final String s) {
+    return s == null ? "" : s;
+  }
+
   public static void write(final Path path, final List<Entry> entries, final List<String> columns)
       throws IOException {
-
-    final StringBuilder out = new StringBuilder(1 << 22);
-    out.append(String.join(SEP, "id", "chave", "projeto", "relator", "autor", "criada_em",
-        "resolvida_em", "primeiro_commit_em", "commits", "linhas_add", "linhas_del", "particao",
-        "particao_interna"));
+    final StringBuilder out = new StringBuilder(1 << 24);
+    out.append(String.join(SEP, FIXED));
     columns.forEach(column -> out.append(SEP).append(column));
     out.append('\n');
     for (final Entry entry : entries) {
       final IssueUnit u = entry.unit();
-      out.append(String.join(SEP, u.issueId(), u.key(), u.project(), u.reporterId(), u.authorId(),
-          u.createdAt().toString(), u.resolvedAt().toString(), u.firstCommitAt().toString(),
-          String.valueOf(u.commits()), String.valueOf(u.javaLinesAdded()),
-          String.valueOf(u.javaLinesDeleted()), entry.outer(), entry.inner()));
+      out.append(String.join(SEP, u.issueId(), u.key(), u.project(), text(u.reporter()),
+          text(u.executor()), u.createdAt().toString(), u.resolvedAt().toString(),
+          text(u.reason()), u.moved() ? "1" : "0",
+          entry.outer(Population.FIXED), entry.inner(Population.FIXED),
+          entry.outer(Population.BROAD), entry.inner(Population.BROAD),
+          entry.outer(Population.INHERITED), entry.inner(Population.INHERITED)));
       for (final String column : columns) {
         out.append(SEP);
         final Double value = entry.row().values().get(column);
@@ -67,6 +82,7 @@ public final class RowCache {
       throw new IOException(path + " esta vazio");
     }
     final String[] header = lines.get(0).split(SEP, -1);
+    final int fixed = FIXED.size();
     final List<Entry> entries = new ArrayList<>(lines.size());
     for (final String line : lines.subList(1, lines.size())) {
       if (line.isBlank()) {
@@ -75,7 +91,7 @@ public final class RowCache {
       final String[] f = line.split(SEP, -1);
       final Map<String, Double> values = new HashMap<>(header.length * 2);
       final Set<String> absent = new HashSet<>();
-      for (int i = FIXED; i < header.length && i < f.length; i++) {
+      for (int i = fixed; i < header.length && i < f.length; i++) {
         if (f[i].isEmpty()) {
           absent.add(header[i]);
         } else {
@@ -83,12 +99,25 @@ public final class RowCache {
         }
       }
       absent.removeIf(name -> name.endsWith("_ausente"));
-      entries.add(new Entry(
-          new IssueUnit(f[0], f[1], f[2], f[3], f[4], Instant.parse(f[5]), Instant.parse(f[6]),
-              Instant.parse(f[7]), Integer.parseInt(f[8]), Long.parseLong(f[9]),
-              Long.parseLong(f[10])),
-          new Row(f[0], values, absent), f[11], f[12]));
+      final Map<Population, String[]> parts = new EnumMap<>(Population.class);
+      put(parts, Population.FIXED, f[9], f[10]);
+      put(parts, Population.BROAD, f[11], f[12]);
+      put(parts, Population.INHERITED, f[13], f[14]);
+      entries.add(new Entry(new IssueUnit(f[0], f[1], f[2], empty(f[3]), empty(f[4]),
+          Instant.parse(f[5]), Instant.parse(f[6]), empty(f[7]), "1".equals(f[8])),
+          new Row(f[0], values, absent), parts));
     }
     return entries;
+  }
+
+  private static String empty(final String s) {
+    return s.isEmpty() ? null : s;
+  }
+
+  private static void put(final Map<Population, String[]> parts, final Population p,
+      final String outer, final String inner) {
+    if (!outer.isEmpty()) {
+      parts.put(p, new String[] {outer, inner});
+    }
   }
 }

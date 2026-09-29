@@ -46,7 +46,8 @@ import java.util.Optional;
  * @param paper5Db where the Yu/Chouchen replication writes its attributes and results. Its own
  *     database by specification: the corpus and both previous papers' databases are read-only to
  *     it, and no stage of it may add a column to them
- * @param paper6Db where the transposition of the same method to issue labels writes its results.
+ * @param paper6Db where the issue-duration study records its runs ({@code smartshark_issues}; the
+ *     earlier issue study's runs stay in {@code smartshark_paper6}, untouched).
  *     Its own database, refused if it names any database the codebase reads
  * @param teamWindow how far back a commit still counts as presence on the active team. It bounds
  *     participation observed and deliberately does not discount its members' accumulated
@@ -109,7 +110,7 @@ public record PipelineConfig(
         value("LEDGER_DB", targetDb),
         value("UNITS_DB", targetDb),
         value("PAPER5_DB", "smartshark_paper5"),
-        value("PAPER6_DB", "smartshark_paper6"),
+        value("PAPER6_DB", "smartshark_issues"),
         Path.of(value("WORK_DIR", "build/identity-work")),
         Path.of(value("JIRA_CACHE_DIR", "build/jira-cache")),
         Duration.ofMillis(Long.parseLong(value("JIRA_DELAY_MS", "250"))),

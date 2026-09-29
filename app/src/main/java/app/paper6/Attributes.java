@@ -1,238 +1,150 @@
 package app.paper6;
 
-import app.paper5.Attribute.Kind;
-import app.paper5.Attribute.Transform;
+import static app.paper5.Attribute.Kind.BINARY;
+import static app.paper5.Attribute.Kind.NUMERIC;
+import static app.paper5.Attribute.Transform.LOG1P;
+import static app.paper5.Attribute.Transform.NONE;
+import static app.paper6.Family.ALZUBAIDI;
+import static app.paper6.Family.KIKAS;
+import static app.paper6.Family.PROPRIA;
+import static app.paper6.Scenario.Block.CONTEUDO;
+import static app.paper6.Scenario.Block.EXPOSICAO;
+
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 /**
- * Every construct of the transposition, declared once.
+ * The registry: every column a model can read, as {@code MATRIZ-VIABILIDADE-ISSUES.csv} declares it
+ * after the author's decisions of 29/09/2026.
  *
- * <p>What changed from the pull-request study, construct by construct, is in
- * {@code MATRIZ-ATRIBUTOS-ISSUES.csv}, and {@code AttributesTest} checks the two agree. In short:
+ * <p>Out by decision: Z11 (the second title measure), A08 (type in the own family), K01 (text
+ * score), A18 (repository metrics). Out by the corpus: K09 (subscribers). Out because they carry no
+ * signal at creation: the C1 versions of Kikas's dynamic counts and the initial links. A15w (the
+ * whole commit) is registered for the sensitivity and enters no cell of the grid.
  *
- * <ul>
- *   <li>the person Yu and Chouchen describe is whoever opened the item, which for an issue is
- *       {@code issue.reporter_id};
- *   <li>"merged" becomes "resolved" -- the first change of status to {@code Resolved} or
- *       {@code Closed}, the same rule the issue labels were built with -- and "integrator" becomes
- *       whoever made that change;
- *   <li>the text is read <b>as it was at creation</b>, from the changelog, not as it ended;
- *   <li>the size of the change does not exist at creation. Additions, deletions and commits come
- *       back only in the ceiling profile, from the change that resolved the issue. Files touched,
- *       tests touched and area hotness do not come back at all: the issue label keeps no list of
- *       files.
- * </ul>
+ * <p>Counts and volumes enter as {@code log1p}; ratios, fog, means of small integers and indicators
+ * raw. A column that can be absent carries an absence indicator, so absence is never read as zero.
  */
 public final class Attributes {
 
-  private static final Set<Family> YU =
-      Set.of(Family.YU_ISSUE, Family.COMBINADO_LITERATURA, Family.COMBINADO_TOTAL);
-  private static final Set<Family> CHOUCHEN =
-      Set.of(Family.CHOUCHEN_ISSUE, Family.COMBINADO_LITERATURA, Family.COMBINADO_TOTAL);
-  private static final Set<Family> BOTH = Set.of(Family.YU_ISSUE, Family.CHOUCHEN_ISSUE,
-      Family.COMBINADO_LITERATURA, Family.COMBINADO_TOTAL);
-  private static final Set<Family> YU_ONLY = Set.of(Family.YU_ISSUE);
-  private static final Set<Family> PROPRIA = Set.of(Family.ESPEC_PROPRIA, Family.COMBINADO_TOTAL);
-  private static final Set<Family> TRIAGEM = Set.of(Family.TRIAGEM_JIRA, Family.COMBINADO_TOTAL);
-  private static final Set<Family> TRIAGEM_E_PROPRIA =
-      Set.of(Family.TRIAGEM_JIRA, Family.ESPEC_PROPRIA, Family.COMBINADO_TOTAL);
-
-  /**
-   * The description length, in both specifications that have it, and left out of the total union.
-   *
-   * <p>The union already reads the text through Yu's word count of title plus description, and in
-   * the pull-request study the two measured rank correlation 0,953. Two columns for one construct
-   * add nothing to a union whose point is to add approaches, not to arbitrate between two measures
-   * of the same thing -- so the union keeps the literature's, as it did there.
-   */
-  private static final Set<Family> TAMANHO_DA_DESCRICAO =
-      Set.of(Family.TRIAGEM_JIRA, Family.ESPEC_PROPRIA);
-
   private static final List<Attribute> ALL = build();
 
-  private static final Map<String, Attribute> BY_NAME = ALL.stream()
-      .collect(LinkedHashMap::new, (map, a) -> map.put(a.name(), a), Map::putAll);
+  /** Registered for the sensitivity with the whole commit; in no cell of the grid. */
+  public static final String SENSITIVITY_A15W = "A15w_change_loc_whole";
 
   private Attributes() {}
 
+  private static Attribute c1(final String id, final String name, final Family family,
+      final app.paper5.Attribute.Kind kind, final app.paper5.Attribute.Transform t,
+      final boolean absent) {
+    return new Attribute(id, name, family, null, kind, t, absent, true);
+  }
+
+  private static Attribute c2(final String id, final String name, final Family family,
+      final Scenario.Block block, final app.paper5.Attribute.Transform t, final boolean absent) {
+    return new Attribute(id, name, family, block, NUMERIC, t, absent, true);
+  }
+
   private static List<Attribute> build() {
-    final List<Attribute> all = new ArrayList<>();
+    final List<Attribute> a = new ArrayList<>();
+    // ---------------------------------------------------------------- Al-Zubaidi (C2 = C1)
+    int k = 1;
+    for (final String type : Extractor.AZ_TYPES) {
+      a.add(c1("Z0" + k++, "Z_type_" + type, ALZUBAIDI, BINARY, NONE, false));
+    }
+    a.add(c1("Z08", "Z08_priority", ALZUBAIDI, NUMERIC, NONE, true));
+    a.add(c1("Z09", "Z09_reputation", ALZUBAIDI, NUMERIC, NONE, true));
+    a.add(c1("Z10", "TXT_title_words", ALZUBAIDI, NUMERIC, LOG1P, false));
+    a.add(c1("Z12", "TXT_desc_words", ALZUBAIDI, NUMERIC, LOG1P, true));
+    a.add(c1("Z13", "TXT_desc_fog", ALZUBAIDI, NUMERIC, NONE, true));
 
-    // -- projeto e momento ---------------------------------------------------------------------
-    all.add(new Attribute("Y01", "project_age_days", Kind.NUMERIC, Transform.LOG1P, YU,
-        TemporalClass.LIMPO, false,
-        "commit.committer_date; issue.created_at -- desde min(primeiro commit, primeira issue)"));
-    all.add(new Attribute("Y02", "team_size_90d", Kind.NUMERIC, Transform.LOG1P, YU,
-        TemporalClass.LIMPO, false,
-        "event (status -> Resolved/Closed) -- REDEFINIDO: quem resolveu issue do projeto nos 90 "
-            + "dias, no lugar de quem mesclou PR"));
-    all.add(new Attribute("C01", "created_weekday_utc", Kind.CATEGORICAL, Transform.NONE, CHOUCHEN,
-        TemporalClass.LIMPO, false, "issue.created_at"));
-    all.add(new Attribute("C02", "created_hour_utc", Kind.CATEGORICAL, Transform.NONE, CHOUCHEN,
-        TemporalClass.LIMPO, false, "issue.created_at"));
-    all.add(new Attribute("Y15", "friday_effect", Kind.BINARY, Transform.NONE, YU_ONLY,
-        TemporalClass.LIMPO, false,
-        "issue.created_at -- fora das unioes: contido em created_weekday_utc"));
+    // ---------------------------------------------------------------- Kikas parcial, C1
+    // K02 is (almost) Z10 + Z12: in the union the construct enters once, as Al-Zubaidi's
+    a.add(new Attribute("K02", "K02_body_len", KIKAS, null, NUMERIC, LOG1P, false, false));
+    a.add(c1("K06", "LBL_count_c1", KIKAS, NUMERIC, LOG1P, false));
+    a.add(c1("K11", "K11_creator_issues_90d", KIKAS, NUMERIC, LOG1P, true));
+    a.add(c1("K12", "K12_creator_issues_closed_90d", KIKAS, NUMERIC, LOG1P, true));
+    a.add(c1("K13", "K13_creator_commits_90d", KIKAS, NUMERIC, LOG1P, true));
+    a.add(c1("K13x", "K13x_reporter_no_commit_ever", KIKAS, BINARY, NONE, false));
+    a.add(c1("K14", "K14_project_issues_90d", KIKAS, NUMERIC, LOG1P, false));
+    a.add(c1("K15", "K15_project_issues_closed_90d", KIKAS, NUMERIC, LOG1P, false));
+    a.add(c1("K16", "K16_project_commits_90d", KIKAS, NUMERIC, LOG1P, false));
+    a.add(c1("K17", "K17_project_issues_14d", KIKAS, NUMERIC, LOG1P, false));
+    a.add(c1("K18", "K18_project_created_closed_14d", KIKAS, NUMERIC, LOG1P, false));
+    a.add(c1("K19", "K19_project_commits_14d", KIKAS, NUMERIC, LOG1P, false));
+    a.add(c1("K20", "K20c1_participant_commits_14d", KIKAS, NUMERIC, LOG1P, true));
+    a.add(c1("K21", "K21c1_participant_committers_14d", KIKAS, NUMERIC, NONE, true));
+    // ---------------------------------------------------------------- Kikas parcial, C2 (exposure)
+    a.add(c2("K03", "K03_comments", KIKAS, EXPOSICAO, LOG1P, false));
+    a.add(c2("K04", "K04_actors", KIKAS, EXPOSICAO, LOG1P, false));
+    a.add(c2("K05", "K05_assignments", KIKAS, EXPOSICAO, LOG1P, false));
+    a.add(c2("K06", "K06_labels_c2", KIKAS, EXPOSICAO, LOG1P, false));
+    a.add(c2("K07", "K07_mentions", KIKAS, EXPOSICAO, LOG1P, false));
+    a.add(c2("K08", "K08_commit_refs", KIKAS, EXPOSICAO, LOG1P, false));
+    a.add(c2("K10", "K10_mean_comment_words", KIKAS, EXPOSICAO, LOG1P, true));
+    a.add(c2("K17c2", "K17c2_project_issues_14d_obs", KIKAS, EXPOSICAO, LOG1P, false));
+    a.add(c2("K18c2", "K18c2_project_created_closed_14d_obs", KIKAS, EXPOSICAO, LOG1P, false));
+    a.add(c2("K19c2", "K19c2_project_commits_14d_obs", KIKAS, EXPOSICAO, LOG1P, false));
+    a.add(c2("K20", "K20_participant_commits", KIKAS, EXPOSICAO, LOG1P, false));
+    a.add(c2("K21", "K21_participant_committers", KIKAS, EXPOSICAO, LOG1P, false));
 
-    // -- carga do projeto ---------------------------------------------------------------------
-    all.add(new Attribute("Y12", "open_issues_project_at_open", Kind.NUMERIC, Transform.LOG1P, YU,
-        TemporalClass.LIMPO, false,
-        "issue; event -- issues do projeto criadas antes de t0 e nao resolvidas antes de t0"));
-    all.add(new Attribute("C10", "recent_open_issues_project_30d", Kind.NUMERIC, Transform.LOG1P,
-        CHOUCHEN, TemporalClass.LIMPO, false, "issue; event -- as mesmas, criadas nos 30 dias"));
-
-    // -- o relator, por reporter_id -------------------------------------------------------------
-    all.add(new Attribute("C07", "reporter_prior_issues", Kind.NUMERIC, Transform.LOG1P, CHOUCHEN,
-        TemporalClass.LIMPO, false, "issue.reporter_id (todos os projetos)"));
-    all.add(new Attribute("C08", "reporter_prior_project_issues", Kind.NUMERIC, Transform.LOG1P,
-        CHOUCHEN, TemporalClass.LIMPO, false, "issue.reporter_id (mesmo projeto)"));
-    all.add(new Attribute("Y08", "reporter_resolved_ratio", Kind.NUMERIC, Transform.NONE, BOTH,
-        TemporalClass.LIMPO, true,
-        "issue; event -- REDEFINIDO: fracao das issues anteriores do relator resolvidas antes de "
-            + "t0, no lugar da fracao de PRs mesclados. Sem issue anterior: ausente"));
-    all.add(new Attribute("Y09", "reporter_is_resolver", Kind.BINARY, Transform.NONE, YU,
-        TemporalClass.LIMPO, false,
-        "event.author_id -- REDEFINIDO: o relator ja resolveu alguma issue deste projeto antes de "
-            + "t0, no lugar de 'e integrador'"));
-    all.add(new Attribute("Y10", "social_connection_90d", Kind.NUMERIC, Transform.LOG1P, YU,
-        TemporalClass.LIMPO, true,
-        "issue_comment -- contatos entre o relator e quem resolveu issue do projeto nos 90 dias. "
-            + "Ninguem resolveu nada na janela: ausente"));
-    all.add(new Attribute("Y16", "project_age_x_team_size", Kind.NUMERIC, Transform.LOG1P, YU,
-        TemporalClass.LIMPO, false, "derivado de Y01 e Y02"));
-    all.add(new Attribute("Y17", "team_size_x_workload", Kind.NUMERIC, Transform.LOG1P, YU,
-        TemporalClass.LIMPO, false, "derivado de Y02 e Y12"));
-
-    // -- texto, como estava na criacao ----------------------------------------------------------
-    all.add(new Attribute("Y11", "title_description_word_count", Kind.NUMERIC, Transform.LOG1P,
-        BOTH, TemporalClass.RECONSTRUIDO_DO_CHANGELOG, false,
-        "issue.title + issue.desc revertidos pelo changelog ate t0"));
-    all.add(new Attribute("Y13", "issue_reference", Kind.BINARY, Transform.NONE, YU,
-        TemporalClass.RECONSTRUIDO_DO_CHANGELOG, false,
-        "texto em t0 -- #n ou chave Jira de OUTRA issue (a propria chave nao conta)"));
-    all.add(new Attribute("Y14", "person_mention", Kind.BINARY, Transform.NONE, YU,
-        TemporalClass.RECONSTRUIDO_DO_CHANGELOG, false,
-        "texto em t0 -- @nome, ou [~nome], que e como o Jira marca mencao"));
-
-    // -- triagem: o que so a issue tem ----------------------------------------------------------
-    all.add(new Attribute("T01", "priority_at_open", Kind.CATEGORICAL, Transform.NONE, TRIAGEM,
-        TemporalClass.RECONSTRUIDO_DO_CHANGELOG, false,
-        "issue.priority revertido -- 1 Blocker, 2 Critical, 3 Major, 4 Minor, 5 Trivial, 0 sem"));
-    all.add(new Attribute("T02", "issue_type_at_open", Kind.CATEGORICAL, Transform.NONE,
-        TRIAGEM_E_PROPRIA, TemporalClass.RECONSTRUIDO_DO_CHANGELOG, false,
-        "issue.issue_type revertido -- 1 Bug, 2 Improvement, 3 New Feature, 4 Sub-task, 5 Task, "
-            + "0 outro. E a mesma codificacao das cinco indicadoras da especificacao propria"));
-    all.add(new Attribute("T03", "components_at_open", Kind.NUMERIC, Transform.LOG1P, TRIAGEM,
-        TemporalClass.RECONSTRUIDO_DO_CHANGELOG, false, "issue.components revertido: contagem"));
-    all.add(new Attribute("T04", "labels_at_open", Kind.NUMERIC, Transform.LOG1P, TRIAGEM,
-        TemporalClass.RECONSTRUIDO_DO_CHANGELOG, false, "issue.labels revertido: contagem"));
-    all.add(new Attribute("T05", "affects_versions_at_open", Kind.NUMERIC, Transform.LOG1P,
-        TRIAGEM, TemporalClass.RECONSTRUIDO_DO_CHANGELOG, false,
-        "issue.affects_versions revertido: contagem"));
-    all.add(new Attribute("T06", "fix_versions_at_open", Kind.NUMERIC, Transform.LOG1P, TRIAGEM,
-        TemporalClass.RECONSTRUIDO_DO_CHANGELOG, false,
-        "issue.fix_versions revertido: contagem -- a versao-alvo que ja estava marcada na criacao"));
-    all.add(new Attribute("T07", "linked_issues_at_open", Kind.NUMERIC, Transform.LOG1P,
-        TRIAGEM_E_PROPRIA, TemporalClass.RECONSTRUIDO_DO_CHANGELOG, true,
-        "issue.issue_links revertido: contagem. Sem o campo no corpus: ausente -- e o 'ligacoes "
-            + "ausentes' da especificacao propria"));
-    all.add(new Attribute("T08", "has_assignee_at_open", Kind.BINARY, Transform.NONE, TRIAGEM,
-        TemporalClass.RECONSTRUIDO_DO_CHANGELOG, false, "issue.assignee_id revertido"));
-    all.add(new Attribute("T09", "description_length_at_open", Kind.NUMERIC, Transform.LOG1P,
-        TAMANHO_DA_DESCRICAO, TemporalClass.RECONSTRUIDO_DO_CHANGELOG, true,
-        "issue.desc revertido: caracteres. Sem descricao: ausente -- e o 'descricao ausente' da "
-            + "especificacao propria. Fora da uniao total: Y11 ja le o texto la"));
-
-    // -- a especificacao propria: lida de smartshark_tcc.issue_features -------------------------
-    //    Equipe e quem fez commit no projeto nos 90 dias antes da criacao, sem acrescentar o autor
-    //    da issue -- entao as estatisticas de equipe nao dependem de quem fez o trabalho.
-    all.add(new Attribute("P01", "mu_l", Kind.NUMERIC, Transform.LOG1P, PROPRIA,
-        TemporalClass.LIMPO, true,
-        "issue_features.mu_l -- media do volume acumulado da equipe. Equipe vazia (553): ausente, "
-            + "e este indicador e o de equipe vazia para as quatro estatisticas"));
-    all.add(new Attribute("P02", "s_l", Kind.NUMERIC, Transform.LOG1P, PROPRIA,
-        TemporalClass.LIMPO, false, "issue_features.s_l"));
-    all.add(new Attribute("P03", "mu_m", Kind.NUMERIC, Transform.LOG1P, PROPRIA,
-        TemporalClass.LIMPO, false, "issue_features.mu_m"));
-    all.add(new Attribute("P04", "s_m", Kind.NUMERIC, Transform.LOG1P, PROPRIA,
-        TemporalClass.LIMPO, false, "issue_features.s_m"));
-    all.add(new Attribute("P05", "extra_team_size", Kind.NUMERIC, Transform.LOG1P, PROPRIA,
-        TemporalClass.LIMPO, false, "issue_features.extra_team_size"));
-
-    // -- a especificacao propria: a pessoa que fez o trabalho --------------------------------------
-    all.add(new Attribute("P06", "loc_tot_java", Kind.NUMERIC, Transform.LOG1P, PROPRIA,
-        TemporalClass.CONDICIONADO_A_ATRIBUICAO, false,
-        "issue_features.loc_tot_java -- volume acumulado do autor dos commits ligados"));
-    all.add(new Attribute("P07", "extra_dev_commits", Kind.NUMERIC, Transform.LOG1P, PROPRIA,
-        TemporalClass.CONDICIONADO_A_ATRIBUICAO, false, "issue_features.extra_dev_commits"));
-    all.add(new Attribute("P08", "extra_dev_tenure_days", Kind.NUMERIC, Transform.LOG1P, PROPRIA,
-        TemporalClass.CONDICIONADO_A_ATRIBUICAO, false, "issue_features.extra_dev_tenure_days"));
-    all.add(new Attribute("P09", "mccc_tot", Kind.NUMERIC, Transform.LOG1P, PROPRIA,
-        TemporalClass.CONDICIONADO_A_ATRIBUICAO, false, "issue_features.mccc_tot"));
-    all.add(new Attribute("P10", "iss_dev", Kind.NUMERIC, Transform.LOG1P, PROPRIA,
-        TemporalClass.CONDICIONADO_A_ATRIBUICAO, false,
-        "issue_features.iss_dev -- issues abertas do autor no projeto"));
-    all.add(new Attribute("P11", "extra_iss_dev_career", Kind.NUMERIC, Transform.LOG1P, PROPRIA,
-        TemporalClass.CONDICIONADO_A_ATRIBUICAO, false, "issue_features.extra_iss_dev_career"));
-    all.add(new Attribute("P12", "iss_team", Kind.NUMERIC, Transform.LOG1P, PROPRIA,
-        TemporalClass.CONDICIONADO_A_ATRIBUICAO, false,
-        "issue_features.iss_team -- issues abertas da equipe, atribuidas a cada membro pelos "
-            + "commits que vieram depois: em t0 ninguem sabe de quem e o trabalho aberto"));
-
-    // -- a mudanca que resolveu a issue: so no teto ---------------------------------------------
-    all.add(new Attribute("P13", "loc_iss", Kind.NUMERIC, Transform.LOG1P, PROPRIA,
-        TemporalClass.OBSERVAVEL_APENAS_NO_DESFECHO, false, "issue_features.loc_iss"));
-    all.add(new Attribute("P14", "mccc_i", Kind.NUMERIC, Transform.NONE, PROPRIA,
-        TemporalClass.OBSERVAVEL_APENAS_NO_DESFECHO, false,
-        "issue_features.mccc_i -- media, entra crua como na especificacao"));
-    all.add(new Attribute("P15", "nl_i", Kind.NUMERIC, Transform.NONE, PROPRIA,
-        TemporalClass.OBSERVAVEL_APENAS_NO_DESFECHO, false, "issue_features.nl_i"));
-    all.add(new Attribute("Y03", "additions_linked", Kind.NUMERIC, Transform.LOG1P, BOTH,
-        TemporalClass.OBSERVAVEL_APENAS_NO_DESFECHO, false,
-        "issue_label.java_lines_added -- linhas Java dos commits ligados; o PR tinha isto na "
-            + "abertura, a issue so no fim"));
-    all.add(new Attribute("Y04", "deletions_linked", Kind.NUMERIC, Transform.LOG1P, BOTH,
-        TemporalClass.OBSERVAVEL_APENAS_NO_DESFECHO, false, "issue_label.java_lines_deleted"));
-    all.add(new Attribute("Y05", "commits_linked", Kind.NUMERIC, Transform.LOG1P, YU,
-        TemporalClass.OBSERVAVEL_APENAS_NO_DESFECHO, false, "issue_label.commits"));
-
-    return List.copyOf(all);
+    // ---------------------------------------------------------------- own, C1
+    a.add(c1("A01", "A01_desc_length", PROPRIA, NUMERIC, LOG1P, true));
+    a.add(c1("A03", "A03_team_size", PROPRIA, NUMERIC, LOG1P, false));
+    a.add(c1("A04", "A04_mu_l", PROPRIA, NUMERIC, LOG1P, true));
+    a.add(c1("A05", "A05_s_l", PROPRIA, NUMERIC, LOG1P, true));
+    a.add(c1("A06", "A06_mu_m", PROPRIA, NUMERIC, LOG1P, true));
+    a.add(c1("A07", "A07_s_m", PROPRIA, NUMERIC, LOG1P, true));
+    a.add(c1("A06c", "A06c_team_mccc_coverage", PROPRIA, NUMERIC, NONE, true));
+    a.add(c1("D01", "D01_backlog_open", PROPRIA, NUMERIC, LOG1P, false));
+    a.add(c1("D03", "D03_project_first_interaction_median_h", PROPRIA, NUMERIC, LOG1P, true));
+    a.add(c1("D05", "D05_reporter_project_median_h", PROPRIA, NUMERIC, LOG1P, true));
+    // ---------------------------------------------------------------- own, C2 content
+    a.add(c2("A09", "A09_exec_loc_tot", PROPRIA, CONTEUDO, LOG1P, true));
+    a.add(c2("A10", "A10_exec_mccc_tot", PROPRIA, CONTEUDO, LOG1P, true));
+    a.add(c2("A10c", "A10c_exec_mccc_coverage", PROPRIA, CONTEUDO, NONE, true));
+    a.add(c2("A11", "A11_exec_commits", PROPRIA, CONTEUDO, LOG1P, true));
+    a.add(c2("A12", "A12_exec_tenure_days", PROPRIA, CONTEUDO, LOG1P, true));
+    a.add(c2("A13", "A13_exec_open_load", PROPRIA, CONTEUDO, LOG1P, true));
+    a.add(c2("A14", "A14_team_open_load", PROPRIA, CONTEUDO, LOG1P, false));
+    a.add(c2("A15", "A15_change_loc", PROPRIA, CONTEUDO, LOG1P, true));
+    a.add(c2("A16", "A16_change_mean_mccc", PROPRIA, CONTEUDO, NONE, true));
+    a.add(c2("A17", "A17_change_mean_nl", PROPRIA, CONTEUDO, NONE, true));
+    a.add(c2("D07", "D07_files_changed", PROPRIA, CONTEUDO, LOG1P, true));
+    a.add(c2("D08", "D08_file_familiarity", PROPRIA, CONTEUDO, NONE, true));
+    // ---------------------------------------------------------------- own, C2 exposure
+    a.add(c2("A02c2", "A02c2_links_before_res", PROPRIA, EXPOSICAO, LOG1P, false));
+    a.add(c2("D06", "D06_first_interaction_h", PROPRIA, EXPOSICAO, LOG1P, true));
+    return List.copyOf(a);
   }
 
   public static List<Attribute> all() {
     return ALL;
   }
 
-  public static boolean declares(final String name) {
-    return BY_NAME.containsKey(name);
+  /** The columns of one cell, in registry order. */
+  public static List<Attribute> of(final Family family, final Scenario scenario) {
+    return ALL.stream().filter(a -> a.inCell(family, scenario)).toList();
   }
 
   public static Attribute byName(final String name) {
-    final Attribute found = BY_NAME.get(name);
-    if (found == null) {
-      throw new IllegalArgumentException("no such attribute: " + name);
-    }
-    return found;
+    return ALL.stream().filter(a -> a.name().equals(name)).findFirst()
+        .orElseThrow(() -> new IllegalArgumentException("no attribute " + name));
   }
 
-  /** One cell of the grid: a family under a profile, in the registry's stable order. */
-  public static List<Attribute> of(final Family family, final Profile profile) {
-    return ALL.stream().filter(attribute -> attribute.inCell(family, profile)).toList();
-  }
-
-  /** Every name a stored row carries: each construct, and each declared absence indicator. */
+  /** Every column the cache must carry: values, absence indicators, and the sensitivity A15w. */
   public static List<String> stored() {
-    final List<String> names = new ArrayList<>();
-    for (final Attribute attribute : ALL) {
-      names.add(attribute.name());
-      if (attribute.absenceIndicator()) {
-        names.add(attribute.absenceName());
+    final Set<String> out = new LinkedHashSet<>();
+    for (final Attribute a : ALL) {
+      out.add(a.name());
+      if (a.absenceIndicator()) {
+        out.add(a.absenceName());
       }
     }
-    return List.copyOf(names);
+    out.add(SENSITIVITY_A15W);
+    out.add(SENSITIVITY_A15W + "_ausente");
+    return List.copyOf(out);
   }
 }

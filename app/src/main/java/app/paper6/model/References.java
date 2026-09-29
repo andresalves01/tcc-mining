@@ -34,6 +34,9 @@ public final class References {
   public static References learnedOn(final List<IssueUnit> fit) {
     final Map<String, List<Double>> hours = new HashMap<>();
     for (final IssueUnit unit : fit) {
+      if (unit.executor() == null) {
+        continue;
+      }
       hours.computeIfAbsent(key(unit), k -> new ArrayList<>()).add(unit.durationHours());
     }
     final Map<String, Double> medians = new HashMap<>(hours.size() * 2);
@@ -63,13 +66,15 @@ public final class References {
     final double[] out = new double[scored.size()];
     for (int i = 0; i < out.length; i++) {
       final IssueUnit unit = scored.get(i);
-      out[i] = pair.getOrDefault(key(unit), project.predictHours(unit));
+      // no executor: the conditioned reference has no person to condition on
+      out[i] = unit.executor() == null ? project.predictHours(unit)
+          : pair.getOrDefault(key(unit), project.predictHours(unit));
     }
     return out;
   }
 
   private static String key(final IssueUnit unit) {
-    return unit.authorId() + '\u0000' + unit.project();
+    return unit.executor() + '\u0000' + unit.project();
   }
 
   static double median(final List<Double> values) {

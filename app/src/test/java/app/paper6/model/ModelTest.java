@@ -5,43 +5,60 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import app.paper5.Row;
+import app.paper6.Attribute;
+import app.paper6.Attributes;
 import app.paper6.Family;
 import app.paper6.IssueUnit;
-import app.paper6.Profile;
 import app.paper6.RowCache;
+import app.paper6.Scenario;
+import app.paper6.Universe.Population;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** The pieces the reserved run relies on, checked on numbers small enough to verify by hand. */
+/** The modelling pieces, checked on numbers small enough to verify by hand. */
 class ModelTest {
 
   private static RowCache.Entry entry(final String id, final String outer, final String inner,
       final double hours) {
     final Instant t0 = Instant.parse("2015-01-01T00:00:00Z");
-    return new RowCache.Entry(new IssueUnit(id, "K-" + id, "p", "r", "a", t0,
-        t0.plusMillis((long) (hours * 3_600_000)), t0, 1, 1, 1),
-        new Row(id, Map.of(), Set.of()), outer, inner);
+    final Map<Population, String[]> parts = new EnumMap<>(Population.class);
+    parts.put(Population.FIXED, new String[] {outer, inner});
+    return new RowCache.Entry(new IssueUnit(id, "K-" + id, "p", "r", null, t0,
+        t0.plusMillis((long) (hours * 3_600_000)), "Fixed", false),
+        new Row(id, Map.of(), Set.of()), parts);
   }
 
   @Test
-  @DisplayName("the development mode never fits on nor scores a reserved row")
-  void innerNeverSeesTheReservedRows() {
+  @DisplayName("the development mode never fits on nor scores an outer test row")
+  void innerNeverSeesTheTestRows() {
     final List<RowCache.Entry> entries = List.of(entry("a", "TRAIN", "TRAIN", 1),
         entry("b", "TRAIN", "TEST", 2), entry("c", "TEST", "", 3),
-        entry("d", "TRAIN", "CROSSES_CUT", 4));
-    final Fitting.Sides inner = Fitting.sides(entries, Fitting.Mode.INNER);
+        entry("d", "TRAIN", "CROSSES", 4));
+    final Fitting.Sides inner = Fitting.sides(entries, Fitting.Mode.INNER, Population.FIXED);
 
     assertEquals(List.of("a"), inner.fitUnits().stream().map(IssueUnit::issueId).toList());
     assertEquals(List.of("b"), inner.scoreUnits().stream().map(IssueUnit::issueId).toList());
+  }
 
-    final Fitting.Sides reserved = Fitting.sides(entries, Fitting.Mode.RESERVED);
-    assertEquals(3, reserved.fitUnits().size(), "the whole training side, both inner halves");
-    assertEquals(List.of("c"), reserved.scoreUnits().stream().map(IssueUnit::issueId).toList());
+  @Test
+  @DisplayName("a row outside the population is in neither side")
+  void otherPopulationsAreIgnored() {
+    final List<RowCache.Entry> entries = List.of(entry("a", "TRAIN", "TRAIN", 1),
+        entry("b", "TRAIN", "TEST", 2));
+    final Fitting.Sides fixed = Fitting.sides(entries, Fitting.Mode.INNER, Population.FIXED);
+    assertEquals(1, fixed.fitUnits().size());
+    try {
+      Fitting.sides(entries, Fitting.Mode.INNER, Population.BROAD);
+      throw new AssertionError("a population with no rows must be refused");
+    } catch (final IllegalStateException expected) {
+      // nothing to fit
+    }
   }
 
   @Test
@@ -78,18 +95,31 @@ class ModelTest {
     assertTrue(gain.modelBetter());
   }
 
-  @Test
-  @DisplayName("the grid: 18 cells of family by profile, empty and repeated cells named, and 2 blocks")
-  void theGrid() {
-    final List<String> skipped = new ArrayList<>();
-    final List<Cell> cells = Cell.grid(skipped);
+  private static int size(final Family f, final Scenario s) {
+    return Cell.of(f, s).attributes().size();
+  }
 
-    assertEquals(20, cells.size());
-    assertEquals(6, skipped.size(), "one empty triage cell and five repeated ones");
-    assertTrue(skipped.stream().anyMatch(s -> s.startsWith("TRIAGEM_JIRA / STRICT_T0")));
-    assertFalse(cells.stream().anyMatch(c -> c.family() == Family.TRIAGEM_JIRA
-        && c.profile() == Profile.STRICT_T0));
-    assertEquals(7, Cell.byLabel(Cell.SO_ATRIBUICAO).attributes().size());
-    assertEquals(6, Cell.byLabel(Cell.SO_DESFECHO).attributes().size());
+  @Test
+  @DisplayName("the grid: eleven cells, and each block holds exactly its own columns")
+  void theGrid() {
+    assertEquals(11, Cell.grid().size());
+    assertEquals(12, size(Family.ALZUBAIDI, Scenario.C1), "12 of Al-Zubaidi's 13");
+    assertEquals(14, size(Family.KIKAS, Scenario.C1), "13 of Kikas's plus K13x");
+    assertEquals(26, size(Family.KIKAS, Scenario.C2), "plus the twelve exposure columns");
+    assertEquals(10, size(Family.PROPRIA, Scenario.C1));
+    assertEquals(22, size(Family.PROPRIA, Scenario.C1_CONTEUDO));
+    assertEquals(12, size(Family.PROPRIA, Scenario.C1_EXPOSICAO));
+    assertEquals(24, size(Family.PROPRIA, Scenario.C2));
+    assertEquals(35, size(Family.UNIAO, Scenario.C1), "K02 enters the union once, as Z10 + Z12");
+    for (final Cell cell : Cell.grid()) {
+      for (final Attribute a : cell.attributes()) {
+        assertTrue(a.atCreation() || cell.scenario().admits(a.block()), cell.label() + a.name());
+        assertFalse(a.name().equals(Attributes.SENSITIVITY_A15W), "A15w is only a sensitivity");
+      }
+    }
+    assertTrue(Cell.of(Family.UNIAO, Scenario.C1_CONTEUDO).attributes().stream()
+        .noneMatch(a -> a.block() == Scenario.Block.EXPOSICAO));
+    assertTrue(Cell.of(Family.UNIAO, Scenario.C1_EXPOSICAO).attributes().stream()
+        .noneMatch(a -> a.block() == Scenario.Block.CONTEUDO));
   }
 }

@@ -7,6 +7,7 @@ import app.paper5.model.DesignMatrix;
 import app.paper5.model.Score;
 import app.paper6.IssueUnit;
 import app.paper6.RowCache;
+import app.paper6.Universe;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -73,22 +74,25 @@ public final class Fitting {
 
   private Fitting() {}
 
-  public static Sides sides(final List<RowCache.Entry> entries, final Mode mode) {
+  public static Sides sides(final List<RowCache.Entry> entries, final Mode mode,
+      final Universe.Population population) {
     final List<IssueUnit> fitUnits = new ArrayList<>();
     final List<Row> fitRows = new ArrayList<>();
     final List<IssueUnit> scoreUnits = new ArrayList<>();
     final List<Row> scoreRows = new ArrayList<>();
     for (final RowCache.Entry entry : entries) {
+      final String outer = entry.outer(population);
+      final String inner = entry.inner(population);
       final boolean fit;
       final boolean score;
       if (mode == Mode.INNER) {
         // The reserved side is refused here, not filtered by a caller: under INNER nothing on the
         // far side of the outer cut has any business in the fit or the score.
-        fit = "TRAIN".equals(entry.outer()) && "TRAIN".equals(entry.inner());
-        score = "TRAIN".equals(entry.outer()) && "TEST".equals(entry.inner());
+        fit = "TRAIN".equals(outer) && "TRAIN".equals(inner);
+        score = "TRAIN".equals(outer) && "TEST".equals(inner);
       } else {
-        fit = "TRAIN".equals(entry.outer());
-        score = "TEST".equals(entry.outer());
+        fit = "TRAIN".equals(outer);
+        score = "TEST".equals(outer);
       }
       if (fit) {
         fitUnits.add(entry.unit());
@@ -100,7 +104,7 @@ public final class Fitting {
     }
     if (fitUnits.isEmpty() || scoreUnits.isEmpty()) {
       throw new IllegalStateException(fitUnits.size() + " rows to fit and " + scoreUnits.size()
-          + " to score under " + mode);
+          + " to score under " + mode + " in " + population);
     }
     final double[] observed = new double[scoreUnits.size()];
     for (int i = 0; i < observed.length; i++) {
