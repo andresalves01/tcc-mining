@@ -178,5 +178,7 @@ class StudyTest {
     assertEquals(0.4 * (2.0 / 1 + 0), TextMeasures.fog("Fix bug."), 1e-12);
     assertEquals(3, TextMeasures.syllables("beautiful"));
     assertEquals(2, TextMeasures.length("😀a"), "code points, not UTF-16 units");
+    assertEquals("ab", Initial.norm("  ab "), "strip as Python: the no-break space goes");
+    assertNull(Initial.norm(" "), "a description of spaces only is absent");
   }
 }
