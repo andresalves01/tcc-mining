@@ -68,11 +68,23 @@ public final class Initial {
     return out;
   }
 
+  /**
+   * Python's {@code str.strip()}, then blank as absent. Java's {@code strip} keeps the no-break
+   * space and a few others Python removes; the parity gate found it on 1,407 descriptions.
+   */
   static String norm(final String value) {
     if (value == null) {
       return null;
     }
-    final String s = value.strip();
+    int start = 0;
+    int end = value.length();
+    while (start < end && TextMeasures.space(value.codePointAt(start))) {
+      start += Character.charCount(value.codePointAt(start));
+    }
+    while (end > start && TextMeasures.space(value.codePointBefore(end))) {
+      end -= Character.charCount(value.codePointBefore(end));
+    }
+    final String s = value.substring(start, end);
     return s.isEmpty() ? null : s;
   }
 
@@ -93,14 +105,27 @@ public final class Initial {
     return new Reversal<>(norm(changes.get(0).oldValue()), stored, true, chain && last);
   }
 
+  /** Python's {@code set(value.split())}: separated by any Unicode space. */
   static Set<String> words(final String value) {
     final Set<String> out = new TreeSet<>();
-    if (value != null) {
-      for (final String w : value.trim().split("\\s+")) {
-        if (!w.isEmpty()) {
-          out.add(w);
+    if (value == null) {
+      return out;
+    }
+    final StringBuilder word = new StringBuilder();
+    for (int i = 0; i < value.length(); ) {
+      final int c = value.codePointAt(i);
+      if (TextMeasures.space(c)) {
+        if (word.length() > 0) {
+          out.add(word.toString());
+          word.setLength(0);
         }
+      } else {
+        word.appendCodePoint(c);
       }
+      i += Character.charCount(c);
+    }
+    if (word.length() > 0) {
+      out.add(word.toString());
     }
     return out;
   }
