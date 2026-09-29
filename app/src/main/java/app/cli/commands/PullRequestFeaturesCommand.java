@@ -16,7 +16,7 @@ import java.util.List;
  * TARGET_DB} (empty until {@code pr-labels} and {@code split} have run against it); {@code
  * externalLedger}/{@code externalComplexity} read {@code LEDGER_DB} -- an already-built ledger and
  * complexity table this stage never writes to; {@code pullRequestAttributes} reads {@code
- * SOURCE_DB}. See {@code papers/04-pull-requests/PLANO.md}.
+ * SOURCE_DB}. See {@code papers/pull-requests/PLANO.md}.
  */
 public final class PullRequestFeaturesCommand implements CommandRunner {
 

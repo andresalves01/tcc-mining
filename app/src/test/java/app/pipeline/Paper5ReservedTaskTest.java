@@ -31,7 +31,7 @@ import org.junit.jupiter.api.Test;
 class Paper5ReservedTaskTest {
 
   private static final Path REGISTRO = Path.of(
-      "papers/04-pull-requests/replicacoes/validacao-yu-chouchen/REGISTRO-PREVIO.md");
+      "papers/pull-requests/replicacoes/validacao-yu-chouchen/REGISTRO-PREVIO.md");
 
   /** The registration names the specifications in prose; this is the only place that maps them. */
   private static final Map<String, Family> BY_LABEL = Map.of(

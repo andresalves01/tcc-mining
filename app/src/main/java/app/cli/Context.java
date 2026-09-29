@@ -71,4 +71,5 @@ public record Context(
     app.paper5.port.ResultStore paper5Results,
     app.paper6.port.IssueUnitSource issueUnits,
     app.paper6.port.IssueTableSource issueTables,
-    app.paper5.port.ResultStore paper6Results) {}
+    app.paper5.port.ResultStore paper6Results,
+    app.paper5.port.Artigo4TableSource artigo4Tables) {}

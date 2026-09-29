@@ -126,17 +126,21 @@ public final class Paper5ReservedTask {
     for (int i = 0; i < baselineHours.length; i++) {
       baselineHours[i] = baseline.predictHours(reservedUnits.get(i));
     }
-    final Score baselineScore =
-        Score.reference("referencia principal: mediana do projeto", baselineHours, observed,
-            baseline.constantHours());
-
     // The calibration line: one number for everything, the median of the training side.
     final double[] constantHours = new double[reservedUnits.size()];
     java.util.Arrays.fill(constantHours, baseline.constantHours());
+    final double constantMae = Paper5AuditTask.mae(constantHours, observed);
+    // Corrigido em 28/09/2026: o quarto argumento e o ERRO da constante nestas linhas, nao o valor
+    // que ela preve. Antes passava-se a previsao (68,2 h), e a coluna "ganho sobre a constante" das
+    // duas linhas de referencia saia -262% e -235% em vez de -8,3% e 0. As linhas dos modelos nunca
+    // foram afetadas: elas ja recebiam o erro da constante.
+    final Score baselineScore =
+        Score.reference("referencia principal: mediana do projeto", baselineHours, observed,
+            constantMae);
     final Score constantScore = Score.reference(
         String.format("calibracao: constante = mediana do treino (%.1f h)",
             baseline.constantHours()),
-        constantHours, observed, baseline.constantHours());
+        constantHours, observed, constantMae);
 
     // The two columns computed at fit time rather than cached, because they depend on which rows
     // are the fitting side -- and that side is now the whole training partition.

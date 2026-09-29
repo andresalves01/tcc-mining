@@ -11,6 +11,11 @@ import app.cli.commands.FitInnerCommand;
 import app.cli.commands.FunnelCommand;
 import app.cli.commands.HarvestJiraCommand;
 import app.cli.commands.Paper5AblationCommand;
+import app.cli.commands.Paper5AuditCommand;
+import app.cli.commands.Paper5CorrectedReservedCommand;
+import app.cli.commands.Paper5CorrectedSweepCommand;
+import app.cli.commands.Paper5CorrectionCommand;
+import app.cli.commands.Paper5TemporalAuditCommand;
 import app.cli.commands.Paper5CheckCommand;
 import app.cli.commands.Paper5ExtractCommand;
 import app.cli.commands.Paper5FitInnerCommand;
@@ -199,6 +204,42 @@ public enum Command {
       Transposicao para issues: score the reserved rows ONCE, with the
       literals REGISTRO-PREVIO.md froze. Refuses while none are frozen.
       Reads CACHE, appends the run to PAPER6_DB."""),
+  PAPER5_AUDIT("paper5-auditoria", new Paper5AuditCommand(), """
+      Artigo 5, auditoria de 28/09/2026: reruns the registered reserved
+      task unchanged, proves a second fitting path identical to it bit
+      for bit, writes every reserved prediction to PREVISOES, and prints
+      the post-opening readings -- per-project ordering, project-level
+      intervals, the historical project mean, and the families without
+      the columns that read the future. Searches for nothing. Reads
+      CACHE and A4; appends the audit to PAPER5_DB."""),
+
+  PAPER5_TEMPORAL_AUDIT("paper5-auditoria-temporal", new Paper5TemporalAuditCommand(), """
+      Artigo 5, auditoria de 28/09/2026: for every unit, how many of the
+      pull requests behind the project's typical wait and the author's
+      file familiarity were examined or merged at or after t0, and
+      whether the value changes using only what was known. Reads
+      UNITS_DB and SOURCE_DB; writes the counts to SAIDA, nothing else."""),
+
+  PAPER5_CORRECTION("paper5-correcao-a4", new Paper5CorrectionCommand(), """
+      Artigo 5, correction of 28/09/2026: recomputes the previous paper's
+      columns under the registered rule and the corrected one, requires
+      the registered rule to reproduce the stored export A4, and writes
+      the corrected export to SAIDA. Reads SOURCE_DB, LEDGER_DB and
+      UNITS_DB; writes only the file."""),
+
+  PAPER5_CORRECTED_SWEEP("paper5-varredura-corrigida", new Paper5CorrectedSweepCommand(), """
+      Artigo 5, correction of 28/09/2026: the development sweep, on the
+      inner selection, for the two families with the previous paper's
+      columns -- first proving it reproduces the registered choice with
+      the registered columns, then with the corrected ones. Reads CACHE,
+      A4 and A4_CORRIGIDO; writes nothing; the reserved set is not read."""),
+
+  PAPER5_CORRECTED_RESERVED("paper5-reservado-corrigido", new Paper5CorrectedReservedCommand(), """
+      Artigo 5, correction of 28/09/2026: scores the reserved rows ONCE
+      with the corrected columns and the pairs frozen in the addendum of
+      REGISTRO-DA-CORRECAO.md, beside the three unaffected registered
+      specifications. Reads CACHE, A4, A4_CORRIGIDO; writes PREVISOES and
+      appends to PAPER5_DB."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both
