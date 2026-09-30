@@ -137,23 +137,24 @@ public final class Attributes {
       "A10_exec_mccc_tot", "A10c_exec_mccc_coverage", "A11_exec_commits", "A12_exec_tenure_days",
       "A13_exec_open_load");
 
+  /** P20: the time to the first interaction, which at the first In Progress has mostly passed. */
+  public static final String OUT_AT_START = "D06_first_interaction_h";
+
   /**
-   * The columns of one cell of the secondary study: C1 plus the executor at t0, and in
-   * {@link Scenario#C1_CONTEUDO} the rest of the content block. No exposure (P5).
+   * The columns of one cell of the secondary study: C1 plus the executor at t0, and the blocks the
+   * scenario admits (P19), the content block without the executor's columns, the exposure block
+   * without D06 (P20).
    */
   public static List<Attribute> ofInProgress(final Family family, final Scenario scenario) {
-    if (scenario != Scenario.C1 && scenario != Scenario.C1_CONTEUDO) {
-      throw new IllegalArgumentException("the secondary study reads C1 and C1 + content only");
-    }
     return ALL.stream().filter(a -> {
       final boolean mine = family == Family.UNIAO ? a.inUnion() : a.family() == family;
-      if (!mine) {
+      if (!mine || a.name().equals(OUT_AT_START)) {
         return false;
       }
       if (a.atCreation() || EXECUTOR_AT_START.contains(a.name())) {
         return true;
       }
-      return scenario == Scenario.C1_CONTEUDO && a.block() == Scenario.Block.CONTEUDO;
+      return scenario.admits(a.block());
     }).toList();
   }
 

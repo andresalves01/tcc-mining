@@ -46,18 +46,23 @@ public record Cell(String label, Family family, Scenario scenario, List<Attribut
   }
 
   /**
-   * The six cells of the secondary study (papers/issues-in-progress, P5 and P6): every family at
-   * the first In Progress, and the own family and the union with the content block. Kikas has no
-   * content column, so no second cell.
+   * The eleven cells of the secondary study (papers/issues-in-progress, P6 and P19), the main
+   * study's shape read at the first In Progress: Kikas has no content column, so its C2 is C1 plus
+   * exposure.
    */
   public static List<Cell> gridInProgress() {
     return List.of(
         inProgress(Family.ALZUBAIDI, Scenario.C1),
         inProgress(Family.KIKAS, Scenario.C1),
+        inProgress(Family.KIKAS, Scenario.C2),
         inProgress(Family.PROPRIA, Scenario.C1),
         inProgress(Family.PROPRIA, Scenario.C1_CONTEUDO),
+        inProgress(Family.PROPRIA, Scenario.C1_EXPOSICAO),
+        inProgress(Family.PROPRIA, Scenario.C2),
         inProgress(Family.UNIAO, Scenario.C1),
-        inProgress(Family.UNIAO, Scenario.C1_CONTEUDO));
+        inProgress(Family.UNIAO, Scenario.C1_CONTEUDO),
+        inProgress(Family.UNIAO, Scenario.C1_EXPOSICAO),
+        inProgress(Family.UNIAO, Scenario.C2));
   }
 
   private static Cell inProgress(final Family family, final Scenario scenario) {

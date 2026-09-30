@@ -18,19 +18,23 @@ import org.junit.jupiter.api.Test;
 class IssuesInProgressTest {
 
   @Test
-  @DisplayName("six cells: the executor's columns join C1, the change's only the content block, "
-      + "and no exposure anywhere")
+  @DisplayName("eleven cells: the executor's columns join C1, the change's only the content "
+      + "block, the exposure only its own, and D06 nowhere")
   void cells() {
     final List<Cell> grid = Cell.grid(Population.IN_PROGRESS);
-    assertEquals(6, grid.size());
+    assertEquals(11, grid.size());
     for (final Cell cell : grid) {
       for (final Attribute a : cell.attributes()) {
-        assertTrue(a.block() != Scenario.Block.EXPOSICAO, cell.label() + " " + a.name());
-        if (cell.scenario() == Scenario.C1 && a.block() != null) {
-          assertTrue(Attributes.EXECUTOR_AT_START.contains(a.name()), a.name());
+        assertFalse(a.name().equals(Attributes.OUT_AT_START), cell.label());
+        if (a.block() != null && !Attributes.EXECUTOR_AT_START.contains(a.name())) {
+          assertTrue(cell.scenario().admits(a.block()), cell.label() + " " + a.name());
         }
       }
     }
+    assertFalse(Cell.byLabel("UNIAO / C1_EXPOSICAO", Population.IN_PROGRESS).attributes().stream()
+        .anyMatch(a -> a.name().equals("A15_change_loc")));
+    assertTrue(Cell.byLabel("KIKAS / C2", Population.IN_PROGRESS).attributes().stream()
+        .anyMatch(a -> a.name().equals("K17c2_project_issues_14d_obs")));
     final Cell own = Cell.byLabel("PROPRIA / C1", Population.IN_PROGRESS);
     assertTrue(own.attributes().stream().anyMatch(a -> a.name().equals("A13_exec_open_load")));
     assertFalse(own.attributes().stream().anyMatch(a -> a.name().equals("A15_change_loc")));
