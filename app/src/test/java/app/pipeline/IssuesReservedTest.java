@@ -9,6 +9,7 @@ import app.issues.Attributes;
 import app.issues.Family;
 import app.issues.IssueUnit;
 import app.issues.Registration;
+import app.issues.RegistrationInProgress;
 import app.issues.RowCache;
 import app.issues.Scenario;
 import app.issues.Universe.Population;
@@ -155,5 +156,19 @@ class IssuesReservedTest {
         Registration.PARAMETERS_SHA256, 33, off).size());
     assertEquals(4, Registration.differences(Registration.MATRIX_SHA256,
         Registration.PARAMETERS_SHA256, 32, Map.of()).size());
+  }
+
+  @Test
+  @DisplayName("the secondary registration refuses a different matrix, parameters or size")
+  void registrationInProgressGate() {
+    assertTrue(RegistrationInProgress.differences(RegistrationInProgress.MATRIX_SHA256,
+        RegistrationInProgress.PARAMETERS_SHA256, 11, RegistrationInProgress.SIZES).isEmpty());
+    assertEquals(1, RegistrationInProgress.differences("0",
+        RegistrationInProgress.PARAMETERS_SHA256, 11, RegistrationInProgress.SIZES).size());
+    assertEquals(1, RegistrationInProgress.differences(RegistrationInProgress.MATRIX_SHA256,
+        RegistrationInProgress.PARAMETERS_SHA256, 11,
+        new RegistrationInProgress.Sizes(11_606, 5_065, 8_000, 3_483)).size());
+    assertEquals(1, RegistrationInProgress.differences(RegistrationInProgress.MATRIX_SHA256,
+        RegistrationInProgress.PARAMETERS_SHA256, 33, RegistrationInProgress.SIZES).size());
   }
 }

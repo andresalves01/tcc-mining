@@ -189,7 +189,7 @@ public final class IssuesReservedCommand implements CommandRunner {
     }
   }
 
-  private static List<Map<String, Object>> comparisonRows(final IssuesEvaluationTask.Report r) {
+  static List<Map<String, Object>> comparisonRows(final IssuesEvaluationTask.Report r) {
     final List<Map<String, Object>> rows = new ArrayList<>();
     final List<app.issues.model.ProjectBootstrap.Gap> gaps = new ArrayList<>(
         r.familiesByProjects());
@@ -213,7 +213,8 @@ public final class IssuesReservedCommand implements CommandRunner {
     return rows;
   }
 
-  private static void appendPredictions(final StringBuilder out,
+  /** One line per scored row; without the never-scored column when {@code neverScored} is null. */
+  static void appendPredictions(final StringBuilder out,
       final IssuesEvaluationTask.Report r, final Set<String> neverScored) {
     final List<String> labels = new ArrayList<>();
     final List<double[]> hours = new ArrayList<>();
@@ -226,16 +227,19 @@ public final class IssuesReservedCommand implements CommandRunner {
       hours.add(e.fitted().predictedHours());
     }
     if (out.isEmpty()) {
-      out.append("populacao\tid\tchave\tprojeto\tnunca_pontuada\tobservado_h");
+      out.append("populacao\tid\tchave\tprojeto")
+          .append(neverScored == null ? "" : "\tnunca_pontuada").append("\tobservado_h");
       labels.forEach(l -> out.append('\t').append(l));
       out.append('\n');
     }
     for (int i = 0; i < r.scoredUnits().size(); i++) {
       final IssueUnit u = r.scoredUnits().get(i);
       out.append(r.population().name()).append('\t').append(u.issueId()).append('\t')
-          .append(u.key()).append('\t').append(u.project()).append('\t')
-          .append(neverScored.contains(u.issueId()) ? '1' : '0').append('\t')
-          .append(r.observed()[i]);
+          .append(u.key()).append('\t').append(u.project()).append('\t');
+      if (neverScored != null) {
+        out.append(neverScored.contains(u.issueId()) ? '1' : '0').append('\t');
+      }
+      out.append(r.observed()[i]);
       for (final double[] h : hours) {
         out.append('\t').append(h[i]);
       }

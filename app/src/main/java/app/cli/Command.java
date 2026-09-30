@@ -26,6 +26,7 @@ import app.cli.commands.IssuesGridCommand;
 import app.cli.commands.IssuesInProgressCheckCommand;
 import app.cli.commands.IssuesInProgressExtractCommand;
 import app.cli.commands.IssuesInProgressGridCommand;
+import app.cli.commands.IssuesInProgressReservedCommand;
 import app.cli.commands.IssuesReservedCommand;
 import app.cli.commands.Paper5PopulationCommand;
 import app.cli.commands.PullRequestFeaturesCommand;
@@ -227,6 +228,17 @@ public enum Command {
       training side (lambda scaled by decision 20), prints the weights and
       scores the test, all three populations. Reads CACHE, PARAMETROS and
       NUNCA_PONTUADAS; writes PREVISOES; records the run in ISSUES_DB."""),
+
+  ISSUES_IN_PROGRESS_RESERVED("issues-andamento-reservado",
+      new IssuesInProgressReservedCommand(), """
+      Issue duration from the first In Progress: the one scoring of the outer
+      test that papers/issues-in-progress/implementacao/REGISTRO-PREVIO.md
+      lays out. Refuses unless the matrix and the parameters match their
+      registered SHA-256 and every side has its registered size; then
+      refits the eleven cells on the whole outer training side (lambda
+      scaled by the ratio of rows), prints the weights and scores the test.
+      Reads CACHE and PARAMETROS; writes PREVISOES; records the run in
+      ISSUES_DB."""),
 
   PAPER5_AUDIT("paper5-auditoria", new Paper5AuditCommand(), """
       Artigo 5, auditoria de 28/09/2026: reruns the registered reserved
