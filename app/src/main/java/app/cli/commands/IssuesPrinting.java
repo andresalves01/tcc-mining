@@ -164,7 +164,8 @@ final class IssuesPrinting {
         started ? "NO PRIMEIRO IN PROGRESS" : "NA CRIACAO");
     gaps(r.familiesByProjects());
     comparisons(r.families());
-    System.out.printf(started ? "%n  C1 + CONTEUDO CONTRA C1 DA MESMA FAMILIA (P5: sem exposicao)%n"
+    System.out.printf(started ? "%n  C2 POR BLOCO CONTRA C1 DA MESMA FAMILIA (P19: diagnostico; "
+        + "exposicao sem D06, P20)%n"
         : "%n  C2 POR BLOCO CONTRA C1 DA MESMA FAMILIA (decisao 14: conteudo justifica "
         + "decompor; exposicao nao)%n");
     gaps(r.blocksByProjects());
