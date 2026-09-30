@@ -22,6 +22,7 @@ import app.cli.commands.Paper5FitInnerCommand;
 import app.cli.commands.Paper5ReservedCommand;
 import app.cli.commands.IssuesExtractCommand;
 import app.cli.commands.IssuesCheckCommand;
+import app.cli.commands.IssuesForestCommand;
 import app.cli.commands.IssuesGridCommand;
 import app.cli.commands.IssuesReservedCommand;
 import app.cli.commands.Paper5PopulationCommand;
@@ -196,6 +197,12 @@ public enum Command {
       resampled intervals, bands of the true duration, C2 by block, the
       sensitivities -- on the inner selection with the parameters in
       PARAMETROS. Optimistic by construction; the outer test is not read."""),
+
+  ISSUES_FOREST("issues-floresta", new IssuesForestCommand(), """
+      Issue duration: a random forest beside the Elastic Net, cell by cell, on
+      the inner selection only, with the forest's declared grid and the
+      linear model's PARAMETROS. Reads CACHE; POPULACOES as issues-grade;
+      records the run in ISSUES_DB. The outer test rows are refused."""),
 
   ISSUES_RESERVED("issues-reservado", new IssuesReservedCommand(), """
       Issue duration: the one scoring of the outer test that
