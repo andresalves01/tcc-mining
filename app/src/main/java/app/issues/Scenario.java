@@ -14,23 +14,23 @@ public enum Scenario {
   C1,
 
   /** C1 plus the content block of C2. */
-  C1_CONTEUDO,
+  C1_CONTENT,
 
   /** C1 plus the exposure block of C2. */
-  C1_EXPOSICAO,
+  C1_EXPOSURE,
 
   /** C1 plus all of C2. */
   C2;
 
   /** Where a column added in C2 belongs. */
-  public enum Block { CONTEUDO, EXPOSICAO }
+  public enum Block { CONTENT, EXPOSURE }
 
   /** Whether a C2 column of this block enters this scenario. */
   public boolean admits(final Block block) {
     return switch (this) {
       case C1 -> false;
-      case C1_CONTEUDO -> block == Block.CONTEUDO;
-      case C1_EXPOSICAO -> block == Block.EXPOSICAO;
+      case C1_CONTENT -> block == Block.CONTENT;
+      case C1_EXPOSURE -> block == Block.EXPOSURE;
       case C2 -> true;
     };
   }

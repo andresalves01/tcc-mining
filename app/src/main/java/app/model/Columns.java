@@ -24,7 +24,7 @@ public final class Columns {
 
   /** Which part of the model a column belongs to, for the ablation the study asks for. */
   public enum Group {
-    TAREFA, DEV, CARGA, EQUIPE, CRIACAO
+    TASK, DEV, LOAD, TEAM, CREATION
   }
 
   /** The columns this run fits, in order. */
@@ -48,31 +48,31 @@ public final class Columns {
 
   private static List<Column> build() {
     final List<Column> columns = new ArrayList<>();
-    columns.add(new Column("ln(LOC tarefa)", "loc_iss", true, Group.TAREFA));
-    columns.add(new Column("McCC_i", "mccc_i", false, Group.TAREFA));
-    columns.add(new Column("NL_i", "nl_i", false, Group.TAREFA));
+    columns.add(new Column("ln(task LOC)", "loc_iss", true, Group.TASK));
+    columns.add(new Column("McCC_i", "mccc_i", false, Group.TASK));
+    columns.add(new Column("NL_i", "nl_i", false, Group.TASK));
 
-    columns.add(new Column("ln(LOC acum. dev)", "loc_tot_java", true, Group.DEV));
-    columns.add(new Column("ln(commits dev)", "extra_dev_commits", true, Group.DEV));
-    columns.add(new Column("ln(tempo de casa)", "extra_dev_tenure_days", true, Group.DEV));
-    columns.add(new Column("ln(McCC_tot dev)", "mccc_tot", true, Group.DEV));
+    columns.add(new Column("ln(dev cum. LOC)", "loc_tot_java", true, Group.DEV));
+    columns.add(new Column("ln(dev commits)", "extra_dev_commits", true, Group.DEV));
+    columns.add(new Column("ln(tenure)", "extra_dev_tenure_days", true, Group.DEV));
+    columns.add(new Column("ln(dev McCC_tot)", "mccc_tot", true, Group.DEV));
 
-    columns.add(new Column("ln(Iss_dev)", "iss_dev", true, Group.CARGA));
-    columns.add(new Column("ln(Iss_team)", "iss_team", true, Group.CARGA));
-    columns.add(new Column("ln(Iss_dev carreira)", "extra_iss_dev_career", true, Group.CARGA));
+    columns.add(new Column("ln(Iss_dev)", "iss_dev", true, Group.LOAD));
+    columns.add(new Column("ln(Iss_team)", "iss_team", true, Group.LOAD));
+    columns.add(new Column("ln(Iss_dev career)", "extra_iss_dev_career", true, Group.LOAD));
 
-    columns.add(new Column("ln(mu_L)", "mu_l", true, Group.EQUIPE));
-    columns.add(new Column("ln(s_L)", "s_l", true, Group.EQUIPE));
-    columns.add(new Column("ln(mu_M)", "mu_m", true, Group.EQUIPE));
-    columns.add(new Column("ln(s_M)", "s_m", true, Group.EQUIPE));
-    columns.add(new Column("ln(tam. equipe)", "extra_team_size", true, Group.EQUIPE));
+    columns.add(new Column("ln(mu_L)", "mu_l", true, Group.TEAM));
+    columns.add(new Column("ln(s_L)", "s_l", true, Group.TEAM));
+    columns.add(new Column("ln(mu_M)", "mu_m", true, Group.TEAM));
+    columns.add(new Column("ln(s_M)", "s_m", true, Group.TEAM));
+    columns.add(new Column("ln(team size)", "extra_team_size", true, Group.TEAM));
 
-    columns.add(new Column("ln(tam. descricao)", "extra_desc_length", true, Group.CRIACAO));
-    columns.add(new Column("descricao ausente", "", false, Group.CRIACAO));
-    columns.add(new Column("ln(issues ligadas)", "extra_linked_issues", true, Group.CRIACAO));
-    columns.add(new Column("ligacoes ausentes", "", false, Group.CRIACAO));
+    columns.add(new Column("ln(desc. length)", "extra_desc_length", true, Group.CREATION));
+    columns.add(new Column("description missing", "", false, Group.CREATION));
+    columns.add(new Column("ln(linked issues)", "extra_linked_issues", true, Group.CREATION));
+    columns.add(new Column("links missing", "", false, Group.CREATION));
     for (final String type : TYPES) {
-      columns.add(new Column("tipo=" + type, "", false, Group.CRIACAO));
+      columns.add(new Column("type=" + type, "", false, Group.CREATION));
     }
     return List.copyOf(columns);
   }
@@ -95,19 +95,19 @@ public final class Columns {
 
   /** The task-size column, which pairs of developers are matched on. */
   public static int taskSize() {
-    return indexOf("ln(LOC tarefa)");
+    return indexOf("ln(task LOC)");
   }
 
   /** The description-length column: the strongest creation-time predictor there is. */
   public static int descriptionLength() {
-    return indexOf("ln(tam. descricao)");
+    return indexOf("ln(desc. length)");
   }
 
   /** The issue-type indicators; two tasks share a type when all of them agree. */
   public static int[] typeIndices() {
     final List<Integer> indices = new ArrayList<>();
     for (int i = 0; i < all().size(); i++) {
-      if (all().get(i).name().startsWith("tipo=")) {
+      if (all().get(i).name().startsWith("type=")) {
         indices.add(i);
       }
     }
@@ -120,9 +120,9 @@ public final class Columns {
    * team statistics.
    */
   public static final List<String> PROTOTYPE = List.of(
-      "ln(LOC tarefa)", "McCC_i", "NL_i", "ln(tam. descricao)", "ln(issues ligadas)",
-      "ln(LOC acum. dev)", "ln(commits dev)", "ln(tempo de casa)",
-      "tipo=Bug", "tipo=Improvement", "tipo=New Feature", "tipo=Sub-task", "tipo=Task");
+      "ln(task LOC)", "McCC_i", "NL_i", "ln(desc. length)", "ln(linked issues)",
+      "ln(dev cum. LOC)", "ln(dev commits)", "ln(tenure)",
+      "type=Bug", "type=Improvement", "type=New Feature", "type=Sub-task", "type=Task");
 
   private static int indexOf(final String name) {
     for (int i = 0; i < all().size(); i++) {

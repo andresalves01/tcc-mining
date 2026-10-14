@@ -24,7 +24,7 @@ import org.bson.types.ObjectId;
 /**
  * Reads the corpus for the issue-duration study. Read-only: every call here is a {@code find}.
  *
- * <p>Field for field what the probes under {@code papers/issues/viabilidade/sondas/} exported, so
+ * <p>Field for field what the feasibility study's Mongo probes exported, so
  * the extraction can be checked against the Python specification. Two details follow the probes'
  * JavaScript on purpose: a comment's words are counted with JavaScript's notion of space, and the
  * Jira keys a comment names are found with ASCII word boundaries and counted once per comment.
@@ -127,7 +127,7 @@ public final class MongoStudySource implements StudySource {
     }
 
     // -- issues, and each tracker's dominant key ------------------------------------------------
-    progress.detail("lendo %s", "issue");
+    progress.detail("reading %s", "issue");
     final List<Corpus.Issue> issues = new ArrayList<>(210_000);
     final Map<String, Map<String, Integer>> prefixes = new HashMap<>();
     for (final Document d : source.getCollection("issue").find().projection(Projections.include(
@@ -169,7 +169,7 @@ public final class MongoStudySource implements StudySource {
     progress.detail("%,d issues", issues.size());
 
     // -- changelog, without the text values ------------------------------------------------------
-    progress.detail("lendo %s", "event");
+    progress.detail("reading %s", "event");
     final List<Corpus.Event> events = new ArrayList<>(1_600_000);
     for (final Document e : source.getCollection("event").find().projection(Projections.include(
         "issue_id", "created_at", "status", "author_id", "old_value", "new_value",
@@ -180,10 +180,10 @@ public final class MongoStudySource implements StudySource {
           id(e.get("author_id")), text ? null : text(e.get("old_value")),
           text ? null : text(e.get("new_value")), e.getString("external_id")));
     }
-    progress.detail("%,d eventos", events.size());
+    progress.detail("%,d events", events.size());
 
     // -- comments: words and the keys they name --------------------------------------------------
-    progress.detail("lendo %s", "issue_comment");
+    progress.detail("reading %s", "issue_comment");
     final List<Corpus.Comment> comments = new ArrayList<>(910_000);
     final List<Corpus.Mention> mentions = new ArrayList<>(220_000);
     for (final Document c : source.getCollection("issue_comment").find().projection(
@@ -201,10 +201,10 @@ public final class MongoStudySource implements StudySource {
         seen.forEach(k -> mentions.add(new Corpus.Mention(issue, at, k)));
       }
     }
-    progress.detail("%,d comentarios, %,d citacoes", comments.size(), mentions.size());
+    progress.detail("%,d comments, %,d mentions", comments.size(), mentions.size());
 
     // -- commits: the long scan -------------------------------------------------------------------
-    progress.detail("lendo %s (a colecao inteira, alguns minutos)", "commit");
+    progress.detail("reading %s (the whole collection, a few minutes)", "commit");
     final List<Corpus.Commit> commits = new ArrayList<>(460_000);
     for (final Document c : source.getCollection("commit").find().projection(Projections.include(
         "vcs_system_id", "revision_hash", "author_id", "author_date", "committer_date",
@@ -239,7 +239,7 @@ public final class MongoStudySource implements StudySource {
     }
 
     // -- files of each commit --------------------------------------------------------------------
-    progress.detail("lendo %s", "file_action");
+    progress.detail("reading %s", "file_action");
     final Map<String, Integer> fileIndex = new HashMap<>(1 << 20);
     final Map<String, List<Integer>> filesOf = new HashMap<>(1 << 19);
     for (final Document a : source.getCollection("file_action").find()

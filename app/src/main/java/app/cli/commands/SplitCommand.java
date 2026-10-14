@@ -26,22 +26,22 @@ public final class SplitCommand implements CommandRunner {
     }
     final TemporalSplit.Split split = report.split();
 
-    System.out.printf("  rotulos : %,d      minimo de resolucoes por par (dev, projeto) : %d%n",
+    System.out.printf("  labels : %,d      minimum resolutions per (dev, project) pair : %d%n",
         report.labels().size(), config.minResolvedBeforeCut());
-    printSide("CORTE EXTERNO t0", split.outer(), "treino", "teste");
-    printSide("CORTE INTERNO t1", split.inner(), "ajuste", "selecao de parametros");
-    final long ajuste = split.innerParts().values().stream()
+    printSide("OUTER CUT t0", split.outer(), "training", "test");
+    printSide("INNER CUT t1", split.inner(), "fit", "parameter selection");
+    final long fit = split.innerParts().values().stream()
         .filter(part -> part == SplitPart.TRAIN).count();
-    final long selecao = split.innerParts().values().stream()
+    final long selection = split.innerParts().values().stream()
         .filter(part -> part == SplitPart.TEST).count();
-    System.out.printf("%n  AS TRES PARTICOES UTILIZAVEIS%n");
-    System.out.printf("    ajuste          split=TRAIN split_inner=TRAIN : %,7d%n", ajuste);
-    System.out.printf("    selecao de hiperparametros  split_inner=TEST : %,7d%n", selecao);
-    System.out.printf("    teste                        split=TEST      : %,7d%n",
+    System.out.printf("%n  THE THREE USABLE PARTITIONS%n");
+    System.out.printf("    fit                split=TRAIN split_inner=TRAIN : %,7d%n", fit);
+    System.out.printf("    hyperparameter selection    split_inner=TEST : %,7d%n", selection);
+    System.out.printf("    test                         split=TEST      : %,7d%n",
         split.outer().future().size());
-    System.out.printf("    (o resto atravessa um dos cortes ou nao tem historico suficiente)%n");
+    System.out.printf("    (the rest crosses one of the cuts or lacks enough history)%n");
 
-    System.out.printf("%n  gravou %,d atribuicoes em %s%n", report.written(),
+    System.out.printf("%n  wrote %,d assignments to %s%n", report.written(),
         context.labelStore().describe());
   }
 
@@ -49,25 +49,25 @@ public final class SplitCommand implements CommandRunner {
       final String pastName, final String futureName) {
 
     System.out.printf("%n  %s%n", title);
-    System.out.printf("    data do corte                    : %s%n", side.cut());
-    System.out.printf("    pares (dev, projeto) elegiveis   : %,d%n", side.eligiblePairs());
-    System.out.printf("    desenvolvedores distintos        : %,d%n", side.eligibleDevelopers());
-    System.out.printf("    %-32s : %,7d   projetos %,d%n", pastName, side.past().size(),
+    System.out.printf("    cut date                         : %s%n", side.cut());
+    System.out.printf("    eligible (dev, project) pairs    : %,d%n", side.eligiblePairs());
+    System.out.printf("    distinct developers              : %,d%n", side.eligibleDevelopers());
+    System.out.printf("    %-32s : %,7d   projects %,d%n", pastName, side.past().size(),
         TemporalSplit.Side.projects(side.past()));
-    System.out.printf("    %-32s : %,7d   projetos %,d%n", futureName, side.future().size(),
+    System.out.printf("    %-32s : %,7d   projects %,d%n", futureName, side.future().size(),
         TemporalSplit.Side.projects(side.future()));
-    System.out.printf("    atravessam o corte               : %,7d%n", side.crossing().size());
-    System.out.printf("    historico insuficiente, passado  : %,7d%n",
+    System.out.printf("    cross the cut                    : %,7d%n", side.crossing().size());
+    System.out.printf("    insufficient history, past       : %,7d%n",
         side.insufficientPast().size());
-    System.out.printf("    historico insuficiente, futuro   : %,7d%n",
+    System.out.printf("    insufficient history, future     : %,7d%n",
         side.insufficientFuture().size());
-    System.out.printf("    proporcao efetiva                : %.1f / %.1f   (total %,d)%n",
+    System.out.printf("    effective proportion             : %.1f / %.1f   (total %,d)%n",
         100 * side.pastShare(), 100 * (1 - side.pastShare()), side.total());
     printTtc("      " + pastName, side.past());
     printTtc("      " + futureName, side.future());
     printTtc("      atravessam", side.crossing());
-    printTtc("      hist. insuf. passado", side.insufficientPast());
-    printTtc("      hist. insuf. futuro", side.insufficientFuture());
+    printTtc("      insuf. hist. past", side.insufficientPast());
+    printTtc("      insuf. hist. future", side.insufficientFuture());
   }
 
   private static void printTtc(final String name, final List<IssueLabel> labels) {

@@ -78,10 +78,10 @@ public final class IssuesExtractTask {
   }
 
   public Report run(final Parity.Spec python) {
-    progress.phase(1, 5, "lendo o corpus: %s", source.describe());
+    progress.phase(1, 5, "reading the corpus: %s", source.describe());
     final Corpus corpus = source.load();
 
-    progress.phase(2, 5, "populacoes e divisao");
+    progress.phase(2, 5, "populations and split");
     final Universe universe = Universe.of(corpus);
     final int thesis = Universe.thesisSplitMismatches(corpus.labels(), SHARE, 5);
     final Map<Population, Universe.Split> splits = new EnumMap<>(Population.class);
@@ -92,7 +92,7 @@ public final class IssuesExtractTask {
       summaries.add(summary(p, universe.population(p).size(), s));
     }
 
-    progress.phase(3, 5, "texto das issues estudadas e valores na criacao");
+    progress.phase(3, 5, "text of the studied issues and values at creation");
     final Set<String> studied = universe.studied();
     final Map<String, Corpus.Text> texts = source.texts(studied);
     final Map<String, Initial.Values> initial = new HashMap<>(studied.size() * 2);
@@ -102,7 +102,7 @@ public final class IssuesExtractTask {
     final List<Initial.Fidelity> fidelity = Initial.fidelity(universe,
         universe.population(Population.BROAD).stream().map(Universe.Unit::id).toList(), texts);
 
-    progress.phase(4, 5, "colunas de %,d issues", studied.size());
+    progress.phase(4, 5, "columns of %,d issues", studied.size());
     final World world = new World(universe, corpus);
     final Extractor extractor = new Extractor(world, studied);
     final Map<String, Map<String, Double>> values = new HashMap<>(studied.size() * 2);
@@ -116,7 +116,7 @@ public final class IssuesExtractTask {
       }
     }
 
-    progress.phase(5, 5, "portoes: viagem no tempo e paridade");
+    progress.phase(5, 5, "gates: time travel and parity");
     final List<TimeTravel.Check> travel =
         TimeTravel.run(world, universe.population(Population.BROAD), values);
     final List<Parity.Membership> membership = new ArrayList<>();

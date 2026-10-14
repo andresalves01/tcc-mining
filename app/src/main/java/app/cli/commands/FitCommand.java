@@ -19,7 +19,7 @@ public final class FitCommand implements CommandRunner {
   /**
    * The population arms, in the order they are reported.
    *
-   * <p>All four were fixed in {@code papers/01-ttc-semantics/PRE-REGISTRO-ANALISE5.md} before any
+   * <p>All four were fixed in the analysis 5 pre-registration before any
    * of them was run, and all four are printed. Neither the set nor the order is chosen by what the
    * scores turn out to be.
    */
@@ -47,12 +47,12 @@ public final class FitCommand implements CommandRunner {
           // with them, refitted over the whole training side. Re-sweeping there would let the
           // held-out outcomes pick their own model.
           final FitModelTask.Report inner = task.run(bounds, population);
-          print(inner, bounds, "SELECAO INTERNA");
-          summaries.add(summarise(inner, "selecao interna"));
+          print(inner, bounds, "INNER SELECTION");
+          summaries.add(summarise(inner, "inner selection"));
           final FitModelTask.Report held =
               task.heldOut(bounds, population, inner.alpha(), inner.lambda());
-          print(held, bounds, "TESTE EXTERNO");
-          summaries.add(summarise(held, "teste externo"));
+          print(held, bounds, "OUTER TEST");
+          summaries.add(summarise(held, "outer test"));
         } catch (final FitModelTask.NoObservationsException e) {
           throw new CommandFailedException(List.of("  " + e.getMessage()));
         }
@@ -65,9 +65,9 @@ public final class FitCommand implements CommandRunner {
     Metrics model = null;
     double referenceMae = Double.NaN;
     for (final FitModelTask.Scored scored : report.comparison()) {
-      if (scored.name().equals("modelo completo")) {
+      if (scored.name().equals("full model")) {
         model = scored.metrics();
-      } else if (scored.name().startsWith("REFERENCIA")) {
+      } else if (scored.name().startsWith("REFERENCE")) {
         referenceMae = scored.metrics().maeDays();
       }
     }
@@ -85,14 +85,14 @@ public final class FitCommand implements CommandRunner {
    */
   private static void printSummary(final List<Summary> summaries) {
     System.out.printf("%n%n  ===================================================================%n");
-    System.out.printf("  ANALISE 5 -- AS QUATRO POPULACOES LADO A LADO%n");
+    System.out.printf("  ANALYSIS 5 -- THE FOUR POPULATIONS SIDE BY SIDE%n");
     System.out.printf("  ===================================================================%n%n");
-    System.out.printf("  Limiares fixados em PRE-REGISTRO-ANALISE5.md antes de qualquer%n");
-    System.out.printf("  execucao. O teste externo foi lido uma vez por arm, com%n");
-    System.out.printf("  hiperparametros congelados vindos da divisao interna.%n%n");
+    System.out.printf("  Thresholds fixed in the analysis 5 pre-registration before any%n");
+    System.out.printf("  run. The outer test was read once per arm, with%n");
+    System.out.printf("  hyperparameters frozen from the inner split.%n%n");
     System.out.printf("  %-24s %-18s %-15s %7s %8s %8s %8s %9s %9s%n",
-        "populacao", "duracao", "particao", "n", "MAE d", "ref MAE", "R2 log",
-        "ordena", "dentro 2x");
+        "population", "duration", "partition", "n", "MAE d", "ref MAE", "R2 log",
+        "orders", "within 2x");
     System.out.printf("  %s%n", "-".repeat(124));
     for (final Summary s : summaries) {
       System.out.printf("  %-24s %-18s %-15s %7d %8.2f %8.2f %8.3f %9s %8.1f%%%n",
@@ -100,8 +100,8 @@ public final class FitCommand implements CommandRunner {
           Double.isNaN(s.ordering()) ? "--" : String.format("%.3f", s.ordering()),
           100 * s.withinTwo());
     }
-    System.out.printf("%n  'ref MAE' e a referencia 3.6, a mediana do par (desenvolvedor,"
-        + " projeto).%n");
+    System.out.printf("%n  'ref MAE' is reference 3.6, the median of the (developer,"
+        + " project) pair.%n");
   }
 
   /**
@@ -117,27 +117,27 @@ public final class FitCommand implements CommandRunner {
     System.out.printf("%n%n  ===================================================================%n");
     System.out.printf("  %s  --  %s%n", partition, bounds.name().toUpperCase());
     System.out.printf("  ===================================================================%n%n");
-    System.out.printf("  ajustado em : %,d rotulos      pontuado em : %,d rotulos%n",
+    System.out.printf("  fitted on : %,d labels      scored on : %,d labels%n",
         report.fitRows(), report.selectionRows());
-    System.out.printf("  postos de lado por equipe vazia : %,d e %,d%n",
+    System.out.printf("  set aside for an empty team : %,d and %,d%n",
         report.excludedEmptyTeamFit(), report.excludedEmptyTeamSelection());
-    if (partition.startsWith("TESTE")) {
-      System.out.printf("  Aberto em 21/09/2026, uma vez, com a especificacao descrita em%n");
-      System.out.printf("  PRE-REGISTRO.md. Medicao unica -- NAO e estimativa independente de%n");
-      System.out.printf("  generalizacao: McCC_tot ausente e o corte de duracao indeciso.%n");
+    if (partition.startsWith("OUTER")) {
+      System.out.printf("  Opened on 21/09/2026, once, with the specification described in%n");
+      System.out.printf("  the pre-registration. A single measurement -- NOT an independent estimate of%n");
+      System.out.printf("  generalisation: McCC_tot missing and the duration cut undecided.%n");
     }
     if (!report.droppedColumns().isEmpty()) {
-      System.out.printf("%n  constantes no ajuste, retiradas : %s%n",
+      System.out.printf("%n  constant in the fit, dropped : %s%n",
           String.join(", ", report.droppedColumns()));
     }
 
-    System.out.printf("%n  HIPERPARAMETROS  (escolhidos sempre na divisao interna)%n");
+    System.out.printf("%n  HYPERPARAMETERS  (always chosen on the inner split)%n");
     System.out.printf("    alpha = %.2f      lambda = %.6g%n", report.alpha(), report.lambda());
-    System.out.printf("    colunas selecionadas : %d de %d   (limiar |b|/|b|max >= %.0e,"
-        + " declarado antes)%n", report.selectedColumns(), report.columns().size(),
+    System.out.printf("    columns selected : %d of %d   (threshold |b|/|b|max >= %.0e,"
+        + " declared beforehand)%n", report.selectedColumns(), report.columns().size(),
         ElasticNetModel.SELECTION_THRESHOLD);
 
-    System.out.printf("%n  COEFICIENTES  (colunas padronizadas, entao comparaveis entre si)%n");
+    System.out.printf("%n  COEFFICIENTS  (standardised columns, so comparable with each other)%n");
     final double[] coefficients = report.coefficients();
     double largest = 0;
     for (final double c : coefficients) {
@@ -147,13 +147,13 @@ public final class FitCommand implements CommandRunner {
       final boolean kept = largest > 0
           && Math.abs(coefficients[i]) / largest >= ElasticNetModel.SELECTION_THRESHOLD;
       System.out.printf("    %-26s %12.6f   %s%n", report.columns().get(i), coefficients[i],
-          kept ? "" : "abaixo do limiar");
+          kept ? "" : "below the threshold");
     }
-    System.out.printf("    %-26s %12.6f%n", "(intercepto)", report.intercept());
+    System.out.printf("    %-26s %12.6f%n", "(intercept)", report.intercept());
 
-    System.out.printf("%n  CONTRA AS REFERENCIAS  (medido em %s)%n", partition.toLowerCase());
+    System.out.printf("%n  AGAINST THE REFERENCES  (measured on %s)%n", partition.toLowerCase());
     System.out.printf("    %-32s %8s %9s %11s %9s %9s %9s %9s%n", "", "n", "MAE d",
-        "RMSE d", "erro med", "R2 log", "ordena", "dentro 2x");
+        "RMSE d", "med err", "R2 log", "orders", "within 2x");
     for (final FitModelTask.Scored scored : report.comparison()) {
       final Metrics m = scored.metrics();
       System.out.printf("    %-32s %8d %9.2f %11.2f %9.2f %9.3f %9s %8.1f%%%n",
@@ -161,16 +161,16 @@ public final class FitCommand implements CommandRunner {
           m.r2Log(), Double.isNaN(m.rankCorrelation()) ? "--"
               : String.format("%.3f", m.rankCorrelation()), 100 * m.withinFactorTwo());
     }
-    System.out.printf("    a referencia da 3.6 encontra o par em %.1f%% das linhas%n",
+    System.out.printf("    reference 3.6 finds the pair in %.1f%% of the rows%n",
         100 * report.pairCoverage());
 
-    System.out.printf("%n  ORDENAR DESENVOLVEDORES  (mesmo projeto, pessoas diferentes)%n");
-    System.out.printf("    conforme as tarefas ficam parecidas, so a diferenca entre as"
-        + " pessoas sobra%n%n");
-    // Cada celula traz o proprio denominador. Uma coluna unica de "pares" seria a contagem de UM
-    // dos preditores servindo de rotulo para todos, e eles diferem: um par cuja previsao empata
-    // nao decide nada e sai, e preditores diferentes empatam em pares diferentes. Comparar duas
-    // porcentagens sem os denominadores a vista foi um defeito real desta tabela.
+    System.out.printf("%n  ORDERING DEVELOPERS  (same project, different people)%n");
+    System.out.printf("    as the tasks become alike, only the difference between the"
+        + " people remains%n%n");
+    // Each cell carries its own denominator. A single "pairs" column would be the count of ONE
+    // of the predictors standing as the label for all, and they differ: a pair whose prediction
+    // ties decides nothing and drops out, and different predictors tie on different pairs.
+    // Comparing two percentages without the denominators in view was a real defect of this table.
     final List<DeveloperOrdering.Result> gradient =
         report.comparison().get(report.comparison().size() - 1).ordering();
     System.out.printf("    %-34s", "");
@@ -184,32 +184,32 @@ public final class FitCommand implements CommandRunner {
         final DeveloperOrdering.Result o = scored.ordering().get(i);
         // A prediction that does not vary between two people in the same project ties every
         // pair, and a tie decides nothing. That is the baseline's shape, not a score of zero.
-        System.out.printf(" %22s", o.pairs() == 0 ? "nao distingue"
+        System.out.printf(" %22s", o.pairs() == 0 ? "does not distinguish"
             : String.format("%.1f%% (%,d)", 100 * o.agreement(), o.pairs()));
       }
       System.out.println();
     }
-    System.out.printf("%n    (50%% e a moeda. Os pares nao sao independentes entre si, entao os%n");
-    System.out.printf("     decimais nao devem ser lidos como precisao. Entre parenteses, os pares%n");
-    System.out.printf("     que cada preditor de fato decidiu.)%n");
+    System.out.printf("%n    (50%% is the coin. The pairs are not independent of each other, so the%n");
+    System.out.printf("     decimals should not be read as precision. In parentheses, the pairs%n");
+    System.out.printf("     each predictor actually decided.)%n");
 
-    System.out.printf("%n  ABLACAO POR GRUPO DE PREDITORES%n");
+    System.out.printf("%n  ABLATION BY PREDICTOR GROUP%n");
     for (final Map.Entry<String, FitModelTask.Scored> entry : report.ablation().entrySet()) {
       final FitModelTask.Scored scored = entry.getValue();
       if (scored.metrics() == null) {
-        System.out.printf("    %-24s (sem colunas)%n", entry.getKey());
+        System.out.printf("    %-24s (no columns)%n", entry.getKey());
         continue;
       }
       final DeveloperOrdering.Result tight =
           scored.ordering().get(scored.ordering().size() - 1);
-      System.out.printf("    %-24s MAE %8.2fd   R2 log %7.3f   ordena tarefas %6.3f"
-          + "   ordena devs %5.1f%% (filtro estrito)%n", entry.getKey(),
+      System.out.printf("    %-24s MAE %8.2fd   R2 log %7.3f   orders tasks %6.3f"
+          + "   orders devs %5.1f%% (strict filter)%n", entry.getKey(),
           scored.metrics().maeDays(), scored.metrics().r2Log(),
           scored.metrics().rankCorrelation(), 100 * tight.agreement());
     }
-    System.out.printf("%n  %s%n", partition.startsWith("TESTE")
-        ? "MEDICAO UNICA sobre a especificacao de PRE-REGISTRO.md, aberta em 21/09/2026."
-        : "EXPLORATORIO: a divisao interna ja foi olhada muitas vezes nas sessoes anteriores.");
+    System.out.printf("%n  %s%n", partition.startsWith("OUTER")
+        ? "SINGLE MEASUREMENT on the pre-registered specification, opened on 21/09/2026."
+        : "EXPLORATORY: the inner split has already been looked at many times in earlier sessions.");
   }
 
   /** Short enough for a column header. */

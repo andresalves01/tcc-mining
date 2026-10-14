@@ -15,8 +15,8 @@ import java.util.Set;
  * The parity gate: the Java extraction against the Python specification, issue by issue and column
  * by column.
  *
- * <p>The Python export ({@code analises/95_exportar_colunas.py}) carries the population membership
- * and every column {@code colunas.py} computed. Two columns are compared under a declared
+ * <p>The Python column export carries the population membership and every column the column
+ * script computed. Two columns are compared under a declared
  * difference: the Python A15 is the whole commit, so it is compared with A15w; and D06 is held at zero
  * here when an interaction is stamped before the creation.
  */

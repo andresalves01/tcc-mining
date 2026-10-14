@@ -116,7 +116,7 @@ public record Metrics(
 
   /** For the report: the named rows of a comparison table. */
   public static List<String> header() {
-    return new ArrayList<>(List.of("n", "MAE dias", "RMSE dias", "erro mediano",
-        "R2 log", "R2 dias", "ordena tarefas", "dentro de 2x"));
+    return new ArrayList<>(List.of("n", "MAE days", "RMSE days", "median error",
+        "R2 log", "R2 days", "orders tasks", "within 2x"));
   }
 }

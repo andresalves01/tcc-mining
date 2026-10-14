@@ -10,51 +10,51 @@ import org.junit.jupiter.api.Test;
 
 class WorkingTimeTest {
 
-  // 2020-01-01 foi uma quarta-feira. Sabado 04/01, domingo 05/01.
-  private static final Instant QUARTA = Instant.parse("2020-01-01T00:00:00Z");
+  // 2020-01-01 was a Wednesday. Saturday 04/01, Sunday 05/01.
+  private static final Instant WEDNESDAY = Instant.parse("2020-01-01T00:00:00Z");
 
   @Test
-  @DisplayName("dentro da semana e igual ao relogio de parede")
+  @DisplayName("within the week it equals the wall clock")
   void weekdaysAreUnchanged() {
     assertEquals(2.0,
-        WorkingTime.daysBetween(QUARTA, QUARTA.plus(Duration.ofDays(2))), 1e-9);
+        WorkingTime.daysBetween(WEDNESDAY, WEDNESDAY.plus(Duration.ofDays(2))), 1e-9);
   }
 
   @Test
-  @DisplayName("atravessar o fim de semana desconta exatamente dois dias")
+  @DisplayName("crossing the weekend discounts exactly two days")
   void weekendIsRemoved() {
-    // quarta 01/01 ate quarta 08/01: sete dias de calendario, dois deles fim de semana
+    // Wednesday 01/01 to Wednesday 08/01: seven calendar days, two of them weekend
     assertEquals(5.0,
-        WorkingTime.daysBetween(QUARTA, QUARTA.plus(Duration.ofDays(7))), 1e-9);
+        WorkingTime.daysBetween(WEDNESDAY, WEDNESDAY.plus(Duration.ofDays(7))), 1e-9);
   }
 
   @Test
-  @DisplayName("um intervalo inteiramente dentro do fim de semana vale zero")
+  @DisplayName("an interval entirely within the weekend is worth zero")
   void aWeekendIsNoTimeAtAll() {
-    final Instant sabado = Instant.parse("2020-01-04T02:00:00Z");
-    final Instant domingo = Instant.parse("2020-01-05T20:00:00Z");
+    final Instant saturday = Instant.parse("2020-01-04T02:00:00Z");
+    final Instant sunday = Instant.parse("2020-01-05T20:00:00Z");
 
-    assertEquals(0.0, WorkingTime.daysBetween(sabado, domingo), 1e-9);
+    assertEquals(0.0, WorkingTime.daysBetween(saturday, sunday), 1e-9);
   }
 
   @Test
-  @DisplayName("sexta a noite ate segunda de manha quase nao e tempo de trabalho")
+  @DisplayName("Friday night to Monday morning is almost no working time")
   void theCaseThisExistsFor() {
-    final Instant sextaNoite = Instant.parse("2020-01-03T22:00:00Z");
-    final Instant segundaManha = Instant.parse("2020-01-06T08:00:00Z");
+    final Instant fridayNight = Instant.parse("2020-01-03T22:00:00Z");
+    final Instant mondayMorning = Instant.parse("2020-01-06T08:00:00Z");
 
-    final double parede = Duration.between(sextaNoite, segundaManha).toMillis() / 86_400_000.0;
-    final double util = WorkingTime.daysBetween(sextaNoite, segundaManha);
+    final double wallClock = Duration.between(fridayNight, mondayMorning).toMillis() / 86_400_000.0;
+    final double working = WorkingTime.daysBetween(fridayNight, mondayMorning);
 
-    assertEquals(2.4167, parede, 1e-3);
-    assertEquals(0.4167, util, 1e-3, "duas horas de sexta mais oito de segunda");
-    assertTrue(util < parede);
+    assertEquals(2.4167, wallClock, 1e-3);
+    assertEquals(0.4167, working, 1e-3, "two hours of Friday plus eight of Monday");
+    assertTrue(working < wallClock);
   }
 
   @Test
-  @DisplayName("intervalo nao positivo vale zero em vez de negativo")
+  @DisplayName("a non-positive interval is worth zero instead of negative")
   void nonPositiveIsZero() {
-    assertEquals(0.0, WorkingTime.daysBetween(QUARTA, QUARTA), 1e-9);
-    assertEquals(0.0, WorkingTime.daysBetween(QUARTA.plus(Duration.ofDays(1)), QUARTA), 1e-9);
+    assertEquals(0.0, WorkingTime.daysBetween(WEDNESDAY, WEDNESDAY), 1e-9);
+    assertEquals(0.0, WorkingTime.daysBetween(WEDNESDAY.plus(Duration.ofDays(1)), WEDNESDAY), 1e-9);
   }
 }

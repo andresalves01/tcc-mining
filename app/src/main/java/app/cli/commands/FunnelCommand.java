@@ -36,7 +36,7 @@ public final class FunnelCommand implements CommandRunner {
 
   /** The sequential exclusion table, then the totals the funnel is reported with. */
   private static void printFunnel(final LabelScan scan) {
-    System.out.printf("%n  FUNIL GLOBAL DEFINITIVO%n%n");
+    System.out.printf("%n  FINAL GLOBAL FUNNEL%n%n");
     System.out.printf("  %-54s %9s %9s %11s %8s%n",
         "estagio", "retidas", "excluidas", "denominador", "excl.%");
     for (final FunnelStage stage : scan.stages()) {
@@ -50,26 +50,26 @@ public final class FunnelCommand implements CommandRunner {
     final FunnelStage methodStage = scan.stages().get(scan.stages().size() - 1);
     final FunnelStage previous = scan.stages().get(scan.stages().size() - 2);
 
-    System.out.printf("%n  rotulos                       : %,d%n", labels.size());
-    System.out.printf("  desenvolvedores               : %,d%n",
+    System.out.printf("%n  labels                        : %,d%n", labels.size());
+    System.out.printf("  developers                    : %,d%n",
         labels.stream().map(IssueLabel::canonicalAuthorId).distinct().count());
-    System.out.printf("  projetos                      : %,d%n",
+    System.out.printf("  projects                      : %,d%n",
         labels.stream().map(IssueLabel::projectName).distinct().count());
-    System.out.printf("  excluidas por ausencia de metodo: %,d  (%.2f%% de %,d)%n",
+    System.out.printf("  excluded for lack of a method : %,d  (%.2f%% of %,d)%n",
         methodStage.excluded(), 100 * methodStage.incrementalShare(), methodStage.denominator());
-    System.out.printf("  cobertura de metodos por issue: %.2f%%%n", 100 * scan.methodCoverage());
-    System.out.printf("  metodos alterados extraidos   : %,d  (mediana %,d por rotulo)%n",
+    System.out.printf("  method coverage per issue    : %.2f%%%n", 100 * scan.methodCoverage());
+    System.out.printf("  changed methods extracted    : %,d  (median %,d per label)%n",
         scan.methodsExtracted(), medianMethods(labels));
     if (!ttc.isEmpty()) {
       System.out.printf("  TTC  p25=%.2fd  p50=%.2fd  p75=%.2fd  p95=%.2fd%n",
           Quantiles.at(ttc, 0.25), Quantiles.at(ttc, 0.50),
           Quantiles.at(ttc, 0.75), Quantiles.at(ttc, 0.95));
-      System.out.printf("  TTC  min=%.6fd  max=%.2fd   (diagnostico)%n",
+      System.out.printf("  TTC  min=%.6fd  max=%.2fd   (diagnostic)%n",
           ttc.get(0), ttc.get(ttc.size() - 1));
     }
-    System.out.printf("  38 registros de migracao      : %.3f%% do novo denominador (%,d)%n",
+    System.out.printf("  38 migration records         : %.3f%% of the new denominator (%,d)%n",
         100.0 * 38 / Math.max(1, labels.size()), labels.size());
-    System.out.printf("  estagio anterior a cobertura de metodos: %,d rotulos%n",
+    System.out.printf("  stage before method coverage : %,d labels%n",
         previous.retained());
   }
 

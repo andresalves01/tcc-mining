@@ -90,8 +90,8 @@ public final class IssuesEvaluationTask {
       if (constant()) {
         return "constante";
       }
-      return Double.isNaN(pairMaeHours) || projectMaeHours <= pairMaeHours ? "mediana do projeto"
-          : "mediana do par executor-projeto";
+      return Double.isNaN(pairMaeHours) || projectMaeHours <= pairMaeHours ? "project median"
+          : "executor-project pair median";
     }
   }
 
@@ -105,7 +105,7 @@ public final class IssuesEvaluationTask {
   public record SubsetRow(Score score, ProjectBootstrap.Interval overProject,
       ProjectBootstrap.Interval overConstant) {}
 
-  /** The scored rows never scored by an earlier study (REGISTRO-PREVIO.md, section 3). */
+  /** The scored rows never scored by an earlier study (the pre-registration, section 3). */
   public record Subset(int n, List<SubsetRow> rows) {}
 
   /**
@@ -162,14 +162,14 @@ public final class IssuesEvaluationTask {
     final double[] pairHours = refs.pairHours(sides.scoreUnits());
     final double constantMae = Fitting.mae(constantHours, observed);
 
-    final Score project = Score.reference("referencia: mediana do projeto", projectHours,
+    final Score project = Score.reference("reference: project median", projectHours,
         observed, constantMae);
     final Score constant = Score.reference(String.format(
-        "referencia: constante = mediana do ajuste (%.1f h)", refs.constantHours()),
+        "reference: constant = fit median (%.1f h)", refs.constantHours()),
         constantHours, observed, constantMae);
     final Score pair = Score.reference(started
-        ? "referencia: mediana do par executor-projeto (executor de t0)"
-        : "referencia condicionada (so C2): mediana do par executor-projeto", pairHours, observed,
+        ? "reference: executor-project pair median (executor at t0)"
+        : "conditioned reference (C2 only): executor-project pair median", pairHours, observed,
         constantMae);
     final List<Evaluated> references = List.of(
         evaluate(asFitted(project, projectHours), projects, projectHours, constantHours,
@@ -190,7 +190,7 @@ public final class IssuesEvaluationTask {
     int done = 0;
     for (final Frozen f : mine) {
       progress.item(++done, mine.size(), population + " " + f.cell(),
-          mode == Fitting.Mode.INNER ? "selecao interna" : "reajuste no treino externo");
+          mode == Fitting.Mode.INNER ? "inner selection" : "refit on the outer training side");
       final Fitting.Fitted fitted = Fitting.frozen(Cell.byLabel(f.cell(), population), sides, f.alpha(),
           lambdas.get(f.cell()), project.maeHours(), constantMae);
       evaluated.add(evaluate(fitted, projects, projectHours, constantHours, pairHours, observed));
@@ -236,9 +236,9 @@ public final class IssuesEvaluationTask {
               Attributes.SENSITIVITY_A15W, a.family(), a.block(), a.kind(), a.transform(), true,
               a.inUnion()) : a);
         }
-        final Cell variant = new Cell(cell.label() + " [A15 = commit inteiro]", cell.family(),
+        final Cell variant = new Cell(cell.label() + " [A15 = whole commit]", cell.family(),
             cell.scenario(), whole);
-        sensitivities.add(new Sensitivity("A15 com o commit inteiro", cell.label(),
+        sensitivities.add(new Sensitivity("A15 with the whole commit", cell.label(),
             scoreOf(evaluated, cell), Fitting.frozen(variant, sides, f.alpha(),
                 lambdas.get(f.cell()), project.maeHours(), constantMae).score()));
       }
@@ -259,8 +259,8 @@ public final class IssuesEvaluationTask {
         continue;
       }
       sensitivities.add(new Sensitivity(started
-          ? "sem as issues que voltam de In Progress para Open"
-          : "sem as issues movidas entre projetos Jira", cell.label(),
+          ? "without the issues that go back from In Progress to Open"
+          : "without the issues moved between Jira projects", cell.label(),
           scoreOf(evaluated, cell), Fitting.frozen(cell, still, f.alpha(),
               lambdas.get(f.cell()), stillProject, stillConstant).score()));
     }

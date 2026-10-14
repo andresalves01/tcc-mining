@@ -78,19 +78,19 @@ public record IssueLabel(
         .orElseGet(OptionalDouble::empty);
   }
 
-  /** Da abertura a resolucao, sem os fins de semana. */
+  /** From opening to resolution, without weekends. */
   public double workingDays() {
     return WorkingTime.daysBetween(createdAt, resolvedAt);
   }
 
-  /** Da abertura ao primeiro exame, sem os fins de semana. Ausente pelo mesmo motivo de sempre. */
+  /** From opening to the first examination, without weekends. Absent for the usual reason. */
   public OptionalDouble workingWaitDays() {
     return examinedAt
         .map(at -> OptionalDouble.of(WorkingTime.daysBetween(createdAt, at)))
         .orElseGet(OptionalDouble::empty);
   }
 
-  /** Do primeiro exame a resolucao, sem os fins de semana. */
+  /** From the first examination to resolution, without weekends. */
   public OptionalDouble workingAuthorDays() {
     return examinedAt
         .map(at -> OptionalDouble.of(WorkingTime.daysBetween(at, resolvedAt)))
@@ -101,11 +101,11 @@ public record IssueLabel(
   public OptionalDouble durationOf(final TtcTarget target) {
     return switch (target) {
       case TOTAL -> OptionalDouble.of(ttcDays());
-      case ESPERA -> waitDays();
-      case AUTOR -> authorDays();
-      case TOTAL_UTIL -> OptionalDouble.of(workingDays());
-      case ESPERA_UTIL -> workingWaitDays();
-      case AUTOR_UTIL -> workingAuthorDays();
+      case WAIT -> waitDays();
+      case AUTHOR -> authorDays();
+      case TOTAL_WORKING -> OptionalDouble.of(workingDays());
+      case WAIT_WORKING -> workingWaitDays();
+      case AUTHOR_WORKING -> workingAuthorDays();
     };
   }
 

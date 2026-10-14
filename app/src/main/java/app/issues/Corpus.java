@@ -10,8 +10,7 @@ import java.util.Map;
  * <p>Which issue counts, when a commit became visible, what a field said at creation -- every one of
  * those rules lives in the pure classes that read this ({@link Universe}, {@link World},
  * {@link Initial}, {@link Extractor}), so each can be tested on a hand-built corpus. The adapter
- * only copies fields. It is the Java twin of the exports under
- * {@code papers/issues/viabilidade/sondas/}, which is what lets the extraction be checked against the
+ * only copies fields. It is the Java twin of the feasibility study's Mongo exports, which is what lets the extraction be checked against the
  * Python specification column by column.
  *
  * <p>Instants are epoch milliseconds, {@code null} when the corpus has none.

@@ -82,12 +82,12 @@ class IssuesInProgressReservedTest {
     assertFalse(Double.isNaN(r.main().pairMaeHours()), "P12: the pair is a candidate");
     assertNull(r.neverScored(), "P22");
     assertTrue(r.sensitivities().stream()
-        .anyMatch(x -> x.what().startsWith("sem as issues que voltam")), "P16");
+        .anyMatch(x -> x.what().startsWith("without the issues that go back")), "P16");
 
     final StringBuilder out = new StringBuilder();
     IssuesReservedCommand.appendPredictions(out, r, null);
     final String[] lines = out.toString().split("\n");
-    assertTrue(lines[0].startsWith("populacao\tid\tchave\tprojeto\tobservado_h\t"), lines[0]);
+    assertTrue(lines[0].startsWith("population\tid\tkey\tproject\tobserved_h\t"), lines[0]);
     assertEquals(1 + 60, lines.length);
     assertEquals(lines[0].split("\t").length, lines[1].split("\t").length);
     assertEquals(r.observed()[0], Double.parseDouble(lines[1].split("\t")[4]), 1e-12,
@@ -103,7 +103,7 @@ class IssuesInProgressReservedTest {
     final StringBuilder out = new StringBuilder();
     IssuesReservedCommand.appendPredictions(out, r, Set.of(r.scoredUnits().get(0).issueId()));
     final String[] lines = out.toString().split("\n");
-    assertTrue(lines[0].startsWith("populacao\tid\tchave\tprojeto\tnunca_pontuada\tobservado_h\t"));
+    assertTrue(lines[0].startsWith("population\tid\tkey\tproject\tnever_scored\tobserved_h\t"));
     assertEquals("1", lines[1].split("\t")[4]);
     assertEquals("0", lines[2].split("\t")[4]);
   }

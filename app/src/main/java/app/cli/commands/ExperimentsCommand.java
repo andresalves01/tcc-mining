@@ -15,7 +15,7 @@ import java.util.List;
  */
 public final class ExperimentsCommand implements CommandRunner {
 
-  /** The pre-registered arms, in order. See papers/01-ttc-semantics/PRE-REGISTRO-ANALISE5.md. */
+  /** The pre-registered arms, in order, as the analysis 5 pre-registration fixed them. */
   private static final List<Population> POPULATIONS = List.of(
       Population.all(),
       Population.withoutPostdated(),
@@ -27,16 +27,16 @@ public final class ExperimentsCommand implements CommandRunner {
     final ExperimentsTask task = new ExperimentsTask(context.observations(), context.progress());
     final ExperimentsTask.Report report = task.run(POPULATIONS, Bounds.none());
 
-    System.out.println("## hiperparametros escolhidos na divisao interna");
+    System.out.println("## hyperparameters chosen on the inner split");
     System.out.println("#pop\talpha\tlambda\ttrees\tmax_nodes\tshrinkage"
-        + "\tn_fit\tn_selecao\tn_treino\tn_teste\tmae_interno_en\tmae_interno_gb");
+        + "\tn_fit\tn_selection\tn_train\tn_test\tmae_inner_en\tmae_inner_gb");
     for (final ExperimentsTask.Chosen c : report.chosen()) {
       System.out.printf("#%s\t%.4f\t%.8g\t%d\t%d\t%.4f\t%d\t%d\t%d\t%d\t%.6f\t%.6f%n",
           c.population(), c.alpha(), c.lambda(), c.trees(), c.maxNodes(), c.shrinkage(),
           c.fitRows(), c.selectionRows(), c.trainRows(), c.testRows(),
           c.innerMaeElasticNet(), c.innerMaeBoosting());
     }
-    System.out.println("populacao\tissue_id\tproject\tdeveloper\tttc_days\td2_days"
+    System.out.println("population\tissue_id\tproject\tdeveloper\tttc_days\td2_days"
         + "\tpred_en\tpred_gb\tref_const\tref_project\tref_pair");
     for (final ExperimentsTask.Row r : report.rows()) {
       System.out.printf("%s\t%s\t%s\t%s\t%.8f\t%.8f\t%.8f\t%.8f\t%.8f\t%.8f\t%.8f%n",

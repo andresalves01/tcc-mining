@@ -55,7 +55,7 @@ public final class Bootstrap {
       final String b, final double[] errorsB) {
 
     if (errorsA.length != errorsB.length) {
-      throw new IllegalArgumentException("as duas listas tem de ser das mesmas linhas");
+      throw new IllegalArgumentException("both lists must be of the same rows");
     }
     final int n = errorsA.length;
     final Random random = new Random(SEED);

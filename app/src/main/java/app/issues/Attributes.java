@@ -6,9 +6,9 @@ import static app.study.Construct.Transform.LOG1P;
 import static app.study.Construct.Transform.NONE;
 import static app.issues.Family.ALZUBAIDI;
 import static app.issues.Family.KIKAS;
-import static app.issues.Family.PROPRIA;
-import static app.issues.Scenario.Block.CONTEUDO;
-import static app.issues.Scenario.Block.EXPOSICAO;
+import static app.issues.Family.OWN;
+import static app.issues.Scenario.Block.CONTENT;
+import static app.issues.Scenario.Block.EXPOSURE;
 
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -77,46 +77,46 @@ public final class Attributes {
     a.add(c1("K20", "K20c1_participant_commits_14d", KIKAS, NUMERIC, LOG1P, true));
     a.add(c1("K21", "K21c1_participant_committers_14d", KIKAS, NUMERIC, NONE, true));
     // ---------------------------------------------------------------- Kikas parcial, C2 (exposure)
-    a.add(c2("K03", "K03_comments", KIKAS, EXPOSICAO, LOG1P, false));
-    a.add(c2("K04", "K04_actors", KIKAS, EXPOSICAO, LOG1P, false));
-    a.add(c2("K05", "K05_assignments", KIKAS, EXPOSICAO, LOG1P, false));
-    a.add(c2("K06", "K06_labels_c2", KIKAS, EXPOSICAO, LOG1P, false));
-    a.add(c2("K07", "K07_mentions", KIKAS, EXPOSICAO, LOG1P, false));
-    a.add(c2("K08", "K08_commit_refs", KIKAS, EXPOSICAO, LOG1P, false));
-    a.add(c2("K10", "K10_mean_comment_words", KIKAS, EXPOSICAO, LOG1P, true));
-    a.add(c2("K17", "K17c2_project_issues_14d_obs", KIKAS, EXPOSICAO, LOG1P, false));
-    a.add(c2("K18", "K18c2_project_created_closed_14d_obs", KIKAS, EXPOSICAO, LOG1P, false));
-    a.add(c2("K19", "K19c2_project_commits_14d_obs", KIKAS, EXPOSICAO, LOG1P, false));
-    a.add(c2("K20", "K20_participant_commits", KIKAS, EXPOSICAO, LOG1P, false));
-    a.add(c2("K21", "K21_participant_committers", KIKAS, EXPOSICAO, LOG1P, false));
+    a.add(c2("K03", "K03_comments", KIKAS, EXPOSURE, LOG1P, false));
+    a.add(c2("K04", "K04_actors", KIKAS, EXPOSURE, LOG1P, false));
+    a.add(c2("K05", "K05_assignments", KIKAS, EXPOSURE, LOG1P, false));
+    a.add(c2("K06", "K06_labels_c2", KIKAS, EXPOSURE, LOG1P, false));
+    a.add(c2("K07", "K07_mentions", KIKAS, EXPOSURE, LOG1P, false));
+    a.add(c2("K08", "K08_commit_refs", KIKAS, EXPOSURE, LOG1P, false));
+    a.add(c2("K10", "K10_mean_comment_words", KIKAS, EXPOSURE, LOG1P, true));
+    a.add(c2("K17", "K17c2_project_issues_14d_obs", KIKAS, EXPOSURE, LOG1P, false));
+    a.add(c2("K18", "K18c2_project_created_closed_14d_obs", KIKAS, EXPOSURE, LOG1P, false));
+    a.add(c2("K19", "K19c2_project_commits_14d_obs", KIKAS, EXPOSURE, LOG1P, false));
+    a.add(c2("K20", "K20_participant_commits", KIKAS, EXPOSURE, LOG1P, false));
+    a.add(c2("K21", "K21_participant_committers", KIKAS, EXPOSURE, LOG1P, false));
 
     // ---------------------------------------------------------------- own, C1
-    a.add(c1("A01", "A01_desc_length", PROPRIA, NUMERIC, LOG1P, true));
-    a.add(c1("A03", "A03_team_size", PROPRIA, NUMERIC, LOG1P, false));
-    a.add(c1("A04", "A04_mu_l", PROPRIA, NUMERIC, LOG1P, true));
-    a.add(c1("A05", "A05_s_l", PROPRIA, NUMERIC, LOG1P, true));
-    a.add(c1("A06", "A06_mu_m", PROPRIA, NUMERIC, LOG1P, true));
-    a.add(c1("A07", "A07_s_m", PROPRIA, NUMERIC, LOG1P, true));
-    a.add(c1("A06c", "A06c_team_mccc_coverage", PROPRIA, NUMERIC, NONE, true));
-    a.add(c1("D01", "D01_backlog_open", PROPRIA, NUMERIC, LOG1P, false));
-    a.add(c1("D03", "D03_project_first_interaction_median_h", PROPRIA, NUMERIC, LOG1P, true));
-    a.add(c1("D05", "D05_reporter_project_median_h", PROPRIA, NUMERIC, LOG1P, true));
+    a.add(c1("A01", "A01_desc_length", OWN, NUMERIC, LOG1P, true));
+    a.add(c1("A03", "A03_team_size", OWN, NUMERIC, LOG1P, false));
+    a.add(c1("A04", "A04_mu_l", OWN, NUMERIC, LOG1P, true));
+    a.add(c1("A05", "A05_s_l", OWN, NUMERIC, LOG1P, true));
+    a.add(c1("A06", "A06_mu_m", OWN, NUMERIC, LOG1P, true));
+    a.add(c1("A07", "A07_s_m", OWN, NUMERIC, LOG1P, true));
+    a.add(c1("A06c", "A06c_team_mccc_coverage", OWN, NUMERIC, NONE, true));
+    a.add(c1("D01", "D01_backlog_open", OWN, NUMERIC, LOG1P, false));
+    a.add(c1("D03", "D03_project_first_interaction_median_h", OWN, NUMERIC, LOG1P, true));
+    a.add(c1("D05", "D05_reporter_project_median_h", OWN, NUMERIC, LOG1P, true));
     // ---------------------------------------------------------------- own, C2 content
-    a.add(c2("A09", "A09_exec_loc_tot", PROPRIA, CONTEUDO, LOG1P, true));
-    a.add(c2("A10", "A10_exec_mccc_tot", PROPRIA, CONTEUDO, LOG1P, true));
-    a.add(c2("A10c", "A10c_exec_mccc_coverage", PROPRIA, CONTEUDO, NONE, true));
-    a.add(c2("A11", "A11_exec_commits", PROPRIA, CONTEUDO, LOG1P, true));
-    a.add(c2("A12", "A12_exec_tenure_days", PROPRIA, CONTEUDO, LOG1P, true));
-    a.add(c2("A13", "A13_exec_open_load", PROPRIA, CONTEUDO, LOG1P, true));
-    a.add(c2("A14", "A14_team_open_load", PROPRIA, CONTEUDO, LOG1P, false));
-    a.add(c2("A15", "A15_change_loc", PROPRIA, CONTEUDO, LOG1P, true));
-    a.add(c2("A16", "A16_change_mean_mccc", PROPRIA, CONTEUDO, NONE, true));
-    a.add(c2("A17", "A17_change_mean_nl", PROPRIA, CONTEUDO, NONE, true));
-    a.add(c2("D07", "D07_files_changed", PROPRIA, CONTEUDO, LOG1P, true));
-    a.add(c2("D08", "D08_file_familiarity", PROPRIA, CONTEUDO, NONE, true));
+    a.add(c2("A09", "A09_exec_loc_tot", OWN, CONTENT, LOG1P, true));
+    a.add(c2("A10", "A10_exec_mccc_tot", OWN, CONTENT, LOG1P, true));
+    a.add(c2("A10c", "A10c_exec_mccc_coverage", OWN, CONTENT, NONE, true));
+    a.add(c2("A11", "A11_exec_commits", OWN, CONTENT, LOG1P, true));
+    a.add(c2("A12", "A12_exec_tenure_days", OWN, CONTENT, LOG1P, true));
+    a.add(c2("A13", "A13_exec_open_load", OWN, CONTENT, LOG1P, true));
+    a.add(c2("A14", "A14_team_open_load", OWN, CONTENT, LOG1P, false));
+    a.add(c2("A15", "A15_change_loc", OWN, CONTENT, LOG1P, true));
+    a.add(c2("A16", "A16_change_mean_mccc", OWN, CONTENT, NONE, true));
+    a.add(c2("A17", "A17_change_mean_nl", OWN, CONTENT, NONE, true));
+    a.add(c2("D07", "D07_files_changed", OWN, CONTENT, LOG1P, true));
+    a.add(c2("D08", "D08_file_familiarity", OWN, CONTENT, NONE, true));
     // ---------------------------------------------------------------- own, C2 exposure
-    a.add(c2("A02c2", "A02c2_links_before_res", PROPRIA, EXPOSICAO, LOG1P, false));
-    a.add(c2("D06", "D06_first_interaction_h", PROPRIA, EXPOSICAO, LOG1P, true));
+    a.add(c2("A02c2", "A02c2_links_before_res", OWN, EXPOSURE, LOG1P, false));
+    a.add(c2("D06", "D06_first_interaction_h", OWN, EXPOSURE, LOG1P, true));
     return List.copyOf(a);
   }
 
@@ -147,7 +147,7 @@ public final class Attributes {
    */
   public static List<Attribute> ofInProgress(final Family family, final Scenario scenario) {
     return ALL.stream().filter(a -> {
-      final boolean mine = family == Family.UNIAO ? a.inUnion() : a.family() == family;
+      final boolean mine = family == Family.UNION ? a.inUnion() : a.family() == family;
       if (!mine || a.name().equals(OUT_AT_START)) {
         return false;
       }

@@ -31,14 +31,14 @@ class IssuesInProgressTest {
         }
       }
     }
-    assertFalse(Cell.byLabel("UNIAO / C1_EXPOSICAO", Population.IN_PROGRESS).attributes().stream()
+    assertFalse(Cell.byLabel("UNION / C1_EXPOSURE", Population.IN_PROGRESS).attributes().stream()
         .anyMatch(a -> a.name().equals("A15_change_loc")));
     assertTrue(Cell.byLabel("KIKAS / C2", Population.IN_PROGRESS).attributes().stream()
         .anyMatch(a -> a.name().equals("K17c2_project_issues_14d_obs")));
-    final Cell own = Cell.byLabel("PROPRIA / C1", Population.IN_PROGRESS);
+    final Cell own = Cell.byLabel("OWN / C1", Population.IN_PROGRESS);
     assertTrue(own.attributes().stream().anyMatch(a -> a.name().equals("A13_exec_open_load")));
     assertFalse(own.attributes().stream().anyMatch(a -> a.name().equals("A15_change_loc")));
-    final Cell content = Cell.byLabel("UNIAO / C1_CONTEUDO", Population.IN_PROGRESS);
+    final Cell content = Cell.byLabel("UNION / C1_CONTENT", Population.IN_PROGRESS);
     assertTrue(content.attributes().stream().anyMatch(a -> a.name().equals("D08_file_familiarity")));
     assertEquals(11, Cell.grid(Population.FIXED).size(), "the main grid is untouched");
   }

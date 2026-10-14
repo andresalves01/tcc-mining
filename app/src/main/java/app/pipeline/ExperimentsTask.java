@@ -83,12 +83,12 @@ public final class ExperimentsTask {
 
     int step = 0;
     for (final Population population : populations) {
-      progress.phase(++step, populations.size(), "populacao %s", population.name());
+      progress.phase(++step, populations.size(), "population %s", population.name());
       final List<Observation> fit = keep(fitAll, bounds, population);
       final List<Observation> selection = keep(selAll, bounds, population);
       final List<Observation> train = keep(trainAll, bounds, population);
       final List<Observation> test = keep(testAll, bounds, population);
-      progress.detail("ajuste %,d  selecao %,d  treino externo %,d  teste %,d",
+      progress.detail("fit %,d  selection %,d  outer training %,d  test %,d",
           fit.size(), selection.size(), train.size(), test.size());
 
       final Standardizer inner = Standardizer.fittedOn(
@@ -98,7 +98,7 @@ public final class ExperimentsTask {
       final double[][] xs = matrix(inner, selection);
       final Map<Observation, Integer> where = index(selection);
 
-      progress.detail("varrendo a grade linear na divisao interna");
+      progress.detail("sweeping the linear grid on the inner split");
       double bestAlpha = ALPHAS[0];
       double bestLambda = 0;
       double bestMae = Double.MAX_VALUE;
@@ -119,7 +119,7 @@ public final class ExperimentsTask {
         }
       }
 
-      progress.detail("varrendo a grade de arvores na divisao interna");
+      progress.detail("sweeping the tree grid on the inner split");
       int bestTrees = TREES[0];
       int bestNodes = MAX_NODES[0];
       double bestShrink = SHRINKAGE[0];
@@ -140,11 +140,11 @@ public final class ExperimentsTask {
           }
         }
       }
-      progress.detail("linear alpha=%.2f lambda=%.4g (MAE %.2f) | arvores n=%d nos=%d "
-          + "taxa=%.2f (MAE %.2f)", bestAlpha, bestLambda, bestMae,
+      progress.detail("linear alpha=%.2f lambda=%.4g (MAE %.2f) | trees n=%d nodes=%d "
+          + "rate=%.2f (MAE %.2f)", bestAlpha, bestLambda, bestMae,
           bestTrees, bestNodes, bestShrink, bestGbMae);
 
-      progress.detail("reajustando no treino externo e pontuando uma vez");
+      progress.detail("refitting on the outer training side and scoring once");
       final Standardizer outer = Standardizer.fittedOn(
           new Observations(trainAll.columns(), train, 0));
       final double[][] xt = matrix(outer, train);

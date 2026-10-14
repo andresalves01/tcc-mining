@@ -1,46 +1,46 @@
 package app.labels;
 
 /**
- * Qual duracao de um rotulo o ajuste trata como desfecho.
+ * Which duration of a label the fit treats as the outcome.
  *
- * <p>Substitui o seletor anterior, que escolhia o intervalo na hora de rotular. Escolher aqui e
- * melhor por uma razao concreta: os tres alvos passam a partilhar a mesma populacao, a mesma data
- * de abertura e, por consequencia, a <b>mesma divisao temporal</b> -- que e o que torna legitimo
- * somar as previsoes dos dois componentes e chamar a soma de previsao do total. Escolhendo no
- * rotulo, cada braco recalculava o proprio corte sobre a propria populacao e as previsoes nao
- * eram comensuraveis.
+ * <p>Replaces the earlier selector, which chose the interval at labelling time. Choosing here is
+ * better for a concrete reason: the three targets come to share the same population, the same
+ * opening date and, as a consequence, the <b>same temporal split</b> -- which is what makes it
+ * legitimate to add the predictions of the two components and call the sum the prediction of the
+ * total. Choosing in the label, each arm recomputed its own cut over its own population and the
+ * predictions were not commensurable.
  *
- * <p>Os tres intervalos sao os mesmos de antes: {@link #TOTAL} era {@code OPEN_TO_MERGE},
- * {@link #ESPERA} era {@code OPEN_TO_REVIEW} e {@link #AUTOR} era {@code REVIEW_TO_MERGE}.
+ * <p>The three intervals are the same as before: {@link #TOTAL} was {@code OPEN_TO_MERGE},
+ * {@link #WAIT} was {@code OPEN_TO_REVIEW} and {@link #AUTHOR} was {@code REVIEW_TO_MERGE}.
  */
 public enum TtcTarget {
 
-  /** Abertura ate o merge. A vida inteira, e o desfecho que o artigo reporta. */
+  /** Opening to merge. The whole life, and the outcome the article reports. */
   TOTAL,
 
   /**
-   * Abertura ate o primeiro exame externo. Predominantemente espera por revisor: neste corpus o
-   * codigo ja existe quando o pull request abre -- 72,0% dos pull requests datavies tem todos os
-   * commits anteriores a abertura, a mediana e de um commit por pull request, e rascunho aparece
-   * em 0,8% deles. Serve de controle negativo: a historia de quem escreveu nao deveria prever
-   * quanto tempo um revisor leva para aparecer.
+   * Opening to the first external examination. Predominantly waiting for a reviewer: in this
+   * corpus the code already exists when the pull request opens -- 72.0% of the datavies pull
+   * requests have all their commits before the opening, the median is one commit per pull request,
+   * and drafts appear in 0.8% of them. It serves as a negative control: the history of whoever
+   * wrote it should not predict how long a reviewer takes to show up.
    */
-  ESPERA,
+  WAIT,
 
-  /** Abertura ate o merge, com os fins de semana descontados. Ver {@link WorkingTime}. */
-  TOTAL_UTIL,
+  /** Opening to merge, with weekends discounted. See {@link WorkingTime}. */
+  TOTAL_WORKING,
 
-  /** Abertura ate o primeiro exame, com os fins de semana descontados. */
-  ESPERA_UTIL,
+  /** Opening to the first examination, with weekends discounted. */
+  WAIT_WORKING,
 
-  /** Primeiro exame ate o merge, com os fins de semana descontados. */
-  AUTOR_UTIL,
+  /** First examination to merge, with weekends discounted. */
+  AUTHOR_WORKING,
 
   /**
-   * Primeiro exame externo ate o merge. Onde o trabalho do autor se concentra, sem ser so isso --
-   * tambem contem espera pela re-revisao e por quem aperta o botao. 24,2% dos pull requests
-   * datavies tem commits dos dois lados da abertura, entao nenhum dos dois segmentos isola o
-   * trabalho de ninguem; sao predominancias, e o artigo deve dizer isso.
+   * First external examination to merge. Where the author's work concentrates, without being only
+   * that -- it also holds waiting for re-review and for whoever presses the button. 24.2% of the
+   * datavies pull requests have commits on both sides of the opening, so neither segment isolates
+   * anyone's work; they are predominances, and the article must say so.
    */
-  AUTOR
+  AUTHOR
 }

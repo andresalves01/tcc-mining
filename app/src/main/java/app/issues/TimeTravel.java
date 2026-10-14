@@ -18,7 +18,7 @@ import java.util.Set;
  * known at t0" when the scan and the extractor agree on every sampled issue. Beside it, a
  * <b>naive</b> rule -- the final outcome instead of the one known at t0, the author date instead of
  * visibility -- must disagree somewhere, which proves the sample holds the adversarial case. The
- * Java twin of {@code analises/40_viagem.py}.
+ * Java twin of the Python time-travel script.
  *
  * <p>The instant is each unit's start: the creation in the main study, the first In Progress in
  * the secondary one, where {@code at} also brings the executor and the participants known then, and

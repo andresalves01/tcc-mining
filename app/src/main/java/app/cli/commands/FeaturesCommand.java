@@ -28,7 +28,7 @@ public final class FeaturesCommand implements CommandRunner {
     }
 
     print(report, window);
-    System.out.printf("%n  gravou %,d linhas em %s%n", report.written(),
+    System.out.printf("%n  wrote %,d rows to %s%n", report.written(),
         context.featureStore().describe());
   }
 
@@ -37,52 +37,52 @@ public final class FeaturesCommand implements CommandRunner {
     final FeatureMatrix.Scan scan = report.scan();
     final int labels = report.labels();
 
-    System.out.printf("%n  PREDITORES POR ROTULO%n%n");
-    System.out.printf("  rotulos : %,d      janela da equipe ativa : %d dias%n",
+    System.out.printf("%n  PREDICTORS PER LABEL%n%n");
+    System.out.printf("  labels : %,d      active team window : %d days%n",
         labels, window.toDays());
 
-    System.out.printf("%n  HISTORICO DO DESENVOLVEDOR%n");
-    line("sem historico anterior, LOC_tot = 0 legitimo", scan.withoutHistory(), labels);
-    line("  destes, par (dev, projeto) ausente do ledger", scan.unknownPair(), labels);
+    System.out.printf("%n  DEVELOPER HISTORY%n");
+    line("no earlier history, LOC_tot = 0 legitimate", scan.withoutHistory(), labels);
+    line("  of these, (dev, project) pair absent from the ledger", scan.unknownPair(), labels);
     System.out.printf("    %-48s%n",
-        "(zero por ser a primeira tarefa e zero por falta de evidencia entram iguais no modelo,");
+        "(zero for being the first task and zero for lack of evidence enter the model alike,");
     System.out.printf("    %-48s%n",
-        " e so esta linha os separa -- nenhum dos dois deve ser descartado)");
+        " and only this line tells them apart -- neither should be discarded)");
 
-    System.out.printf("%n  EQUIPE ATIVA%n");
-    line("rotulos sem ninguem ativo na janela", scan.emptyTeam(), labels);
+    System.out.printf("%n  ACTIVE TEAM%n");
+    line("labels with no one active in the window", scan.emptyTeam(), labels);
     System.out.printf("    %-48s%n",
-        "(o estudo exclui estes do modelo completo e os contabiliza)");
+        "(the study excludes these from the full model and counts them)");
     final List<Double> sizes = scan.teamSizes().stream()
         .map(Integer::doubleValue).sorted().toList();
     System.out.printf("    %-48s p25=%5.0f  p50=%5.0f  p75=%5.0f  p95=%5.0f%n",
-        "tamanho da equipe", Quantiles.at(sizes, 0.25), Quantiles.at(sizes, 0.50),
+        "team size", Quantiles.at(sizes, 0.25), Quantiles.at(sizes, 0.50),
         Quantiles.at(sizes, 0.75), Quantiles.at(sizes, 0.95));
 
-    System.out.printf("%n  ATRIBUTOS DE CRIACAO  (fora da especificacao, guardados marcados)%n");
-    line("issue localizada no corpus de origem", scan.attributesFound(), labels);
-    line("campo de descricao gravado", scan.withDescription(), labels);
-    line("  e nao vazio", scan.withNonEmptyDescription(), labels);
-    line("campo de tipo gravado", scan.withIssueType(), labels);
-    line("campo de issues ligadas gravado", scan.withLinkedIssues(), labels);
-    line("  e com ao menos uma ligacao", scan.withAnyLink(), labels);
+    System.out.printf("%n  CREATION ATTRIBUTES  (outside the specification, stored flagged)%n");
+    line("issue found in the source corpus", scan.attributesFound(), labels);
+    line("description field stored", scan.withDescription(), labels);
+    line("  and not empty", scan.withNonEmptyDescription(), labels);
+    line("type field stored", scan.withIssueType(), labels);
+    line("linked issues field stored", scan.withLinkedIssues(), labels);
+    line("  and with at least one link", scan.withAnyLink(), labels);
     System.out.printf("    %-48s%n",
-        "(o corpus grava lista vazia muito mais vezes do que omite o campo, entao quase todo");
+        "(the corpus stores an empty list far more often than it omits the field, so almost every");
     System.out.printf("    %-48s%n",
-        " zero aqui e real -- so a omissao e falta de dado, e ela e rara)");
+        " zero here is real -- only the omission is missing data, and it is rare)");
 
     if (report.withComplexity()) {
-      System.out.printf("%n  COMPLEXIDADE ACUMULADA%n");
-      line("linhas com McCC_tot", labels, labels);
+      System.out.printf("%n  ACCUMULATED COMPLEXITY%n");
+      line("rows with McCC_tot", labels, labels);
       System.out.printf("    %-48s%n",
-          "(somada uma vez por commit; metodos sem metrica no corpus nao entram e nao sao zero)");
+          "(summed once per commit; methods with no metric in the corpus do not enter and are not zero)");
     } else {
-      System.out.printf("%n  AUSENTES NESTA RODADA%n");
+      System.out.printf("%n  MISSING IN THIS RUN%n");
       System.out.printf("    %-48s %9s%n", "McCC_tot, mu_M, s_M", "100,00%");
       System.out.printf("    %-48s%n",
-          "(falta a tabela de complexidade por commit: rode `complexity`. O funil deduplica uma");
+          "(the per-commit complexity table is missing: run `complexity`. The funnel deduplicates once");
       System.out.printf("    %-48s%n",
-          " vez por issue, e McCC_tot exige uma vez por commit, que e outra regra)");
+          " per issue, and McCC_tot needs once per commit, which is another rule)");
     }
   }
 

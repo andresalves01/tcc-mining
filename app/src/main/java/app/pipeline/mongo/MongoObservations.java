@@ -64,7 +64,7 @@ public final class MongoObservations implements ObservationSource {
         withoutOutcome++;
         continue;
       }
-      // Um intervalo nao positivo nao tem logaritmo.
+      // A non-positive interval has no logarithm.
       if (value <= 0) {
         withoutOutcome++;
         continue;
@@ -106,11 +106,11 @@ public final class MongoObservations implements ObservationSource {
         final Number raw = features.get(column.field(), Number.class);
         final double value = raw == null ? 0 : raw.doubleValue();
         out[i] = column.log() ? Math.log1p(Math.max(value, 0)) : value;
-      } else if (column.name().equals("descricao ausente")) {
+      } else if (column.name().equals("description missing")) {
         out[i] = features.get("extra_desc_length") == null ? 1 : 0;
-      } else if (column.name().equals("ligacoes ausentes")) {
+      } else if (column.name().equals("links missing")) {
         out[i] = features.get("extra_linked_issues") == null ? 1 : 0;
-      } else if (column.name().startsWith("tipo=")) {
+      } else if (column.name().startsWith("type=")) {
         out[i] = column.name().substring(5).equals(type) ? 1 : 0;
       }
     }

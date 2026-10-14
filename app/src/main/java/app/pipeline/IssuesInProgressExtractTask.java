@@ -24,15 +24,14 @@ import java.util.Set;
 import java.util.TreeSet;
 
 /**
- * The secondary study's population and columns ({@code papers/issues-in-progress/DESENHO.md}):
- * FIXED issues read at their first In Progress, and the gates before anything is fitted.
+ * The in-progress study's population and columns: FIXED issues read at their first In Progress, and the gates before anything is fitted.
  *
  * <p>Every column is the main study's, read at t0 = the first In Progress (P11): the changelog is
  * undone from t0 on ({@link Initial#at}), the executor is the assignee at t0 or else whoever made
  * the change (P8), and the participants are the reporter and whoever commented on or changed the
  * issue before t0 (P13). The gates, all of which must pass for the cache to be written: time travel
  * at t0, and parity of the population and of every column with the Python specification
- * ({@code papers/issues-in-progress/viabilidade/analises/20_exportar_andamento.py}).
+ * (its in-progress export).
  */
 public final class IssuesInProgressExtractTask {
 
@@ -69,15 +68,15 @@ public final class IssuesInProgressExtractTask {
   }
 
   public Report run(final Parity.Spec python) {
-    progress.phase(1, 4, "lendo o corpus: %s", source.describe());
+    progress.phase(1, 4, "reading the corpus: %s", source.describe());
     final Corpus corpus = source.load();
 
-    progress.phase(2, 4, "populacao a partir do In Progress e divisao pelo instante dele");
+    progress.phase(2, 4, "population from In Progress and split at its instant");
     final Universe universe = Universe.of(corpus);
     final List<Universe.Unit> units = universe.population(Population.IN_PROGRESS);
     final Universe.Split split = universe.split(Population.IN_PROGRESS, SHARE);
 
-    progress.phase(3, 4, "colunas de %,d issues no instante do In Progress", units.size());
+    progress.phase(3, 4, "columns of %,d issues at the In Progress instant", units.size());
     final Set<String> ids = new TreeSet<>();
     units.forEach(u -> ids.add(u.id()));
     final Map<String, Corpus.Text> texts = source.texts(ids);
@@ -94,8 +93,8 @@ public final class IssuesInProgressExtractTask {
       final String assignee = Initial.norm(init.assignee());
       final String executor = assignee != null ? world.person(assignee)
           : world.person(u.startedBy());
-      executors.merge(assignee != null ? "atribuido em t0"
-          : executor != null ? "sem atribuido: quem fez a transicao" : "nenhum", 1, Integer::sum);
+      executors.merge(assignee != null ? "assignee at t0"
+          : executor != null ? "no assignee: whoever made the transition" : "none", 1, Integer::sum);
       final Extractor.At a = new Extractor.At(t0, executor, participants(world, universe, u, t0));
       at.put(u.id(), a);
       final Map<String, Double> row =
@@ -104,7 +103,7 @@ public final class IssuesInProgressExtractTask {
       values.put(u.id(), row);
     }
 
-    progress.phase(4, 4, "portoes: viagem no tempo e paridade");
+    progress.phase(4, 4, "gates: time travel and parity");
     final List<TimeTravel.Check> travel = TimeTravel.run(world, units, values, at);
     final List<Parity.Membership> membership = new ArrayList<>();
     final List<Parity.Column> parity = new ArrayList<>();

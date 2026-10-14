@@ -91,8 +91,9 @@ public final class MongoLabelStore implements LabelStore {
         .append("mean_mccc", label.meanMccc().orElseThrow())
         .append("mean_nl", label.meanNl().orElseThrow())
         .append("methods", methods);
-    // Ausente e ausente: um rotulo sem exame externo nao ganha campo nenhum aqui, e MongoObservations
-    // deixa a linha de fora do alvo que o exigiria em vez de inventar um zero para ela.
+    // Absent is absent: a label with no external examination gets no field here, and
+    // MongoObservations leaves the row out of the target that would need it instead of inventing a
+    // zero for it.
     label.examinedAt().ifPresent(at -> doc.append("examined_at", Date.from(at)));
     label.examOrigin().ifPresent(origin -> doc.append("exam_origin", origin.name()));
     label.waitDays().ifPresent(days -> doc.append("ttc_espera", days));

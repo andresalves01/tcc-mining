@@ -44,15 +44,15 @@ public final class DeveloperOrdering {
       double descriptionTolerance) {
 
     public static final Matching ANY =
-        new Matching("qualquer par", false, Double.MAX_VALUE, Double.MAX_VALUE);
+        new Matching("any pair", false, Double.MAX_VALUE, Double.MAX_VALUE);
     public static final Matching TYPE =
-        new Matching("mesmo tipo", true, Double.MAX_VALUE, Double.MAX_VALUE);
+        new Matching("same type", true, Double.MAX_VALUE, Double.MAX_VALUE);
     public static final Matching SIZE =
-        new Matching("tamanho parecido", false, 0.5, Double.MAX_VALUE);
+        new Matching("similar size", false, 0.5, Double.MAX_VALUE);
     public static final Matching TYPE_SIZE =
-        new Matching("mesmo tipo E tamanho", true, 0.5, Double.MAX_VALUE);
+        new Matching("same type AND size", true, 0.5, Double.MAX_VALUE);
     public static final Matching TIGHT =
-        new Matching("mesmo tipo, tamanho e descricao", true, 0.25, 0.5);
+        new Matching("same type, size and description", true, 0.25, 0.5);
 
     /** Loosest first, so the report shows the gradient rather than one chosen number. */
     public static final List<Matching> GRADIENT = List.of(ANY, TYPE, SIZE, TYPE_SIZE, TIGHT);

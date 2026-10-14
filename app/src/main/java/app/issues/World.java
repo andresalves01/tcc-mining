@@ -11,7 +11,7 @@ import java.util.Set;
 /**
  * The corpus indexed in time: how much of each thing existed before an instant.
  *
- * <p>The Java twin of {@code papers/issues/viabilidade/analises/mundo.py}. The rules fixed here,
+ * <p>The Java twin of the Python world script. The rules fixed here,
  * once, for every column:
  *
  * <ul>

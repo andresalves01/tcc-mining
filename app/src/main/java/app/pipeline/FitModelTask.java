@@ -213,34 +213,34 @@ public final class FitModelTask {
 
 
     final List<Scored> comparison = new ArrayList<>();
-    comparison.add(score("chute constante", selection.rows(), Baselines.constant(fit.rows())));
-    comparison.add(score("mediana do projeto", selection.rows(), Baselines.perProject(fit.rows())));
-    comparison.add(score("REFERENCIA 3.6: mediana do par", selection.rows(),
+    comparison.add(score("constant guess", selection.rows(), Baselines.constant(fit.rows())));
+    comparison.add(score("project median", selection.rows(), Baselines.perProject(fit.rows())));
+    comparison.add(score("REFERENCE 3.6: pair median", selection.rows(),
         Baselines.perPair(fit.rows())));
-    comparison.add(score("repetir: media da pessoa", selection.rows(),
+    comparison.add(score("repeat: person mean", selection.rows(),
         Baselines.perDeveloper(fit.rows())));
-    comparison.add(score("repetir: mediana do tamanho", selection.rows(),
+    comparison.add(score("repeat: size median", selection.rows(),
         Baselines.perTaskSize(fit.rows())));
-    comparison.add(score("modelo completo", selection.rows(), model));
-    // Ultima linha de proposito: e um oraculo, nao um concorrente. Ver Baselines.perDeveloper.
-    comparison.add(score("TETO pessoa: no proprio conjunto", selection.rows(),
+    comparison.add(score("full model", selection.rows(), model));
+    // Last row on purpose: it is an oracle, not a competitor. See Baselines.perDeveloper.
+    comparison.add(score("CEILING person: on the set itself", selection.rows(),
         Baselines.perDeveloper(selection.rows())));
-    comparison.add(score("TETO tamanho: no proprio conjunto", selection.rows(),
+    comparison.add(score("CEILING size: on the set itself", selection.rows(),
         Baselines.perTaskSize(selection.rows())));
 
     final Map<String, Scored> ablation = new LinkedHashMap<>();
-    ablation.put("so a tarefa", ablate(standardizer, fit, selection, chosen, Columns.Group.TAREFA));
-    ablation.put("so o desenvolvedor",
+    ablation.put("task only", ablate(standardizer, fit, selection, chosen, Columns.Group.TASK));
+    ablation.put("developer only",
         ablate(standardizer, fit, selection, chosen, Columns.Group.DEV));
-    ablation.put("sem a carga", ablate(standardizer, fit, selection, chosen,
-        Columns.Group.TAREFA, Columns.Group.DEV, Columns.Group.EQUIPE, Columns.Group.CRIACAO));
-    ablation.put("sem a equipe", ablate(standardizer, fit, selection, chosen,
-        Columns.Group.TAREFA, Columns.Group.DEV, Columns.Group.CARGA, Columns.Group.CRIACAO));
-    // Sem o tamanho da tarefa: o unico recorte estritamente anterior a criacao.
-    ablation.put("conhecido na criacao", ablate(standardizer, fit, selection, chosen,
-        Columns.Group.DEV, Columns.Group.CARGA, Columns.Group.EQUIPE, Columns.Group.CRIACAO));
+    ablation.put("without load", ablate(standardizer, fit, selection, chosen,
+        Columns.Group.TASK, Columns.Group.DEV, Columns.Group.TEAM, Columns.Group.CREATION));
+    ablation.put("without team", ablate(standardizer, fit, selection, chosen,
+        Columns.Group.TASK, Columns.Group.DEV, Columns.Group.LOAD, Columns.Group.CREATION));
+    // Without the task size: the only cut strictly before creation.
+    ablation.put("known at creation", ablate(standardizer, fit, selection, chosen,
+        Columns.Group.DEV, Columns.Group.LOAD, Columns.Group.TEAM, Columns.Group.CREATION));
     // The columns the mongosh prototype fitted, so the two can be put side by side.
-    ablation.put("colunas do prototipo", ablateNamed(standardizer, fit, selection, chosen,
+    ablation.put("prototype columns", ablateNamed(standardizer, fit, selection, chosen,
         Columns.PROTOTYPE));
 
     return new Report(bounds, population, refusedMissing,
@@ -308,7 +308,7 @@ public final class FitModelTask {
 
     final int[] keep = indicesOf(standardizer.columns(), wanted);
     if (keep.length == 0) {
-      return new Scored("sem colunas", null, null);
+      return new Scored("no columns", null, null);
     }
     final double[][] x = subset(matrix(standardizer, fit.rows()), keep);
     final double[][] xs = subset(matrix(standardizer, selection.rows()), keep);
@@ -319,7 +319,7 @@ public final class FitModelTask {
     final ElasticNetModel model = ElasticNetModel.fit(x, outcome(fit.rows()), names,
         alpha, lambda);
     final Map<Observation, Integer> where = index(selection.rows());
-    return score(names.size() + " colunas", selection.rows(),
+    return score(names.size() + " columns", selection.rows(),
         row -> model.predict(xs[where.get(row)]));
   }
 

@@ -115,9 +115,9 @@ class IssuesReservedTest {
     assertTrue(new IssuesEvaluationTask.MainReference(772.52, 796.45).constant());
     assertFalse(new IssuesEvaluationTask.MainReference(800, 796.45).constant());
     assertEquals("constante", new IssuesEvaluationTask.MainReference(700, 710, 720).name());
-    assertEquals("mediana do par executor-projeto",
+    assertEquals("executor-project pair median",
         new IssuesEvaluationTask.MainReference(700, 710, 650).name(), "P12: a third candidate");
-    assertEquals("mediana do projeto",
+    assertEquals("project median",
         new IssuesEvaluationTask.MainReference(720, 700, 710).name());
   }
 

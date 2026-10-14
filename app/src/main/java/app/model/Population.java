@@ -13,8 +13,8 @@ package app.model;
  * answer it is to report every arm from one run. Filtering upstream would make the others
  * unavailable.
  *
- * <p><b>The thresholds were fixed before the arms were run</b>, in
- * {@code papers/01-ttc-semantics/PRE-REGISTRO-ANALISE5.md}, and the commit order is what makes that
+ * <p><b>The thresholds were fixed before the arms were run</b>, in the analysis 5
+ * pre-registration, and the commit order is what makes that
  * checkable. One minute is the primary cut because it is the only one where no human decision fits
  * between the commit and the close; one hour is carried beside it as a declared sensitivity arm,
  * not as an alternative to be chosen once the scores are in.
@@ -33,17 +33,17 @@ public record Population(String name, double minPostCommitDays) {
 
   /** Drops the labels resolved before their first linked commit was authored. */
   public static Population withoutPostdated() {
-    return new Population("sem postdated", 0);
+    return new Population("no postdated", 0);
   }
 
   /** Primary arm: also drops the labels closed within a minute of the first linked commit. */
   public static Population withoutImmediateByMinute() {
-    return new Population("sem postdated nem <1min", ONE_MINUTE);
+    return new Population("no postdated nor <1min", ONE_MINUTE);
   }
 
   /** Declared sensitivity arm, reported beside the primary one rather than instead of it. */
   public static Population withoutImmediateByHour() {
-    return new Population("sem postdated nem <1h", ONE_HOUR);
+    return new Population("no postdated nor <1h", ONE_HOUR);
   }
 
   public boolean restricts() {

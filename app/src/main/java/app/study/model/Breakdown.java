@@ -54,8 +54,8 @@ public final class Breakdown {
     final double[] sorted = absolute.clone();
     Arrays.sort(sorted);
 
-    // Aparado pela VERDADE, nao pelo erro: cortar as linhas de maior erro seria o modelo escolhendo
-    // onde ser avaliado. Corta-se o decimo mais lento, que e uma propriedade das linhas.
+    // Trimmed by the TRUTH, not by the error: cutting the rows with the largest error would be the
+    // model choosing where to be evaluated. The slowest tenth is cut, which is a property of the rows.
     final double[] truth = observed.clone();
     Arrays.sort(truth);
     final double limit = quantile(truth, 0.90);
@@ -81,8 +81,8 @@ public final class Breakdown {
       edges[i] = quantile(truth, CUTS[i]);
     }
 
-    final String[] labels = {"mais rapidos 25%", "25% a 50%", "50% a 75%", "75% a 90%",
-        "mais lentos 10%"};
+    final String[] labels = {"fastest 25%", "25% a 50%", "50% a 75%", "75% a 90%",
+        "slowest 10%"};
     final List<Band> bands = new ArrayList<>(labels.length);
     for (int b = 0; b < labels.length; b++) {
       final double low = b == 0 ? Double.NEGATIVE_INFINITY : edges[b - 1];

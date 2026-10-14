@@ -137,12 +137,12 @@ public final class MongoLabelSource implements LabelSource {
         current.put(entry.getKey(), keep);
       }
     }
-    stages.add(new FunnelStage("issues com >=1 commit ligado nao-merge",
+    stages.add(new FunnelStage("issues with >=1 linked non-merge commit",
         current.size(), 0, current.size()));
 
-    current = keepIf(current, stages, "apos remocao de bots",
+    current = keepIf(current, stages, "after removing bots",
         c -> c.canonical() != null && !bots.contains(c.canonical()));
-    current = keepIf(current, stages, "apos recorte Java", Linked::touchesJava);
+    current = keepIf(current, stages, "after the Java cut", Linked::touchesJava);
 
     Map<ObjectId, List<Linked>> next = new LinkedHashMap<>();
     for (final Map.Entry<ObjectId, List<Linked>> e : current.entrySet()) {
@@ -152,7 +152,7 @@ public final class MongoLabelSource implements LabelSource {
         next.put(e.getKey(), e.getValue());
       }
     }
-    stages.add(stage("apos criacao e resolucao recuperaveis e TTC positivo", next, current));
+    stages.add(stage("after recoverable creation and resolution and positive TTC", next, current));
     current = next;
 
     next = new LinkedHashMap<>();
@@ -161,7 +161,7 @@ public final class MongoLabelSource implements LabelSource {
         next.put(e.getKey(), e.getValue());
       }
     }
-    stages.add(stage("apos exigir um unico autor humano", next, current));
+    stages.add(stage("after requiring a single human author", next, current));
     current = next;
 
     next = new LinkedHashMap<>();
@@ -170,7 +170,7 @@ public final class MongoLabelSource implements LabelSource {
         next.put(e.getKey(), e.getValue());
       }
     }
-    stages.add(stage("apos excluir 1o commit elegivel anterior a criacao", next, current));
+    stages.add(stage("after excluding a 1st eligible commit before creation", next, current));
     current = next;
 
     progress.phase(5, 6, "java file ids");
@@ -204,7 +204,7 @@ public final class MongoLabelSource implements LabelSource {
         progress.count(seen, current.size(), "issues, %,d labels", labels.size());
       }
     }
-    stages.add(new FunnelStage("apos exigir >=1 metodo alterado com McCC e NL",
+    stages.add(new FunnelStage("after requiring >=1 changed method with McCC and NL",
         labels.size(), current.size() - labels.size(), current.size()));
     return new LabelScan(List.copyOf(labels), List.copyOf(stages), extracted);
   }

@@ -70,9 +70,10 @@ public record Score(String label, int n, double maeHours, double maeDays,
    * as correct would reward a model that predicts one constant with a perfect score.
    */
   public static double pairwiseAccuracy(final double[] predicted, final double[] observed) {
-    // Todos os pares de 1.865 linhas sao 1,7 milhao, e este metodo e chamado uma vez por tentativa
-    // de parametro. O laco e escrito com comparacoes diretas, sem signum e sem ramos extras, porque
-    // a diferenca entre 10 e 25 nanossegundos por par decide se a rodada leva um minuto ou vinte.
+    // All the pairs of 1,865 rows are 1.7 million, and this method is called once per parameter
+    // trial. The loop is written with direct comparisons, without signum and without extra branches,
+    // because the difference between 10 and 25 nanoseconds per pair decides whether a run takes one
+    // minute or twenty.
     long comparable = 0;
     long correct = 0;
     long tiedGuess = 0;
@@ -137,7 +138,7 @@ public record Score(String label, int n, double maeHours, double maeDays,
 
   /** The header the report prints above a block of these. */
   public static List<String> header() {
-    return List.of("familia / perfil", "n", "MAE h", "MAE dias", "ganho h", "ganho %",
-        "ganho vs constante %", "Spearman");
+    return List.of("family / profile", "n", "MAE h", "MAE days", "gain h", "gain %",
+        "gain vs constant %", "Spearman");
   }
 }

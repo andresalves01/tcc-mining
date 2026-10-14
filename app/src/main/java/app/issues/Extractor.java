@@ -13,7 +13,7 @@ import java.util.Set;
 /**
  * Every column of one issue, in both scenarios.
  *
- * <p>The Java twin of {@code papers/issues/viabilidade/analises/colunas.py}, which the extraction is
+ * <p>The Java twin of the Python column script, which the extraction is
  * checked against column by column, plus what the Python did not compute: the team's open load
  * (A14), the change's lines divided among the issues a commit links (A15, decision 12; A15w keeps
  * the whole commit for the sensitivity), the files changed and the executor's familiarity with them
@@ -23,7 +23,7 @@ import java.util.Set;
  * {@code [t0, t1)}, where t1 is the first resolution -- always new columns, never a C1 value
  * replaced. A value that cannot be computed is {@code null}, never zero.
  *
- * <p>The secondary study ({@code papers/issues-in-progress/DESENHO.md}) reads the same columns at
+ * <p>The in-progress study reads the same columns at
  * another instant, given by {@link At}: t0 is the first In Progress, the executor is the person
  * known then, and the participants are those who took part before it. Only t0 moves (P11); the
  * executor's columns are that person's (P10), A13 counts the issues assigned to them (P14), and

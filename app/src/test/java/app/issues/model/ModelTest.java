@@ -125,21 +125,21 @@ class ModelTest {
     assertEquals(12, size(Family.ALZUBAIDI, Scenario.C1), "12 of Al-Zubaidi's 13");
     assertEquals(14, size(Family.KIKAS, Scenario.C1), "13 of Kikas's plus K13x");
     assertEquals(26, size(Family.KIKAS, Scenario.C2), "plus the twelve exposure columns");
-    assertEquals(10, size(Family.PROPRIA, Scenario.C1));
-    assertEquals(22, size(Family.PROPRIA, Scenario.C1_CONTEUDO));
-    assertEquals(12, size(Family.PROPRIA, Scenario.C1_EXPOSICAO));
-    assertEquals(24, size(Family.PROPRIA, Scenario.C2));
-    assertEquals(35, size(Family.UNIAO, Scenario.C1), "K02 enters the union once, as Z10 + Z12");
+    assertEquals(10, size(Family.OWN, Scenario.C1));
+    assertEquals(22, size(Family.OWN, Scenario.C1_CONTENT));
+    assertEquals(12, size(Family.OWN, Scenario.C1_EXPOSURE));
+    assertEquals(24, size(Family.OWN, Scenario.C2));
+    assertEquals(35, size(Family.UNION, Scenario.C1), "K02 enters the union once, as Z10 + Z12");
     for (final Cell cell : Cell.grid()) {
       for (final Attribute a : cell.attributes()) {
         assertTrue(a.atCreation() || cell.scenario().admits(a.block()), cell.label() + a.name());
         assertFalse(a.name().equals(Attributes.SENSITIVITY_A15W), "A15w is only a sensitivity");
       }
     }
-    assertTrue(Cell.of(Family.UNIAO, Scenario.C1_CONTEUDO).attributes().stream()
-        .noneMatch(a -> a.block() == Scenario.Block.EXPOSICAO));
-    assertTrue(Cell.of(Family.UNIAO, Scenario.C1_EXPOSICAO).attributes().stream()
-        .noneMatch(a -> a.block() == Scenario.Block.CONTEUDO));
+    assertTrue(Cell.of(Family.UNION, Scenario.C1_CONTENT).attributes().stream()
+        .noneMatch(a -> a.block() == Scenario.Block.EXPOSURE));
+    assertTrue(Cell.of(Family.UNION, Scenario.C1_EXPOSURE).attributes().stream()
+        .noneMatch(a -> a.block() == Scenario.Block.CONTENT));
   }
 
   @Test

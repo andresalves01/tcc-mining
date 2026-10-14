@@ -26,9 +26,10 @@ import org.bson.types.ObjectId;
 public final class MongoIssuesStore implements ResultStore {
 
   // The first runs of the issue-duration study were recorded under these names in
-  // smartshark_issues before the package was renamed; the names stay so the record stays whole.
-  public static final String EXECUCAO = "paper6_execucao";
-  public static final String RESULTADO = "paper6_resultado";
+  // smartshark_issues before the package was renamed; the names stay so the record stays whole,
+  // and so do the run's timestamp and the key that joins a result to its run.
+  public static final String RUNS = "paper6_execucao";
+  public static final String RESULTS = "paper6_resultado";
 
   private final MongoDatabase database;
   private final String name;
@@ -49,7 +50,7 @@ public final class MongoIssuesStore implements ResultStore {
     final Document header = new Document(run);
     header.put("_id", execution);
     header.put("gravado_em", new Date());
-    database.getCollection(EXECUCAO).insertOne(header);
+    database.getCollection(RUNS).insertOne(header);
 
     if (!rows.isEmpty()) {
       final List<Document> documents = new ArrayList<>(rows.size());
@@ -58,7 +59,7 @@ public final class MongoIssuesStore implements ResultStore {
         document.put("execucao_id", execution);
         documents.add(document);
       }
-      database.getCollection(RESULTADO).insertMany(documents);
+      database.getCollection(RESULTS).insertMany(documents);
     }
     return execution.toHexString();
   }

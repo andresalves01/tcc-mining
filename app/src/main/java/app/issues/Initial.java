@@ -12,7 +12,7 @@ import java.util.TreeSet;
 /**
  * What an issue said about itself at creation, recovered by reversing its changelog.
  *
- * <p>The rule of {@code papers/issues/viabilidade/analises/20_changelog.py}, in <b>strict t0</b>
+ * <p>The rule of the Python changelog script, in <b>strict t0</b>
  * (decision 10): every recorded change is undone, the ones stamped at the creation instant too --
  * the value at creation is the one before any edit. Scalars take the old value of their first
  * change; labels are the words of the first change's old value; links are reversed as a multiset

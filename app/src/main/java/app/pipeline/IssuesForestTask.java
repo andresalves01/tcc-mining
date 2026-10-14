@@ -52,7 +52,7 @@ public final class IssuesForestTask {
     final List<Pair> cells = new ArrayList<>();
     int done = 0;
     for (final IssuesEvaluationTask.Frozen f : mine) {
-      progress.item(++done, mine.size(), population + " " + f.cell(), "selecao interna");
+      progress.item(++done, mine.size(), population + " " + f.cell(), "inner selection");
       final Cell cell = Cell.byLabel(f.cell());
       final Fitting.Fitted linear = Fitting.frozen(cell, sides, f.alpha(), f.lambda(),
           projectMae, constantMae);
@@ -66,8 +66,8 @@ public final class IssuesForestTask {
               errors(linear.predictedHours(), observed))));
     }
     return new Report(population, sides.fitUnits().size(), sides.scoreUnits().size(),
-        Score.reference("referencia: mediana do projeto", projectHours, observed, constantMae),
-        Score.reference(String.format("referencia: constante = mediana do ajuste (%.1f h)",
+        Score.reference("reference: project median", projectHours, observed, constantMae),
+        Score.reference(String.format("reference: constant = fit median (%.1f h)",
             refs.constantHours()), constantHours, observed, constantMae),
         List.copyOf(cells));
   }

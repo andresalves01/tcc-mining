@@ -15,7 +15,7 @@ import java.util.Map;
 
 /**
  * The random forest beside the Elastic Net, on the inner selection only (asked on 29/09/2026,
- * after the reserved run). Reads CACHE and the linear model's frozen PARAMETROS; POPULACOES as the
+ * after the reserved run). Reads CACHE and the linear model's frozen PARAMETERS; POPULATIONS as the
  * other commands. Records the run in ISSUES_DB. The outer test is not read.
  */
 public final class IssuesForestCommand implements CommandRunner {
@@ -25,9 +25,9 @@ public final class IssuesForestCommand implements CommandRunner {
   @Override
   public void run(final Context context) throws CommandFailedException {
     final var entries = IssuesPrinting.cache();
-    final String params = System.getenv("PARAMETROS");
+    final String params = System.getenv("PARAMETERS");
     if (params == null || params.isBlank()) {
-      throw new CommandFailedException(List.of("  PARAMETROS=<arquivo da grade> e obrigatorio"));
+      throw new CommandFailedException(List.of("  PARAMETERS=<the grid's file> is required"));
     }
     final List<IssuesEvaluationTask.Frozen> frozen = IssuesCheckCommand.parse(params);
     final List<Map<String, Object>> rows = new ArrayList<>();
@@ -38,29 +38,29 @@ public final class IssuesForestCommand implements CommandRunner {
       rows.addAll(rows(r));
     }
     final Map<String, Object> run = new LinkedHashMap<>();
-    run.put("etapa", "issues-floresta");
-    run.put("parametros_elastic_net", params);
-    run.put("teste_externo", "nao lido");
-    run.put("grade_floresta", Map.of("arvores", Forest.TREES, "profundidade", Forest.MAX_DEPTH,
-        "fracoes_mtry", List.of(1.0 / 6, 1.0 / 3, 2.0 / 3), "folha_minima",
-        List.of(5, 25, 100), "semente", Forest.SEED));
-    System.out.printf("%n  execucao registrada em ISSUES_DB: %s%n",
+    run.put("stage", "issues-forest");
+    run.put("elastic_net_parameters", params);
+    run.put("outer_test", "not read");
+    run.put("forest_grid", Map.of("trees", Forest.TREES, "depth", Forest.MAX_DEPTH,
+        "mtry_fractions", List.of(1.0 / 6, 1.0 / 3, 2.0 / 3), "min_leaf",
+        List.of(5, 25, 100), "seed", Forest.SEED));
+    System.out.printf("%n  run recorded in ISSUES_DB: %s%n",
         context.issuesResults().record(run, rows));
   }
 
   private static void print(final IssuesForestTask.Report r, final String params) {
-    System.out.printf("%n  DURACAO DE ISSUES -- RANDOM FOREST AO LADO DO ELASTIC NET -- SELECAO "
-        + "INTERNA -- %s%n", IssuesPrinting.name(r.population()));
-    System.out.printf("  Elastic Net com os parametros de %s; floresta com a grade declarada: %d "
-        + "arvores, profundidade ate %d, colunas por divisao 1/6, 1/3 e 2/3 das da celula, folha "
-        + "minima 5, 25 e 100, semente %d%n", params, Forest.TREES, Forest.MAX_DEPTH,
+    System.out.printf("%n  ISSUE DURATION -- RANDOM FOREST BESIDE THE ELASTIC NET -- INNER "
+        + "SELECTION -- %s%n", IssuesPrinting.name(r.population()));
+    System.out.printf("  Elastic Net with the parameters from %s; forest with the declared grid: %d "
+        + "trees, depth up to %d, columns per split 1/6, 1/3 and 2/3 of the cell's, minimum "
+        + "leaf 5, 25 and 100, seed %d%n", params, Forest.TREES, Forest.MAX_DEPTH,
         Forest.SEED);
-    System.out.printf("  os dois escolheram parametros NESTA MESMA selecao: numeros otimistas para "
-        + "os dois, para comparar estimadores; o teste externo nao e lido%n");
-    System.out.printf("  ajuste %,d linhas, pontuadas %,d linhas%n", r.fitRows(), r.scoredRows());
+    System.out.printf("  both chose parameters ON THIS SAME selection: optimistic numbers for "
+        + "both, to compare estimators; the outer test is not read%n");
+    System.out.printf("  fit %,d rows, scored %,d rows%n", r.fitRows(), r.scoredRows());
 
-    System.out.printf("%n  TABELA PRINCIPAL (ganho%% contra a mediana do projeto; vs cte%% contra a "
-        + "constante; par a par em %%)%n");
+    System.out.printf("%n  MAIN TABLE (gain%% against the project median; vs const%% against the "
+        + "constant; pairwise in %%)%n");
     IssuesPrinting.header();
     IssuesPrinting.row(r.project());
     IssuesPrinting.row(r.constant());
@@ -69,10 +69,10 @@ public final class IssuesForestCommand implements CommandRunner {
       IssuesPrinting.row(c.forest().score());
     }
 
-    System.out.printf("%n  GANHO COM INTERVALO DE 95%% REAMOSTRANDO PROJETOS INTEIROS (%d sorteios)%n",
+    System.out.printf("%n  GAIN WITH A 95%% INTERVAL RESAMPLING WHOLE PROJECTS (%d draws)%n",
         app.issues.model.ProjectBootstrap.DRAWS);
-    System.out.printf("  %-44s %24s %24s %24s%n", "celula", "floresta sobre mediana proj.",
-        "floresta sobre constante", "Elastic Net sobre cte");
+    System.out.printf("  %-44s %24s %24s %24s%n", "cell", "forest over project median",
+        "forest over constant", "Elastic Net over const");
     for (final var c : r.cells()) {
       System.out.printf("  %-44s %24s %24s %24s%n", c.linear().cell().label(),
           IssuesPrinting.interval(c.forestOverProject()),
@@ -80,19 +80,19 @@ public final class IssuesForestCommand implements CommandRunner {
           IssuesPrinting.interval(c.linearOverConstant()));
     }
 
-    System.out.printf("%n  FLORESTA CONTRA ELASTIC NET, MESMA CELULA: reamostragem pareada de "
-        + "PROJETOS, %d sorteios (intervalo com zero = empate); dif. = MAE(floresta) - "
-        + "MAE(Elastic Net), negativa quando a floresta erra menos%n",
+    System.out.printf("%n  FOREST AGAINST ELASTIC NET, SAME CELL: paired resampling of "
+        + "PROJECTS, %d draws (interval containing zero = tie); diff. = MAE(forest) - "
+        + "MAE(Elastic Net), negative when the forest errs less%n",
         app.issues.model.ProjectBootstrap.DRAWS);
     for (final var c : r.cells()) {
       final var g = c.forestMinusLinear();
-      System.out.printf("    %-30s dif. %+9.2f h  IC [%+9.2f, %+9.2f]  %s%n",
+      System.out.printf("    %-30s diff. %+9.2f h  CI [%+9.2f, %+9.2f]  %s%n",
           c.linear().cell().label(), g.gapHours(), g.low(), g.high(),
-          g.tied() ? "EMPATE" : "distinguivel");
+          g.tied() ? "TIE" : "distinguishable");
     }
 
-    System.out.printf("%n  GRADE DA FLORESTA: MAE (h) na selecao interna por colunas por divisao x "
-        + "folha minima; * = escolhida%n");
+    System.out.printf("%n  FOREST GRID: MAE (h) on the inner selection by columns per split x "
+        + "minimum leaf; * = chosen%n");
     for (final var c : r.cells()) {
       final var f = c.forest();
       final StringBuilder line = new StringBuilder();
@@ -101,11 +101,11 @@ public final class IssuesForestCommand implements CommandRunner {
         line.append(String.format("  %d/%d %.2f%s", t.mtry(), t.nodeSize(), t.maeHours(),
             chosen ? "*" : ""));
       }
-      System.out.printf("    %-26s %d colunas:%s%n", f.cell().label(), f.columns().size(), line);
+      System.out.printf("    %-26s %d columns:%s%n", f.cell().label(), f.columns().size(), line);
     }
 
-    System.out.printf("%n  IMPORTANCIA NA FLORESTA ESCOLHIDA (queda do erro quadratico somada nas "
-        + "divisoes, em %% do total; descreve o ajuste, nao e efeito causal), as %d maiores%n", TOP);
+    System.out.printf("%n  IMPORTANCE IN THE CHOSEN FOREST (drop in squared error summed over the "
+        + "splits, in %% of the total; describes the fit, is not a causal effect), the %d largest%n", TOP);
     for (final var c : r.cells()) {
       final var f = c.forest();
       double total = 0;
@@ -117,7 +117,7 @@ public final class IssuesForestCommand implements CommandRunner {
         order.add(i);
       }
       order.sort(Comparator.comparingDouble((Integer i) -> -f.importance()[i]));
-      System.out.printf("  -- %s  (colunas por divisao %d, folha minima %d)%n", f.cell().label(),
+      System.out.printf("  -- %s  (columns per split %d, minimum leaf %d)%n", f.cell().label(),
           f.mtry(), f.nodeSize());
       for (final int i : order.subList(0, Math.min(TOP, order.size()))) {
         System.out.printf("     %-46s %5.1f%%%n", f.columns().get(i),
@@ -128,20 +128,20 @@ public final class IssuesForestCommand implements CommandRunner {
 
   private static List<Map<String, Object>> rows(final IssuesForestTask.Report r) {
     final List<Map<String, Object>> out = new ArrayList<>();
-    out.add(IssuesPrinting.scoreRow(r.population(), "referencia", r.project()));
-    out.add(IssuesPrinting.scoreRow(r.population(), "referencia", r.constant()));
+    out.add(IssuesPrinting.scoreRow(r.population(), "reference", r.project()));
+    out.add(IssuesPrinting.scoreRow(r.population(), "reference", r.constant()));
     for (final var c : r.cells()) {
       out.add(IssuesPrinting.scoreRow(r.population(), "elastic net", c.linear().score()));
       final Map<String, Object> m =
-          IssuesPrinting.scoreRow(r.population(), "floresta", c.forest().score());
+          IssuesPrinting.scoreRow(r.population(), "forest", c.forest().score());
       m.put("mtry", c.forest().mtry());
-      m.put("folha_minima", c.forest().nodeSize());
-      m.put("ic_ganho_projeto", List.of(c.forestOverProject().low(),
+      m.put("min_leaf", c.forest().nodeSize());
+      m.put("ci_gain_project", List.of(c.forestOverProject().low(),
           c.forestOverProject().high()));
-      m.put("ic_ganho_constante", List.of(c.forestOverConstant().low(),
+      m.put("ci_gain_constant", List.of(c.forestOverConstant().low(),
           c.forestOverConstant().high()));
-      m.put("dif_mae_floresta_menos_elastic_net", c.forestMinusLinear().gapHours());
-      m.put("ic_projetos", List.of(c.forestMinusLinear().low(), c.forestMinusLinear().high()));
+      m.put("mae_diff_forest_minus_elastic_net", c.forestMinusLinear().gapHours());
+      m.put("ci_projects", List.of(c.forestMinusLinear().low(), c.forestMinusLinear().high()));
       out.add(m);
     }
     return out;

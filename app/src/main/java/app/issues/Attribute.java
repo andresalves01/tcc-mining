@@ -22,7 +22,7 @@ public record Attribute(String id, String name, Family family, Scenario.Block bl
 
   /** Whether the column enters a cell of this family under this scenario. */
   public boolean inCell(final Family cellFamily, final Scenario scenario) {
-    final boolean family = cellFamily == Family.UNIAO ? inUnion : cellFamily == this.family;
+    final boolean family = cellFamily == Family.UNION ? inUnion : cellFamily == this.family;
     return family && (atCreation() || scenario.admits(block));
   }
 

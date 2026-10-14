@@ -7,23 +7,23 @@ import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 
 /**
- * Duracao com os fins de semana descontados.
+ * Duration with weekends discounted.
  *
- * <p>Existe porque boa parte da variacao que estavamos tentando explicar nao e sobre pessoa
- * nenhuma. Um pedido aberto numa sexta a noite e mesclado na segunda de manha leva dois dias e
- * meio de relogio de parede e quase nenhum tempo de trabalho, e nenhum preditor deste estudo tem
- * como saber a diferenca. Sabado e domingo sao 2/7 do calendario, entao e a maior fatia unica
- * desse ruido que da para remover sem inventar nada.
+ * <p>Exists because a good part of the variation we were trying to explain is not about any
+ * person. A request opened on a Friday night and merged on Monday morning takes two and a half days
+ * of wall-clock time and almost no working time, and no predictor in this study can know the
+ * difference. Saturday and Sunday are 2/7 of the calendar, so they are the largest single slice of
+ * that noise that can be removed without inventing anything.
  *
- * <p><b>O que esta medida nao faz, e por que.</b> Nao desconta noites. Descontar exigiria saber o
- * fuso de quem trabalhou, e o corpus nao carrega isso no pull request -- {@code created_at} e
- * UTC, sem deslocamento. Em 98 projetos de codigo aberto com gente espalhada pelo mundo, assumir
- * um horario comercial unico trocaria um vies conhecido por um inventado. Fim de semana tem o
- * mesmo problema em menor grau, porque o calendario de descanso nao e universal, mas sabado e
- * domingo coincidem em quase todo lugar de onde vem este corpus.
+ * <p><b>What this measure does not do, and why.</b> It does not discount nights. Discounting them
+ * would need the time zone of whoever worked, and the corpus does not carry that on the pull
+ * request -- {@code created_at} is UTC, with no offset. Across 98 open-source projects with people
+ * spread around the world, assuming a single set of business hours would trade a known bias for an
+ * invented one. Weekends have the same problem to a lesser degree, because the rest calendar is not
+ * universal, but Saturday and Sunday coincide almost everywhere this corpus comes from.
  *
- * <p>A medida e continua, nao arredondada para dias: um intervalo dentro do mesmo dia util fica
- * igual ao de relogio de parede, e so encolhe quando atravessa um fim de semana.
+ * <p>The measure is continuous, not rounded to days: an interval within the same working day stays
+ * equal to the wall-clock one, and only shrinks when it crosses a weekend.
  */
 public final class WorkingTime {
 
@@ -31,7 +31,7 @@ public final class WorkingTime {
 
   private WorkingTime() {}
 
-  /** Dias uteis fracionarios entre dois instantes, descontando sabados e domingos. */
+  /** Fractional working days between two instants, discounting Saturdays and Sundays. */
   public static double daysBetween(final Instant from, final Instant to) {
     if (!to.isAfter(from)) {
       return 0;
@@ -40,7 +40,7 @@ public final class WorkingTime {
     return (total - weekendMillis(from, to)) / DAY_MILLIS;
   }
 
-  /** Quantos milissegundos do intervalo caem em sabado ou domingo, em UTC. */
+  /** How many milliseconds of the interval fall on a Saturday or Sunday, in UTC. */
   private static long weekendMillis(final Instant from, final Instant to) {
     long weekend = 0;
     ZonedDateTime cursor = from.atZone(ZoneOffset.UTC);

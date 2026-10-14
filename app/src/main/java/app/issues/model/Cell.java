@@ -30,23 +30,24 @@ public record Cell(String label, Family family, Scenario scenario, List<Attribut
         of(Family.ALZUBAIDI, Scenario.C1),
         of(Family.KIKAS, Scenario.C1),
         of(Family.KIKAS, Scenario.C2),
-        of(Family.PROPRIA, Scenario.C1),
-        of(Family.PROPRIA, Scenario.C1_CONTEUDO),
-        of(Family.PROPRIA, Scenario.C1_EXPOSICAO),
-        of(Family.PROPRIA, Scenario.C2),
-        of(Family.UNIAO, Scenario.C1),
-        of(Family.UNIAO, Scenario.C1_CONTEUDO),
-        of(Family.UNIAO, Scenario.C1_EXPOSICAO),
-        of(Family.UNIAO, Scenario.C2));
+        of(Family.OWN, Scenario.C1),
+        of(Family.OWN, Scenario.C1_CONTENT),
+        of(Family.OWN, Scenario.C1_EXPOSURE),
+        of(Family.OWN, Scenario.C2),
+        of(Family.UNION, Scenario.C1),
+        of(Family.UNION, Scenario.C1_CONTENT),
+        of(Family.UNION, Scenario.C1_EXPOSURE),
+        of(Family.UNION, Scenario.C2));
   }
 
   public static Cell byLabel(final String label) {
-    return grid().stream().filter(c -> c.label().equals(label)).findFirst()
+    final String name = current(label);
+    return grid().stream().filter(c -> c.label().equals(name)).findFirst()
         .orElseThrow(() -> new IllegalArgumentException("no such cell: " + label));
   }
 
   /**
-   * The eleven cells of the secondary study (papers/issues-in-progress, P6 and P19), the main
+   * The eleven cells of the in-progress study (P6 and P19), the main
    * study's shape read at the first In Progress: Kikas has no content column, so its C2 is C1 plus
    * exposure.
    */
@@ -55,19 +56,28 @@ public record Cell(String label, Family family, Scenario scenario, List<Attribut
         inProgress(Family.ALZUBAIDI, Scenario.C1),
         inProgress(Family.KIKAS, Scenario.C1),
         inProgress(Family.KIKAS, Scenario.C2),
-        inProgress(Family.PROPRIA, Scenario.C1),
-        inProgress(Family.PROPRIA, Scenario.C1_CONTEUDO),
-        inProgress(Family.PROPRIA, Scenario.C1_EXPOSICAO),
-        inProgress(Family.PROPRIA, Scenario.C2),
-        inProgress(Family.UNIAO, Scenario.C1),
-        inProgress(Family.UNIAO, Scenario.C1_CONTEUDO),
-        inProgress(Family.UNIAO, Scenario.C1_EXPOSICAO),
-        inProgress(Family.UNIAO, Scenario.C2));
+        inProgress(Family.OWN, Scenario.C1),
+        inProgress(Family.OWN, Scenario.C1_CONTENT),
+        inProgress(Family.OWN, Scenario.C1_EXPOSURE),
+        inProgress(Family.OWN, Scenario.C2),
+        inProgress(Family.UNION, Scenario.C1),
+        inProgress(Family.UNION, Scenario.C1_CONTENT),
+        inProgress(Family.UNION, Scenario.C1_EXPOSURE),
+        inProgress(Family.UNION, Scenario.C2));
   }
 
   private static Cell inProgress(final Family family, final Scenario scenario) {
     return new Cell(family + " / " + scenario, family, scenario,
         Attributes.ofInProgress(family, scenario));
+  }
+
+  /**
+   * A label as the cells are named now. Parameter files written before the code was translated
+   * name the own family PROPRIA, the union UNIAO and the two C2 blocks CONTEUDO and EXPOSICAO.
+   */
+  static String current(final String label) {
+    return label.replace("PROPRIA", "OWN").replace("UNIAO", "UNION")
+        .replace("CONTEUDO", "CONTENT").replace("EXPOSICAO", "EXPOSURE");
   }
 
   /** The grid a population is read with. */
@@ -76,7 +86,8 @@ public record Cell(String label, Family family, Scenario scenario, List<Attribut
   }
 
   public static Cell byLabel(final String label, final Universe.Population population) {
-    return grid(population).stream().filter(c -> c.label().equals(label)).findFirst()
+    final String name = current(label);
+    return grid(population).stream().filter(c -> c.label().equals(name)).findFirst()
         .orElseThrow(() -> new IllegalArgumentException("no such cell: " + label));
   }
 }

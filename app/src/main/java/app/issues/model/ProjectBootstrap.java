@@ -46,7 +46,7 @@ public final class ProjectBootstrap {
   public record Gap(String a, String b, double gapHours, double low, double high) {
 
     /**
-     * The registered criterion (REGISTRO-PREVIO.md, section 8): an interval that contains zero is a
+     * The registered criterion (the pre-registration, section 8): an interval that contains zero is a
      * tie, whatever the order of the table.
      */
     public boolean tied() {

@@ -4,8 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * What {@code papers/issues-in-progress/implementacao/REGISTRO-PREVIO.md} froze before any code
- * could score the secondary study's external test, as its reserved run checks it. Every number
+ * What the in-progress study's pre-registration froze before any code could score its external
+ * test, as its reserved run checks it. Every number
  * here is copied from that file, which was committed first; a difference refuses the run before
  * anything is scored. There is no never-scored subset (P22).
  */
@@ -34,16 +34,16 @@ public final class RegistrationInProgress {
       final int parameterLines, final Sizes found) {
     final List<String> out = new ArrayList<>();
     if (!MATRIX_SHA256.equals(matrixSha)) {
-      out.add("matriz: SHA-256 " + matrixSha + ", registrado " + MATRIX_SHA256);
+      out.add("matrix: SHA-256 " + matrixSha + ", registered " + MATRIX_SHA256);
     }
     if (!PARAMETERS_SHA256.equals(parametersSha)) {
-      out.add("parametros: SHA-256 " + parametersSha + ", registrado " + PARAMETERS_SHA256);
+      out.add("parameters: SHA-256 " + parametersSha + ", registered " + PARAMETERS_SHA256);
     }
     if (parameterLines != PARAMETER_LINES) {
-      out.add("parametros: " + parameterLines + " linhas, registradas " + PARAMETER_LINES);
+      out.add("parameters: " + parameterLines + " lines, registered " + PARAMETER_LINES);
     }
     if (!SIZES.equals(found)) {
-      out.add("IN_PROGRESS: " + found + ", registrado " + SIZES);
+      out.add("IN_PROGRESS: " + found + ", registered " + SIZES);
     }
     return out;
   }

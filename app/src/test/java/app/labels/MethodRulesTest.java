@@ -138,7 +138,7 @@ class MethodRulesTest {
     @Test
     @DisplayName("the incremental share is over what entered the stage, not over the corpus")
     void shareUsesTheStageDenominator() {
-      final FunnelStage stage = new FunnelStage("recorte Java", 69_966, 21_651, 91_617);
+      final FunnelStage stage = new FunnelStage("Java cut", 69_966, 21_651, 91_617);
 
       assertEquals(21_651 / 91_617.0, stage.incrementalShare(), 1e-12);
     }

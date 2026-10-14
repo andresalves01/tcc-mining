@@ -35,15 +35,15 @@ public final class FitInnerCommand implements CommandRunner {
     for (final Bounds bounds : List.of(Bounds.none(), Bounds.oneHourToOneYear())) {
       try {
         final FitModelTask.Report report = task.run(bounds, app.model.Population.all());
-        FitCommand.print(report, bounds, "SELECAO INTERNA");
+        FitCommand.print(report, bounds, "INNER SELECTION");
         printAblationGradient(report);
         printPerColumn(task, bounds, report);
       } catch (final FitModelTask.NoObservationsException e) {
         throw new CommandFailedException(List.of("  " + e.getMessage()));
       }
     }
-    System.out.printf("%n  fit-inner nao chama FitModelTask.heldOut() em nenhum caminho --"
-        + " o conjunto retido nao foi tocado por esta execucao.%n");
+    System.out.printf("%n  fit-inner does not call FitModelTask.heldOut() on any path --"
+        + " the held-out set was not touched by this run.%n");
   }
 
   /**
@@ -59,13 +59,13 @@ public final class FitInnerCommand implements CommandRunner {
     if (shape == null) {
       return;
     }
-    System.out.printf("%n  ORDENAR DESENVOLVEDORES POR ABLACAO  (gradiente inteiro)%n");
-    System.out.printf("    cada celula traz a concordancia e, entre parenteses, os pares que a%n");
-    System.out.printf("    produziram. Elas mudam por linha: um par cuja previsao empata nao%n");
-    System.out.printf("    decide nada e sai. Um modelo que so ve a tarefa empata quase tudo%n");
-    System.out.printf("    quando o filtro ja igualou as tarefas, entao pontua em muito menos%n");
-    System.out.printf("    pares -- as porcentagens de linhas diferentes nao sao comparaveis%n");
-    System.out.printf("    entre si sem olhar o denominador.%n%n");
+    System.out.printf("%n  ORDERING DEVELOPERS BY ABLATION  (whole gradient)%n");
+    System.out.printf("    each cell carries the agreement and, in parentheses, the pairs that%n");
+    System.out.printf("    produced it. They change by row: a pair whose prediction ties%n");
+    System.out.printf("    decides nothing and drops out. A model that sees only the task ties almost everything%n");
+    System.out.printf("    once the filter has matched the tasks, so it scores on far fewer%n");
+    System.out.printf("    pairs -- the percentages of different rows are not comparable%n");
+    System.out.printf("    with each other without looking at the denominator.%n%n");
     System.out.printf("    %-26s", "");
     for (final DeveloperOrdering.Result step : shape) {
       System.out.printf(" %22s", abbreviate(step.matching()));
@@ -91,14 +91,14 @@ public final class FitInnerCommand implements CommandRunner {
 
     final Map<String, FitModelTask.Scored> byColumn =
         task.perColumn(bounds, report.alpha(), report.lambda());
-    System.out.printf("%n  PODER PREDITIVO DE CADA FATOR, SOZINHO%n");
-    System.out.printf("    um modelo por coluna, mesmo alpha, mesmo lambda, mesmas particoes%n%n");
-    System.out.printf("    as duas ultimas colunas trazem os pares entre parenteses, pelo mesmo%n");
-    System.out.printf("    motivo: um fator que empata muito pontua em poucos pares.%n%n");
+    System.out.printf("%n  PREDICTIVE POWER OF EACH FACTOR, ALONE%n");
+    System.out.printf("    one model per column, same alpha, same lambda, same partitions%n%n");
+    System.out.printf("    the last two columns carry the pairs in parentheses, for the same%n");
+    System.out.printf("    reason: a factor that ties a lot scores on few pairs.%n%n");
     System.out.printf("    %-26s %9s %9s %14s %20s %20s%n",
-        "fator", "MAE d", "R2 log", "ordena tarefa", "ordena devs", "ordena devs");
+        "factor", "MAE d", "R2 log", "orders tasks", "orders devs", "orders devs");
     System.out.printf("    %-26s %9s %9s %14s %20s %20s%n",
-        "", "", "", "", "(qualquer par)", "(estrito)");
+        "", "", "", "", "(any pair)", "(strict)");
     for (final Map.Entry<String, FitModelTask.Scored> entry : byColumn.entrySet()) {
       final FitModelTask.Scored scored = entry.getValue();
       if (scored.metrics() == null) {

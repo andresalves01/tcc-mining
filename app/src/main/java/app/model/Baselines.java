@@ -41,17 +41,17 @@ public final class Baselines {
   }
 
   /**
-   * Prever toda tarefa de uma pessoa pela media dela, sem olhar a tarefa.
+   * Predict every task of a person by that person's mean, without looking at the task.
    *
-   * <p>Deliberadamente ingenua: nao ve tamanho, nem equipe, nem revisao. Serve para responder uma
-   * pergunta que nenhuma outra referencia responde -- quanto de ordenacao de pessoas se consegue
-   * sabendo <i>so</i> quem e a pessoa.
+   * <p>Deliberately naive: it sees neither size, nor team, nor review. It serves to answer a
+   * question no other reference answers -- how much ordering of people can be had knowing
+   * <i>only</i> who the person is.
    *
-   * <p>De onde vem a media muda tudo, e por isso existem duas chamadas possiveis. Construida sobre
-   * o lado do ajuste, e um metodo honesto e comparavel ao modelo. Construida sobre as proprias
-   * linhas que estao sendo pontuadas, e um oraculo: usa a resposta para montar o palpite, nao pode
-   * ser usada para prever nada, e vale como TETO -- o maximo que qualquer metodo que ordene
-   * pessoas por um numero por pessoa poderia alcancar naquele conjunto.
+   * <p>Where the mean comes from changes everything, and that is why there are two possible calls.
+   * Built on the fitting side, it is an honest method comparable to the model. Built on the very
+   * rows being scored, it is an oracle: it uses the answer to build the guess, cannot be used to
+   * predict anything, and stands as a CEILING -- the most any method that orders people by one
+   * number per person could reach on that set.
    */
   public static ToDoubleFunction<Observation> perDeveloper(final List<Observation> from) {
     final Map<String, Double> byDeveloper = meanBy(from, Observation::developer);
@@ -73,17 +73,17 @@ public final class Baselines {
   }
 
   /**
-   * Prever cada tarefa pela mediana historica das tarefas de tamanho parecido.
+   * Predict each task by the historical median of tasks of similar size.
    *
-   * <p>O analogo, do lado da tarefa, de {@link #perDeveloper}. Uma pessoa e uma entidade que se
-   * repete e por isso da para "repetir o que ela fez antes"; uma tarefa nao. Repetir, aqui, e
-   * agrupar tarefas parecidas e devolver a mediana do grupo -- uma tabela de consulta por tamanho,
-   * sem modelo nenhum.
+   * <p>The task-side analogue of {@link #perDeveloper}. A person is an entity that repeats, so one
+   * can "repeat what they did before"; a task cannot. Repeating, here, is grouping similar tasks and
+   * returning the group's median -- a lookup table by size, with no model at all.
    *
-   * <p>Os grupos sao decis do tamanho da tarefa calculados <b>so no lado do ajuste</b>, pelo mesmo
-   * motivo que toda referencia aqui e: um corte derivado das linhas que se esta pontuando deixaria
-   * a referencia ver a resposta. Dez grupos e escolha declarada antes de ver o resultado, e nao
-   * foi variada depois: com poucos grupos a tabela vira a mediana global, com muitos ela decora.
+   * <p>The groups are deciles of task size computed <b>only on the fitting side</b>, for the same
+   * reason every reference here is: a cut derived from the rows being scored would let the
+   * reference see the answer. Ten groups is a choice declared before seeing the result, and it was
+   * not varied afterwards: with few groups the table becomes the global median, with many it
+   * memorises.
    */
   public static ToDoubleFunction<Observation> perTaskSize(final List<Observation> fit) {
     final int buckets = 10;

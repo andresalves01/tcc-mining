@@ -1,27 +1,27 @@
 package app.labels;
 
 /**
- * Como o primeiro exame externo de uma tarefa foi reconhecido.
+ * How the first external examination of a task was recognised.
  *
- * <p>Medido sobre os 18.786 pull requests mesclados: revisao formal existe em 56,4% deles, e um
- * comentario de terceiro leva a cobertura a 78,1%. Contar so revisao formal nao e conservador, e
- * enviesado -- a fracao mediana da vida gasta antes da fronteira cai de 0,290 para 0,126 quando o
- * comentario entra, porque em 21,6% dos casos alguem comentou bem antes de qualquer revisao ser
- * submetida.
+ * <p>Measured over the 18,786 merged pull requests: a formal review exists in 56.4% of them, and a
+ * third party's comment takes the coverage to 78.1%. Counting only formal reviews is not
+ * conservative, it is biased -- the median fraction of the life spent before the boundary falls
+ * from 0.290 to 0.126 when the comment enters, because in 21.6% of the cases someone commented well
+ * before any review was submitted.
  *
- * <p>O filtro de autoria nao e detalhe: 12.716 pull requests tem algum comentario, mas so 10.570
- * tem comentario de quem nao e autor dos commits. O resto e o autor falando sozinho, que nao e
- * ninguem examinando coisa nenhuma.
+ * <p>The authorship filter is not a detail: 12,716 pull requests have some comment, but only 10,570
+ * have a comment from someone who is not an author of the commits. The rest is the author talking
+ * alone, which is nobody examining anything.
  *
- * <p>Ausencia nao e um valor deste enum. Os 21,9% sem exame registrado carregam um exame vazio, e
- * as duas parcelas da duracao ficam ausentes para eles -- dizer que esperaram a vida inteira
- * afirmaria que ninguem olhou, e dizer que esperaram zero afirmaria o contrario.
+ * <p>Absence is not a value of this enum. The 21.9% with no recorded examination carry an empty
+ * examination, and the two parts of the duration are absent for them -- saying they waited their
+ * whole life would claim nobody looked, and saying they waited zero would claim the opposite.
  */
 public enum ExamOrigin {
 
-  /** Uma revisao formal submetida, de {@code pull_request_review}. */
+  /** A submitted formal review, from {@code pull_request_review}. */
   REVIEW,
 
-  /** Um comentario de quem nao e autor dos commits, de {@code pull_request_comment}. */
+  /** A comment from someone who is not an author of the commits, from {@code pull_request_comment}. */
   COMMENT
 }

@@ -7,7 +7,7 @@ import java.util.regex.Pattern;
 /**
  * The text measures, written to agree with the Python specification character for character.
  *
- * <p>{@code colunas.py} counts words with {@code \S+} and splits with {@code str.split()}, both of
+ * <p>The Python column script counts words with {@code \S+} and splits with {@code str.split()}, both of
  * which treat every Unicode space as a separator, and measures lengths in code points. Java's
  * defaults do neither, so both are spelled out here rather than left to a regex flag whose notion of
  * space is close but not the same.

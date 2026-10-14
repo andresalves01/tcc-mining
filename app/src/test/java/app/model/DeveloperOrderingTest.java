@@ -22,7 +22,7 @@ class DeveloperOrderingTest {
     values[Columns.taskSize()] = size;
     values[Columns.descriptionLength()] = description;
     for (final int i : Columns.typeIndices()) {
-      values[i] = Columns.all().get(i).name().equals("tipo=" + type) ? 1 : 0;
+      values[i] = Columns.all().get(i).name().equals("type=" + type) ? 1 : 0;
     }
     return new Observation(developer + ttc, "p", developer, ttc, values);
   }

@@ -6,8 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * What {@code papers/issues/implementacao/REGISTRO-PREVIO.md} froze before any code could score the
- * external test, as the reserved run checks it. Every number here is copied from that file, which
+ * What the study's pre-registration froze before any code could score the external test, as the reserved run checks it. Every number here is copied from that file, which
  * was committed first; a difference refuses the run before anything is scored.
  */
 public final class Registration {
@@ -41,20 +40,20 @@ public final class Registration {
       final int parameterLines, final Map<Population, Sizes> found) {
     final List<String> out = new ArrayList<>();
     if (!MATRIX_SHA256.equals(matrixSha)) {
-      out.add("matriz: SHA-256 " + matrixSha + ", registrado " + MATRIX_SHA256);
+      out.add("matrix: SHA-256 " + matrixSha + ", registered " + MATRIX_SHA256);
     }
     if (!PARAMETERS_SHA256.equals(parametersSha)) {
-      out.add("parametros: SHA-256 " + parametersSha + ", registrado " + PARAMETERS_SHA256);
+      out.add("parameters: SHA-256 " + parametersSha + ", registered " + PARAMETERS_SHA256);
     }
     if (parameterLines != PARAMETER_LINES) {
-      out.add("parametros: " + parameterLines + " linhas, registradas " + PARAMETER_LINES);
+      out.add("parameters: " + parameterLines + " lines, registered " + PARAMETER_LINES);
     }
     for (final Population p : Population.MAIN) {
       final Sizes f = found.get(p);
       if (f == null) {
-        out.add(p + ": nao conferida");
+        out.add(p + ": not checked");
       } else if (!SIZES.get(p).equals(f)) {
-        out.add(p + ": " + f + ", registrado " + SIZES.get(p));
+        out.add(p + ": " + f + ", registered " + SIZES.get(p));
       }
     }
     return out;

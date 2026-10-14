@@ -112,68 +112,67 @@ public enum Command {
       references. Hyperparameters are chosen on the inner split only.
       Reads only, writes nothing -- redirect the output. Needs features."""),
 
-  ISSUES_EXTRACT("issues-extrair", new IssuesExtractCommand(), """
+  ISSUES_EXTRACT("issues-extract", new IssuesExtractCommand(), """
       Issue duration: build the three populations (Fixed, the main one;
       broad; inherited) and every column in both scenarios, and run the
       gates -- the thesis split, time travel, parity with the Python
-      specification in PARIDADE. Writes the cache to CACHE only if every
+      specification in PARITY. Writes the cache to CACHE only if every
       gate passed; records a summary in ISSUES_DB; reads everything else."""),
 
-  ISSUES_GRID("issues-grade", new IssuesGridCommand(), """
+  ISSUES_GRID("issues-grid", new IssuesGridCommand(), """
       Issue duration: sweep the eleven cells of each population with
       Elastic Net on the inner selection. Writes the chosen parameters to
-      PARAMETROS; reads CACHE; records the run in ISSUES_DB. The outer test
+      PARAMETERS; reads CACHE; records the run in ISSUES_DB. The outer test
       rows are refused."""),
 
-  ISSUES_CHECK("issues-conferencia", new IssuesCheckCommand(), """
+  ISSUES_CHECK("issues-check", new IssuesCheckCommand(), """
       Issue duration: every reading of the plan -- references, project-
       resampled intervals, bands of the true duration, C2 by block, the
       sensitivities -- on the inner selection with the parameters in
-      PARAMETROS. Optimistic by construction; the outer test is not read."""),
+      PARAMETERS. Optimistic by construction; the outer test is not read."""),
 
-  ISSUES_IN_PROGRESS_EXTRACT("issues-andamento-extrair", new IssuesInProgressExtractCommand(), """
-      Issue duration from the first In Progress (papers/issues-in-progress):
-      the FIXED issues read at that instant, the split on it, time travel
-      and parity with the Python specification in PARIDADE. Writes the
-      cache to CACHE only if every gate passed; records a summary in
-      ISSUES_DB; reads everything else."""),
+  ISSUES_IN_PROGRESS_EXTRACT("issues-in-progress-extract", new IssuesInProgressExtractCommand(), """
+      Issue duration from the first In Progress: the FIXED issues read at
+      that instant, the split on it, time travel and parity with the
+      Python specification in PARITY. Writes the cache to CACHE only if
+      every gate passed; records a summary in ISSUES_DB; reads everything
+      else."""),
 
-  ISSUES_IN_PROGRESS_GRID("issues-andamento-grade", new IssuesInProgressGridCommand(), """
+  ISSUES_IN_PROGRESS_GRID("issues-in-progress-grid", new IssuesInProgressGridCommand(), """
       Issue duration from the first In Progress: sweep the six cells on the
-      inner selection. Writes PARAMETROS; reads CACHE; records the run in
+      inner selection. Writes PARAMETERS; reads CACHE; records the run in
       ISSUES_DB. The outer test rows are refused."""),
 
-  ISSUES_IN_PROGRESS_CHECK("issues-andamento-conferencia", new IssuesInProgressCheckCommand(),
+  ISSUES_IN_PROGRESS_CHECK("issues-in-progress-check", new IssuesInProgressCheckCommand(),
       """
       Issue duration from the first In Progress: every reading on the inner
-      selection with the parameters in PARAMETROS, the main reference chosen
+      selection with the parameters in PARAMETERS, the main reference chosen
       among three (P12). Optimistic by construction; the outer test is not
       read."""),
 
-  ISSUES_FOREST("issues-floresta", new IssuesForestCommand(), """
+  ISSUES_FOREST("issues-forest", new IssuesForestCommand(), """
       Issue duration: a random forest beside the Elastic Net, cell by cell, on
       the inner selection only, with the forest's declared grid and the
-      linear model's PARAMETROS. Reads CACHE; POPULACOES as issues-grade;
+      linear model's PARAMETERS. Reads CACHE; POPULATIONS as issues-grid;
       records the run in ISSUES_DB. The outer test rows are refused."""),
 
-  ISSUES_RESERVED("issues-reservado", new IssuesReservedCommand(), """
+  ISSUES_RESERVED("issues-reserved", new IssuesReservedCommand(), """
       Issue duration: the one scoring of the outer test that
-      REGISTRO-PREVIO.md lays out. Refuses unless the matrix and the
+      pre-registration lays out. Refuses unless the matrix and the
       parameters match their registered SHA-256 and every side and subset
       has its registered size; then refits each cell on the whole outer
       training side (lambda scaled by decision 20), prints the weights and
-      scores the test, all three populations. Reads CACHE, PARAMETROS and
-      NUNCA_PONTUADAS; writes PREVISOES; records the run in ISSUES_DB."""),
+      scores the test, all three populations. Reads CACHE, PARAMETERS and
+      NEVER_SCORED; writes PREDICTIONS; records the run in ISSUES_DB."""),
 
-  ISSUES_IN_PROGRESS_RESERVED("issues-andamento-reservado",
+  ISSUES_IN_PROGRESS_RESERVED("issues-in-progress-reserved",
       new IssuesInProgressReservedCommand(), """
       Issue duration from the first In Progress: the one scoring of the outer
-      test that papers/issues-in-progress/implementacao/REGISTRO-PREVIO.md
-      lays out. Refuses unless the matrix and the parameters match their
+      test that its pre-registration lays out. Refuses unless the matrix and the parameters match their
       registered SHA-256 and every side has its registered size; then
       refits the eleven cells on the whole outer training side (lambda
       scaled by the ratio of rows), prints the weights and scores the test.
-      Reads CACHE and PARAMETROS; writes PREVISOES; records the run in
+      Reads CACHE and PARAMETERS; writes PREDICTIONS; records the run in
       ISSUES_DB."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """

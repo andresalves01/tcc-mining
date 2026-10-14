@@ -133,7 +133,7 @@ public final class DesignMatrix {
       }
     }
     if (levels.size() < 2) {
-      dropped.add(attribute.name() + " (uma categoria so)");
+      dropped.add(attribute.name() + " (a single category)");
       return;
     }
     // The lowest level is the reference. With an intercept, a full set of indicators is collinear
@@ -230,7 +230,7 @@ public final class DesignMatrix {
 
   @Override
   public String toString() {
-    return columns.size() + " colunas" + (dropped.isEmpty() ? ""
-        : ", " + dropped.size() + " retiradas por serem constantes: " + Arrays.toString(dropped.toArray()));
+    return columns.size() + " columns" + (dropped.isEmpty() ? ""
+        : ", " + dropped.size() + " dropped for being constant: " + Arrays.toString(dropped.toArray()));
   }
 }

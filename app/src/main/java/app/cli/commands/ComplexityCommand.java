@@ -24,24 +24,24 @@ public final class ComplexityCommand implements CommandRunner {
       throw new CommandFailedException(List.of("  " + e.getMessage()));
     }
 
-    System.out.printf("%n  COMPLEXIDADE POR COMMIT%n%n");
-    System.out.printf("  commits que algum preditor pode consultar : %,d%n", report.targeted());
-    System.out.printf("  ja lidos em execucao anterior             : %,d%n",
+    System.out.printf("%n  COMPLEXITY PER COMMIT%n%n");
+    System.out.printf("  commits some predictor may look up       : %,d%n", report.targeted());
+    System.out.printf("  already read in an earlier run           : %,d%n",
         report.alreadyStored());
-    System.out.printf("  lidos agora                               : %,d%n",
+    System.out.printf("  read now                                 : %,d%n",
         report.scan().scanned());
-    System.out.printf("    destes, com ao menos um metodo recuperavel : %,d   (%.2f%%)%n",
+    System.out.printf("    of these, with at least one recoverable method : %,d   (%.2f%%)%n",
         report.scan().withMethods(), share(report.scan().withMethods(), report.scan().scanned()));
-    System.out.printf("    metodos somados                            : %,d%n",
+    System.out.printf("    methods summed                                 : %,d%n",
         report.scan().methods());
-    System.out.printf("    metodos alcancados sem metrica no corpus   : %,d   (%.2f%%)%n",
+    System.out.printf("    methods reached with no metric in the corpus   : %,d   (%.2f%%)%n",
         report.scan().unrecoverable(),
         share(report.scan().unrecoverable(),
             report.scan().methods() + report.scan().unrecoverable()));
-    System.out.printf("    (nao entram na soma e nao sao zero -- e cobertura, e vai relatada)%n");
-    System.out.printf("%n  gravou %,d linhas em %s%n", report.written(),
+    System.out.printf("    (they do not enter the sum and are not zero -- it is coverage, and it is reported)%n");
+    System.out.printf("%n  wrote %,d rows to %s%n", report.written(),
         context.complexityStore().describe());
-    System.out.printf("  rode `features` de novo para que McCC_tot, mu_M e s_M deixem de faltar%n");
+    System.out.printf("  run `features` again so that McCC_tot, mu_M and s_M are no longer missing%n");
   }
 
   private static double share(final long part, final long total) {

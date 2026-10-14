@@ -15,7 +15,7 @@ package app.model;
 public record Bounds(String name, double minDays, double maxDays) {
 
   public static Bounds none() {
-    return new Bounds("sem limites", 0, Double.MAX_VALUE);
+    return new Bounds("no bounds", 0, Double.MAX_VALUE);
   }
 
   public static Bounds oneHourToOneYear() {

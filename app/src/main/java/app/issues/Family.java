@@ -4,7 +4,7 @@ package app.issues;
 public enum Family {
 
   /** The author's own specification: Article 1's columns and the additions translated from Article 4. */
-  PROPRIA,
+  OWN,
 
   /** Kikas, Dumas and Pfahl (MSR 2016), without the text score and the subscribers: "Kikas parcial". */
   KIKAS,
@@ -13,5 +13,5 @@ public enum Family {
   ALZUBAIDI,
 
   /** The three together, a construct shared by two of them entering once. Only a cell family. */
-  UNIAO
+  UNION
 }

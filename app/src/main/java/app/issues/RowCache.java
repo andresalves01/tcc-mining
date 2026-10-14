@@ -24,6 +24,8 @@ import java.util.Set;
 public final class RowCache {
 
   private static final String SEP = "\t";
+  // The column names below are the file format: the caches already on disk, and the matrices whose
+  // SHA-256 the pre-registrations froze, were written with them, so they stay as they are.
   private static final List<String> BASE = List.of("id", "chave", "projeto", "relator",
       "executor", "criada_em", "resolvida_em", "motivo", "movida");
   private static final String STARTED = "iniciada_em";
@@ -110,7 +112,7 @@ public final class RowCache {
   public static List<Entry> read(final Path path) throws IOException {
     final List<String> lines = Files.readAllLines(path, StandardCharsets.UTF_8);
     if (lines.isEmpty()) {
-      throw new IOException(path + " esta vazio");
+      throw new IOException(path + " is empty");
     }
     final String[] header = lines.get(0).split(SEP, -1);
     final Map<String, Integer> at = new HashMap<>();
@@ -119,7 +121,7 @@ public final class RowCache {
     }
     for (int i = 0; i < BASE.size(); i++) {
       if (!BASE.get(i).equals(header[i])) {
-        throw new IOException(path + ": coluna " + i + " deveria ser " + BASE.get(i));
+        throw new IOException(path + ": column " + i + " should be " + BASE.get(i));
       }
     }
     final Integer started = at.get(STARTED);

@@ -14,7 +14,7 @@ import java.util.Set;
 /**
  * Which issues exist for the study, what their outcome is, and the populations built on them.
  *
- * <p>The rules of {@code papers/issues/viabilidade/analises/lib.py} and {@code 10_funil.py}, and
+ * <p>The rules of the Python library and funnel scripts, and
  * nothing else:
  *
  * <ul>
@@ -46,7 +46,7 @@ public final class Universe {
     /** Conditional: the previous study's labels, code-linked, Δ₂ ≥ 0, one per key. */
     INHERITED,
     /**
-     * The secondary study (papers/issues-in-progress): FIXED issues with a status change to In
+     * The in-progress study: FIXED issues with a status change to In
      * Progress in [creation, first resolution); their duration starts at the first such change.
      */
     IN_PROGRESS;
@@ -132,10 +132,10 @@ public final class Universe {
     }
 
     final Map<String, Integer> funnel = new LinkedHashMap<>();
-    funnel.put("issues no corpus", corpus.issues().size());
-    funnel.put("da casa", home.size());
-    funnel.put("chave Jira unica", unique.size());
-    funnel.put("com instante de criacao", universe.size());
+    funnel.put("issues in the corpus", corpus.issues().size());
+    funnel.put("home project", home.size());
+    funnel.put("unique Jira key", unique.size());
+    funnel.put("with a creation instant", universe.size());
     int withResolution = 0;
     int positive = 0;
     final Map<String, Unit> units = new HashMap<>();
@@ -191,12 +191,12 @@ public final class Universe {
       inherited.add(id);
     }
 
-    funnel.put("com primeira transicao para Resolved/Closed", withResolution);
-    funnel.put("com duracao positiva", positive);
-    funnel.put("com relator (AMPLA)", broad.size());
-    funnel.put("motivo Fixed na primeira resolucao (FIXED)", fixed.size());
-    funnel.put("rotulos herdados com delta2 >= 0", inheritedAll.size());
-    funnel.put("rotulos herdados, chave unica (HERDADA)", inherited.size());
+    funnel.put("with a first transition to Resolved/Closed", withResolution);
+    funnel.put("with a positive duration", positive);
+    funnel.put("with a reporter (BROAD)", broad.size());
+    funnel.put("reason Fixed at the first resolution (FIXED)", fixed.size());
+    funnel.put("inherited labels with delta2 >= 0", inheritedAll.size());
+    funnel.put("inherited labels, unique key (INHERITED)", inherited.size());
     final Map<Population, List<String>> populations = new LinkedHashMap<>();
     populations.put(Population.FIXED, List.copyOf(fixed));
     populations.put(Population.BROAD, List.copyOf(broad));
