@@ -21,14 +21,14 @@ public final class Registration {
 
   /**
    * Sections 2 and 5, per population: outer training, outer test, inner fitting and inner
-   * selection rows, and the test rows never scored before (section 3).
+   * selection rows.
    */
-  public record Sizes(int train, int test, int innerFit, int innerSelection, int neverScored) {}
+  public record Sizes(int train, int test, int innerFit, int innerSelection) {}
 
   public static final Map<Population, Sizes> SIZES = Map.of(
-      Population.FIXED, new Sizes(83_742, 37_236, 56_302, 25_124, 21_614),
-      Population.BROAD, new Sizes(105_891, 47_831, 68_832, 31_768, 31_645),
-      Population.INHERITED, new Sizes(33_816, 15_028, 22_676, 10_146, 10));
+      Population.FIXED, new Sizes(83_742, 37_236, 56_302, 25_124),
+      Population.BROAD, new Sizes(105_891, 47_831, 68_832, 31_768),
+      Population.INHERITED, new Sizes(33_816, 15_028, 22_676, 10_146));
 
   /** Section 5: eleven cells in each of three populations. */
   public static final int PARAMETER_LINES = 33;

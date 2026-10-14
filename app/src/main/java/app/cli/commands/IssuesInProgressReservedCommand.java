@@ -24,7 +24,7 @@ import java.util.Map;
  * every side against the registration, and refuses on any difference. Then each of the eleven
  * cells is refitted on the whole outer training side with its frozen alpha and the chosen lambda
  * times the ratio of rows; the weights are printed; the three references are learned on that side;
- * the outer test is scored and read every way section 8 names. No never-scored subset (P22).
+ * the outer test is scored and read every way section 8 names.
  *
  * <p>Reads CACHE and PARAMETERS; writes every prediction to PREDICTIONS; records the run in ISSUES_DB
  * by insertion.
@@ -83,7 +83,7 @@ public final class IssuesInProgressReservedCommand implements CommandRunner {
         + "now, once%n");
 
     final IssuesEvaluationTask.Report r = new IssuesEvaluationTask(context.progress()).run(
-        entries, frozen, P, Fitting.Mode.RESERVED, null);
+        entries, frozen, P, Fitting.Mode.RESERVED);
 
     System.out.printf("%n  ==== OUTER TEST -- %s ====%n", IssuesPrinting.name(P));
     System.out.printf("  refit on the whole outer training side (%,d rows); scored %,d rows "
@@ -114,7 +114,7 @@ public final class IssuesInProgressReservedCommand implements CommandRunner {
     rows.addAll(IssuesReservedCommand.comparisonRows(r));
 
     final StringBuilder predictions = new StringBuilder();
-    IssuesReservedCommand.appendPredictions(predictions, r, null);
+    IssuesReservedCommand.appendPredictions(predictions, r);
     try {
       Files.writeString(out, predictions.toString());
     } catch (final IOException e) {

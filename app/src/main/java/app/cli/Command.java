@@ -157,11 +157,11 @@ public enum Command {
   ISSUES_RESERVED("issues-reserved", new IssuesReservedCommand(), """
       Issue duration: the one scoring of the outer test that
       pre-registration lays out. Refuses unless the matrix and the
-      parameters match their registered SHA-256 and every side and subset
-      has its registered size; then refits each cell on the whole outer
+      parameters match their registered SHA-256 and every side has its
+      registered size; then refits each cell on the whole outer
       training side (lambda scaled by decision 20), prints the weights and
-      scores the test, all three populations. Reads CACHE, PARAMETERS and
-      NEVER_SCORED; writes PREDICTIONS; records the run in ISSUES_DB."""),
+      scores the test, all three populations. Reads CACHE and PARAMETERS;
+      writes PREDICTIONS; records the run in ISSUES_DB."""),
 
   ISSUES_IN_PROGRESS_RESERVED("issues-in-progress-reserved",
       new IssuesInProgressReservedCommand(), """

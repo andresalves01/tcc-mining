@@ -7,7 +7,7 @@ import java.util.List;
  * What the in-progress study's pre-registration froze before any code could score its external
  * test, as its reserved run checks it. Every number
  * here is copied from that file, which was committed first; a difference refuses the run before
- * anything is scored. There is no never-scored subset (P22).
+ * anything is scored.
  */
 public final class RegistrationInProgress {
 

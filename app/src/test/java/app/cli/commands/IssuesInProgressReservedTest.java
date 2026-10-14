@@ -2,7 +2,6 @@ package app.cli.commands;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import app.issues.Attribute;
@@ -69,42 +68,27 @@ class IssuesInProgressReservedTest {
 
   @Test
   @DisplayName("lambda scaled by the ratio of rows, three references in the main rule, the pause "
-      + "sensitivity, no subset, and predictions without a never-scored column")
+      + "sensitivity, and one prediction line per scored row")
   void reservedRun() {
     final IssuesEvaluationTask.Report r = new IssuesEvaluationTask(Progress.silent()).run(corpus(),
         List.of(new IssuesEvaluationTask.Frozen(Population.IN_PROGRESS, CELL, 0.5, 10.0)),
-        Population.IN_PROGRESS, Fitting.Mode.RESERVED, null);
+        Population.IN_PROGRESS, Fitting.Mode.RESERVED);
     assertEquals(180, r.fitRows());
     assertEquals(120, r.innerFitRows());
     assertEquals(60, r.scoredRows());
     assertEquals(10.0 * 180 / 120, r.evaluated().get(0).fitted().lambda(), 1e-12);
     assertTrue(r.recalibrated().isEmpty());
     assertFalse(Double.isNaN(r.main().pairMaeHours()), "P12: the pair is a candidate");
-    assertNull(r.neverScored(), "P22");
     assertTrue(r.sensitivities().stream()
         .anyMatch(x -> x.what().startsWith("without the issues that go back")), "P16");
 
     final StringBuilder out = new StringBuilder();
-    IssuesReservedCommand.appendPredictions(out, r, null);
+    IssuesReservedCommand.appendPredictions(out, r);
     final String[] lines = out.toString().split("\n");
     assertTrue(lines[0].startsWith("population\tid\tkey\tproject\tobserved_h\t"), lines[0]);
     assertEquals(1 + 60, lines.length);
     assertEquals(lines[0].split("\t").length, lines[1].split("\t").length);
     assertEquals(r.observed()[0], Double.parseDouble(lines[1].split("\t")[4]), 1e-12,
         "measured from the start");
-  }
-
-  @Test
-  @DisplayName("the main study's predictions keep their never-scored column")
-  void mainLayoutUnchanged() {
-    final IssuesEvaluationTask.Report r = new IssuesEvaluationTask(Progress.silent()).run(corpus(),
-        List.of(new IssuesEvaluationTask.Frozen(Population.IN_PROGRESS, CELL, 0.5, 10.0)),
-        Population.IN_PROGRESS, Fitting.Mode.RESERVED, null);
-    final StringBuilder out = new StringBuilder();
-    IssuesReservedCommand.appendPredictions(out, r, Set.of(r.scoredUnits().get(0).issueId()));
-    final String[] lines = out.toString().split("\n");
-    assertTrue(lines[0].startsWith("population\tid\tkey\tproject\tnever_scored\tobserved_h\t"));
-    assertEquals("1", lines[1].split("\t")[4]);
-    assertEquals("0", lines[2].split("\t")[4]);
   }
 }

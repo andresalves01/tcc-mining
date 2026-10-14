@@ -101,19 +101,11 @@ public final class IssuesEvaluationTask {
     return v != null && v == 1.0;
   }
 
-  /** One specification's reading on a subset of the scored rows, with the same predictions. */
-  public record SubsetRow(Score score, ProjectBootstrap.Interval overProject,
-      ProjectBootstrap.Interval overConstant) {}
-
-  /** The scored rows never scored by an earlier study (the pre-registration, section 3). */
-  public record Subset(int n, List<SubsetRow> rows) {}
-
   /**
    * @param innerFitRows the rows the chosen lambdas were fitted on, which decision 20 scales by
    * @param familiesByProjects the tie criterion; {@code families}, by rows, is the narrower reading
    * @param unseenProjects projects of the scored side with no fitting row: there the project median
    *     is the constant
-   * @param neverScored null when not asked for
    */
   public record Report(Population population, Fitting.Mode mode, int fitRows, int scoredRows,
       int innerFitRows, Score.Outcome outcome, Score project, Score constant, Score pair,
@@ -121,7 +113,7 @@ public final class IssuesEvaluationTask {
       List<Bootstrap.Comparison> families, List<ProjectBootstrap.Gap> familiesByProjects,
       List<Bootstrap.Comparison> blocks, List<ProjectBootstrap.Gap> blocksByProjects,
       List<Sensitivity> sensitivities, List<Recalibrated> recalibrated,
-      Set<String> unseenProjects, int unseenRows, Subset neverScored, List<IssueUnit> scoredUnits,
+      Set<String> unseenProjects, int unseenRows, List<IssueUnit> scoredUnits,
       double[] observed) {}
 
   private final Progress progress;
@@ -132,15 +124,6 @@ public final class IssuesEvaluationTask {
 
   public Report run(final List<RowCache.Entry> entries, final List<Frozen> frozen,
       final Population population, final Fitting.Mode mode) {
-    return run(entries, frozen, population, mode, null);
-  }
-
-  /**
-   * @param neverScored ids of the scored rows to read again on their own, with the same
-   *     predictions; null for none
-   */
-  public Report run(final List<RowCache.Entry> entries, final List<Frozen> frozen,
-      final Population population, final Fitting.Mode mode, final Set<String> neverScored) {
 
     final Fitting.Sides sides = Fitting.sides(entries, mode, population);
     // the inner cut decides the main reference and is what the chosen lambdas were fitted on;
@@ -293,15 +276,11 @@ public final class IssuesEvaluationTask {
       }
     }
 
-    final Subset subset = neverScored == null ? null
-        : subset(sides.scoreUnits(), neverScored, references, evaluated, observed, projectHours,
-            constantHours);
-
     return new Report(population, mode, sides.fitUnits().size(), sides.scoreUnits().size(),
         inner.fitUnits().size(), Score.Outcome.of(observed), project, constant, pair, main,
         references, List.copyOf(evaluated), families, List.copyOf(familiesByProjects),
         List.copyOf(blocks), List.copyOf(blocksByProjects), List.copyOf(sensitivities),
-        List.copyOf(recalibrated), unseen, unseenRows, subset, sides.scoreUnits(), observed);
+        List.copyOf(recalibrated), unseen, unseenRows, sides.scoreUnits(), observed);
   }
 
   private static ProjectBootstrap.Gap gap(final List<String> projects, final Evaluated a,
@@ -309,34 +288,6 @@ public final class IssuesEvaluationTask {
     return ProjectBootstrap.compare(projects, a.fitted().cell().label(),
         Bootstrap.errors(a.fitted().predictedHours(), observed), b.fitted().cell().label(),
         Bootstrap.errors(b.fitted().predictedHours(), observed));
-  }
-
-  /** The same predictions, read only on the rows whose id is in {@code ids}. */
-  static Subset subset(final List<IssueUnit> scored, final Set<String> ids,
-      final List<Evaluated> references, final List<Evaluated> evaluated, final double[] observed,
-      final double[] projectHours, final double[] constantHours) {
-    final List<Integer> kept = new ArrayList<>();
-    for (int i = 0; i < scored.size(); i++) {
-      if (ids.contains(scored.get(i).issueId())) {
-        kept.add(i);
-      }
-    }
-    if (kept.isEmpty()) {
-      return new Subset(0, List.of());
-    }
-    final double[] o = pick(observed, kept);
-    final double[] p = pick(projectHours, kept);
-    final double[] c = pick(constantHours, kept);
-    final List<String> projects = kept.stream().map(i -> scored.get(i).project()).toList();
-    final double projectMae = Fitting.mae(p, o);
-    final double constantMae = Fitting.mae(c, o);
-    final List<SubsetRow> rows = new ArrayList<>();
-    for (final Evaluated e : concat(references, evaluated)) {
-      final double[] h = pick(e.fitted().predictedHours(), kept);
-      rows.add(new SubsetRow(Score.of(e.fitted().score().label(), h, o, projectMae, constantMae),
-          ProjectBootstrap.gain(projects, h, p, o), ProjectBootstrap.gain(projects, h, c, o)));
-    }
-    return new Subset(kept.size(), List.copyOf(rows));
   }
 
   private static double[] pick(final double[] values, final List<Integer> rows) {

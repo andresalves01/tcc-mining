@@ -21,7 +21,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -77,36 +76,18 @@ class IssuesReservedTest {
 
   @Test
   @DisplayName("each cell is refitted with the chosen lambda times the ratio of rows, no "
-      + "recalibration, and the subset reads the same predictions")
+      + "recalibration")
   void reservedRun() {
     final List<RowCache.Entry> entries = corpus();
     final IssuesEvaluationTask.Report r = new IssuesEvaluationTask(SILENT).run(entries,
         List.of(new IssuesEvaluationTask.Frozen(Population.FIXED, CELL, 0.5, 10.0)),
-        Population.FIXED, Fitting.Mode.RESERVED, null);
+        Population.FIXED, Fitting.Mode.RESERVED);
     assertEquals(180, r.fitRows());
     assertEquals(120, r.innerFitRows());
     assertEquals(60, r.scoredRows());
     assertEquals(10.0 * 180 / 120, r.evaluated().get(0).fitted().lambda(), 1e-12);
     assertTrue(r.recalibrated().isEmpty(), "decision 22");
     assertTrue(r.unseenProjects().isEmpty());
-
-    final Set<String> some = new HashSet<>();
-    for (int i = 0; i < r.scoredUnits().size(); i += 4) {
-      some.add(r.scoredUnits().get(i).issueId());
-    }
-    final IssuesEvaluationTask.Report withSubset = new IssuesEvaluationTask(SILENT).run(entries,
-        List.of(new IssuesEvaluationTask.Frozen(Population.FIXED, CELL, 0.5, 10.0)),
-        Population.FIXED, Fitting.Mode.RESERVED, some);
-    assertEquals(some.size(), withSubset.neverScored().n());
-    final double[] model = withSubset.evaluated().get(0).fitted().predictedHours();
-    double sum = 0;
-    for (int i = 0; i < model.length; i += 4) {
-      sum += Math.abs(model[i] - withSubset.observed()[i]);
-    }
-    final var cellRow = withSubset.neverScored().rows().get(3);
-    assertEquals(CELL, cellRow.score().label());
-    assertEquals(sum / some.size(), cellRow.score().maeHours(), 1e-9,
-        "the same predictions, read only on the subset");
   }
 
   @Test
@@ -151,7 +132,7 @@ class IssuesReservedTest {
     assertEquals(1, Registration.differences("0", Registration.PARAMETERS_SHA256, 33,
         Registration.SIZES).size());
     final Map<Population, Registration.Sizes> off = new EnumMap<>(Registration.SIZES);
-    off.put(Population.BROAD, new Registration.Sizes(105_891, 47_831, 68_832, 31_768, 31_644));
+    off.put(Population.BROAD, new Registration.Sizes(105_891, 47_831, 68_832, 31_767));
     assertEquals(1, Registration.differences(Registration.MATRIX_SHA256,
         Registration.PARAMETERS_SHA256, 33, off).size());
     assertEquals(4, Registration.differences(Registration.MATRIX_SHA256,
