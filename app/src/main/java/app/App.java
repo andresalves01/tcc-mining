@@ -44,6 +44,7 @@ import java.util.Optional;
  *   app.pipeline.port    interfaces for the corpus itself and for reporting progress
  *   app.pipeline.mongo   adapters   -- GridFS + JGit + the commit join, registry persistence
  *   app.pipeline.jira    adapters   -- issue-tracker changelog client
+ *   app.pipeline.embedding adapters -- the pinned sentence-embedding model, its download
  *   app.config           configuration, resolved once at startup
  *   app.identity.port    interfaces the use cases depend on
  *   app.identity         domain     -- pure; knows nothing of Mongo, HTTP, Spark or files
