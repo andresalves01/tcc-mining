@@ -8,7 +8,8 @@ import java.util.List;
  *
  * <p>Volumes and counts enter as {@code ln(1 + x)} and the two complexity means enter raw. That is
  * not a new decision — it is what the mongosh prototypes did, and keeping it identical is what
- * makes the Java results comparable to the numbers already reported in {@code analysis/}. The
+ * makes the Java results comparable to the numbers those prototypes reported (in the history of
+ * {@code analysis/}, removed on 2026-10-14). The
  * standardisation the study specifies happens afterwards, on top of this.
  *
  * <p>Absence is carried as its own column rather than imputed silently. A description length the
@@ -115,7 +116,8 @@ public final class Columns {
 
   /**
    * The thirteen columns the mongosh prototype fitted, so the Java result can be put beside the
-   * numbers already reported in {@code analysis/}. It carries no load and no team statistics.
+   * numbers the prototype reported (in the history of {@code analysis/}). It carries no load and no
+   * team statistics.
    */
   public static final List<String> PROTOTYPE = List.of(
       "ln(LOC tarefa)", "McCC_i", "NL_i", "ln(tam. descricao)", "ln(issues ligadas)",

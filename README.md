@@ -27,7 +27,6 @@ hit. The map is [docs/paths.md](docs/paths.md); the design rationale is
 | Directory | Contents |
 |---|---|
 | `app/` | The Java pipeline: identity reconstruction, the contribution ledger, the label funnel, the chronological split, and the seniority and cost-curve report. |
-| `analysis/` | The exploratory Mongo shell and Python scripts that decided how the pipeline should be written. See [analysis/README.md](analysis/README.md); they are reconnaissance, not part of the pipeline. |
 
 The Elastic Net duration model and the NSGA-II search over team compositions are **not implemented
 here**. This repository stops at the labelled, split sample those stages consume. Estimating a
