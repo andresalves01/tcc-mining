@@ -14,6 +14,7 @@ import app.issues.RegistrationInProgress;
 import app.issues.RowCache;
 import app.issues.Universe.Population;
 import app.pipeline.IssuesSimilarityTask;
+import app.pipeline.clustering.SmileKMeans;
 import app.pipeline.embedding.ReferenceCheck;
 import app.study.Row;
 import java.io.IOException;
@@ -67,7 +68,7 @@ class IssuesSimilarityCommandTest {
           text.get(e.unit().issueId())));
     }
     final Augmentation.Result result = Augmentation.run(issues,
-        s -> new Embedder.Embedding(new float[] {1, 0}, 3), 2);
+        s -> new Embedder.Embedding(new float[] {1, 0}, 3), 2, new SmileKMeans());
     final List<RowCache.Entry> augmented = new ArrayList<>();
     for (final RowCache.Entry e : base) {
       final Map<String, Double> values = new HashMap<>(e.row().values());
@@ -94,7 +95,8 @@ class IssuesSimilarityCommandTest {
     final Map<String, List<String>> files = IssuesSimilarityCommand.diagnostics(r);
     assertEquals(Set.of("jaccard-queries.tsv", "jaccard-neighbours.tsv", "coverage.tsv",
         "blocks.tsv", "embedding-queries.tsv", "embedding-neighbours.tsv",
-        "embedding-chunks.tsv"), files.keySet());
+        "embedding-chunks.tsv", "cluster-fits.tsv", "cluster-sizes.tsv", "cluster-projects.tsv",
+        "cluster-queries.tsv"), files.keySet());
     assertTrue(files.get("jaccard-neighbours.tsv").contains("v\tinner\t1\ta\tp\t0.0"),
         files.get("jaccard-neighbours.tsv").toString());
     assertTrue(files.get("embedding-neighbours.tsv").contains("v\tinner\t1\ta\tp\t0.0"),
@@ -141,5 +143,67 @@ class IssuesSimilarityCommandTest {
         reference(0), t -> List.of(new long[] {101, 102})));
     assertEquals(2e-5, IssuesSimilarityCommand.selfCheck(reference(2e-5f),
         IssuesSimilarityCommandTest::ids).maxDifference(), 1e-6);
+  }
+
+  @Test
+  @DisplayName("the clusters' sizes, project make-up, assigned cluster and distance go to the "
+      + "diagnostic files and each fit's distortion to the run record, never to the matrix")
+  void clusterDiagnostics() {
+    final List<Augmentation.Issue> issues = new ArrayList<>();
+    final Map<String, float[]> vectors = new HashMap<>();
+    for (int i = 0; i < 8; i++) {
+      final double a = Math.PI * i / 4;
+      vectors.put("d" + i, new float[] {(float) Math.cos(a), (float) Math.sin(a)});
+      issues.add(new Augmentation.Issue("f" + i, i < 2 ? "q" : "p", "r", 0, (10 + i) * 3_600_000L,
+          "TRAIN", "TRAIN", "d" + i));
+    }
+    issues.add(new Augmentation.Issue("v", "p", "r", 100 * 3_600_000L, 101 * 3_600_000L, "TRAIN",
+        "TEST", "d0"));
+    final Augmentation.Result result = Augmentation.run(issues,
+        s -> new Embedder.Embedding(vectors.get(s), 1), 2, new SmileKMeans());
+    final List<RowCache.Entry> entries = new ArrayList<>();
+    for (final Augmentation.Issue i : issues) {
+      final RowCache.Entry e = entry(i.id(), 0, 1, i.outer(), i.inner());
+      entries.add(new RowCache.Entry(new IssueUnit(i.id(), "P-" + i.id(), i.project(), "r", "d",
+          T, T, "Fixed", false, T), e.row(), e.parts()));
+    }
+    final IssuesSimilarityTask.Report r = new IssuesSimilarityTask.Report(List.of(),
+        new RegistrationInProgress.Sizes(9, 0, 8, 1), entries, result, 9);
+    final Map<String, List<String>> files = IssuesSimilarityCommand.diagnostics(r);
+
+    assertEquals("variant\tblock\tk\tvectors\tdistinct\tfitted\tdistortion",
+        files.get("cluster-fits.tsv").get(0));
+    assertTrue(files.get("cluster-fits.tsv").contains("inner\twhole\t16\t8\t8\tfalse\t"),
+        files.get("cluster-fits.tsv").toString());
+    assertTrue(files.get("cluster-fits.tsv").stream()
+        .anyMatch(l -> l.startsWith("inner\twhole\t8\t8\t8\ttrue\t")));
+    final List<String> sizes = files.get("cluster-sizes.tsv");
+    assertEquals(9, sizes.stream().filter(l -> l.startsWith("inner\twhole\t8\t")).count() + 1,
+        "a header and eight clusters of the whole inner fitting set");
+    assertTrue(sizes.stream().filter(l -> l.startsWith("inner\twhole\t8\t"))
+        .allMatch(l -> l.endsWith("\t1")), sizes.toString());
+    final List<String> projects = files.get("cluster-projects.tsv");
+    assertEquals(2, projects.stream().filter(l -> l.startsWith("inner\twhole\t8\t")
+        && l.endsWith("\tq\t1")).count(), projects.toString());
+    final String v = files.get("cluster-queries.tsv").stream()
+        .filter(l -> l.startsWith("v\tinner\tinner_validation\twhole\t")
+            && l.contains("Z\t8\t")).findFirst().orElseThrow();
+    assertTrue(v.endsWith("\t0.0\t1"), "on f0's vector, its only member: " + v);
+    assertTrue(files.get("cluster-queries.tsv").contains(
+        "v\tinner\tinner_validation\twhole\t1970-01-05T04:00:00Z\t16\t\t\t0"),
+        "not fitted: no cluster, no distance");
+    assertEquals(10.0, result.columns().get("v").get(Augmentation.cluster(8, Variant.INNER)));
+    assertTrue(Augmentation.columns().stream().filter(c -> c.startsWith("cluster"))
+        .allMatch(c -> c.matches("cluster_median_\\d{1,6}_(inner|outer)")),
+        "only the medians are columns: no cluster id, distance or centre");
+
+    final List<Map<String, Object>> record = IssuesSimilarityCommand.fits(result.clusterFits());
+    assertEquals(result.clusterFits().size(), record.size());
+    final Map<String, Object> eight = record.stream().filter(m -> m.get("variant").equals("inner")
+        && m.get("block").equals("whole") && m.get("k").equals(8)).findFirst().orElseThrow();
+    assertEquals(true, eight.get("fitted"));
+    assertTrue((Double) eight.get("distortion") >= 0);
+    assertNull(record.stream().filter(m -> m.get("k").equals(16)).findFirst().orElseThrow()
+        .get("distortion"));
   }
 }

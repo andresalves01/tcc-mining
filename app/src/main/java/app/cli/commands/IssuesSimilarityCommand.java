@@ -12,6 +12,7 @@ import app.issues.RowCache;
 import app.issues.TeamColumns;
 import app.issues.Universe.Population;
 import app.pipeline.IssuesSimilarityTask;
+import app.pipeline.clustering.SmileKMeans;
 import app.pipeline.embedding.EmbeddingCache;
 import app.pipeline.embedding.EmbeddingModel;
 import app.pipeline.embedding.OnnxEmbedder;
@@ -26,6 +27,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.function.Function;
 
 /**
@@ -41,10 +43,11 @@ import java.util.function.Function;
  * registered study's and the team file holds exactly the matrix's issues. Embeds the descriptions
  * with the pinned model in MODEL_DIR, verified on load, through the {@link EmbeddingCache} in
  * EMBEDDING_CACHE, which it saves whenever the model computed anything, even when the stage then
- * fails. Writes the augmented matrix -- the extracted columns, the four team columns, then the
- * similarity columns -- to MATRIX, the diagnostics as tab-separated files to REPORT_DIR, and
- * records the run, with the SHA-256 of every file it read or wrote, the model, its revision, the
- * cache's hits and misses and the time spent, in ISSUES_DB.
+ * fails. The clusters are Smile's K-means ({@link SmileKMeans}). Writes the augmented matrix --
+ * the extracted columns, the four team columns, then the similarity columns -- to MATRIX, the
+ * diagnostics as tab-separated files to REPORT_DIR, and records the run, with the SHA-256 of
+ * every file it read or wrote, the model, its revision, the cache's hits and misses, the
+ * clusterer, its seed, runs and the distortion of every fit, and the time spent, in ISSUES_DB.
  */
 public final class IssuesSimilarityCommand implements CommandRunner {
 
@@ -61,6 +64,7 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     final Path modelDir = path(OnnxEmbedder.MODEL_DIR);
     final Path cacheDir = path(EmbeddingCache.ENV);
     final long began = System.nanoTime();
+    final SmileKMeans clusterer = new SmileKMeans();
 
     final String cacheSha;
     final String teamSha;
@@ -131,8 +135,8 @@ public final class IssuesSimilarityCommand implements CommandRunner {
       System.out.printf("  embedding cache %s%n", embeddings.file());
       final long augmenting = System.nanoTime();
       try {
-        r = new IssuesSimilarityTask(context.study(), context.progress(), embeddings)
-            .run(entries);
+        r = new IssuesSimilarityTask(context.study(), context.progress(), embeddings,
+            clusterer).run(entries);
       } catch (final RuntimeException e) {
         throw new CommandFailedException(List.of("  the similarity stage failed, nothing was "
             + "written or recorded but the embeddings already computed: " + e));
@@ -201,6 +205,13 @@ public final class IssuesSimilarityCommand implements CommandRunner {
         rows.add(row);
       }
     }
+    System.out.printf("%n  K-MEANS FITS (%s, seed %d)%n", clusterer.describe(),
+        Augmentation.CLUSTER_SEED);
+    for (final Augmentation.ClusterFit f : r.result().clusterFits()) {
+      System.out.printf("    %-6s %-6s k %2d  %,6d vectors  %,6d distinct  %s%n",
+          name(f.variant()), f.block(), f.k(), f.vectors(), f.distinct(),
+          f.fitted() ? String.format("distortion %.6f", f.distortion()) : "not fitted");
+    }
     System.out.printf("%n  BLOCKS%n");
     for (final Augmentation.Block b : r.result().blocks()) {
       System.out.printf("    %-6s %d  %,6d rows  %s to %s  history %,6d%n",
@@ -220,6 +231,13 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     run.put("cleaner", DescriptionCleaner.VERSION);
     run.put("jaccard_n", Augmentation.JACCARD_N);
     run.put("embedding_n", Augmentation.EMBEDDING_N);
+    run.put("cluster_k", Augmentation.CLUSTER_K);
+    run.put("clusterer", clusterer.describe());
+    run.put("cluster_seed", Augmentation.CLUSTER_SEED);
+    run.put("cluster_runs", SmileKMeans.RUNS);
+    run.put("cluster_max_iterations", SmileKMeans.MAX_ITERATIONS);
+    run.put("cluster_tolerance", SmileKMeans.TOLERANCE);
+    run.put("cluster_fits", fits(r.result().clusterFits()));
     run.put("model", EmbeddingModel.REPOSITORY);
     run.put("model_revision", EmbeddingModel.REVISION);
     run.put("model_onnx_sha256", EmbeddingModel.FILES.get(0).sha256());
@@ -270,6 +288,26 @@ public final class IssuesSimilarityCommand implements CommandRunner {
       throw new CommandFailedException(lines);
     }
     return check;
+  }
+
+  /**
+   * Each K-means fit for the run record: its history, k, vector counts and distortion, which is
+   * null when not fitted.
+   */
+  static List<Map<String, Object>> fits(final List<Augmentation.ClusterFit> fits) {
+    final List<Map<String, Object>> out = new ArrayList<>();
+    for (final Augmentation.ClusterFit f : fits) {
+      final Map<String, Object> fit = new LinkedHashMap<>();
+      fit.put("variant", name(f.variant()));
+      fit.put("block", f.block());
+      fit.put("k", f.k());
+      fit.put("vectors", f.vectors());
+      fit.put("distinct", f.distinct());
+      fit.put("fitted", f.fitted());
+      fit.put("distortion", f.fitted() ? f.distortion() : null);
+      out.add(fit);
+    }
+    return out;
   }
 
   /** The matrix as read, every column and header name kept, with the new columns after them. */
@@ -335,6 +373,40 @@ public final class IssuesSimilarityCommand implements CommandRunner {
         Integer.toString(e.chunks()), Boolean.toString(e.problem() == null),
         e.problem() == null ? "" : e.problem())));
     out.put("embedding-chunks.tsv", chunks);
+
+    final List<String> fits = new ArrayList<>(List.of("variant\tblock\tk\tvectors\tdistinct"
+        + "\tfitted\tdistortion"));
+    final List<String> sizes = new ArrayList<>(List.of("variant\tblock\tk\tcluster\tmembers"));
+    final List<String> makeup = new ArrayList<>(List.of("variant\tblock\tk\tcluster\tproject"
+        + "\tmembers"));
+    for (final Augmentation.ClusterFit f : r.result().clusterFits()) {
+      final String at = String.join("\t", name(f.variant()), f.block(), Integer.toString(f.k()));
+      fits.add(String.join("\t", at, Integer.toString(f.vectors()),
+          Integer.toString(f.distinct()), Boolean.toString(f.fitted()),
+          f.fitted() ? Double.toString(f.distortion()) : ""));
+      for (int c = 0; c < f.members().size(); c++) {
+        final List<String> members = f.members().get(c);
+        sizes.add(String.join("\t", at, Integer.toString(c), Integer.toString(members.size())));
+        final Map<String, Integer> by = new TreeMap<>();
+        members.forEach(m -> by.merge(project.get(m), 1, Integer::sum));
+        final int cluster = c;
+        by.forEach((p, n) -> makeup.add(String.join("\t", at, Integer.toString(cluster), p,
+            Integer.toString(n))));
+      }
+    }
+    out.put("cluster-fits.tsv", fits);
+    out.put("cluster-sizes.tsv", sizes);
+    out.put("cluster-projects.tsv", makeup);
+    final List<String> assigned = new ArrayList<>(List.of("id\tvariant\tsplit\tblock\treference"
+        + "\tk\tcluster\tdistance\tmembers"));
+    for (final Augmentation.ClusterQuery q : r.result().clusterQueries()) {
+      final boolean none = q.cluster() < 0;
+      assigned.add(String.join("\t", q.id(), name(q.variant()), q.split(), q.block(),
+          Instant.ofEpochMilli(q.reference()).toString(), Integer.toString(q.k()),
+          none ? "" : Integer.toString(q.cluster()), none ? "" : Double.toString(q.distance()),
+          Integer.toString(q.members())));
+    }
+    out.put("cluster-queries.tsv", assigned);
 
     final List<String> coverage = new ArrayList<>(List.of("column\tby\tgroup\trows\tobserved"));
     r.result().coverage().forEach(c -> coverage.add(String.join("\t", c.column(), c.by(),

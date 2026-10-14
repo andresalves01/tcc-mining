@@ -9,6 +9,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.function.Predicate;
 import java.util.stream.IntStream;
 
@@ -52,8 +57,19 @@ import java.util.stream.IntStream;
  * the target's interval and the matching split. It needs no frozen index, so it reads the set issue by issue rather than in blocks: a fitting row
  * sees the set up to its own start, a scored row the whole set.
  *
- * <p>Pure but for the embedder it is given: rows and descriptions in, columns and diagnostics
- * out.
+ * <p><b>Clusters.</b> For each candidate k, the {@link Clusterer} is fitted on the vectors of a
+ * history, the same as the embedding neighbours', and on those alone, never on durations, with
+ * seed {@link #CLUSTER_SEED}: once per block, frozen for its rows, and once on the whole fitting
+ * set for the scored rows. Every history member with a valid vector is assigned to its nearest
+ * centre by Euclidean distance, the rule the query is assigned by, so a cluster's members are the
+ * members nearest to its centre. The value is the unweighted median duration of the members of
+ * the query's cluster, the query itself never among them; the centre only picks the group. It is
+ * missing when the query has no valid vector, when the history has fewer distinct vectors than k
+ * -- for the whole block, k never shrunk -- or when the cluster has no member but the query. The
+ * fits run on a pool of threads of their own; each depends on its vectors, k and seed alone.
+ *
+ * <p>Pure but for the embedder and the clusterer it is given: rows and descriptions in, columns
+ * and diagnostics out.
  */
 public final class Augmentation {
 
@@ -62,6 +78,12 @@ public final class Augmentation {
 
   /** The candidate numbers of embedding neighbours the selection chooses from. */
   public static final List<Integer> EMBEDDING_N = List.of(5, 10, 20);
+
+  /** The candidate numbers of K-means clusters the selection chooses from. */
+  public static final List<Integer> CLUSTER_K = List.of(8, 16, 32);
+
+  /** The seed of every K-means fit. */
+  public static final long CLUSTER_SEED = 42;
 
   /** How many consecutive time blocks a fitting set is built in. */
   public static final int BLOCKS = 5;
@@ -184,13 +206,42 @@ public final class Augmentation {
   public record Embedded(String id, int chunks, String problem) {}
 
   /**
+   * One K-means fit of one history.
+   *
+   * @param block 1 to {@link #BLOCKS} for a block's history, {@link #WHOLE} for the fitting set
+   * @param vectors the history members with a valid vector, the vectors fitted
+   * @param distinct how many of those vectors differ, as {@link Clusterer#distinct} counts
+   * @param distortion the clusterer's distortion of the fit, NaN when not fitted
+   * @param members per cluster, the ids of the members nearest its centre, in history order;
+   *     empty when not fitted
+   */
+  public record ClusterFit(Variant variant, String block, int k, int vectors, int distinct,
+      boolean fitted, double distortion, List<List<String>> members) {}
+
+  /**
+   * One row's cluster for one k against one variant's history.
+   *
+   * @param reference the instant every member was resolved before
+   * @param cluster the nearest centre's index, -1 when the query has no valid vector or the
+   *     history was not fitted
+   * @param distance the query's Euclidean distance to that centre, NaN without a cluster
+   * @param members how many members the median read, the query itself left out
+   */
+  public record ClusterQuery(String id, Variant variant, String split, String block,
+      long reference, int k, int cluster, double distance, int members) {}
+
+  /**
    * @param columns per issue id, every new column, absent when missing; every issue is a key
    * @param embeddingQueries every row's embedding search, as {@code queries} for Jaccard
    * @param embedded every issue with a description, in the order of the rows
+   * @param clusterFits every history's fit for every k, variant by variant, blocks then the whole
+   *     set
+   * @param clusterQueries every row's cluster for every k, in the order of the fits
    */
   public record Result(Map<String, Map<String, Double>> columns, List<Query> queries,
       List<Block> blocks, List<Coverage> coverage, List<EmbeddingQuery> embeddingQueries,
-      List<Embedded> embedded) {}
+      List<Embedded> embedded, List<ClusterFit> clusterFits,
+      List<ClusterQuery> clusterQueries) {}
 
   private Augmentation() {}
 
@@ -202,6 +253,11 @@ public final class Augmentation {
   /** The embedding-neighbour median column for {@code n} neighbours. */
   public static String embedding(final int n, final Variant v) {
     return "embedding_median_" + n + v.suffix;
+  }
+
+  /** The cluster median column for {@code k} clusters. */
+  public static String cluster(final int k, final Variant v) {
+    return "cluster_median_" + k + v.suffix;
   }
 
   /** The reporter's historical median column. */
@@ -225,6 +281,11 @@ public final class Augmentation {
         out.add(embedding(n, v));
       }
     }
+    for (final int k : CLUSTER_K) {
+      for (final Variant v : Variant.values()) {
+        out.add(cluster(k, v));
+      }
+    }
     return out;
   }
 
@@ -241,10 +302,10 @@ public final class Augmentation {
 
   /**
    * Every column and diagnostic, each described issue embedded once by {@code embedder} into
-   * vectors of {@code dimension} components.
+   * vectors of {@code dimension} components, the clusters fitted by {@code clusterer}.
    */
   public static Result run(final List<Issue> issues, final Embedder embedder,
-      final int dimension) {
+      final int dimension, final Clusterer clusterer) {
     final Tokens tokens = new Tokens(issues);
     final Vectors vectors = new Vectors(issues, embedder, dimension);
     final List<EmbeddingQuery> embeddingQueries = new ArrayList<>();
@@ -255,6 +316,7 @@ public final class Augmentation {
     final List<Block> blocks = new ArrayList<>();
     final Map<String, String> blockOf = new HashMap<>();
     final int most = JACCARD_N.stream().mapToInt(Integer::intValue).max().orElseThrow();
+    final List<Frozen> frozen = new ArrayList<>();
 
     for (final Variant v : Variant.values()) {
       final List<Issue> fitting = issues.stream().filter(v::fitting)
@@ -269,6 +331,7 @@ public final class Augmentation {
         final Space space = new Space(history, vectors);
         blocks.add(new Block(v, b + 1, block.size(), begins, block.get(block.size() - 1).start(),
             history.size()));
+        frozen.add(new Frozen(v, Integer.toString(b + 1), begins, history, block));
         final List<Space.Found> found = space.search(block, mostVectors);
         for (int k = 0; k < block.size(); k++) {
           final Issue q = block.get(k);
@@ -289,6 +352,7 @@ public final class Augmentation {
               + "or after " + q.id() + " in the scored set started: the split is inconsistent");
         }
       }
+      frozen.add(new Frozen(v, WHOLE, Long.MIN_VALUE, fitting, scored));
       final List<Space.Found> found = wholeSpace.search(scored, mostVectors);
       for (int k = 0; k < scored.size(); k++) {
         final Issue q = scored.get(k);
@@ -298,8 +362,123 @@ public final class Augmentation {
       }
       reporters(issues, fitting, v, columns);
     }
+    final List<ClusterFit> clusterFits = new ArrayList<>();
+    final List<ClusterQuery> clusterQueries = new ArrayList<>();
+    clusters(frozen, vectors, clusterer, columns, clusterFits, clusterQueries);
     return new Result(columns, queries, blocks, coverage(issues, columns, blockOf),
-        embeddingQueries, List.copyOf(vectors.embedded.values()));
+        embeddingQueries, List.copyOf(vectors.embedded.values()), clusterFits, clusterQueries);
+  }
+
+  /**
+   * One history and the rows that read it.
+   *
+   * @param reference the block's first instant; unread for the whole set, whose rows are each
+   *     at their own start
+   */
+  private record Frozen(Variant variant, String block, long reference, List<Issue> history,
+      List<Issue> rows) {}
+
+  /**
+   * Fits every history for every k, all fits on a pool of threads of their own, then assigns each
+   * history's members and each row to the nearest centre.
+   */
+  private static void clusters(final List<Frozen> frozen, final Vectors vectors,
+      final Clusterer clusterer, final Map<String, Map<String, Double>> columns,
+      final List<ClusterFit> fits, final List<ClusterQuery> queries) {
+    final List<List<Issue>> members = new ArrayList<>();
+    final List<double[][]> data = new ArrayList<>();
+    final List<Callable<Clusterer.Fit>> jobs = new ArrayList<>();
+    for (final Frozen f : frozen) {
+      final List<Issue> kept =
+          f.history().stream().filter(h -> vectors.row(h.id()) >= 0).toList();
+      final double[][] x = new double[kept.size()][];
+      for (int j = 0; j < x.length; j++) {
+        x[j] = vectors.vector(vectors.row(kept.get(j).id()));
+      }
+      members.add(kept);
+      data.add(x);
+      for (final int k : CLUSTER_K) {
+        jobs.add(() -> clusterer.fit(x, k, CLUSTER_SEED));
+      }
+    }
+    final List<Clusterer.Fit> fitted = fitAll(jobs);
+    for (int h = 0; h < frozen.size(); h++) {
+      final Frozen f = frozen.get(h);
+      final List<Issue> kept = members.get(h);
+      final double[][] x = data.get(h);
+      final int distinct = Clusterer.distinct(x);
+      for (int c = 0; c < CLUSTER_K.size(); c++) {
+        final int k = CLUSTER_K.get(c);
+        final Clusterer.Fit fit = fitted.get(h * CLUSTER_K.size() + c);
+        final List<List<Issue>> groups = new ArrayList<>();
+        if (fit.fitted()) {
+          final int[] nearest = IntStream.range(0, x.length).parallel()
+              .map(j -> fit.assign(x[j]).cluster()).toArray();
+          for (int g = 0; g < k; g++) {
+            groups.add(new ArrayList<>());
+          }
+          for (int j = 0; j < x.length; j++) {
+            groups.get(nearest[j]).add(kept.get(j));
+          }
+        }
+        fits.add(new ClusterFit(f.variant(), f.block(), k, x.length, distinct, fit.fitted(),
+            fit.distortion(), groups.stream().map(g -> g.stream().map(Issue::id).toList())
+                .toList()));
+        for (final Issue q : f.rows()) {
+          queries.add(assign(q, f, k, fit, groups, vectors, columns));
+        }
+      }
+    }
+  }
+
+  /** The fits of {@code jobs}, in their order, each on a thread of its own pool. */
+  private static List<Clusterer.Fit> fitAll(final List<Callable<Clusterer.Fit>> jobs) {
+    final int threads = Math.max(1, Math.min(jobs.size(),
+        Runtime.getRuntime().availableProcessors()));
+    final ExecutorService pool = Executors.newFixedThreadPool(threads, r -> {
+      final Thread t = new Thread(r, "k-means");
+      t.setDaemon(true);
+      return t;
+    });
+    try {
+      final List<Clusterer.Fit> out = new ArrayList<>(jobs.size());
+      for (final Future<Clusterer.Fit> f : pool.invokeAll(jobs)) {
+        out.add(f.get());
+      }
+      return out;
+    } catch (final InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException("interrupted while fitting the clusters", e);
+    } catch (final ExecutionException e) {
+      if (e.getCause() instanceof RuntimeException r) {
+        throw r;
+      }
+      if (e.getCause() instanceof Error r) {
+        throw r;
+      }
+      throw new IllegalStateException("a cluster fit failed", e.getCause());
+    } finally {
+      pool.shutdownNow();
+    }
+  }
+
+  private static ClusterQuery assign(final Issue q, final Frozen f, final int k,
+      final Clusterer.Fit fit, final List<List<Issue>> groups, final Vectors vectors,
+      final Map<String, Map<String, Double>> columns) {
+    final long reference = f.block().equals(WHOLE) ? q.start() : f.reference();
+    final Variant v = f.variant();
+    final int row = vectors.row(q.id());
+    if (row < 0 || !fit.fitted()) {
+      return new ClusterQuery(q.id(), v, v.split(q), f.block(), reference, k, -1, Double.NaN, 0);
+    }
+    final Clusterer.Assignment a = fit.assign(vectors.vector(row));
+    final List<Double> hours = groups.get(a.cluster()).stream()
+        .filter(m -> !m.id().equals(q.id())).map(Issue::hours).toList();
+    if (!hours.isEmpty()) {
+      columns.get(q.id()).put(cluster(k, v), median(hours));
+    }
+    return new ClusterQuery(q.id(), v, v.split(q), f.block(), reference, k, a.cluster(),
+        a.distance(), hours.size());
   }
 
   /**
@@ -517,6 +696,7 @@ public final class Augmentation {
     private final Map<String, Embedded> embedded = new LinkedHashMap<>();
     private final int dimension;
     private final float[] values;
+    private final double[][] doubles;
 
     Vectors(final List<Issue> issues, final Embedder embedder, final int dimension) {
       this.dimension = dimension;
@@ -542,6 +722,7 @@ public final class Augmentation {
         System.arraycopy(v, 0, values, r * dimension, dimension);
         rows.put(e.getKey(), r++);
       }
+      doubles = new double[byId.size()][];
     }
 
     /** Why {@code v} is not a unit vector of {@code dimension} components, null when it is. */
@@ -561,6 +742,21 @@ public final class Augmentation {
       }
       final double length = Math.sqrt(sum);
       return Math.abs(length - 1) <= UNIT_TOLERANCE ? null : "length " + length + ", not one";
+    }
+
+    /**
+     * A row's vector, its components exact in double: made once and shared by every history that
+     * holds the row, so it is read and never changed.
+     */
+    double[] vector(final int row) {
+      if (doubles[row] == null) {
+        final double[] out = new double[dimension];
+        for (int d = 0; d < dimension; d++) {
+          out[d] = values[row * dimension + d];
+        }
+        doubles[row] = out;
+      }
+      return doubles[row];
     }
 
     /** The issue's row, or -1 when it has no vector. */

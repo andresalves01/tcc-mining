@@ -1,6 +1,7 @@
 package app.pipeline;
 
 import app.issues.Augmentation;
+import app.issues.Clusterer;
 import app.issues.Corpus;
 import app.issues.DescriptionCleaner;
 import app.issues.Embedder;
@@ -49,22 +50,28 @@ public final class IssuesSimilarityTask {
   private final RegistrationInProgress.Sizes expected;
   private final Embedder embedder;
   private final int dimension;
+  private final Clusterer clusterer;
 
-  /** The registered sizes, the descriptions embedded by {@code embedder} into the model's size. */
+  /**
+   * The registered sizes, the descriptions embedded by {@code embedder} into the model's size,
+   * the clusters fitted by {@code clusterer}.
+   */
   public IssuesSimilarityTask(final StudySource source, final Progress progress,
-      final Embedder embedder) {
-    this(source, progress, RegistrationInProgress.SIZES, embedder, EmbeddingModel.DIMENSION);
+      final Embedder embedder, final Clusterer clusterer) {
+    this(source, progress, RegistrationInProgress.SIZES, embedder, EmbeddingModel.DIMENSION,
+        clusterer);
   }
 
   /** Against other sizes and vectors, for a matrix built in memory. */
   IssuesSimilarityTask(final StudySource source, final Progress progress,
       final RegistrationInProgress.Sizes expected, final Embedder embedder,
-      final int dimension) {
+      final int dimension, final Clusterer clusterer) {
     this.source = source;
     this.progress = progress;
     this.expected = expected;
     this.embedder = embedder;
     this.dimension = dimension;
+    this.clusterer = clusterer;
   }
 
   public Report run(final List<RowCache.Entry> entries) {
@@ -85,10 +92,10 @@ public final class IssuesSimilarityTask {
     }
     final Map<String, String> descriptions = descriptions(entries, universe);
 
-    progress.phase(2, 3, "Jaccard and embedding neighbours and reporter medians of %,d issues, "
-        + "%,d with a description", entries.size(), descriptions.size());
+    progress.phase(2, 3, "Jaccard and embedding neighbours, K-means clusters and reporter medians "
+        + "of %,d issues, %,d with a description", entries.size(), descriptions.size());
     final Augmentation.Result result =
-        Augmentation.run(issues(entries, descriptions), embedder, dimension);
+        Augmentation.run(issues(entries, descriptions), embedder, dimension, clusterer);
 
     progress.phase(3, 3, "adding %d columns", Augmentation.columns().size());
     final List<RowCache.Entry> out = new ArrayList<>(entries.size());
