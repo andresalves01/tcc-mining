@@ -57,7 +57,7 @@ class IssuesSimilarityCommandTest {
     final Map<String, String> text = Map.of("a", "x", "b", "y", "v", "x");
     final List<Augmentation.Issue> issues = new ArrayList<>();
     for (final RowCache.Entry e : base) {
-      issues.add(new Augmentation.Issue(e.unit().issueId(), "p",
+      issues.add(new Augmentation.Issue(e.unit().issueId(), "p", e.unit().reporter(),
           e.unit().startedAt().toEpochMilli(), e.unit().resolvedAt().toEpochMilli(),
           e.outer(Population.IN_PROGRESS), e.inner(Population.IN_PROGRESS),
           text.get(e.unit().issueId())));

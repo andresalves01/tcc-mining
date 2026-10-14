@@ -76,8 +76,8 @@ public final class IssuesSimilarityTask {
     }
     final Map<String, String> descriptions = descriptions(entries, universe);
 
-    progress.phase(2, 3, "Jaccard neighbours of %,d issues, %,d with a description",
-        entries.size(), descriptions.size());
+    progress.phase(2, 3, "Jaccard neighbours and reporter medians of %,d issues, %,d with a "
+        + "description", entries.size(), descriptions.size());
     final Augmentation.Result result = Augmentation.run(issues(entries, descriptions));
 
     progress.phase(3, 3, "adding %d columns", Augmentation.columns().size());
@@ -121,8 +121,9 @@ public final class IssuesSimilarityTask {
     final List<Augmentation.Issue> out = new ArrayList<>(entries.size());
     for (final RowCache.Entry e : entries) {
       final String id = e.unit().issueId();
-      out.add(new Augmentation.Issue(id, e.unit().project(), e.unit().startedAt().toEpochMilli(),
-          e.unit().resolvedAt().toEpochMilli(), e.outer(P), e.inner(P), descriptions.get(id)));
+      out.add(new Augmentation.Issue(id, e.unit().project(), e.unit().reporter(),
+          e.unit().startedAt().toEpochMilli(), e.unit().resolvedAt().toEpochMilli(), e.outer(P),
+          e.inner(P), descriptions.get(id)));
     }
     return out;
   }

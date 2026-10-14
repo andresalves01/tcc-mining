@@ -40,6 +40,12 @@ class IssuesSimilarityTest {
   /** An issue In Progress at {@code started}, Fixed at {@code resolved}, in the given split. */
   private void issue(final String id, final long started, final long resolved,
       final String outer, final String inner) {
+    issue(id, "r", started, resolved, outer, inner);
+  }
+
+  /** The same, opened by {@code reporter}. */
+  private void issue(final String id, final String reporter, final long started,
+      final long resolved, final String outer, final String inner) {
     issues.add(new Corpus.Issue(id, "P-" + id, "p", T0, "r", "r", null, "Bug", "Major", null,
         List.of(), List.of()));
     events.add(new Corpus.Event(id, started, "status", "d", "Open", "In Progress",
@@ -50,7 +56,7 @@ class IssuesSimilarityTest {
         (ext - 1) + "%%1"));
     final Map<Population, String[]> parts = new EnumMap<>(Population.class);
     parts.put(Population.IN_PROGRESS, new String[] {outer, inner});
-    entries.add(new RowCache.Entry(new IssueUnit(id, "P-" + id, "p", "r", "d",
+    entries.add(new RowCache.Entry(new IssueUnit(id, "P-" + id, "p", reporter, "d",
         Instant.ofEpochMilli(T0), Instant.ofEpochMilli(resolved), "Fixed", false,
         Instant.ofEpochMilli(started)), new Row(id, Map.of("A01_desc_length", 1.0), Set.of()),
         parts));
@@ -129,6 +135,24 @@ class IssuesSimilarityTest {
     assertFalse(rows.get("t").values().containsKey(Augmentation.jaccard(5, Variant.OUTER)));
     assertTrue(rows.get("t").absent().contains(Augmentation.jaccard(5, Variant.OUTER)));
     assertEquals(3, r.described());
+  }
+
+  @Test
+  @DisplayName("the reporter median reads the canonical reporter of each row; with no earlier issue "
+      + "of that reporter it is missing and the row stays")
+  void reporterMedian() {
+    issue("a", "r", T0 + D, T0 + 2 * D, "TRAIN", "TRAIN");
+    issue("b", "s", T0 + D, T0 + 4 * D, "TRAIN", "TRAIN");
+    issue("v", "s", T0 + 20 * D, T0 + 21 * D, "TRAIN", "TEST");
+    issue("t", "z", T0 + 30 * D, T0 + 31 * D, "TEST", "");
+    final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
+        Progress.silent(), new RegistrationInProgress.Sizes(3, 1, 2, 1)).run(entries);
+    final Map<String, Row> rows = new HashMap<>();
+    r.entries().forEach(e -> rows.put(e.unit().issueId(), e.row()));
+    assertEquals(72.0, rows.get("v").values().get(Augmentation.reporter(Variant.INNER)), "b");
+    assertEquals(72.0, rows.get("v").values().get(Augmentation.reporter(Variant.OUTER)), "b");
+    assertTrue(rows.get("t").absent().contains(Augmentation.reporter(Variant.OUTER)));
+    assertEquals(4, r.entries().size());
   }
 
   @Test

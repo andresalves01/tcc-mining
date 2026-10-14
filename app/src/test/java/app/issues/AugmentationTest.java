@@ -24,7 +24,7 @@ class AugmentationTest {
   /** An issue started at hour {@code start} that took {@code hours}. */
   private void issue(final String id, final String outer, final String inner, final long start,
       final long hours, final String description) {
-    issues.add(new Augmentation.Issue(id, "p", start * H, (start + hours) * H, outer, inner,
+    issues.add(new Augmentation.Issue(id, "p", "r", start * H, (start + hours) * H, outer, inner,
         description));
   }
 
@@ -172,6 +172,59 @@ class AugmentationTest {
     assertNotEquals(null, jaccard(r, "c", 5, Variant.OUTER));
   }
 
+  /** An issue of {@code reporter} in {@code project} with no description. */
+  private void by(final String id, final String project, final String reporter,
+      final String outer, final String inner, final long start, final long hours) {
+    issues.add(new Augmentation.Issue(id, project, reporter, start * H, (start + hours) * H, outer,
+        inner, null));
+  }
+
+  private static Double reporter(final Augmentation.Result r, final String id, final Variant v) {
+    return r.columns().get(id).get(Augmentation.reporter(v));
+  }
+
+  @Test
+  @DisplayName("reporter median: only the same reporter and project, only the matching fitting set, "
+      + "only issues resolved strictly before the start; validation and test outcomes never count")
+  void reporterMedian() {
+    by("a", "p", "r", "TRAIN", "TRAIN", 0, 10);
+    by("b", "p", "r", "TRAIN", "TRAIN", 0, 30);
+    by("other", "p", "s", "TRAIN", "TRAIN", 0, 3);
+    by("elsewhere", "q", "r", "TRAIN", "TRAIN", 0, 3);
+    by("late", "p", "r", "TRAIN", "TRAIN", 5, 35); // resolved at 40, the start of f
+    by("c", "p", "r", "TRAIN", "CROSSES", 1, 23); // outer training, outside the inner sets
+    by("f", "p", "r", "TRAIN", "TRAIN", 40, 2);
+    by("v1", "p", "r", "TRAIN", "TEST", 100, 1);
+    by("v2", "p", "r", "TRAIN", "TEST", 50, 4);
+    by("t2", "p", "r", "TEST", "", 150, 1);
+    by("t1", "p", "r", "TEST", "", 200, 1);
+    final Augmentation.Result r = Augmentation.run(issues);
+    assertEquals(20.0, reporter(r, "f", Variant.INNER), "a and b; late resolved at f's start");
+    assertEquals(23.0, reporter(r, "f", Variant.OUTER), "a, b and the crossing c");
+    assertEquals(20.0, reporter(r, "v1", Variant.INNER), "f, a, b, late; never v2");
+    assertEquals(16.5, reporter(r, "v1", Variant.OUTER), "f, v2, a, c, b, late");
+    assertEquals(10.0, reporter(r, "t1", Variant.OUTER), "the outer training; never t2");
+    assertEquals(10.0, reporter(r, "t2", Variant.OUTER));
+    assertNull(reporter(r, "t1", Variant.INNER), "outside the inner sets");
+    assertNull(reporter(r, "c", Variant.INNER), "outside the inner sets");
+    assertNull(reporter(r, "c", Variant.OUTER), "nothing resolved before it started");
+    assertNull(reporter(r, "other", Variant.INNER), "the only issue of s");
+  }
+
+  @Test
+  @DisplayName("reporter median: missing with no eligible issue and the row stays; the issue "
+      + "itself never counts")
+  void reporterMissing() {
+    by("a", "p", "r", "TRAIN", "TRAIN", 0, 5);
+    by("a", "p", "r", "TRAIN", "TEST", 100, 1);
+    by("alone", "p", "s", "TRAIN", "TEST", 100, 1);
+    final Augmentation.Result r = Augmentation.run(issues);
+    assertNull(reporter(r, "a", Variant.INNER), "its own earlier row is not another issue");
+    assertTrue(r.columns().containsKey("alone"));
+    assertNull(reporter(r, "alone", Variant.INNER));
+    assertNull(reporter(r, "alone", Variant.OUTER));
+  }
+
   /** A random corpus over both splits: 60 fitting, 20 validation, 15 crossing, 30 test. */
   private void random(final long seed) {
     final Random rng = new Random(seed);
@@ -249,7 +302,7 @@ class AugmentationTest {
     // both fitting sets are the same ten rows; eleven split into blocks at the same places as ten: 2, 4, 6, 8
     fit("late", 95, 1, "x");
     final Map<String, Map<String, Double>> added = Augmentation.run(issues).columns();
-    issues.set(9, new Augmentation.Issue("f9", "p", 90 * H, 91 * H, "TRAIN", "TRAIN", "x y"));
+    issues.set(9, new Augmentation.Issue("f9", "p", "r", 90 * H, 91 * H, "TRAIN", "TRAIN", "x y"));
     final Map<String, Map<String, Double>> changed = Augmentation.run(issues).columns();
     for (int i = 0; i < 10; i++) {
       assertEquals(before.get("f" + i), added.get("f" + i), "f" + i);
@@ -261,8 +314,8 @@ class AugmentationTest {
   /** The issues with each scored row of {@code part} resolved {@code hours} later. */
   private List<Augmentation.Issue> later(final String part, final long hours) {
     return issues.stream().map(i -> (part.equals("TEST") ? i.outer() : i.inner()).equals("TEST")
-        ? new Augmentation.Issue(i.id(), i.project(), i.start(), i.resolved() + hours * H,
-            i.outer(), i.inner(), i.description()) : i).toList();
+        ? new Augmentation.Issue(i.id(), i.project(), i.reporter(), i.start(),
+            i.resolved() + hours * H, i.outer(), i.inner(), i.description()) : i).toList();
   }
 
   @Test

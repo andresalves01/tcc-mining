@@ -14,7 +14,8 @@ import java.util.function.Predicate;
 /**
  * The columns that depend on which issues are allowed as history, added to the in-progress matrix
  * after extraction: the median duration of the issues whose descriptions are closest by Jaccard,
- * for each candidate number of neighbours, once against the inner split and once against the outer.
+ * for each candidate number of neighbours, and the reporter's historical median, once against the
+ * inner split and once against the outer.
  *
  * <p><b>History.</b> The rows of a fitting set (inner fitting; outer training) are built in five
  * consecutive time blocks of that set, ordered by first In Progress with equal instants kept in the
@@ -30,6 +31,14 @@ import java.util.function.Predicate;
  * all of them when fewer than n exist. Ties in distance go by issue id, never by duration: the
  * ids are 24-digit hexadecimal Mongo object ids, so their order as strings is their numeric order. The
  * value is missing when the query has no tokens or no candidate; nothing is dropped.
+ *
+ * <p><b>Reporter.</b> The unweighted median duration, in hours, of the same canonical reporter's
+ * other issues in the same project, from the matching fitting set, resolved strictly before this
+ * issue's first In Progress; missing when there is none. Every row is Fixed, the population the
+ * extraction reads. It corrects the extractor's {@code D05_reporter_project_median_h}, which
+ * measures from creation over every issue of the reporter in the project resolved before t0, to
+ * the target's interval and the matching split. It needs no frozen index, so it reads the set issue by issue rather than in blocks: a fitting row
+ * sees the set up to its own start, a scored row the whole set.
  *
  * <p>Pure: rows and descriptions in, columns and diagnostics out.
  */
@@ -78,14 +87,15 @@ public final class Augmentation {
   /**
    * One extracted issue.
    *
+   * @param reporter the canonical person who opened it
    * @param start the first In Progress, epoch milliseconds
    * @param resolved the first resolution, epoch milliseconds
    * @param outer the outer verdict: TRAIN, TEST or CROSSES
    * @param inner the inner verdict inside the outer training, empty outside it
    * @param description the cleaned description at the first In Progress, null when there is none
    */
-  public record Issue(String id, String project, long start, long resolved, String outer,
-      String inner, String description) {
+  public record Issue(String id, String project, String reporter, long start, long resolved,
+      String outer, String inner, String description) {
 
     public double hours() {
       return (resolved - start) / 3_600_000.0;
@@ -138,6 +148,11 @@ public final class Augmentation {
     return "jaccard_median_" + n + v.suffix;
   }
 
+  /** The reporter's historical median column. */
+  public static String reporter(final Variant v) {
+    return "reporter_median" + v.suffix;
+  }
+
   /** Every column this stage adds, in the order it writes them. */
   public static List<String> columns() {
     final List<String> out = new ArrayList<>();
@@ -145,6 +160,9 @@ public final class Augmentation {
       for (final Variant v : Variant.values()) {
         out.add(jaccard(n, v));
       }
+    }
+    for (final Variant v : Variant.values()) {
+      out.add(reporter(v));
     }
     return out;
   }
@@ -200,6 +218,7 @@ public final class Augmentation {
         blockOf.put(q.id() + v.suffix, WHOLE);
         queries.add(answer(q, v, WHOLE, q.start(), whole, tokens, most, columns));
       }
+      reporters(issues, fitting, v, columns);
     }
     return new Result(columns, queries, blocks, coverage(issues, columns, blockOf));
   }
@@ -242,6 +261,30 @@ public final class Augmentation {
     }
     return new Query(q.id(), v, v.split(q), block, reference, mine.length, hits.size(), nearest);
   }
+
+  /** Each row's reporter median against the fitting set, issue by issue. */
+  private static void reporters(final List<Issue> issues, final List<Issue> fitting,
+      final Variant v, final Map<String, Map<String, Double>> columns) {
+    final Map<Who, List<Issue>> by = new HashMap<>();
+    for (final Issue h : fitting) {
+      if (h.reporter() != null) {
+        by.computeIfAbsent(new Who(h.project(), h.reporter()), k -> new ArrayList<>()).add(h);
+      }
+    }
+    for (final Issue q : issues) {
+      if (q.reporter() == null || !(v.fitting(q) || v.scored(q))) {
+        continue;
+      }
+      final List<Double> hours = by.getOrDefault(new Who(q.project(), q.reporter()), List.of())
+          .stream().filter(h -> !h.id().equals(q.id()) && h.resolved() < q.start())
+          .map(Issue::hours).toList();
+      if (!hours.isEmpty()) {
+        columns.get(q.id()).put(reporter(v), median(hours));
+      }
+    }
+  }
+
+  private record Who(String project, String reporter) {}
 
   static double median(final List<Double> values) {
     final double[] s = values.stream().mapToDouble(Double::doubleValue).sorted().toArray();
