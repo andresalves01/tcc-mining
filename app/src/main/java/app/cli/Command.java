@@ -115,9 +115,8 @@ public enum Command {
   ISSUES_EXTRACT("issues-extract", new IssuesExtractCommand(), """
       Issue duration: build the three populations (Fixed, the main one;
       broad; inherited) and every column in both scenarios, and run the
-      gates -- the thesis split, time travel, parity with the Python
-      specification in PARITY. Writes the cache to CACHE only if every
-      gate passed; records a summary in ISSUES_DB; reads everything else."""),
+      gates -- the thesis split and time travel. Writes the cache to
+      CACHE only if every gate passed; records a summary in ISSUES_DB; reads everything else."""),
 
   ISSUES_GRID("issues-grid", new IssuesGridCommand(), """
       Issue duration: sweep the eleven cells of each population with
@@ -133,10 +132,9 @@ public enum Command {
 
   ISSUES_IN_PROGRESS_EXTRACT("issues-in-progress-extract", new IssuesInProgressExtractCommand(), """
       Issue duration from the first In Progress: the FIXED issues read at
-      that instant, the split on it, time travel and parity with the
-      Python specification in PARITY. Writes the cache to CACHE only if
-      every gate passed; records a summary in ISSUES_DB; reads everything
-      else."""),
+      that instant, the split on it and time travel. Writes the cache to
+      CACHE only if the gate passed; records a summary in ISSUES_DB;
+      reads everything else."""),
 
   ISSUES_IN_PROGRESS_GRID("issues-in-progress-grid", new IssuesInProgressGridCommand(), """
       Issue duration from the first In Progress: sweep the six cells on the

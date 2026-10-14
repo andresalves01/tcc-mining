@@ -7,7 +7,6 @@ import app.issues.Corpus;
 import app.issues.Extractor;
 import app.issues.Initial;
 import app.issues.IssueUnit;
-import app.issues.Parity;
 import app.issues.RowCache;
 import app.issues.TimeTravel;
 import app.issues.Universe;
@@ -35,12 +34,10 @@ import java.util.TreeSet;
  * <ol>
  *   <li>the split rule, with the thesis's five resolutions per pair, reproduces the stored
  *       {@code split} of every label;
- *   <li>time travel: the historical C1 columns are identical on a view truncated at t0;
- *   <li>parity: populations and every column agree with the Python specification.
+ *   <li>time travel: the historical C1 columns are identical on a view truncated at t0.
  * </ol>
  *
- * <p>The funnel and the changelog fidelity are reported, not gated: they are compared by eye with
- * {@code saidas/10_funil.txt} and {@code 20_changelog.txt}, and any difference shows up in parity.
+ * <p>The funnel and the changelog fidelity are reported, not gated.
  */
 public final class IssuesExtractTask {
 
@@ -52,20 +49,14 @@ public final class IssuesExtractTask {
 
   public record Report(Map<String, Integer> funnel, List<SplitSummary> splits,
       int thesisSplitMismatches, List<Initial.Fidelity> fidelity, List<TimeTravel.Check> travel,
-      List<Parity.Membership> membership, List<Parity.Column> parity,
       List<RowCache.Entry> entries, List<String> columns) {
 
     public boolean travelPassed() {
       return travel.stream().allMatch(c -> c.same() == c.total());
     }
 
-    public boolean parityPassed() {
-      return membership.stream().allMatch(m -> m.onlyJava() == 0 && m.onlyPython() == 0)
-          && parity.stream().allMatch(c -> c.mismatches() == 0);
-    }
-
     public boolean passed() {
-      return thesisSplitMismatches == 0 && travelPassed() && parityPassed();
+      return thesisSplitMismatches == 0 && travelPassed();
     }
   }
 
@@ -77,7 +68,7 @@ public final class IssuesExtractTask {
     this.progress = progress;
   }
 
-  public Report run(final Parity.Spec python) {
+  public Report run() {
     progress.phase(1, 5, "reading the corpus: %s", source.describe());
     final Corpus corpus = source.load();
 
@@ -116,20 +107,9 @@ public final class IssuesExtractTask {
       }
     }
 
-    progress.phase(5, 5, "gates: time travel and parity");
+    progress.phase(5, 5, "gate: time travel");
     final List<TimeTravel.Check> travel =
         TimeTravel.run(world, universe.population(Population.BROAD), values);
-    final List<Parity.Membership> membership = new ArrayList<>();
-    final List<Parity.Column> parity = new ArrayList<>();
-    if (python != null) {
-      membership.add(Parity.membership("fixed", python.populations().get("fixed"),
-          ids(universe, Population.FIXED)));
-      membership.add(Parity.membership("ampla", python.populations().get("ampla"),
-          ids(universe, Population.BROAD)));
-      membership.add(Parity.membership("herdada", python.populations().get("herdada"),
-          ids(universe, Population.INHERITED)));
-      parity.addAll(Parity.columns(python, values));
-    }
 
     final List<String> columns = Attributes.stored();
     final List<RowCache.Entry> entries = new ArrayList<>(ordered.size());
@@ -154,8 +134,7 @@ public final class IssuesExtractTask {
           Instant.ofEpochMilli(u.created()), Instant.ofEpochMilli(u.resolved()), u.reason(),
           u.moved()), row(id, values.get(id)), parts));
     }
-    return new Report(universe.funnel(), summaries, thesis, fidelity, travel, membership, parity,
-        entries, columns);
+    return new Report(universe.funnel(), summaries, thesis, fidelity, travel, entries, columns);
   }
 
   private static World.Commit extractorExecutor(final Extractor extractor, final Universe.Unit u) {

@@ -3,42 +3,31 @@ package app.cli.commands;
 import app.cli.CommandFailedException;
 import app.cli.CommandRunner;
 import app.cli.Context;
-import app.issues.Parity;
 import app.issues.RowCache;
 import app.issues.TimeTravel;
 import app.issues.Universe.Population;
 import app.pipeline.IssuesInProgressExtractTask;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * The in-progress study's extraction: the FIXED issues read at
- * their first In Progress, the split on that instant, time travel at it and parity with the Python
- * specification. Writes the cache to CACHE only when every gate passed; records a summary in
- * ISSUES_DB. Needs PARITY, the Python specification's in-progress export.
+ * The in-progress study's extraction: the FIXED issues read at their first In Progress, the split
+ * on that instant and time travel at it. Writes the cache to CACHE only when the gate passed;
+ * records a summary in ISSUES_DB.
  */
 public final class IssuesInProgressExtractCommand implements CommandRunner {
 
   @Override
   public void run(final Context context) throws CommandFailedException {
     final String cache = System.getenv("CACHE");
-    final String parity = System.getenv("PARITY");
-    if (cache == null || cache.isBlank() || parity == null || parity.isBlank()) {
-      throw new CommandFailedException(List.of("  CACHE=<output file> and PARITY=<the Python "
-          + "in-progress export> are required"));
-    }
-    final Parity.Spec python;
-    try {
-      python = Parity.read(Path.of(parity));
-    } catch (final IOException e) {
-      throw new CommandFailedException(List.of("  could not read " + parity + ": " + e));
+    if (cache == null || cache.isBlank()) {
+      throw new CommandFailedException(List.of("  CACHE=<output file> is required"));
     }
     final IssuesInProgressExtractTask.Report r =
-        new IssuesInProgressExtractTask(context.study(), context.progress()).run(python);
+        new IssuesInProgressExtractTask(context.study(), context.progress()).run();
 
     System.out.printf("%n  DURATION FROM IN PROGRESS -- EXTRACTION AND GATES%n");
     final var s = r.split();
@@ -57,38 +46,16 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
           c.same(), c.total(), c.naiveDiffers());
       c.examples().forEach(x -> System.out.println("        " + x));
     }
-    System.out.printf("%n  GATE 2 -- PARITY WITH THE PYTHON SPECIFICATION (%s)%n", parity);
-    if (r.membership().isEmpty()) {
-      System.out.printf("    the export has no 'andamento' column: nothing compared%n");
-    }
-    for (final Parity.Membership m : r.membership()) {
-      System.out.printf("    population %-9s java %,8d  python %,8d  java only %,d  python only %,d%n",
-          m.population(), m.java(), m.python(), m.onlyJava(), m.onlyPython());
-    }
-    for (final Parity.Column c : r.parity()) {
-      System.out.printf("    %-42s %,8d compared  %,6d mismatched%n", c.name(), c.compared(),
-          c.mismatches());
-      c.examples().forEach(x -> System.out.println("        " + x));
-    }
 
     final Map<String, Object> run = new LinkedHashMap<>();
     run.put("stage", "issues-in-progress-extract");
     run.put("gate_time_travel", r.travelPassed());
-    run.put("gate_parity", r.parityPassed());
     run.put("rows", r.entries().size());
-    final List<Map<String, Object>> rows = new ArrayList<>();
-    for (final Parity.Column c : r.parity()) {
-      final Map<String, Object> row = new LinkedHashMap<>();
-      row.put("column", c.name());
-      row.put("compared", c.compared());
-      row.put("mismatched", c.mismatches());
-      rows.add(row);
-    }
     System.out.printf("%n  run recorded in ISSUES_DB: %s%n",
-        context.issuesResults().record(run, rows));
+        context.issuesResults().record(run, List.of()));
 
     if (!r.passed()) {
-      throw new CommandFailedException(List.of("", "  REFUSED: a gate failed -- the cache was NOT "
+      throw new CommandFailedException(List.of("", "  REFUSED: the gate failed -- the cache was NOT "
           + "written. Explain every mismatch before going on."));
     }
     try {

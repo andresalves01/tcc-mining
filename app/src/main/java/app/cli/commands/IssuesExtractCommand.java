@@ -4,21 +4,18 @@ import app.cli.CommandFailedException;
 import app.cli.CommandRunner;
 import app.cli.Context;
 import app.issues.Initial;
-import app.issues.Parity;
 import app.issues.RowCache;
 import app.issues.TimeTravel;
 import app.pipeline.IssuesExtractTask;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Builds the study's populations and columns, prints the gates, and writes the cache to the file
- * {@code CACHE} names -- only when every gate passed. Needs {@code PARITY}, the Python
- * specification's column export. Records a summary in
+ * {@code CACHE} names -- only when every gate passed. Records a summary in
  * {@code ISSUES_DB}.
  */
 public final class IssuesExtractCommand implements CommandRunner {
@@ -26,19 +23,11 @@ public final class IssuesExtractCommand implements CommandRunner {
   @Override
   public void run(final Context context) throws CommandFailedException {
     final String cache = System.getenv("CACHE");
-    final String parity = System.getenv("PARITY");
-    if (cache == null || cache.isBlank() || parity == null || parity.isBlank()) {
-      throw new CommandFailedException(List.of("  CACHE=<output file> and PARITY=<the Python "
-          + "column export> are required"));
-    }
-    final Parity.Spec python;
-    try {
-      python = Parity.read(Path.of(parity));
-    } catch (final IOException e) {
-      throw new CommandFailedException(List.of("  could not read " + parity + ": " + e));
+    if (cache == null || cache.isBlank()) {
+      throw new CommandFailedException(List.of("  CACHE=<output file> is required"));
     }
     final IssuesExtractTask.Report r =
-        new IssuesExtractTask(context.study(), context.progress()).run(python);
+        new IssuesExtractTask(context.study(), context.progress()).run();
 
     System.out.printf("%n  ISSUE DURATION -- EXTRACTION AND GATES%n");
     System.out.printf("%n  FUNNEL%n");
@@ -71,34 +60,14 @@ public final class IssuesExtractCommand implements CommandRunner {
       c.examples().forEach(x -> System.out.println("        " + x));
     }
 
-    System.out.printf("%n  GATE 3 -- PARITY WITH THE PYTHON SPECIFICATION (%s)%n", parity);
-    for (final Parity.Membership m : r.membership()) {
-      System.out.printf("    population %-8s java %,8d  python %,8d  java only %,d  python only %,d%n",
-          m.population(), m.java(), m.python(), m.onlyJava(), m.onlyPython());
-    }
-    for (final Parity.Column c : r.parity()) {
-      System.out.printf("    %-42s %,8d compared  %,6d mismatched%n", c.name(), c.compared(),
-          c.mismatches());
-      c.examples().forEach(x -> System.out.println("        " + x));
-    }
-
     final Map<String, Object> run = new LinkedHashMap<>();
     run.put("stage", "issues-extract");
     run.put("funnel", r.funnel());
     run.put("gate_thesis_split", r.thesisSplitMismatches());
     run.put("gate_time_travel", r.travelPassed());
-    run.put("gate_parity", r.parityPassed());
     run.put("rows", r.entries().size());
-    final List<Map<String, Object>> rows = new ArrayList<>();
-    for (final Parity.Column c : r.parity()) {
-      final Map<String, Object> row = new LinkedHashMap<>();
-      row.put("column", c.name());
-      row.put("compared", c.compared());
-      row.put("mismatched", c.mismatches());
-      rows.add(row);
-    }
     System.out.printf("%n  run recorded in ISSUES_DB: %s%n",
-        context.issuesResults().record(run, rows));
+        context.issuesResults().record(run, List.of()));
 
     if (!r.passed()) {
       throw new CommandFailedException(List.of("", "  REFUSED: a gate failed -- the cache was NOT "

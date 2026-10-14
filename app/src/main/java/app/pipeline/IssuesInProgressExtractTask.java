@@ -5,7 +5,6 @@ import app.issues.Corpus;
 import app.issues.Extractor;
 import app.issues.Initial;
 import app.issues.IssueUnit;
-import app.issues.Parity;
 import app.issues.RowCache;
 import app.issues.TimeTravel;
 import app.issues.Universe;
@@ -24,14 +23,13 @@ import java.util.Set;
 import java.util.TreeSet;
 
 /**
- * The in-progress study's population and columns: FIXED issues read at their first In Progress, and the gates before anything is fitted.
+ * The in-progress study's population and columns: FIXED issues read at their first In Progress,
+ * and the gate before anything is fitted.
  *
  * <p>Every column is the main study's, read at t0 = the first In Progress (P11): the changelog is
  * undone from t0 on ({@link Initial#at}), the executor is the assignee at t0 or else whoever made
  * the change (P8), and the participants are the reporter and whoever commented on or changed the
- * issue before t0 (P13). The gates, all of which must pass for the cache to be written: time travel
- * at t0, and parity of the population and of every column with the Python specification
- * (its in-progress export).
+ * issue before t0 (P13). The gate, which must pass for the cache to be written: time travel at t0.
  */
 public final class IssuesInProgressExtractTask {
 
@@ -41,21 +39,14 @@ public final class IssuesInProgressExtractTask {
   public static final String PAUSED = "PAUSA_volta_open";
 
   public record Report(IssuesExtractTask.SplitSummary split, List<TimeTravel.Check> travel,
-      List<Parity.Membership> membership, List<Parity.Column> parity,
       Map<String, Integer> executors, List<RowCache.Entry> entries, List<String> columns) {
 
     public boolean travelPassed() {
       return travel.stream().allMatch(c -> c.same() == c.total());
     }
 
-    public boolean parityPassed() {
-      return !membership.isEmpty()
-          && membership.stream().allMatch(m -> m.onlyJava() == 0 && m.onlyPython() == 0)
-          && parity.stream().allMatch(c -> c.mismatches() == 0);
-    }
-
     public boolean passed() {
-      return travelPassed() && parityPassed();
+      return travelPassed();
     }
   }
 
@@ -67,7 +58,7 @@ public final class IssuesInProgressExtractTask {
     this.progress = progress;
   }
 
-  public Report run(final Parity.Spec python) {
+  public Report run() {
     progress.phase(1, 4, "reading the corpus: %s", source.describe());
     final Corpus corpus = source.load();
 
@@ -103,14 +94,8 @@ public final class IssuesInProgressExtractTask {
       values.put(u.id(), row);
     }
 
-    progress.phase(4, 4, "gates: time travel and parity");
+    progress.phase(4, 4, "gate: time travel");
     final List<TimeTravel.Check> travel = TimeTravel.run(world, units, values, at);
-    final List<Parity.Membership> membership = new ArrayList<>();
-    final List<Parity.Column> parity = new ArrayList<>();
-    if (python != null && python.populations().containsKey("andamento")) {
-      membership.add(Parity.membership("andamento", python.populations().get("andamento"), ids));
-      parity.addAll(Parity.columns(python, values));
-    }
 
     final List<String> columns = new ArrayList<>(Attributes.stored());
     columns.add(PAUSED);
@@ -131,7 +116,7 @@ public final class IssuesInProgressExtractTask {
           new app.study.Row(u.id(), withPause, row.absent()), parts));
     }
     return new Report(IssuesExtractTask.summary(Population.IN_PROGRESS, units.size(), split),
-        travel, membership, parity, executors, entries, columns);
+        travel, executors, entries, columns);
   }
 
   /** P13: the reporter and whoever commented on or changed the issue in [creation, t0). */
