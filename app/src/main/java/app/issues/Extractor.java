@@ -1,5 +1,6 @@
 package app.issues;
 
+import app.features.TeamSummary;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -8,6 +9,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
@@ -36,6 +38,20 @@ public final class Extractor {
 
   public static final List<String> AZ_TYPES =
       List.of("Bug", "Task", "Improvement", "Test", "Sub-task", "New Feature", "Wish");
+  /**
+   * The revised team summaries (the semantic-similarity chain): median and population deviation
+   * across the members of each one's history in the project, on the original scale. A member
+   * with Java commits none of which has McCC is left out of the complexity, never read as zero,
+   * and a team with nobody left has the values missing; partial coverage stays in A06c. Not in {@link Attributes}: the matrices the extraction
+   * writes, and the SHA-256 the pre-registrations froze, carry only the registry's columns.
+   */
+  public static final String TEAM_LOC_MEDIAN = "TEAM_loc_median";
+  public static final String TEAM_LOC_SD = "TEAM_loc_sd";
+  public static final String TEAM_MCCC_MEDIAN = "TEAM_mccc_median";
+  public static final String TEAM_MCCC_SD = "TEAM_mccc_sd";
+  public static final List<String> TEAM_REVISED =
+      List.of(TEAM_LOC_MEDIAN, TEAM_LOC_SD, TEAM_MCCC_MEDIAN, TEAM_MCCC_SD);
+
   static final Map<String, Double> AZ_PRIORITY = Map.of("Trivial", 1.0, "Minor", 2.0, "Major", 3.0,
       "Critical", 4.0, "Blocker", 5.0);
 
@@ -385,12 +401,16 @@ public final class Extractor {
     v.put("A03_team_size", (double) team.size());
     final List<Double> locs = new ArrayList<>();
     final List<Double> mcs = new ArrayList<>();
+    final List<Double> measuredMcs = new ArrayList<>();
     int teamJava = 0;
     int teamCovered = 0;
     for (final String m : team.stream().sorted().toList()) {
       final World.PersonHistory h = world.personHistory(m, p, t0);
       locs.add((double) h.loc());
       mcs.add(h.mccc());
+      // decision 8 adds nothing for an unmeasured commit: Java commits none of which was measured
+      // leave the complexity unknown, while no Java at all is zero, as the Java lines are
+      measuredMcs.add(h.javaCommits() > 0 && h.javaCovered() == 0 ? null : h.mccc());
       teamJava += h.javaCommits();
       teamCovered += h.javaCovered();
     }
@@ -401,6 +421,12 @@ public final class Extractor {
     v.put("A06_mu_m", m[0]);
     v.put("A07_s_m", m[1]);
     v.put("A06c_team_mccc_coverage", teamJava == 0 ? null : (double) teamCovered / teamJava);
+    final Optional<TeamSummary> revisedLoc = TeamSummary.of(locs);
+    final Optional<TeamSummary> revisedMcs = TeamSummary.of(measuredMcs);
+    v.put(TEAM_LOC_MEDIAN, revisedLoc.map(TeamSummary::median).orElse(null));
+    v.put(TEAM_LOC_SD, revisedLoc.map(TeamSummary::deviation).orElse(null));
+    v.put(TEAM_MCCC_MEDIAN, revisedMcs.map(TeamSummary::median).orElse(null));
+    v.put(TEAM_MCCC_SD, revisedMcs.map(TeamSummary::deviation).orElse(null));
 
     // ============================================================ C2: between t0 and t1
     final List<Corpus.Comment> cms = new ArrayList<>();

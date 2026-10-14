@@ -29,6 +29,7 @@ class StudyTest {
     final Map<String, Corpus.Person> people = new HashMap<>();
     final Map<String, Corpus.Contribution> contributions = new HashMap<>();
     final Map<String, Corpus.Label> labels = new HashMap<>();
+    final Map<String, Double> complexity = new HashMap<>();
     int ext = 1;
 
     void issue(final String id, final String key, final long created, final String reporter) {
@@ -56,9 +57,20 @@ class StudyTest {
       contributions.put(id, new Corpus.Contribution(false, 1, 10, 0));
     }
 
+    /** A Java commit linked to nothing, with its lines and its McCC (null when not measured). */
+    void measured(final String id, final String author, final long at, final long loc,
+        final Double mccc) {
+      commits.add(new Corpus.Commit(id, "p", "h" + id, author, at, at, 1, List.of()));
+      contributions.put(id, new Corpus.Contribution(false, 1, loc, 0));
+      if (mccc != null) {
+        complexity.put(id, mccc);
+      }
+    }
+
     Corpus build() {
       return new Corpus(issues, events, comments, List.of(), commits,
-          Map.of("p", Set.of("P")), prMerge, people, contributions, Map.of(), labels, Map.of());
+          Map.of("p", Set.of("P")), prMerge, people, contributions, complexity, labels,
+          Map.of());
     }
   }
 
@@ -320,5 +332,102 @@ class StudyTest {
     assertEquals(2, TextMeasures.length("😀a"), "code points, not UTF-16 units");
     assertEquals("ab", Initial.norm("  ab "), "strip as Python: the no-break space goes");
     assertNull(Initial.norm(" "), "a description of spaces only is absent");
+  }
+
+  /** The row of issue "a", In Progress at {@code t0}, created ten days before it. */
+  private static Map<String, Double> teamRow(final Fixture f, final long t0) {
+    f.issue("a", "P-1", t0 - 10 * D, "r");
+    f.events.add(new Corpus.Event("a", t0, "status", "dev", "Open", "In Progress",
+        (f.ext++) + "%%0"));
+    f.resolve("a", t0 + 5 * D, "Fixed");
+    final Corpus corpus = f.build();
+    final Universe u = Universe.of(corpus);
+    final Universe.Unit unit = u.unit(Universe.Population.IN_PROGRESS, "a");
+    return new Extractor(new World(u, corpus), Set.of("a")).row(unit,
+        Initial.at(u.issue("a"), u.events("a"), null, unit.start()), null,
+        new Extractor.At(unit.start(), null, Set.of("r")));
+  }
+
+  @Test
+  @DisplayName("the revised team columns: median and spread over the members who committed in the "
+      + "90 days, a member without McCC left out of the complexity, the team means untouched")
+  void revisedTeam() {
+    final long t0 = T0 + 200 * D;
+    final Fixture f = new Fixture();
+    f.measured("c1", "m1", t0 - 150 * D, 10, 4.0);    // m1's history counts from before the window
+    f.measured("c2", "m1", t0 - 20 * D, 30, 2.0);
+    f.measured("c3", "m2", t0 - 10 * D, 100, 12.0);
+    f.measured("c4", "m3", t0 - 5 * D, 10, null);      // Java, but its McCC was never measured
+    f.measured("c5", "old", t0 - 120 * D, 500, 50.0);  // not in the team: nothing in the window
+    final Map<String, Double> row = teamRow(f, t0);
+
+    assertEquals(3.0, row.get("A03_team_size"));
+    // lines 40, 100, 10: median 40; mean 50, squared deviations 100 + 2500 + 1600 over n = 3
+    assertEquals(40.0, row.get(Extractor.TEAM_LOC_MEDIAN), 1e-9);
+    assertEquals(Math.sqrt(1400), row.get(Extractor.TEAM_LOC_SD), 1e-9);
+    // McCC 6 and 12 over the two measured members
+    assertEquals(9.0, row.get(Extractor.TEAM_MCCC_MEDIAN), 1e-9);
+    assertEquals(3.0, row.get(Extractor.TEAM_MCCC_SD), 1e-9);
+    // the old means still read m3's unmeasured McCC as zero, as they always did
+    assertEquals(50.0, row.get("A04_mu_l"), 1e-9);
+    assertEquals(Math.sqrt(1400), row.get("A05_s_l"), 1e-9);
+    assertEquals(6.0, row.get("A06_mu_m"), 1e-9);
+    assertEquals(Math.sqrt(24), row.get("A07_s_m"), 1e-9);
+    assertEquals(0.75, row.get("A06c_team_mccc_coverage"), 1e-9,
+        "three of the four Java commits measured: metadata, as before");
+  }
+
+  @Test
+  @DisplayName("a one-member team has zero spread where its measure is observed, and missing "
+      + "complexity where it is not")
+  void oneMemberTeam() {
+    final long t0 = T0 + 200 * D;
+    final Fixture measured = new Fixture();
+    measured.measured("c1", "m1", t0 - 10 * D, 70, 5.0);
+    final Map<String, Double> one = teamRow(measured, t0);
+    assertEquals(70.0, one.get(Extractor.TEAM_LOC_MEDIAN), 1e-9);
+    assertEquals(0.0, one.get(Extractor.TEAM_LOC_SD), 1e-9);
+    assertEquals(5.0, one.get(Extractor.TEAM_MCCC_MEDIAN), 1e-9);
+    assertEquals(0.0, one.get(Extractor.TEAM_MCCC_SD), 1e-9);
+
+    final Fixture unmeasured = new Fixture();
+    unmeasured.measured("c1", "m1", t0 - 10 * D, 70, null);
+    final Map<String, Double> none = teamRow(unmeasured, t0);
+    assertEquals(0.0, none.get(Extractor.TEAM_LOC_SD), 1e-9, "the lines are observed");
+    assertNull(none.get(Extractor.TEAM_MCCC_MEDIAN), "missing, not zero experience");
+    assertNull(none.get(Extractor.TEAM_MCCC_SD), "missing, not a false zero spread");
+    assertEquals(0.0, none.get("A06_mu_m"), "the old mean keeps reading it as zero");
+  }
+
+  @Test
+  @DisplayName("a member with no Java at all has zero complexity, as zero Java lines, not a "
+      + "missing one")
+  void memberWithoutJava() {
+    final long t0 = T0 + 200 * D;
+    final Fixture f = new Fixture();
+    f.measured("c1", "m1", t0 - 10 * D, 70, 5.0);
+    f.commits.add(new Corpus.Commit("c2", "p", "hc2", "m2", t0 - 5 * D, t0 - 5 * D, 1,
+        List.of()));
+    f.contributions.put("c2", new Corpus.Contribution(false, 0, 0, 0));
+    final Map<String, Double> row = teamRow(f, t0);
+
+    assertEquals(35.0, row.get(Extractor.TEAM_LOC_MEDIAN), 1e-9, "70 and 0 Java lines");
+    assertEquals(2.5, row.get(Extractor.TEAM_MCCC_MEDIAN), 1e-9, "5 and 0: nothing to measure");
+    assertEquals(2.5, row.get(Extractor.TEAM_MCCC_SD), 1e-9);
+  }
+
+  @Test
+  @DisplayName("a team with no member in the 90 days has missing summaries, not zeros")
+  void noTeam() {
+    final long t0 = T0 + 200 * D;
+    final Fixture f = new Fixture();
+    f.measured("c1", "m1", t0 - 120 * D, 70, 5.0);
+    final Map<String, Double> row = teamRow(f, t0);
+
+    assertEquals(0.0, row.get("A03_team_size"));
+    for (final String column : Extractor.TEAM_REVISED) {
+      assertTrue(row.containsKey(column), column + " is written, as missing");
+      assertNull(row.get(column), column);
+    }
   }
 }
