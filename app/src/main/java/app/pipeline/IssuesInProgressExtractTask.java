@@ -38,8 +38,14 @@ public final class IssuesInProgressExtractTask {
   /** P16: the issue went back from In Progress to Open before its first resolution. */
   public static final String PAUSED = "PAUSA_volta_open";
 
+  /**
+   * @param entries the rows of the cache, its columns only
+   * @param team per issue id, the revised team columns ({@link Extractor#TEAM_REVISED}), absent
+   *     when missing; never in {@code entries}, so the cache is written as it was registered
+   */
   public record Report(IssuesExtractTask.SplitSummary split, List<TimeTravel.Check> travel,
-      Map<String, Integer> executors, List<RowCache.Entry> entries, List<String> columns) {
+      Map<String, Integer> executors, List<RowCache.Entry> entries, List<String> columns,
+      Map<String, Map<String, Double>> team) {
 
     public boolean travelPassed() {
       return travel.stream().allMatch(c -> c.same() == c.total());
@@ -100,7 +106,16 @@ public final class IssuesInProgressExtractTask {
     final List<String> columns = new ArrayList<>(Attributes.stored());
     columns.add(PAUSED);
     final List<RowCache.Entry> entries = new ArrayList<>(units.size());
+    final Map<String, Map<String, Double>> team = new java.util.LinkedHashMap<>();
     for (final Universe.Unit u : units) {
+      final Map<String, Double> revised = new HashMap<>();
+      for (final String column : Extractor.TEAM_REVISED) {
+        final Double v = values.get(u.id()).get(column);
+        if (v != null) {
+          revised.put(column, v);
+        }
+      }
+      team.put(u.id(), revised);
       final Universe.Part outer = split.outer().get(u.id());
       final Universe.Part inner = split.inner().get(u.id());
       final Map<Population, String[]> parts = new EnumMap<>(Population.class);
@@ -116,7 +131,7 @@ public final class IssuesInProgressExtractTask {
           new app.study.Row(u.id(), withPause, row.absent()), parts));
     }
     return new Report(IssuesExtractTask.summary(Population.IN_PROGRESS, units.size(), split),
-        travel, executors, entries, columns);
+        travel, executors, entries, columns, team);
   }
 
   /** P13: the reporter and whoever commented on or changed the issue in [creation, t0). */

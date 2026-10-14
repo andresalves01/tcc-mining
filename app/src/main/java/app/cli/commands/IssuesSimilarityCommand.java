@@ -5,7 +5,9 @@ import app.cli.CommandRunner;
 import app.cli.Context;
 import app.issues.Augmentation;
 import app.issues.DescriptionCleaner;
+import app.issues.Extractor;
 import app.issues.RowCache;
+import app.issues.TeamColumns;
 import app.issues.Universe.Population;
 import app.pipeline.IssuesSimilarityTask;
 import java.io.IOException;
@@ -24,10 +26,12 @@ import java.util.Map;
  * Separate from the registered in-progress chain: it reads that chain's matrix and changes nothing
  * of it.
  *
- * <p>Reads CACHE and the corpus; refuses, writing and recording nothing, unless the four split
- * sizes are the registered study's. Writes the augmented matrix to MATRIX, the diagnostics as
- * tab-separated files to REPORT_DIR, and records the run, with the SHA-256 of every file it read or
- * wrote, in ISSUES_DB.
+ * <p>Reads CACHE, the revised team columns {@code issues-in-progress-team} wrote to TEAM_COLUMNS,
+ * and the corpus; refuses, writing and recording nothing, unless the four split sizes are the
+ * registered study's and the team file holds exactly the matrix's issues. Writes the augmented
+ * matrix -- the extracted columns, the four team columns, then the similarity columns -- to MATRIX,
+ * the diagnostics as tab-separated files to REPORT_DIR, and records the run, with the SHA-256 of
+ * every file it read or wrote, in ISSUES_DB.
  */
 public final class IssuesSimilarityCommand implements CommandRunner {
 
@@ -40,31 +44,50 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     final Path cache = path("CACHE");
     final Path matrix = path("MATRIX");
     final Path reports = path("REPORT_DIR");
+    final Path teamFile = path("TEAM_COLUMNS");
     final long began = System.nanoTime();
 
     final String cacheSha;
-    final List<RowCache.Entry> entries;
+    final String teamSha;
+    final List<RowCache.Entry> extracted;
+    final Map<String, Map<String, Double>> team;
     final List<String> columns;
+    if (same(cache, matrix) || same(teamFile, matrix) || same(cache, teamFile)) {
+      throw new CommandFailedException(List.of("  REFUSED: CACHE, TEAM_COLUMNS and MATRIX must be "
+          + "three different files; the inputs are never overwritten"));
+    }
     try {
       cacheSha = IssuesReservedCommand.sha256(cache);
-      entries = RowCache.read(cache);
-      columns = RowCache.columns(cache);
+      extracted = RowCache.read(cache);
+      columns = new ArrayList<>(RowCache.columns(cache));
     } catch (final IOException e) {
-      throw new CommandFailedException(List.of("  could not read " + cache + ": " + e));
+      throw new CommandFailedException(List.of("  could not read CACHE " + cache + ": " + e));
     }
-    if (cache.toAbsolutePath().normalize().equals(matrix.toAbsolutePath().normalize())) {
-      throw new CommandFailedException(List.of("  REFUSED: MATRIX is CACHE; the extracted matrix "
-          + "is the registered record and is never overwritten"));
+    try {
+      teamSha = IssuesReservedCommand.sha256(teamFile);
+      team = TeamColumns.read(teamFile);
+    } catch (final IOException e) {
+      throw new CommandFailedException(List.of("  could not read TEAM_COLUMNS " + teamFile
+          + " (written by issues-in-progress-team): " + e));
     }
-    final List<String> already =
-        Augmentation.columns().stream().filter(columns::contains).toList();
+    final List<String> already = java.util.stream.Stream.concat(Extractor.TEAM_REVISED.stream(),
+        Augmentation.columns().stream()).filter(columns::contains).toList();
     if (!already.isEmpty()) {
       throw new CommandFailedException(List.of("  REFUSED: " + cache + " already has "
           + String.join(", ", already) + "; give the matrix the extraction wrote"));
     }
     System.out.printf("%n  DURATION FROM IN PROGRESS -- DESCRIPTION SIMILARITY%n");
     System.out.printf("  matrix read %s  sha256 %s (%,d rows)%n", cache, cacheSha,
-        entries.size());
+        extracted.size());
+    System.out.printf("  team columns read %s  sha256 %s%n", teamFile, teamSha);
+    final List<RowCache.Entry> entries;
+    try {
+      entries = TeamColumns.join(extracted, team);
+    } catch (final IllegalArgumentException e) {
+      throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
+          + e.getMessage()));
+    }
+    columns.addAll(Extractor.TEAM_REVISED);
 
     final IssuesSimilarityTask.Report r =
         new IssuesSimilarityTask(context.study(), context.progress()).run(entries);
@@ -123,6 +146,7 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     final Map<String, Object> run = new LinkedHashMap<>();
     run.put("stage", STAGE);
     run.put("cache_sha256", cacheSha);
+    run.put("team_columns_sha256", teamSha);
     run.put("written_sha256", written);
     run.put("cleaner", DescriptionCleaner.VERSION);
     run.put("jaccard_n", Augmentation.JACCARD_N);
@@ -187,6 +211,10 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     return out;
   }
 
+  private static boolean same(final Path a, final Path b) {
+    return a.toAbsolutePath().normalize().equals(b.toAbsolutePath().normalize());
+  }
+
   private static String name(final Augmentation.Variant v) {
     return v.name().toLowerCase(Locale.ROOT);
   }
@@ -195,7 +223,8 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     final String fromEnv = System.getenv(name);
     final String value = fromEnv == null || fromEnv.isBlank() ? System.getProperty(name) : fromEnv;
     if (value == null || value.isBlank()) {
-      throw new CommandFailedException(List.of("  CACHE, MATRIX and REPORT_DIR are required; "
+      throw new CommandFailedException(List.of("  CACHE, TEAM_COLUMNS, MATRIX and REPORT_DIR are "
+          + "required; "
           + "missing " + name));
     }
     return Path.of(value);

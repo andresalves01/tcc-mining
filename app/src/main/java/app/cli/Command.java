@@ -19,6 +19,7 @@ import app.cli.commands.IssuesInProgressCheckCommand;
 import app.cli.commands.IssuesInProgressExtractCommand;
 import app.cli.commands.IssuesInProgressGridCommand;
 import app.cli.commands.IssuesInProgressReservedCommand;
+import app.cli.commands.IssuesInProgressTeamCommand;
 import app.cli.commands.IssuesReservedCommand;
 import app.cli.commands.IssuesSimilarityCommand;
 import app.cli.commands.ReconstructPeopleCommand;
@@ -184,15 +185,26 @@ public enum Command {
       non-English descriptions drawn with a fixed seed to REPORT_DIR. Reads
       the corpus; records nothing in Mongo, so it may run at any time."""),
 
+  ISSUES_IN_PROGRESS_TEAM("issues-in-progress-team", new IssuesInProgressTeamCommand(), """
+      Issue duration from the first In Progress, description-similarity
+      chain: runs the in-progress extraction and writes only the revised team
+      columns (median and spread of lines of code and of cyclomatic
+      complexity across the team) to TEAM_COLUMNS, one line per issue, so the
+      registered matrix is never rewritten. Refuses when the extraction's
+      time-travel gate fails; that gate checks the registered columns, not
+      these four. Records the run in ISSUES_DB; reads everything else."""),
+
   ISSUES_SIMILARITY("issues-in-progress-similarity", new IssuesSimilarityCommand(), """
       Issue duration from the first In Progress, description-similarity
-      chain: adds to the extracted matrix the median duration of the 5, 10
-      and 20 issues whose descriptions at their first In Progress share the
-      most words (Jaccard), once against the inner split and once against
-      the outer, history built in five time blocks per fitting set. Refuses
-      unless the four split sizes are the registered study's. Reads CACHE and
-      the corpus; writes MATRIX and the diagnostics to REPORT_DIR; records the
-      run in ISSUES_DB. Leaves the registered in-progress chain untouched."""),
+      chain: adds to the extracted matrix the revised team columns from
+      TEAM_COLUMNS and the median duration of the 5, 10 and 20 issues whose
+      descriptions at their first In Progress share the most words
+      (Jaccard), once against the inner split and once against the outer,
+      history built in five time blocks per fitting set. Refuses unless the
+      four split sizes are the registered study's and TEAM_COLUMNS holds
+      exactly the matrix's issues. Reads CACHE, TEAM_COLUMNS and the corpus;
+      writes MATRIX and the diagnostics to REPORT_DIR; records the run in
+      ISSUES_DB. Leaves the registered in-progress chain untouched."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both

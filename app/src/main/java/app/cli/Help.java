@@ -61,6 +61,8 @@ public final class Help {
           REPORT_DIR        (unset)             issues-description-language and
                                                 issues-in-progress-similarity: where their files go
           MATRIX            (unset)             issues-in-progress-similarity: the augmented matrix
+          TEAM_COLUMNS      (unset)             issues-in-progress-team writes it,
+                                                issues-in-progress-similarity reads it
         """);
   }
 
