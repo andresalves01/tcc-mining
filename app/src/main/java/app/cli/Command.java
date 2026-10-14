@@ -20,6 +20,7 @@ import app.cli.commands.IssuesInProgressExtractCommand;
 import app.cli.commands.IssuesInProgressGridCommand;
 import app.cli.commands.IssuesInProgressReservedCommand;
 import app.cli.commands.IssuesReservedCommand;
+import app.cli.commands.IssuesSimilarityCommand;
 import app.cli.commands.ReconstructPeopleCommand;
 import app.cli.commands.SeniorityCommand;
 import app.cli.commands.SplitCommand;
@@ -182,6 +183,16 @@ public enum Command {
       Writes the count per language, the count with no description and 20
       non-English descriptions drawn with a fixed seed to REPORT_DIR. Reads
       the corpus; records nothing in Mongo, so it may run at any time."""),
+
+  ISSUES_SIMILARITY("issues-in-progress-similarity", new IssuesSimilarityCommand(), """
+      Issue duration from the first In Progress, description-similarity
+      chain: adds to the extracted matrix the median duration of the 5, 10
+      and 20 issues whose descriptions at their first In Progress share the
+      most words (Jaccard), once against the inner split and once against
+      the outer, history built in five time blocks per fitting set. Refuses
+      unless the four split sizes are the registered study's. Reads CACHE and
+      the corpus; writes MATRIX and the diagnostics to REPORT_DIR; records the
+      run in ISSUES_DB. Leaves the registered in-progress chain untouched."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both

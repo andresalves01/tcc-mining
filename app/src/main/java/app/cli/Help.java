@@ -58,7 +58,9 @@ public final class Help {
                                                 0 turns the rule off -- every pair is eligible
           TEAM_WINDOW_DAYS  90                  features: how far back the active team is read
           PILOT             (unset)             ledger and funnel: restrict to matching projects
-          REPORT_DIR        (unset)             issues-description-language: where its files go
+          REPORT_DIR        (unset)             issues-description-language and
+                                                issues-in-progress-similarity: where their files go
+          MATRIX            (unset)             issues-in-progress-similarity: the augmented matrix
         """);
   }
 

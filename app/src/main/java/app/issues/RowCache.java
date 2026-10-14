@@ -126,14 +126,13 @@ public final class RowCache {
     }
     final Integer started = at.get(STARTED);
     final Map<Population, Integer> partAt = new EnumMap<>(Population.class);
-    int fixed = BASE.size() + (started == null ? 0 : 1);
     for (final Population p : Population.values()) {
       final Integer k = at.get(prefix(p) + "_externa");
       if (k != null) {
         partAt.put(p, k);
-        fixed = Math.max(fixed, k + 2);
       }
     }
+    final int fixed = firstValue(at);
     final List<Entry> entries = new ArrayList<>(lines.size());
     for (final String line : lines.subList(1, lines.size())) {
       if (line.isBlank()) {
@@ -159,6 +158,32 @@ public final class RowCache {
           new Row(f[0], values, absent), parts));
     }
     return entries;
+  }
+
+  /** The value columns of a cache, in the order its header lists them. */
+  public static List<String> columns(final Path path) throws IOException {
+    final String first;
+    try (var lines = Files.lines(path, StandardCharsets.UTF_8)) {
+      first = lines.findFirst().orElseThrow(() -> new IOException(path + " is empty"));
+    }
+    final String[] header = first.split(SEP, -1);
+    final Map<String, Integer> at = new HashMap<>();
+    for (int i = 0; i < header.length; i++) {
+      at.put(header[i], i);
+    }
+    return List.of(header).subList(firstValue(at), header.length);
+  }
+
+  /** Where the value columns start: after the base, the start and every partition column. */
+  private static int firstValue(final Map<String, Integer> at) {
+    int fixed = BASE.size() + (at.containsKey(STARTED) ? 1 : 0);
+    for (final Population p : Population.values()) {
+      final Integer k = at.get(prefix(p) + "_externa");
+      if (k != null) {
+        fixed = Math.max(fixed, k + 2);
+      }
+    }
+    return fixed;
   }
 
   private static String empty(final String s) {
