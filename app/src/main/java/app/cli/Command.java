@@ -209,10 +209,14 @@ public enum Command {
       chain: adds to the extracted matrix the revised team columns from
       TEAM_COLUMNS and the median duration of the 5, 10 and 20 issues whose
       descriptions at their first In Progress share the most words
-      (Jaccard), once against the inner split and once against the outer,
-      history built in five time blocks per fitting set. Refuses unless the
-      four split sizes are the registered study's and TEAM_COLUMNS holds
-      exactly the matrix's issues. Reads CACHE, TEAM_COLUMNS and the corpus;
+      (Jaccard) and of the 5, 10 and 20 closest by sentence embedding,
+      once against the inner split and once against the outer, history
+      built in five time blocks per fitting set. Refuses unless the four
+      split sizes are the registered study's and TEAM_COLUMNS holds
+      exactly the matrix's issues, and unless the model in MODEL_DIR
+      reproduces the sentence-transformers reference on six sentences.
+      Reads CACHE, TEAM_COLUMNS, the model and the corpus; keeps the
+      embeddings in EMBEDDING_CACHE;
       writes MATRIX and the diagnostics to REPORT_DIR; records the run in
       ISSUES_DB. Leaves the registered in-progress chain untouched."""),
 

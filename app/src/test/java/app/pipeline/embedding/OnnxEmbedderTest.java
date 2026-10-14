@@ -1,16 +1,13 @@
 package app.pipeline.embedding;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import app.issues.Embedder;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -23,24 +20,21 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The Java embedder against vectors sentence-transformers produced once for six sentences
- * ({@code reference.json}: sentence-transformers 6.1.0, the pinned revision, CPU). Needs the model
- * on disk: set MODEL_DIR to a directory issues-download-model filled, or these are skipped.
+ * The Java embedder against vectors sentence-transformers produced once for six sentences, read
+ * through {@link ReferenceCheck}, the comparison the similarity command runs too. Needs the model
+ * on disk: set MODEL_DIR to a directory issues-download-model filled, or these are skipped; with
+ * REQUIRE_MODEL=1 they fail instead (see {@link ModelGate}).
  */
 class OnnxEmbedderTest {
 
   private static OnnxEmbedder embedder;
-  private static JsonNode reference;
+  private static String failure;
 
   @BeforeAll
-  static void load() throws IOException {
-    try (InputStream in = OnnxEmbedderTest.class.getResourceAsStream("reference.json")) {
-      reference = new ObjectMapper().readTree(in);
-    }
-    final String dir = System.getenv(OnnxEmbedder.MODEL_DIR);
-    if (dir != null && !dir.isBlank()) {
-      embedder = OnnxEmbedder.load(Path.of(dir));
-    }
+  static void load() {
+    final ModelGate.Gate<OnnxEmbedder> gate = ModelGate.fromEnvironment(OnnxEmbedder::load);
+    embedder = gate.model();
+    failure = gate.failure();
   }
 
   @AfterAll
@@ -51,52 +45,25 @@ class OnnxEmbedderTest {
   }
 
   private static void needsModel() {
+    if (failure != null) {
+      fail(failure);
+    }
     assumeTrue(embedder != null, OnnxEmbedder.MODEL_DIR + " is unset: the comparison with "
         + "sentence-transformers needs the model on disk (run issues-download-model into a "
-        + "directory and set " + OnnxEmbedder.MODEL_DIR + " to it); skipped");
-  }
-
-  private static long[] ids(final JsonNode item) {
-    final long[] out = new long[item.get("ids").size()];
-    for (int i = 0; i < out.length; i++) {
-      out[i] = item.get("ids").get(i).asLong();
-    }
-    return out;
+        + "directory and set " + OnnxEmbedder.MODEL_DIR + " to it); skipped. Set "
+        + ModelGate.REQUIRE_MODEL + "=1 to fail instead");
   }
 
   @Test
-  @DisplayName("the reference was produced at the limit the embedder chunks to")
-  void referenceLimit() {
-    assertEquals(EmbeddingModel.MAX_TOKENS, reference.get("max_seq_length").asInt());
-    assertTrue(reference.get("source").asText().contains(EmbeddingModel.REVISION));
-  }
-
-  @Test
-  @DisplayName("the six reference sentences give the same token ids as sentence-transformers")
-  void tokenIds() {
+  @DisplayName("the six reference sentences give the same token ids as sentence-transformers and "
+      + "its vectors within 1e-4, at length one")
+  void reference() {
     needsModel();
-    for (final JsonNode item : reference.get("items")) {
-      final List<long[]> chunks = embedder.chunks(item.get("text").asText());
-      assertEquals(1, chunks.size());
-      assertArrayEquals(ids(item), chunks.get(0), item.get("text").asText());
-    }
-  }
-
-  @Test
-  @DisplayName("the six reference sentences give the sentence-transformers vectors within 1e-4, "
-      + "at length one")
-  void vectors() {
-    needsModel();
-    for (final JsonNode item : reference.get("items")) {
-      final Embedder.Embedding e = embedder.embed(item.get("text").asText());
-      final JsonNode expected = item.get("vector");
-      assertEquals(expected.size(), e.vector().length);
-      assertEquals(1, e.chunks());
-      for (int d = 0; d < expected.size(); d++) {
-        assertEquals(expected.get(d).asDouble(), e.vector()[d], 1e-4,
-            item.get("text").asText() + " at " + d);
-      }
-      assertEquals(1.0, norm(e.vector()), 1e-5);
+    final ReferenceCheck.Result r = ReferenceCheck.compare(embedder, embedder::chunks);
+    assertEquals(List.of(), r.problems());
+    assertTrue(r.maxDifference() <= 1e-4, Double.toString(r.maxDifference()));
+    for (final ReferenceCheck.Item item : ReferenceCheck.items()) {
+      assertEquals(1.0, norm(embedder.embed(item.text()).vector()), 1e-5, item.text());
     }
   }
 
@@ -105,10 +72,10 @@ class OnnxEmbedderTest {
       + "vector has length one")
   void longText() {
     needsModel();
-    final JsonNode item = reference.get("items").get(0);
-    final long[] one = ids(item);
+    final ReferenceCheck.Item item = ReferenceCheck.items().get(0);
+    final long[] one = item.ids();
     final int repeats = 40;
-    final String text = String.join(" ", Collections.nCopies(repeats, item.get("text").asText()));
+    final String text = String.join(" ", Collections.nCopies(repeats, item.text()));
 
     // WordPiece splits on whitespace first, so the repeated sentence is its content tokens repeated.
     final List<Long> expected = new ArrayList<>();

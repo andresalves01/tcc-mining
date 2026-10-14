@@ -105,7 +105,14 @@ tasks.named<Test>("test") {
 
     // The embedder's comparison with sentence-transformers runs only when MODEL_DIR names the
     // downloaded model; declared an input so setting or clearing it reruns the tests.
-    inputs.property("MODEL_DIR", System.getenv("MODEL_DIR") ?: "")
+    val modelDir = System.getenv("MODEL_DIR") ?: System.getProperty("MODEL_DIR") ?: ""
+    inputs.property("MODEL_DIR", modelDir)
+    systemProperty("MODEL_DIR", modelDir)
+    // REQUIRE_MODEL=1 makes those tests fail instead of skipping when the model is not there. Both
+    // are read from the environment or a -D property and forwarded to the test JVM.
+    val requireModel = System.getenv("REQUIRE_MODEL") ?: System.getProperty("REQUIRE_MODEL") ?: ""
+    inputs.property("REQUIRE_MODEL", requireModel)
+    systemProperty("REQUIRE_MODEL", requireModel)
 
     // Spark needs these JVM opens on Java 17+, same as applicationDefaultJvmArgs above.
     jvmArgs(

@@ -10,12 +10,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.function.Predicate;
+import java.util.stream.IntStream;
 
 /**
  * The columns that depend on which issues are allowed as history, added to the in-progress matrix
  * after extraction: the median duration of the issues whose descriptions are closest by Jaccard,
- * for each candidate number of neighbours, and the reporter's historical median, once against the
- * inner split and once against the outer.
+ * and of those closest by embedding, for each candidate number of neighbours, and the reporter's
+ * historical median, once against the inner split and once against the outer.
  *
  * <p><b>History.</b> The rows of a fitting set (inner fitting; outer training) are built in five
  * consecutive time blocks of that set, ordered by first In Progress with equal instants kept in the
@@ -32,6 +33,17 @@ import java.util.function.Predicate;
  * ids are 24-digit hexadecimal Mongo object ids, so their order as strings is their numeric order. The
  * value is missing when the query has no tokens or no candidate; nothing is dropped.
  *
+ * <p><b>Embedding neighbours.</b> Each described issue is embedded once, and its vector read as
+ * given: one that does not have the expected number of finite components at length one within
+ * {@link #UNIT_TOLERANCE} is refused and recorded, never rescaled, so its issue has missing
+ * embedding columns and is no candidate for anyone. The history, blocks and reference instants are
+ * Jaccard's. The similarity is the dot product of the two unit vectors clamped to [-1, 1], the
+ * distance one minus it; the candidates are the history issues at positive similarity, and the
+ * closest n give the median as for Jaccard, ties by id, all of them when fewer than n. The value
+ * is missing when the issue has no description, its vector was refused, or no candidate exists. The
+ * search is a scan of every history vector; the dot product is summed in a fixed order, so a rerun
+ * over the same vectors gives the same neighbours, bit for bit.
+ *
  * <p><b>Reporter.</b> The unweighted median duration, in hours, of the same canonical reporter's
  * other issues in the same project, from the matching fitting set, resolved strictly before this
  * issue's first In Progress; missing when there is none. Every row is Fixed, the population the
@@ -40,15 +52,27 @@ import java.util.function.Predicate;
  * the target's interval and the matching split. It needs no frozen index, so it reads the set issue by issue rather than in blocks: a fitting row
  * sees the set up to its own start, a scored row the whole set.
  *
- * <p>Pure: rows and descriptions in, columns and diagnostics out.
+ * <p>Pure but for the embedder it is given: rows and descriptions in, columns and diagnostics
+ * out.
  */
 public final class Augmentation {
 
   /** The candidate numbers of Jaccard neighbours the selection chooses from. */
   public static final List<Integer> JACCARD_N = List.of(5, 10, 20);
 
+  /** The candidate numbers of embedding neighbours the selection chooses from. */
+  public static final List<Integer> EMBEDDING_N = List.of(5, 10, 20);
+
   /** How many consecutive time blocks a fitting set is built in. */
   public static final int BLOCKS = 5;
+
+  /**
+   * How far a vector's length may be from one and still be read as a unit vector. The model's
+   * vectors are scaled to length one in double precision and stored as floats, which leaves an
+   * error near 1e-7; this bound is three orders of magnitude above it, and the same 1e-4 the
+   * embedder's reference test allows per component.
+   */
+  public static final double UNIT_TOLERANCE = 1e-4;
 
   /** The block label of a scored row, which reads the whole fitting set. */
   public static final String WHOLE = "whole";
@@ -136,16 +160,48 @@ public final class Augmentation {
   public record Coverage(String column, String by, String group, int rows, int observed) {}
 
   /**
+   * One row's embedding search against one variant's history, as {@link Query} is for Jaccard.
+   *
+   * @param candidates the history issues with a valid vector at positive similarity to the query
+   * @param nearest the closest candidates, up to the largest n, closest first
+   */
+  public record EmbeddingQuery(String id, Variant variant, String split, String block,
+      long reference, int candidates, List<Neighbour> nearest) {
+
+    /** How many neighbours the median with {@code n} read. */
+    public int used(final int n) {
+      return Math.min(n, nearest.size());
+    }
+  }
+
+  /**
+   * One described issue's embedding.
+   *
+   * @param chunks how many chunks the embedder cut its description in
+   * @param problem why its vector was refused, null when it is valid; a refused vector is no
+   *     candidate and gives the issue missing embedding columns
+   */
+  public record Embedded(String id, int chunks, String problem) {}
+
+  /**
    * @param columns per issue id, every new column, absent when missing; every issue is a key
+   * @param embeddingQueries every row's embedding search, as {@code queries} for Jaccard
+   * @param embedded every issue with a description, in the order of the rows
    */
   public record Result(Map<String, Map<String, Double>> columns, List<Query> queries,
-      List<Block> blocks, List<Coverage> coverage) {}
+      List<Block> blocks, List<Coverage> coverage, List<EmbeddingQuery> embeddingQueries,
+      List<Embedded> embedded) {}
 
   private Augmentation() {}
 
   /** The Jaccard median column for {@code n} neighbours. */
   public static String jaccard(final int n, final Variant v) {
     return "jaccard_median_" + n + v.suffix;
+  }
+
+  /** The embedding-neighbour median column for {@code n} neighbours. */
+  public static String embedding(final int n, final Variant v) {
+    return "embedding_median_" + n + v.suffix;
   }
 
   /** The reporter's historical median column. */
@@ -164,6 +220,11 @@ public final class Augmentation {
     for (final Variant v : Variant.values()) {
       out.add(reporter(v));
     }
+    for (final int n : EMBEDDING_N) {
+      for (final Variant v : Variant.values()) {
+        out.add(embedding(n, v));
+      }
+    }
     return out;
   }
 
@@ -178,8 +239,16 @@ public final class Augmentation {
     return (int) issues.stream().filter(p).count();
   }
 
-  public static Result run(final List<Issue> issues) {
+  /**
+   * Every column and diagnostic, each described issue embedded once by {@code embedder} into
+   * vectors of {@code dimension} components.
+   */
+  public static Result run(final List<Issue> issues, final Embedder embedder,
+      final int dimension) {
     final Tokens tokens = new Tokens(issues);
+    final Vectors vectors = new Vectors(issues, embedder, dimension);
+    final List<EmbeddingQuery> embeddingQueries = new ArrayList<>();
+    final int mostVectors = EMBEDDING_N.stream().mapToInt(Integer::intValue).max().orElseThrow();
     final Map<String, Map<String, Double>> columns = new LinkedHashMap<>();
     issues.forEach(i -> columns.put(i.id(), new HashMap<>()));
     final List<Query> queries = new ArrayList<>();
@@ -197,30 +266,40 @@ public final class Augmentation {
         final List<Issue> history =
             fitting.stream().filter(h -> h.start() < begins && h.resolved() < begins).toList();
         final Index index = new Index(history, tokens);
+        final Space space = new Space(history, vectors);
         blocks.add(new Block(v, b + 1, block.size(), begins, block.get(block.size() - 1).start(),
             history.size()));
-        for (final Issue q : block) {
+        final List<Space.Found> found = space.search(block, mostVectors);
+        for (int k = 0; k < block.size(); k++) {
+          final Issue q = block.get(k);
           blockOf.put(q.id() + v.suffix, Integer.toString(b + 1));
           queries.add(answer(q, v, Integer.toString(b + 1), begins, index, tokens, most, columns));
+          embeddingQueries.add(nearest(q, v, Integer.toString(b + 1), begins, found.get(k),
+              columns));
         }
       }
       final Index whole = new Index(fitting, tokens);
+      final Space wholeSpace = new Space(fitting, vectors);
       final Issue latest =
           fitting.stream().max(Comparator.comparingLong(Issue::resolved)).orElse(null);
-      for (final Issue q : issues) {
-        if (!v.scored(q)) {
-          continue;
-        }
+      final List<Issue> scored = issues.stream().filter(v::scored).toList();
+      for (final Issue q : scored) {
         if (latest != null && latest.resolved() >= q.start()) {
           throw new IllegalArgumentException(latest.id() + " in the fitting set was resolved at "
               + "or after " + q.id() + " in the scored set started: the split is inconsistent");
         }
+      }
+      final List<Space.Found> found = wholeSpace.search(scored, mostVectors);
+      for (int k = 0; k < scored.size(); k++) {
+        final Issue q = scored.get(k);
         blockOf.put(q.id() + v.suffix, WHOLE);
         queries.add(answer(q, v, WHOLE, q.start(), whole, tokens, most, columns));
+        embeddingQueries.add(nearest(q, v, WHOLE, q.start(), found.get(k), columns));
       }
       reporters(issues, fitting, v, columns);
     }
-    return new Result(columns, queries, blocks, coverage(issues, columns, blockOf));
+    return new Result(columns, queries, blocks, coverage(issues, columns, blockOf),
+        embeddingQueries, List.copyOf(vectors.embedded.values()));
   }
 
   /**
@@ -260,6 +339,25 @@ public final class Augmentation {
       }
     }
     return new Query(q.id(), v, v.split(q), block, reference, mine.length, hits.size(), nearest);
+  }
+
+  private static EmbeddingQuery nearest(final Issue q, final Variant v, final String block,
+      final long reference, final Space.Found found,
+      final Map<String, Map<String, Double>> columns) {
+    final List<Neighbour> nearest = new ArrayList<>();
+    final List<Double> hours = new ArrayList<>();
+    for (final Space.Hit h : found.nearest()) {
+      nearest.add(new Neighbour(h.issue().id(), 1.0 - h.similarity()));
+      hours.add(h.issue().hours());
+    }
+    if (!hours.isEmpty()) {
+      for (final int n : EMBEDDING_N) {
+        columns.get(q.id()).put(embedding(n, v),
+            median(hours.subList(0, Math.min(n, hours.size()))));
+      }
+    }
+    return new EmbeddingQuery(q.id(), v, v.split(q), block, reference, found.candidates(),
+        nearest);
   }
 
   /** Each row's reporter median against the fitting set, issue by issue. */
@@ -403,6 +501,201 @@ public final class Augmentation {
         return c != 0 ? c : x.issue().id().compareTo(y.issue().id());
       });
       return out;
+    }
+  }
+
+  /**
+   * Every described issue's vector, one row of a flat array each, embedded once for the whole
+   * run; an issue with no description, or whose vector is refused, has no row. A vector is
+   * refused unless it has {@code dimension} finite components and length one within {@link
+   * #UNIT_TOLERANCE}; it is used as given, never rescaled. An issue id given twice keeps its last
+   * row's description, as the Jaccard tokens do.
+   */
+  private static final class Vectors {
+
+    private final Map<String, Integer> rows = new HashMap<>();
+    private final Map<String, Embedded> embedded = new LinkedHashMap<>();
+    private final int dimension;
+    private final float[] values;
+
+    Vectors(final List<Issue> issues, final Embedder embedder, final int dimension) {
+      this.dimension = dimension;
+      final Map<String, float[]> byId = new LinkedHashMap<>();
+      for (final Issue i : issues) {
+        byId.remove(i.id());
+        embedded.remove(i.id());
+        if (i.description() == null || i.description().isBlank()) {
+          continue;
+        }
+        final Embedder.Embedding e = embedder.embed(i.description());
+        final float[] v = e == null ? null : e.vector();
+        final String problem = problem(v, dimension);
+        embedded.put(i.id(), new Embedded(i.id(), e == null ? 0 : e.chunks(), problem));
+        if (problem == null) {
+          byId.put(i.id(), v);
+        }
+      }
+      values = new float[byId.size() * dimension];
+      int r = 0;
+      for (final Map.Entry<String, float[]> e : byId.entrySet()) {
+        final float[] v = e.getValue();
+        System.arraycopy(v, 0, values, r * dimension, dimension);
+        rows.put(e.getKey(), r++);
+      }
+    }
+
+    /** Why {@code v} is not a unit vector of {@code dimension} components, null when it is. */
+    static String problem(final float[] v, final int dimension) {
+      if (v == null) {
+        return "no vector";
+      }
+      if (v.length != dimension) {
+        return v.length + " components, expected " + dimension;
+      }
+      double sum = 0;
+      for (final float x : v) {
+        if (!Float.isFinite(x)) {
+          return "a component is not finite";
+        }
+        sum += (double) x * x;
+      }
+      final double length = Math.sqrt(sum);
+      return Math.abs(length - 1) <= UNIT_TOLERANCE ? null : "length " + length + ", not one";
+    }
+
+    /** The issue's row, or -1 when it has no vector. */
+    int row(final String id) {
+      return rows.getOrDefault(id, -1);
+    }
+
+    /**
+     * The dot product of two rows, each product exact in double and summed in a fixed order, so a
+     * rerun gives the same bits.
+     */
+    double dot(final int a, final int b) {
+      final int x = a * dimension;
+      final int y = b * dimension;
+      double s0 = 0;
+      double s1 = 0;
+      double s2 = 0;
+      double s3 = 0;
+      int d = 0;
+      for (; d + 3 < dimension; d += 4) {
+        s0 += (double) values[x + d] * values[y + d];
+        s1 += (double) values[x + d + 1] * values[y + d + 1];
+        s2 += (double) values[x + d + 2] * values[y + d + 2];
+        s3 += (double) values[x + d + 3] * values[y + d + 3];
+      }
+      for (; d < dimension; d++) {
+        s0 += (double) values[x + d] * values[y + d];
+      }
+      return (s0 + s1) + (s2 + s3);
+    }
+  }
+
+  /** A frozen history's vectors, searched by a scan of dot products. */
+  private static final class Space {
+
+    record Hit(Issue issue, double similarity) {}
+
+    record Found(int candidates, List<Hit> nearest) {}
+
+    /** How many queries read one tile of members together. */
+    private static final int GROUP = 64;
+
+    /** How many members one tile holds: 256 of 384 floats, near 400 KB. */
+    private static final int TILE = 256;
+
+    private final List<Issue> members = new ArrayList<>();
+    private final int[] rows;
+    private final Vectors vectors;
+
+    Space(final List<Issue> history, final Vectors vectors) {
+      this.vectors = vectors;
+      final List<Integer> kept = new ArrayList<>();
+      for (final Issue h : history) {
+        final int r = vectors.row(h.id());
+        if (r >= 0) {
+          members.add(h);
+          kept.add(r);
+        }
+      }
+      rows = kept.stream().mapToInt(Integer::intValue).toArray();
+    }
+
+    /**
+     * For each query, the members at positive similarity to it, the clamped dot product, counted,
+     * and the closest {@code most} of them, ties by id; never the query itself. A query with no
+     * vector finds nothing. The members are scanned in tiles each read by a group of queries, the
+     * groups in parallel; every query still visits the members in their order, so the answer is
+     * the one a plain scan gives.
+     */
+    List<Found> search(final List<Issue> queries, final int most) {
+      final Found[] out = new Found[queries.size()];
+      final int groups = (queries.size() + GROUP - 1) / GROUP;
+      IntStream.range(0, groups).parallel().forEach(g -> {
+        final int from = g * GROUP;
+        final int to = Math.min(queries.size(), from + GROUP);
+        final int[] row = new int[to - from];
+        final Hit[][] best = new Hit[to - from][most];
+        final int[] size = new int[to - from];
+        final int[] candidates = new int[to - from];
+        for (int q = from; q < to; q++) {
+          row[q - from] = vectors.row(queries.get(q).id());
+        }
+        for (int tile = 0; tile < rows.length; tile += TILE) {
+          final int last = Math.min(rows.length, tile + TILE);
+          for (int q = 0; q < row.length; q++) {
+            if (row[q] < 0) {
+              continue;
+            }
+            for (int j = tile; j < last; j++) {
+              // one row per id, so the query's own row is the issue itself
+              if (rows[j] == row[q]) {
+                continue;
+              }
+              final double s = Math.max(-1.0, Math.min(1.0, vectors.dot(row[q], rows[j])));
+              if (!(s > 0)) {
+                continue;
+              }
+              candidates[q]++;
+              final Hit[] mine = best[q];
+              if (size[q] < most || closer(s, members.get(j), mine[most - 1])) {
+                size[q] = offer(mine, size[q], new Hit(members.get(j), s));
+              }
+            }
+          }
+        }
+        for (int q = from; q < to; q++) {
+          out[q] = new Found(candidates[q - from],
+              List.of(Arrays.copyOf(best[q - from], size[q - from])));
+        }
+      });
+      return List.of(out);
+    }
+
+    /** Keeps {@code hit} among the closest in {@code best}, closest first; the new size. */
+    private static int offer(final Hit[] best, final int size, final Hit hit) {
+      final int most = best.length;
+      if (size == most && !closer(hit, best[most - 1])) {
+        return size;
+      }
+      int k = size == most ? most - 1 : size;
+      while (k > 0 && closer(hit, best[k - 1])) {
+        best[k] = best[k - 1];
+        k--;
+      }
+      best[k] = hit;
+      return size == most ? size : size + 1;
+    }
+
+    private static boolean closer(final Hit a, final Hit b) {
+      return closer(a.similarity(), a.issue(), b);
+    }
+
+    private static boolean closer(final double similarity, final Issue issue, final Hit b) {
+      final int c = Double.compare(b.similarity(), similarity);
+      return c != 0 ? c < 0 : issue.id().compareTo(b.issue().id()) < 0;
     }
   }
 }

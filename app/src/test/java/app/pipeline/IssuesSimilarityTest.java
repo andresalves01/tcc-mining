@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import app.issues.Augmentation;
 import app.issues.Augmentation.Variant;
 import app.issues.Corpus;
+import app.issues.Embedder;
 import app.issues.IssueUnit;
 import app.issues.RegistrationInProgress;
 import app.issues.RowCache;
@@ -36,6 +37,9 @@ class IssuesSimilarityTest {
   private final Map<String, Corpus.Text> texts = new HashMap<>();
   private final List<RowCache.Entry> entries = new ArrayList<>();
   private int ext = 1;
+
+  /** Every description at the same unit vector of two components. */
+  private static final Embedder SAME = text -> new Embedder.Embedding(new float[] {1, 0}, 1);
 
   /** An issue In Progress at {@code started}, Fixed at {@code resolved}, in the given split. */
   private void issue(final String id, final long started, final long resolved,
@@ -105,7 +109,7 @@ class IssuesSimilarityTest {
     issue("a", T0 + D, T0 + 10 * D, "TRAIN", "TRAIN");
     issue("v", T0 + 20 * D, T0 + 21 * D, "TRAIN", "TEST");
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(false),
-        Progress.silent(), new RegistrationInProgress.Sizes(2, 1, 1, 1)).run(entries);
+        Progress.silent(), new RegistrationInProgress.Sizes(2, 1, 1, 1), SAME, 2).run(entries);
     assertEquals(List.of("outer test: 0 rows, expected 1"), r.refused());
     assertTrue(r.entries().isEmpty());
   }
@@ -124,7 +128,7 @@ class IssuesSimilarityTest {
     issue("x", T0 + 3 * D, T0 + 40 * D, "CROSSES", "");
 
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), new RegistrationInProgress.Sizes(3, 1, 2, 1)).run(entries);
+        Progress.silent(), new RegistrationInProgress.Sizes(3, 1, 2, 1), SAME, 2).run(entries);
     assertEquals(List.of(), r.refused());
     assertEquals(5, r.entries().size());
     final Map<String, Row> rows = new HashMap<>();
@@ -138,6 +142,39 @@ class IssuesSimilarityTest {
   }
 
   @Test
+  @DisplayName("the embedder reads the description at the first In Progress, never a later one; "
+      + "the embedding columns join the others and each description's chunk count is kept")
+  void embeds() {
+    issue("a", T0 + D, T0 + 10 * D, "TRAIN", "TRAIN");
+    edited("a", "alpha beta", "alpha beta", T0);
+    issue("b", T0 + 2 * D, T0 + 11 * D, "TRAIN", "TRAIN");
+    edited("b", "gamma", "gamma", T0);
+    issue("v", T0 + 20 * D, T0 + 21 * D, "TRAIN", "TEST");
+    edited("v", "alpha", "gamma", T0 + 25 * D);
+    issue("t", T0 + 30 * D, T0 + 31 * D, "TEST", "");
+    final Map<String, float[]> hand = Map.of("alpha", new float[] {1, 0},
+        "alpha beta", new float[] {0.6f, 0.8f}, "gamma", new float[] {0, 1});
+    final List<String> asked = new ArrayList<>();
+    final Embedder embedder = text -> {
+      asked.add(text);
+      return new Embedder.Embedding(hand.get(text), text.length());
+    };
+    final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
+        Progress.silent(), new RegistrationInProgress.Sizes(3, 1, 2, 1), embedder, 2)
+        .run(entries);
+    final Map<String, Row> rows = new HashMap<>();
+    r.entries().forEach(e -> rows.put(e.unit().issueId(), e.row()));
+    assertEquals(216.0, rows.get("v").values().get(Augmentation.embedding(5, Variant.INNER)),
+        "a, by the text before the later edit; b is orthogonal");
+    assertTrue(rows.get("t").absent().contains(Augmentation.embedding(5, Variant.OUTER)),
+        "no description");
+    assertEquals(Set.of("alpha beta", "gamma", "alpha"), Set.copyOf(asked));
+    assertEquals(List.of(new Augmentation.Embedded("a", 10, null),
+        new Augmentation.Embedded("b", 5, null), new Augmentation.Embedded("v", 5, null)),
+        r.result().embedded());
+  }
+
+  @Test
   @DisplayName("the reporter median reads the canonical reporter of each row; with no earlier issue "
       + "of that reporter it is missing and the row stays")
   void reporterMedian() {
@@ -146,7 +183,7 @@ class IssuesSimilarityTest {
     issue("v", "s", T0 + 20 * D, T0 + 21 * D, "TRAIN", "TEST");
     issue("t", "z", T0 + 30 * D, T0 + 31 * D, "TEST", "");
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), new RegistrationInProgress.Sizes(3, 1, 2, 1)).run(entries);
+        Progress.silent(), new RegistrationInProgress.Sizes(3, 1, 2, 1), SAME, 2).run(entries);
     final Map<String, Row> rows = new HashMap<>();
     r.entries().forEach(e -> rows.put(e.unit().issueId(), e.row()));
     assertEquals(72.0, rows.get("v").values().get(Augmentation.reporter(Variant.INNER)), "b");
@@ -164,7 +201,7 @@ class IssuesSimilarityTest {
     issue("t", T0 + 30 * D, T0 + 31 * D, "TEST", "");
     issues.remove(1);
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), new RegistrationInProgress.Sizes(2, 1, 1, 1)).run(entries);
+        Progress.silent(), new RegistrationInProgress.Sizes(2, 1, 1, 1), SAME, 2).run(entries);
     assertEquals(List.of("1 issues of the matrix are not in the corpus, the first v"),
         r.refused());
     assertTrue(r.entries().isEmpty());

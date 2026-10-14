@@ -2,15 +2,19 @@ package app.cli.commands;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import app.cli.CommandFailedException;
 import app.issues.Augmentation;
 import app.issues.Augmentation.Variant;
+import app.issues.Embedder;
 import app.issues.IssueUnit;
 import app.issues.RegistrationInProgress;
 import app.issues.RowCache;
 import app.issues.Universe.Population;
 import app.pipeline.IssuesSimilarityTask;
+import app.pipeline.embedding.ReferenceCheck;
 import app.study.Row;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -62,7 +66,8 @@ class IssuesSimilarityCommandTest {
           e.outer(Population.IN_PROGRESS), e.inner(Population.IN_PROGRESS),
           text.get(e.unit().issueId())));
     }
-    final Augmentation.Result result = Augmentation.run(issues);
+    final Augmentation.Result result = Augmentation.run(issues,
+        s -> new Embedder.Embedding(new float[] {1, 0}, 3), 2);
     final List<RowCache.Entry> augmented = new ArrayList<>();
     for (final RowCache.Entry e : base) {
       final Map<String, Double> values = new HashMap<>(e.row().values());
@@ -88,8 +93,53 @@ class IssuesSimilarityCommandTest {
 
     final Map<String, List<String>> files = IssuesSimilarityCommand.diagnostics(r);
     assertEquals(Set.of("jaccard-queries.tsv", "jaccard-neighbours.tsv", "coverage.tsv",
-        "blocks.tsv"), files.keySet());
+        "blocks.tsv", "embedding-queries.tsv", "embedding-neighbours.tsv",
+        "embedding-chunks.tsv"), files.keySet());
     assertTrue(files.get("jaccard-neighbours.tsv").contains("v\tinner\t1\ta\tp\t0.0"),
         files.get("jaccard-neighbours.tsv").toString());
+    assertTrue(files.get("embedding-neighbours.tsv").contains("v\tinner\t1\ta\tp\t0.0"),
+        files.get("embedding-neighbours.tsv").toString());
+    assertTrue(files.get("embedding-neighbours.tsv").contains("v\tinner\t2\tb\tp\t0.0"),
+        "a tie, by id");
+    assertEquals("id\tvariant\tsplit\tblock\treference\tcandidates\tused_5\tused_10\tused_20",
+        files.get("embedding-queries.tsv").get(0));
+    assertTrue(files.get("embedding-queries.tsv").contains(
+        "v\tinner\tinner_validation\twhole\t2016-01-05T04:00:00Z\t2\t2\t2\t2"),
+        files.get("embedding-queries.tsv").toString());
+    assertEquals(List.of("id\tproject\tchunks\tvalid\tproblem", "a\tp\t3\ttrue\t",
+        "b\tp\t3\ttrue\t", "v\tp\t3\ttrue\t"), files.get("embedding-chunks.tsv"));
+  }
+
+  /** An embedder giving each reference sentence its reference vector plus {@code delta}. */
+  private static Embedder reference(final float delta) {
+    return text -> {
+      final ReferenceCheck.Item item = ReferenceCheck.items().stream()
+          .filter(i -> i.text().equals(text)).findFirst().orElseThrow();
+      final float[] v = new float[item.vector().length];
+      for (int d = 0; d < v.length; d++) {
+        v[d] = (float) item.vector()[d];
+      }
+      v[v.length - 1] += delta;
+      return new Embedder.Embedding(v, 1);
+    };
+  }
+
+  private static List<long[]> ids(final String text) {
+    return List.of(ReferenceCheck.items().stream().filter(i -> i.text().equals(text))
+        .findFirst().orElseThrow().ids());
+  }
+
+  @Test
+  @DisplayName("a model that does not reproduce the sentence-transformers reference is refused "
+      + "before anything is embedded; one that does reports its largest difference")
+  void selfCheck() throws CommandFailedException {
+    final CommandFailedException e = assertThrows(CommandFailedException.class,
+        () -> IssuesSimilarityCommand.selfCheck(reference(1e-3f),
+            IssuesSimilarityCommandTest::ids));
+    assertTrue(String.join("\n", e.lines()).contains("REFUSED"), e.lines().toString());
+    assertThrows(CommandFailedException.class, () -> IssuesSimilarityCommand.selfCheck(
+        reference(0), t -> List.of(new long[] {101, 102})));
+    assertEquals(2e-5, IssuesSimilarityCommand.selfCheck(reference(2e-5f),
+        IssuesSimilarityCommandTest::ids).maxDifference(), 1e-6);
   }
 }
