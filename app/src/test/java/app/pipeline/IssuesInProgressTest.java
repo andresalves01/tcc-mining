@@ -7,10 +7,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import app.issues.Attribute;
 import app.issues.Attributes;
 import app.issues.Corpus;
+import app.issues.Extractor;
 import app.issues.Scenario;
 import app.issues.Universe.Population;
 import app.issues.model.Cell;
+import app.study.Row;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -41,6 +45,28 @@ class IssuesInProgressTest {
     final Cell content = Cell.byLabel("UNION / C1_CONTENT", Population.IN_PROGRESS);
     assertTrue(content.attributes().stream().anyMatch(a -> a.name().equals("D08_file_familiarity")));
     assertEquals(11, Cell.grid(Population.FIXED).size(), "the main grid is untouched");
+  }
+
+  @Test
+  @DisplayName("the revised team columns stay out of the registry, the cells and the rows the "
+      + "registered matrix is written from")
+  void revisedTeamOutsideRegistered() {
+    final Map<String, Double> extracted = new HashMap<>();
+    Attributes.all().forEach(a -> extracted.put(a.name(), 1.0));
+    extracted.put(Attributes.SENSITIVITY_A15W, 1.0);
+    Extractor.TEAM_REVISED.forEach(column -> extracted.put(column, 2.0));
+    final Row row = IssuesExtractTask.row("a", extracted);
+
+    for (final String column : Extractor.TEAM_REVISED) {
+      assertFalse(Attributes.stored().contains(column), column + " would change the matrix");
+      assertFalse(row.values().containsKey(column) || row.absent().contains(column), column);
+      for (final Population p : List.of(Population.IN_PROGRESS, Population.FIXED)) {
+        for (final Cell cell : Cell.grid(p)) {
+          assertFalse(cell.attributes().stream().anyMatch(a -> a.name().equals(column)),
+              cell.label() + " " + column);
+        }
+      }
+    }
   }
 
   @Test
