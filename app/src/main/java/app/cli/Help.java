@@ -61,6 +61,8 @@ public final class Help {
           REPORT_DIR        (unset)             issues-description-language and
                                                 issues-in-progress-similarity: where their files go
           MATRIX            (unset)             issues-in-progress-similarity: the augmented matrix
+          MODEL_DIR         (unset)             issues-download-model: where the embedding model goes;
+                                                the embedder reads and verifies it there
         """);
   }
 

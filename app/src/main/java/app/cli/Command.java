@@ -13,6 +13,7 @@ import app.cli.commands.HarvestJiraCommand;
 import app.cli.commands.IssuesExtractCommand;
 import app.cli.commands.IssuesCheckCommand;
 import app.cli.commands.IssuesDescriptionLanguageCommand;
+import app.cli.commands.IssuesDownloadModelCommand;
 import app.cli.commands.IssuesForestCommand;
 import app.cli.commands.IssuesGridCommand;
 import app.cli.commands.IssuesInProgressCheckCommand;
@@ -183,6 +184,15 @@ public enum Command {
       Writes the count per language, the count with no description and 20
       non-English descriptions drawn with a fixed seed to REPORT_DIR. Reads
       the corpus; records nothing in Mongo, so it may run at any time."""),
+
+  ISSUES_DOWNLOAD_MODEL("issues-download-model", new IssuesDownloadModelCommand(), """
+      Issue duration from the first In Progress, description-similarity
+      chain: downloads the sentence-embedding model, all-MiniLM-L6-v2 at
+      its pinned Hugging Face revision (the ONNX model and the tokenizer
+      files), into MODEL_DIR, and refuses any file whose SHA-256 is not the
+      pinned one. The embedder checks the hashes again at every load. A file
+      already there with the pinned hash is kept. Reads neither the corpus
+      nor Mongo and records nothing, so it may run at any time."""),
 
   ISSUES_SIMILARITY("issues-in-progress-similarity", new IssuesSimilarityCommand(), """
       Issue duration from the first In Progress, description-similarity
