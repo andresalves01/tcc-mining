@@ -10,24 +10,11 @@ import app.cli.commands.FitCommand;
 import app.cli.commands.FitInnerCommand;
 import app.cli.commands.FunnelCommand;
 import app.cli.commands.HarvestJiraCommand;
-import app.cli.commands.PullRequestAblationCommand;
-import app.cli.commands.PullRequestAuditCommand;
-import app.cli.commands.PullRequestCorrectedReservedCommand;
-import app.cli.commands.PullRequestCorrectedSweepCommand;
-import app.cli.commands.PullRequestCorrectionCommand;
-import app.cli.commands.PullRequestTemporalAuditCommand;
-import app.cli.commands.PullRequestCheckCommand;
-import app.cli.commands.PullRequestExtractCommand;
-import app.cli.commands.PullRequestFitInnerCommand;
-import app.cli.commands.PullRequestReservedCommand;
 import app.cli.commands.IssuesExtractCommand;
 import app.cli.commands.IssuesCheckCommand;
 import app.cli.commands.IssuesForestCommand;
 import app.cli.commands.IssuesGridCommand;
 import app.cli.commands.IssuesReservedCommand;
-import app.cli.commands.PullRequestPopulationCommand;
-import app.cli.commands.PullRequestFeaturesCommand;
-import app.cli.commands.PullRequestLabelsCommand;
 import app.cli.commands.ReconstructPeopleCommand;
 import app.cli.commands.SeniorityCommand;
 import app.cli.commands.SplitCommand;
@@ -101,19 +88,6 @@ public enum Command {
       build-ledger to have run first.""",
       Corpus.Stage.FEATURES),
 
-  PR_LABELS("pr-labels", new PullRequestLabelsCommand(), """
-      Pull requests: build `issue_label` from merged pull requests (opened to
-      merged) instead of resolved issues, keyed on the single commit
-      author. Reads pull_request* from SOURCE_DB and the identity
-      registry from LEDGER_DB -- writes only to TARGET_DB. Run `split`
-      afterwards, same as after `funnel`."""),
-
-  PR_FEATURES("pr-features", new PullRequestFeaturesCommand(), """
-      Pull requests: build `issue_features` for the pull-request labels.
-      BuildFeaturesTask itself, unmodified -- only the databases behind
-      it differ: the ledger and complexity table are read from
-      LEDGER_DB, never written to. Needs pr-labels and split first."""),
-
   FIT_INNER("fit-inner", new FitInnerCommand(), """
       Fit and score against the inner selection only -- never calls
       FitModelTask.heldOut, no code path to it at all. For changing a
@@ -127,51 +101,6 @@ public enum Command {
       time it runs -- nothing in this command or in FitModelTask stops a
       second invocation with a changed definition upstream of it from
       opening it again under different terms. Needs features first."""),
-
-  PR_POPULATION("pr-population", new PullRequestPopulationCommand(), """
-      Pull requests: print the population of the Yu/Chouchen replication --
-      every partition, with projects and distinct creator_id. Reads
-      UNITS_DB (the frozen merged pull requests) and SOURCE_DB, and
-      writes nothing. MIN_RESOLVED=0 turns the inherited-history rule
-      off, which is this study's frozen population."""),
-
-  PR_EXTRACT("pr-extract", new PullRequestExtractCommand(), """
-      Pull requests: compute every pre-merge construct for the whole
-      population and print coverage, with the temporal class of each
-      one beside it. Reads UNITS_DB and SOURCE_DB, writes nothing.
-      With ORACULO=<path> it also diffs the result against the
-      reference extraction the validation produced in Python."""),
-
-  PR_FIT_INNER("pr-fit-inner", new PullRequestFitInnerCommand(), """
-      Pull requests: fit every cell of the grid -- three families by three
-      profiles, plus the literature profile without area_hotness_90d --
-      with Elastic Net and Extra Trees, scored against the inner
-      selection of the training side. Reports MAE in hours and days,
-      the gap against the mandatory baseline, and Spearman. Reads the
-      file CACHE points at; writes nothing. This is the development
-      stage: the reserved set is reached only by pr-reservado."""),
-
-  PR_CHECK("pr-conferencia", new PullRequestCheckCommand(), """
-      Pull requests: measure the five frozen specifications on the inner
-      selection, with the alphas and lambdas from the registration and
-      no search -- five fits instead of sixteen hundred. Reports the
-      pairwise ordering accuracy and whether the table's order survives
-      resampling. Reads CACHE and A4; writes nothing; the reserved set
-      is not reached."""),
-
-  PR_ABLATION("pr-ablacao", new PullRequestAblationCommand(), """
-      Pull requests: strip the size of the change out of each specification
-      and put what is left against a model that is only the size --
-      lines changed, added plus deleted. Development side; the reserved
-      partition is not reopened. Reads CACHE and A4, writes nothing."""),
-
-  PR_RESERVED("pr-reservado", new PullRequestReservedCommand(), """
-      Pull requests: score the reserved partition ONCE, against the
-      specification frozen in REGISTRO-PREVIO.md before this command
-      existed. Refits the five specifications on the whole training
-      side with the alphas and lambdas the registration fixed, reports
-      what each variable weighed, and only then scores the reserved
-      rows. Searches for nothing. Reads CACHE and A4."""),
 
   EXPERIMENTS("experiments", new ExperimentsCommand(), """
       Print one row per held-out observation, per population, with the
@@ -212,43 +141,6 @@ public enum Command {
       training side (lambda scaled by decision 20), prints the weights and
       scores the test, all three populations. Reads CACHE, PARAMETROS and
       NUNCA_PONTUADAS; writes PREVISOES; records the run in ISSUES_DB."""),
-
-  PR_AUDIT("pr-auditoria", new PullRequestAuditCommand(), """
-      Pull requests, auditoria de 28/09/2026: reruns the registered reserved
-      task unchanged, proves a second fitting path identical to it bit
-      for bit, writes every reserved prediction to PREVISOES, and prints
-      the post-opening readings -- per-project ordering, project-level
-      intervals, the historical project mean, and the families without
-      the columns that read the future. Searches for nothing. Reads
-      CACHE and A4; appends the audit to PR_DB."""),
-
-  PR_TEMPORAL_AUDIT("pr-auditoria-temporal", new PullRequestTemporalAuditCommand(), """
-      Pull requests, auditoria de 28/09/2026: for every unit, how many of the
-      pull requests behind the project's typical wait and the author's
-      file familiarity were examined or merged at or after t0, and
-      whether the value changes using only what was known. Reads
-      UNITS_DB and SOURCE_DB; writes the counts to SAIDA, nothing else."""),
-
-  PR_CORRECTION("pr-correcao-propria", new PullRequestCorrectionCommand(), """
-      Pull requests, correction of 28/09/2026: recomputes the previous paper's
-      columns under the registered rule and the corrected one, requires
-      the registered rule to reproduce the stored export A4, and writes
-      the corrected export to SAIDA. Reads SOURCE_DB, LEDGER_DB and
-      UNITS_DB; writes only the file."""),
-
-  PR_CORRECTED_SWEEP("pr-varredura-corrigida", new PullRequestCorrectedSweepCommand(), """
-      Pull requests, correction of 28/09/2026: the development sweep, on the
-      inner selection, for the two families with the previous paper's
-      columns -- first proving it reproduces the registered choice with
-      the registered columns, then with the corrected ones. Reads CACHE,
-      A4 and A4_CORRIGIDO; writes nothing; the reserved set is not read."""),
-
-  PR_CORRECTED_RESERVED("pr-reservado-corrigido", new PullRequestCorrectedReservedCommand(), """
-      Pull requests, correction of 28/09/2026: scores the reserved rows ONCE
-      with the corrected columns and the pairs frozen in the addendum of
-      REGISTRO-DA-CORRECAO.md, beside the three unaffected registered
-      specifications. Reads CACHE, A4, A4_CORRIGIDO; writes PREVISOES and
-      appends to PR_DB."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both

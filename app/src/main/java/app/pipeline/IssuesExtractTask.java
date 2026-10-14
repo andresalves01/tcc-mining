@@ -1,6 +1,6 @@
 package app.pipeline;
 
-import app.pullrequests.Row;
+import app.study.Row;
 import app.issues.Attribute;
 import app.issues.Attributes;
 import app.issues.Corpus;

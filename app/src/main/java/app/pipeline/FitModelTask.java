@@ -236,32 +236,9 @@ public final class FitModelTask {
         Columns.Group.TAREFA, Columns.Group.DEV, Columns.Group.EQUIPE, Columns.Group.CRIACAO));
     ablation.put("sem a equipe", ablate(standardizer, fit, selection, chosen,
         Columns.Group.TAREFA, Columns.Group.DEV, Columns.Group.CARGA, Columns.Group.CRIACAO));
-    // Tudo menos o exame: o tamanho do diff entra, aceitando que ele so e conhecido na abertura
-    // para os 75,8% de pull requests cujos commits todos precedem a abertura. Para os outros
-    // 24,2% ele cresce depois, e o corpus nao permite reconstruir o diff no instante da abertura
-    // -- pull_request_file nao tem data e a juncao por hash de commit falha na maioria.
-    ablation.put("sem o exame", ablate(standardizer, fit, selection, chosen,
-        Columns.Group.TAREFA, Columns.Group.DEV, Columns.Group.CARGA, Columns.Group.EQUIPE,
-        Columns.Group.CRIACAO));
-    // Nem exame nem tamanho: o unico recorte estritamente anterior a abertura.
+    // Sem o tamanho da tarefa: o unico recorte estritamente anterior a criacao.
     ablation.put("conhecido na criacao", ablate(standardizer, fit, selection, chosen,
         Columns.Group.DEV, Columns.Group.CARGA, Columns.Group.EQUIPE, Columns.Group.CRIACAO));
-    // O mesmo recorte "conhecido na criacao", menos as duas colunas condicionadas ao conjunto
-    // FINAL de arquivos deste pull request. Pedida pela Investigacao E do handout de 27/09/2026:
-    // "conhecido na criacao" retira o grupo TAREFA e com ele ln(LOC tarefa) e ln(arquivos tarefa),
-    // mas ln(familiaridade arq.) e fracao arq. conhecidos estao no grupo DEV e sobrevivem -- e as
-    // duas contam arquivos do conjunto final, que pull_request_file nao datar impede de reconstruir
-    // na abertura. Ver papers/pull-requests/replicacoes/validacao-yu-chouchen/.
-    final List<String> criacaoEstrita = new ArrayList<>();
-    for (final int i : Columns.indicesOf(Columns.Group.DEV, Columns.Group.CARGA,
-        Columns.Group.EQUIPE, Columns.Group.CRIACAO)) {
-      final String name = Columns.all().get(i).name();
-      if (!name.equals("ln(familiaridade arq.)") && !name.equals("fracao arq. conhecidos")) {
-        criacaoEstrita.add(name);
-      }
-    }
-    ablation.put("conhecido na criacao, estrito",
-        ablateNamed(standardizer, fit, selection, chosen, criacaoEstrita));
     // The columns the mongosh prototype fitted, so the two can be put side by side.
     ablation.put("colunas do prototipo", ablateNamed(standardizer, fit, selection, chosen,
         Columns.PROTOTYPE));

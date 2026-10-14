@@ -7,7 +7,7 @@ import app.issues.model.Fitting;
 import app.issues.model.Forest;
 import app.issues.model.ProjectBootstrap;
 import app.issues.model.References;
-import app.pullrequests.model.Score;
+import app.study.model.Score;
 import app.pipeline.port.Progress;
 import java.util.ArrayList;
 import java.util.List;

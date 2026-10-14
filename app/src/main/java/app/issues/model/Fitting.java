@@ -2,9 +2,9 @@ package app.issues.model;
 
 import app.model.ElasticNetModel;
 import app.model.Metrics;
-import app.pullrequests.Row;
-import app.pullrequests.model.DesignMatrix;
-import app.pullrequests.model.Score;
+import app.study.Row;
+import app.study.model.DesignMatrix;
+import app.study.model.Score;
 import app.issues.IssueUnit;
 import app.issues.RowCache;
 import app.issues.Universe;
@@ -14,7 +14,7 @@ import java.util.List;
 /**
  * One way to fit and one way to score, shared by the grid, the check and the reserved run.
  *
- * <p>The pull-request study's rules without change: the design matrix learns every parameter on the
+ * <p>The rules: the design matrix learns every parameter on the
  * fitting side only; the target is {@code log1p} of hours; predictions go back with {@code expm1}
  * and are held at zero; the penalty grid's shape is declared and its scale is anchored on the
  * largest penalty that still leaves a coefficient alive, because the estimator applies lambda as
@@ -22,12 +22,12 @@ import java.util.List;
  */
 public final class Fitting {
 
-  /** Declared before anything ran: the same three mixtures as the pull-request study. */
+  /** Declared before anything ran: three mixtures. */
   public static final double[] ALPHAS = {0.10, 0.50, 0.95};
 
   /**
-   * Twelve penalties per mixture, not the pull-request study's twenty-four -- declared before the
-   * grid ran, because there are six times as many fitting rows here and the budget was one long run.
+   * Twelve penalties per mixture, declared before the grid ran, because the budget was one long
+   * run over this many fitting rows.
    */
   public static final int LAMBDA_STEPS = 12;
 
@@ -158,7 +158,7 @@ public final class Fitting {
    * The penalties the sweep tries for one mixture, from the point where every coefficient is zero
    * down four decades.
    *
-   * <p>The top is {@code 2 * max|X'(y - mean)| / alpha}, not the pull-request study's
+   * <p>The top is {@code 2 * max|X'(y - mean)| / alpha}, not
    * {@code max|X'(y - mean)|}. The estimator hands {@code alpha * lambda} to the L1 term of an
    * objective whose squared error is not halved, so that is where the last coefficient dies --
    * {@code LambdaAnchorTest} pins it. Anchored without the factor, the grid stopped between two and

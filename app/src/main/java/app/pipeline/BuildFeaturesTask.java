@@ -9,8 +9,6 @@ import app.features.IssueAttributes;
 import app.features.OpenIssues;
 import app.features.port.CommitComplexityStore;
 import app.features.port.FeatureStore;
-import app.pullrequests.PullRequestExtras;
-import app.pullrequests.port.PullRequestExtraSource;
 import app.features.port.IssueAttributeSource;
 import app.labels.IssueLabel;
 import app.labels.port.LabelStore;
@@ -57,7 +55,6 @@ public final class BuildFeaturesTask {
   private final FeatureStore store;
   private final Progress progress;
   private final ContributionLedger presence;
-  private final PullRequestExtraSource extras;
 
   public BuildFeaturesTask(
       final LabelStore labels,
@@ -86,23 +83,6 @@ public final class BuildFeaturesTask {
       final Progress progress,
       final ContributionLedger presence) {
 
-    this(labels, ledger, complexity, attributes, store, progress, presence, null);
-  }
-
-  /**
-   * @param extras preditores que so existem para pull requests, ou {@code null} quando a populacao
-   *     nao tem nenhum -- que e todo rotulo de issue
-   */
-  public BuildFeaturesTask(
-      final LabelStore labels,
-      final ContributionLedger ledger,
-      final CommitComplexityStore complexity,
-      final IssueAttributeSource attributes,
-      final FeatureStore store,
-      final Progress progress,
-      final ContributionLedger presence,
-      final PullRequestExtraSource extras) {
-
     this.labels = labels;
     this.ledger = ledger;
     this.complexity = complexity;
@@ -110,7 +90,6 @@ public final class BuildFeaturesTask {
     this.store = store;
     this.progress = progress;
     this.presence = presence;
-    this.extras = extras;
   }
 
   public Report run(final Duration teamWindow) {
@@ -146,18 +125,9 @@ public final class BuildFeaturesTask {
     progress.detail("%,d of %,d issues found in the source corpus", described.size(),
         stored.size());
 
-    final Map<String, Map<String, Double>> extraValues = new java.util.HashMap<>();
-    if (extras != null) {
-      progress.detail("reading %s", extras.describe());
-      extras.of(stored.stream().map(IssueLabel::issueId).toList())
-          .forEach((id, value) -> extraValues.put(id, value.values()));
-      progress.detail("%,d of %,d labels carry pull-request predictors",
-          extraValues.size(), stored.size());
-    }
-
     progress.phase(4, 5, "building the matrix as of each creation instant");
     final FeatureMatrix.Scan scan =
-        FeatureMatrix.of(stored, asOf, open, described, teamWindow, extraValues);
+        FeatureMatrix.of(stored, asOf, open, described, teamWindow);
 
     progress.phase(5, 5, "writing %s", store.describe());
     return new Report(scan, store.save(scan.rows(), teamWindow), stored.size(),

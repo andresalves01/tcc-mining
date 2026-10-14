@@ -10,7 +10,7 @@ import app.issues.RowCache;
 import app.issues.Universe.Population;
 import app.model.ElasticNetModel;
 import app.model.RandomForestModel;
-import app.pullrequests.Row;
+import app.study.Row;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumMap;

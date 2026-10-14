@@ -1,8 +1,8 @@
 package app.issues.model;
 
 import app.model.RandomForestModel;
-import app.pullrequests.model.DesignMatrix;
-import app.pullrequests.model.Score;
+import app.study.model.DesignMatrix;
+import app.study.model.Score;
 import java.util.ArrayList;
 import java.util.List;
 

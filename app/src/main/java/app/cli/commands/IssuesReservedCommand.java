@@ -194,7 +194,7 @@ public final class IssuesReservedCommand implements CommandRunner {
     final List<app.issues.model.ProjectBootstrap.Gap> gaps = new ArrayList<>(
         r.familiesByProjects());
     gaps.addAll(r.blocksByProjects());
-    final List<app.pullrequests.model.Bootstrap.Comparison> pairs = new ArrayList<>(r.families());
+    final List<app.study.model.Bootstrap.Comparison> pairs = new ArrayList<>(r.families());
     pairs.addAll(r.blocks());
     for (int i = 0; i < gaps.size(); i++) {
       final var g = gaps.get(i);

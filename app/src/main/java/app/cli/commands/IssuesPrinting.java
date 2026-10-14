@@ -1,7 +1,7 @@
 package app.cli.commands;
 
 import app.cli.CommandFailedException;
-import app.pullrequests.model.Score;
+import app.study.model.Score;
 import app.issues.RowCache;
 import app.issues.Universe.Population;
 import app.pipeline.IssuesEvaluationTask;
@@ -250,9 +250,9 @@ final class IssuesPrinting {
     }
   }
 
-  private static void comparisons(final List<app.pullrequests.model.Bootstrap.Comparison> list) {
+  private static void comparisons(final List<app.study.model.Bootstrap.Comparison> list) {
     System.out.printf("  reamostragem pareada de LINHAS, %d sorteios (leitura mais estreita, ao "
-        + "lado)%n", app.pullrequests.model.Bootstrap.DRAWS);
+        + "lado)%n", app.study.model.Bootstrap.DRAWS);
     for (final var c : list) {
       System.out.printf("    %-30s x %-30s  A ganha em %5.1f%%  dif. media %+8.2f h  IC [%+8.2f, "
           + "%+8.2f]  %s%n", c.a(), c.b(), 100 * c.winRate(), c.meanGap(), c.lowGap(), c.highGap(),
