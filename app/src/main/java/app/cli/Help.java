@@ -61,6 +61,10 @@ public final class Help {
           REPORT_DIR        (unset)             issues-description-language and
                                                 issues-in-progress-similarity: where their files go
           MATRIX            (unset)             issues-in-progress-similarity: the augmented matrix
+                                                written; issues-in-progress-similarity-selection:
+                                                the one it reads
+          SIMILARITY_PARAMETERS (unset)         issues-in-progress-similarity-selection: where the
+                                                chosen values go; never the registered PARAMETERS
         """);
   }
 

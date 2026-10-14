@@ -21,6 +21,7 @@ import app.cli.commands.IssuesInProgressGridCommand;
 import app.cli.commands.IssuesInProgressReservedCommand;
 import app.cli.commands.IssuesReservedCommand;
 import app.cli.commands.IssuesSimilarityCommand;
+import app.cli.commands.IssuesSimilaritySelectionCommand;
 import app.cli.commands.ReconstructPeopleCommand;
 import app.cli.commands.SeniorityCommand;
 import app.cli.commands.SplitCommand;
@@ -193,6 +194,20 @@ public enum Command {
       unless the four split sizes are the registered study's. Reads CACHE and
       the corpus; writes MATRIX and the diagnostics to REPORT_DIR; records the
       run in ISSUES_DB. Leaves the registered in-progress chain untouched."""),
+
+  ISSUES_SIMILARITY_SELECTION("issues-in-progress-similarity-selection",
+      new IssuesSimilaritySelectionCommand(), """
+      Issue duration from the first In Progress, description-similarity
+      chain: for each similarity method in the augmented matrix (every
+      column <method>_<value>_inner), chooses the candidate value whose
+      median, read directly as the prediction in hours, errs least on the
+      inner validation (MAE; a missing value reads the inner fitting
+      median; ties within 0.01 h go to the smaller value), and reports
+      coverage and the error on observed rows apart. Refuses unless the four
+      split sizes are the registered study's. Reads MATRIX; writes
+      SIMILARITY_PARAMETERS, never over a file holding more than its own
+      choices; records the run in ISSUES_DB. The outer test rows are not
+      read."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both
