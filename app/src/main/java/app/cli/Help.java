@@ -61,8 +61,8 @@ public final class Help {
           REPORT_DIR        (unset)             issues-description-language and
                                                 issues-in-progress-similarity: where their files go
           MATRIX            (unset)             issues-in-progress-similarity: the augmented matrix
-                                                written; issues-in-progress-similarity-selection:
-                                                the one it reads
+                                                written; issues-in-progress-similarity-selection
+                                                and -elastic-net: the one they read
           TEAM_COLUMNS      (unset)             issues-in-progress-team writes it,
                                                 issues-in-progress-similarity reads it
           MODEL_DIR         (unset)             issues-download-model: where the embedding model goes;
@@ -74,7 +74,11 @@ public final class Help {
                                                 embedding cache, one file per model, revision,
                                                 chunking policy and cleaner version
           SIMILARITY_PARAMETERS (unset)         issues-in-progress-similarity-selection: where the
-                                                chosen values go; never the registered PARAMETERS
+                                                chosen values go; never the registered PARAMETERS;
+                                                issues-in-progress-similarity-elastic-net reads it
+          ELASTIC_NET_PARAMETERS (unset)        issues-in-progress-similarity-elastic-net: where
+                                                each model's alpha and lambda go; never
+                                                SIMILARITY_PARAMETERS nor PARAMETERS
         """);
   }
 

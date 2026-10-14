@@ -23,6 +23,7 @@ import app.cli.commands.IssuesInProgressReservedCommand;
 import app.cli.commands.IssuesInProgressTeamCommand;
 import app.cli.commands.IssuesReservedCommand;
 import app.cli.commands.IssuesSimilarityCommand;
+import app.cli.commands.IssuesSimilarityElasticNetCommand;
 import app.cli.commands.IssuesSimilaritySelectionCommand;
 import app.cli.commands.ReconstructPeopleCommand;
 import app.cli.commands.SeniorityCommand;
@@ -234,6 +235,23 @@ public enum Command {
       SIMILARITY_PARAMETERS, never over a file holding more than its own
       choices; records the run in ISSUES_DB. The outer test rows are not
       read."""),
+
+  ISSUES_SIMILARITY_ELASTIC_NET("issues-in-progress-similarity-elastic-net",
+      new IssuesSimilarityElasticNetCommand(), """
+      Issue duration from the first In Progress, description-similarity
+      chain: chooses alpha and lambda on the inner validation, by the
+      registered grid's sweep, for seven Elastic Net models: the previous own
+      specification, Al-Zubaidi and Kikas at the start (the registered
+      cells), the revised nine, the similarity medians alone, the revised
+      twelve, and the literature families with the revised twelve. The
+      split-dependent columns are read in their inner variant, the
+      similarity medians at the values in SIMILARITY_PARAMETERS; a column
+      missing on every inner fitting row is removed from its models and
+      reported. Refuses unless the four split sizes are the registered
+      study's and the matrix has every declared column. Reads MATRIX and
+      SIMILARITY_PARAMETERS; writes ELASTIC_NET_PARAMETERS, never over a
+      file holding more than its own choices; records the run in ISSUES_DB.
+      The outer test rows are not read."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both
