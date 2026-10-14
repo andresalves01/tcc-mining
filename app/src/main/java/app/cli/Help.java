@@ -45,13 +45,7 @@ public final class Help {
           MONGO_URI         mongodb://127.0.0.1:27017
           SOURCE_DB         smartshark_2_2      read-only
           TARGET_DB         smartshark_tcc      written to; must differ from SOURCE_DB
-          LEDGER_DB         = TARGET_DB          pr-labels, pr-features: read-only ledger/registry
-          UNITS_DB          = TARGET_DB          Pull requests: read-only merged pull requests
-          PR_DB         smartshark_paper5   Pull requests: written to; its own database
           ISSUES_DB         smartshark_issues   duracao de issues: written to; its own
-          CACHE             (unset)             Pull requests: file pr-extract writes and
-                                                pr-fit-inner reads, to avoid re-mining
-          ORACULO           (unset)             Pull requests: reference extraction to diff against
           WORK_DIR          build/identity-work
           JIRA_CACHE_DIR    build/jira-cache
           JIRA_DELAY_MS     250                 pause between issue-tracker requests
@@ -63,8 +57,6 @@ public final class Help {
           MIN_RESOLVED      5                   split: resolutions a (dev, project) needs first
                                                 0 turns the rule off -- every pair is eligible
           TEAM_WINDOW_DAYS  90                  features: how far back the active team is read
-          TTC_TARGET        TOTAL               | ESPERA | AUTOR  (+ _UTIL: sem fins de semana)
-          COLUMNS           ISSUE               | PULL_REQUEST (sem as quatro que nao pagam)
           PILOT             (unset)             ledger and funnel: restrict to matching projects
         """);
   }

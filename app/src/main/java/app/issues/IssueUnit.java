@@ -1,6 +1,6 @@
 package app.issues;
 
-import app.pullrequests.Outcome;
+import app.study.Outcome;
 import java.time.Duration;
 import java.time.Instant;
 

@@ -1,6 +1,6 @@
 package app.issues;
 
-import app.pullrequests.Construct;
+import app.study.Construct;
 import java.util.Set;
 
 /**
@@ -13,7 +13,7 @@ import java.util.Set;
  * @param inUnion false only where the union already has the construct under another name
  */
 public record Attribute(String id, String name, Family family, Scenario.Block block,
-    app.pullrequests.Attribute.Kind kind, app.pullrequests.Attribute.Transform transform,
+    app.study.Construct.Kind kind, app.study.Construct.Transform transform,
     boolean absenceIndicator, boolean inUnion) implements Construct {
 
   public boolean atCreation() {

@@ -6,7 +6,6 @@ import app.cli.ConsoleProgress;
 import app.cli.Context;
 import app.cli.Help;
 import app.config.PipelineConfig;
-import app.model.Columns;
 import app.pipeline.jira.JiraChangelogSource;
 import app.pipeline.port.Progress;
 import app.pipeline.mongo.GridFsGitIdentitySource;
@@ -21,12 +20,6 @@ import app.pipeline.mongo.MongoLabelSource;
 import app.pipeline.mongo.MongoLabelStore;
 import app.pipeline.mongo.MongoObservations;
 import app.pipeline.mongo.MongoPersonRegistry;
-import app.pipeline.mongo.MongoPullRequestAttributes;
-import app.pipeline.mongo.MongoPullRequestExtras;
-import app.pipeline.mongo.MongoPullRequestPresence;
-import app.pipeline.mongo.MongoPullRequestSource;
-import app.pipeline.mongo.MongoTableSource;
-import app.pipeline.mongo.MongoUnitSource;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import java.util.Optional;
@@ -90,15 +83,9 @@ public final class App {
       return;
     }
 
-    // Antes de qualquer adaptador construir uma linha: o conjunto de colunas e propriedade da
-    // execucao inteira, e MongoObservations le Columns.all() para dimensionar cada vetor.
-    Columns.use(config.columnProfile());
-    Columns.target(config.ttcTarget());
 
     System.out.println("=== " + command.token() + " ===");
-    System.out.println("  " + config.describe()
-        + (config.columnProfile() == Columns.Profile.ISSUE ? ""
-            : "   colunas: " + config.columnProfile()));
+    System.out.println("  " + config.describe());
     System.out.println();
 
     try (MongoClient client = MongoClients.create(config.mongoUri())) {
@@ -131,26 +118,12 @@ public final class App {
         new MongoFeatureStore(client, config.targetDb()),
         new MongoCommitComplexity(client, config.sourceDb(), progress),
         new MongoCommitComplexityStore(client, config.targetDb()),
-        new MongoObservations(client, config.targetDb(), config.ttcTarget()),
+        new MongoObservations(client, config.targetDb()),
         new MongoCorpusCheck(client, config.sourceDb()),
         progress,
-        new MongoPersonRegistry(client, config.ledgerDb()),
-        new MongoContributionLedger(client, config.ledgerDb()),
-        new MongoCommitComplexityStore(client, config.ledgerDb()),
-        new MongoPullRequestSource(client, config.sourceDb()),
-        new MongoPullRequestAttributes(client, config.sourceDb()),
-        new MongoPullRequestPresence(client, config.sourceDb(), config.ledgerDb()),
-        new MongoPullRequestExtras(client, config.sourceDb(),
-            new MongoContributionLedger(client, config.ledgerDb()),
-            new MongoPersonRegistry(client, config.ledgerDb())),
-        new MongoUnitSource(client, config.unitsDb(), config.sourceDb()),
-        new MongoTableSource(client, config.sourceDb(), progress),
-        new app.pipeline.mongo.MongoPullRequestStore(client, config.prDb()),
         new app.pipeline.mongo.MongoStudySource(client, config.sourceDb(), config.targetDb(),
             progress),
-        new app.pipeline.mongo.MongoIssuesStore(client, config.issuesDb()),
-        new app.pipeline.mongo.MongoPriorStudyTables(client, config.sourceDb(), config.ledgerDb(),
-            config.unitsDb(), progress));
+        new app.pipeline.mongo.MongoIssuesStore(client, config.issuesDb()));
   }
 
   private App() {}

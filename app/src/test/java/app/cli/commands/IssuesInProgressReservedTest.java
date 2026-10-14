@@ -11,7 +11,7 @@ import app.issues.RowCache;
 import app.issues.Universe.Population;
 import app.issues.model.Cell;
 import app.issues.model.Fitting;
-import app.pullrequests.Row;
+import app.study.Row;
 import app.pipeline.IssuesEvaluationTask;
 import app.pipeline.IssuesInProgressExtractTask;
 import app.pipeline.port.Progress;

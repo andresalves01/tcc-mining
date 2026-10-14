@@ -16,7 +16,7 @@ import java.util.Random;
  * projects with replacement and keeping all their rows is the resampling that respects what the
  * data actually is.
  *
- * <p>Complements, and does not replace, the paired row bootstrap the pull-request study used for
+ * <p>Complements, and does not replace, the paired row bootstrap ({@code app.study.model.Bootstrap}) for
  * model against model on the same rows; that one answers a different question.
  */
 public final class ProjectBootstrap {
@@ -58,7 +58,7 @@ public final class ProjectBootstrap {
 
   /**
    * The paired comparison with projects as the unit of resampling: the tie criterion of the
-   * reserved run. The row-paired one of the pull-request study stays beside it as the narrower
+   * reserved run. The row-paired one stays beside it as the narrower
    * reading.
    *
    * @param errorsA absolute error per row of {@code a}, {@code errorsB} of {@code b}, same rows

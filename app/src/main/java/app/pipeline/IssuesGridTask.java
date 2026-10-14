@@ -1,6 +1,6 @@
 package app.pipeline;
 
-import app.pullrequests.model.Score;
+import app.study.model.Score;
 import app.issues.RowCache;
 import app.issues.Universe.Population;
 import app.issues.model.Cell;

@@ -67,22 +67,6 @@ public final class FeatureMatrix {
       final Map<String, IssueAttributes> attributes,
       final Duration teamWindow) {
 
-    return of(labels, ledger, open, attributes, teamWindow, Map.of());
-  }
-
-  /**
-   * @param extras preditores por rotulo que so existem para uma familia de rotulos, ja nomeados
-   *     pelo campo que {@link app.model.Columns} le. Vazio para todo rotulo de issue, que e o que
-   *     a assinatura sem este argumento diz
-   */
-  public static Scan of(
-      final Collection<IssueLabel> labels,
-      final AsOfLedger ledger,
-      final OpenIssues open,
-      final Map<String, IssueAttributes> attributes,
-      final Duration teamWindow,
-      final Map<String, Map<String, Double>> extras) {
-
     final List<FeatureRow> rows = new ArrayList<>(labels.size());
     final List<Integer> teamSizes = new ArrayList<>(labels.size());
     int withoutHistory = 0;
@@ -152,8 +136,7 @@ public final class FeatureMatrix {
               open.openAcrossProjectsAt(developer, at),
               open.openForTeamAt(members, project, at)),
           team,
-          attribute,
-          extras.getOrDefault(label.issueId(), Map.of())));
+          attribute));
     }
     return new Scan(rows, withoutHistory, unknownPair, emptyTeam, teamSizes, attributesFound,
         withDescription, withNonEmptyDescription, withIssueType, withLinkedIssues, withAnyLink);

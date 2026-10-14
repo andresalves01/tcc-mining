@@ -117,9 +117,6 @@ public final class MongoFeatureStore implements FeatureStore {
     putIfPresent(doc, "extra_desc_length", row.attributes().descriptionLength());
     putIfPresent(doc, "extra_linked_issues", row.attributes().linkedIssues());
     row.attributes().issueType().ifPresent(type -> doc.append("extra_issue_type", type));
-    // Os preditores de pull request ja vem nomeados pelo campo que Columns le, e um ausente fica
-    // ausente: as colunas de exame nao existem para um rotulo que ninguem examinou.
-    row.extras().forEach(doc::append);
     return doc;
   }
 

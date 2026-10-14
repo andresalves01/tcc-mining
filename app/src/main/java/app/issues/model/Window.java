@@ -1,6 +1,6 @@
 package app.issues.model;
 
-import app.pullrequests.model.Score;
+import app.study.model.Score;
 import java.util.Arrays;
 
 /**

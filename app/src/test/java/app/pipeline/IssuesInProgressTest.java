@@ -54,7 +54,7 @@ class IssuesInProgressTest {
     final java.util.Map<Population, String[]> parts = new java.util.EnumMap<>(Population.class);
     parts.put(Population.IN_PROGRESS, new String[] {"TRAIN", "TEST"});
     final app.issues.RowCache.Entry entry = new app.issues.RowCache.Entry(unit,
-        new app.pullrequests.Row("a", java.util.Map.of("x", 1.0), java.util.Set.of()), parts);
+        new app.study.Row("a", java.util.Map.of("x", 1.0), java.util.Set.of()), parts);
     final java.nio.file.Path started = dir.resolve("andamento.tsv");
     app.issues.RowCache.write(started, List.of(entry), List.of("x"),
         List.of(Population.IN_PROGRESS));
@@ -68,7 +68,7 @@ class IssuesInProgressTest {
     fixed.put(Population.FIXED, new String[] {"TEST", ""});
     app.issues.RowCache.write(main, List.of(new app.issues.RowCache.Entry(new app.issues.IssueUnit(
         "a", "P-1", "p", "r", null, c, c.plusSeconds(7200), "Fixed", false),
-        new app.pullrequests.Row("a", java.util.Map.of("x", 1.0), java.util.Set.of()), fixed)),
+        new app.study.Row("a", java.util.Map.of("x", 1.0), java.util.Set.of()), fixed)),
         List.of("x"));
     assertEquals("id\tchave\tprojeto\trelator\texecutor\tcriada_em\tresolvida_em\tmotivo\tmovida"
         + "\tfixed_externa\tfixed_interna\tampla_externa\tampla_interna\therdada_externa"

@@ -1,8 +1,6 @@
 package app.config;
 
 import app.identity.Strictness;
-import app.model.Columns;
-import app.labels.TtcTarget;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Optional;
@@ -16,17 +14,6 @@ import java.util.Optional;
  *
  * @param targetDb written to; must differ from {@code sourceDb} so reconstructed documents can
  *     never be mistaken for ones that shipped in the published release
- * @param ledgerDb read-only source for the identity registry, the contribution ledger and the
- *     per-commit complexity table. Defaults to {@code targetDb}, which reproduces every existing
- *     command's behaviour exactly: they all read the ledger from the same database they write to.
- *     A stage that needs a fresh, empty {@code targetDb} while still reading an already-built
- *     ledger from elsewhere -- a paper branch deriving new labels from a different outcome, never
- *     writing to the database the ledger came from -- sets it explicitly instead
- * @param columnProfile which column set the run fits. Default reproduces the thesis exactly
- * @param ttcTarget which duration of a label the fit regresses: the whole life, the wait before
- *     the first external examination, or the cycle after it. Read only when observations are
- *     assembled -- labelling always records all three, so switching target re-fits without
- *     re-mining, and every target shares one split
  * @param costRatio {@code C_max / C_min}. A reporting parameter only: it is never written to the
  *     ledger, because the sensitivity analysis sweeps it and a stored cost would freeze one
  *     scenario into what otherwise reads as mined data
@@ -35,17 +22,7 @@ import java.util.Optional;
  * @param trainShare the quantile of issue creation instants that separates past from future
  * @param minResolvedBeforeCut how many labels a developer must have resolved before the cut to be
  *     carried into it. Applied to both sides of the split, though it does not bite both equally.
- *     <b>Zero turns the rule off entirely</b>, which is the frozen population of the Yu/Chouchen
- *     replication: that study keys on {@code creator_id} and reads absence of history as an
- *     observable value, so the requirement -- which belongs to the developer-ordering experiment --
- *     would only drop its least frequent authors and projects
- * @param unitsDb where the Yu/Chouchen replication reads its already-built merged pull requests
- *     from, read-only. Defaults to {@code targetDb}, so every command that predates it behaves
- *     exactly as before; that study points it at the frozen database of the previous paper and
- *     writes its own output somewhere else entirely
- * @param prDb where the Yu/Chouchen replication writes its attributes and results. Its own
- *     database by specification: the corpus and both previous papers' databases are read-only to
- *     it, and no stage of it may add a column to them
+ *     <b>Zero turns the rule off entirely</b>
  * @param issuesDb where the issue-duration study records its runs ({@code smartshark_issues}; the
  *     earlier issue study's runs stay in {@code smartshark_paper6}, untouched).
  *     Its own database, refused if it names any database the codebase reads
@@ -60,9 +37,6 @@ public record PipelineConfig(
     String mongoUri,
     String sourceDb,
     String targetDb,
-    String ledgerDb,
-    String unitsDb,
-    String prDb,
     String issuesDb,
     Path workDir,
     Path jiraCacheDir,
@@ -74,8 +48,6 @@ public record PipelineConfig(
     double trainShare,
     int minResolvedBeforeCut,
     Duration teamWindow,
-    Columns.Profile columnProfile,
-    TtcTarget ttcTarget,
     Optional<String> pilotProject) {
 
   public PipelineConfig {
@@ -84,20 +56,12 @@ public record PipelineConfig(
           "TARGET_DB must differ from SOURCE_DB ('" + sourceDb + "'): writing reconstructed data "
               + "into the source would make provenance unrecoverable");
     }
-    // The same argument, for the one other database this codebase writes to. PR_DB holding
-    // the corpus, the thesis ledger or the frozen units of the previous paper would put a drop()
-    // one command away from data no stage here can rebuild.
-    if (prDb.equals(sourceDb) || prDb.equals(unitsDb) || prDb.equals(ledgerDb)) {
+    // The issue study reads the thesis labels from TARGET_DB and never writes there. Its own
+    // output going into a database it reads would be the same mistake.
+    if (java.util.List.of(sourceDb, targetDb).contains(issuesDb)) {
       throw new IllegalArgumentException(
-          "PR_DB must differ from SOURCE_DB, UNITS_DB and LEDGER_DB (got '" + prDb
-              + "'): the replication writes there and reads the other three, which are frozen");
-    }
-    // The transposition reads the thesis labels from TARGET_DB and never writes there. Its own
-    // output going into any database it reads, or into the PR study's, would be the same mistake.
-    if (java.util.List.of(sourceDb, targetDb, unitsDb, ledgerDb, prDb).contains(issuesDb)) {
-      throw new IllegalArgumentException(
-          "ISSUES_DB must differ from SOURCE_DB, TARGET_DB, UNITS_DB, LEDGER_DB and PR_DB (got '"
-              + issuesDb + "'): the transposition writes there and only there");
+          "ISSUES_DB must differ from SOURCE_DB and TARGET_DB (got '"
+              + issuesDb + "'): the issue study writes there and only there");
     }
   }
 
@@ -107,9 +71,6 @@ public record PipelineConfig(
         value("MONGO_URI", "mongodb://127.0.0.1:27017"),
         value("SOURCE_DB", "smartshark_2_2"),
         targetDb,
-        value("LEDGER_DB", targetDb),
-        value("UNITS_DB", targetDb),
-        value("PR_DB", "smartshark_paper5"),
         value("ISSUES_DB", "smartshark_issues"),
         Path.of(value("WORK_DIR", "build/identity-work")),
         Path.of(value("JIRA_CACHE_DIR", "build/jira-cache")),
@@ -121,8 +82,6 @@ public record PipelineConfig(
         Double.parseDouble(value("TRAIN_SHARE", "0.70")),
         Integer.parseInt(value("MIN_RESOLVED", "5")),
         Duration.ofDays(Long.parseLong(value("TEAM_WINDOW_DAYS", "90"))),
-        Columns.Profile.valueOf(value("COLUMNS", Columns.Profile.ISSUE.name())),
-        TtcTarget.valueOf(value("TTC_TARGET", TtcTarget.TOTAL.name())),
         Optional.of(value("PILOT", "")).filter(pilot -> !pilot.isBlank()));
   }
 

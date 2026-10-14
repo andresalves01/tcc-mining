@@ -1,6 +1,6 @@
 package app.issues;
 
-import app.pullrequests.Row;
+import app.study.Row;
 import app.issues.Universe.Population;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;

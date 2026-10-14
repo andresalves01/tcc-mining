@@ -1,7 +1,6 @@
 package app.features;
 
 import java.time.Instant;
-import java.util.Map;
 import java.util.OptionalDouble;
 
 /**
@@ -34,30 +33,7 @@ public record FeatureRow(
     double taskNesting,
     Load load,
     TeamContext team,
-    IssueAttributes attributes,
-    Map<String, Double> extras) {
-
-  /**
-   * A forma que todo rotulo de issue tem: sem preditores especificos de pull request. Aditiva,
-   * para nenhum ponto de construcao existente ter de mudar.
-   */
-  public FeatureRow(
-      final String issueId,
-      final String projectName,
-      final String canonicalAuthorId,
-      final Instant createdAt,
-      final DeveloperHistory developer,
-      final boolean developerKnownToLedger,
-      final long taskLines,
-      final double taskComplexity,
-      final double taskNesting,
-      final Load load,
-      final TeamContext team,
-      final IssueAttributes attributes) {
-
-    this(issueId, projectName, canonicalAuthorId, createdAt, developer, developerKnownToLedger,
-        taskLines, taskComplexity, taskNesting, load, team, attributes, Map.of());
-  }
+    IssueAttributes attributes) {
 
   /** Whether anything was observable about this developer here before the task was created. */
   public boolean developerHadHistory() {
