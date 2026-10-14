@@ -10,22 +10,22 @@ import app.cli.commands.FitCommand;
 import app.cli.commands.FitInnerCommand;
 import app.cli.commands.FunnelCommand;
 import app.cli.commands.HarvestJiraCommand;
-import app.cli.commands.Paper5AblationCommand;
-import app.cli.commands.Paper5AuditCommand;
-import app.cli.commands.Paper5CorrectedReservedCommand;
-import app.cli.commands.Paper5CorrectedSweepCommand;
-import app.cli.commands.Paper5CorrectionCommand;
-import app.cli.commands.Paper5TemporalAuditCommand;
-import app.cli.commands.Paper5CheckCommand;
-import app.cli.commands.Paper5ExtractCommand;
-import app.cli.commands.Paper5FitInnerCommand;
-import app.cli.commands.Paper5ReservedCommand;
+import app.cli.commands.PullRequestAblationCommand;
+import app.cli.commands.PullRequestAuditCommand;
+import app.cli.commands.PullRequestCorrectedReservedCommand;
+import app.cli.commands.PullRequestCorrectedSweepCommand;
+import app.cli.commands.PullRequestCorrectionCommand;
+import app.cli.commands.PullRequestTemporalAuditCommand;
+import app.cli.commands.PullRequestCheckCommand;
+import app.cli.commands.PullRequestExtractCommand;
+import app.cli.commands.PullRequestFitInnerCommand;
+import app.cli.commands.PullRequestReservedCommand;
 import app.cli.commands.IssuesExtractCommand;
 import app.cli.commands.IssuesCheckCommand;
 import app.cli.commands.IssuesForestCommand;
 import app.cli.commands.IssuesGridCommand;
 import app.cli.commands.IssuesReservedCommand;
-import app.cli.commands.Paper5PopulationCommand;
+import app.cli.commands.PullRequestPopulationCommand;
 import app.cli.commands.PullRequestFeaturesCommand;
 import app.cli.commands.PullRequestLabelsCommand;
 import app.cli.commands.ReconstructPeopleCommand;
@@ -102,14 +102,14 @@ public enum Command {
       Corpus.Stage.FEATURES),
 
   PR_LABELS("pr-labels", new PullRequestLabelsCommand(), """
-      Artigo 4: build `issue_label` from merged pull requests (opened to
+      Pull requests: build `issue_label` from merged pull requests (opened to
       merged) instead of resolved issues, keyed on the single commit
       author. Reads pull_request* from SOURCE_DB and the identity
       registry from LEDGER_DB -- writes only to TARGET_DB. Run `split`
       afterwards, same as after `funnel`."""),
 
   PR_FEATURES("pr-features", new PullRequestFeaturesCommand(), """
-      Artigo 4: build `issue_features` for the pull-request labels.
+      Pull requests: build `issue_features` for the pull-request labels.
       BuildFeaturesTask itself, unmodified -- only the databases behind
       it differ: the ledger and complexity table are read from
       LEDGER_DB, never written to. Needs pr-labels and split first."""),
@@ -128,45 +128,45 @@ public enum Command {
       second invocation with a changed definition upstream of it from
       opening it again under different terms. Needs features first."""),
 
-  PAPER5_POPULATION("paper5-population", new Paper5PopulationCommand(), """
-      Artigo 5: print the population of the Yu/Chouchen replication --
+  PR_POPULATION("pr-population", new PullRequestPopulationCommand(), """
+      Pull requests: print the population of the Yu/Chouchen replication --
       every partition, with projects and distinct creator_id. Reads
       UNITS_DB (the frozen merged pull requests) and SOURCE_DB, and
       writes nothing. MIN_RESOLVED=0 turns the inherited-history rule
       off, which is this study's frozen population."""),
 
-  PAPER5_EXTRACT("paper5-extract", new Paper5ExtractCommand(), """
-      Artigo 5: compute every pre-merge construct for the whole
+  PR_EXTRACT("pr-extract", new PullRequestExtractCommand(), """
+      Pull requests: compute every pre-merge construct for the whole
       population and print coverage, with the temporal class of each
       one beside it. Reads UNITS_DB and SOURCE_DB, writes nothing.
       With ORACULO=<path> it also diffs the result against the
       reference extraction the validation produced in Python."""),
 
-  PAPER5_FIT_INNER("paper5-fit-inner", new Paper5FitInnerCommand(), """
-      Artigo 5: fit every cell of the grid -- three families by three
+  PR_FIT_INNER("pr-fit-inner", new PullRequestFitInnerCommand(), """
+      Pull requests: fit every cell of the grid -- three families by three
       profiles, plus the literature profile without area_hotness_90d --
       with Elastic Net and Extra Trees, scored against the inner
       selection of the training side. Reports MAE in hours and days,
       the gap against the mandatory baseline, and Spearman. Reads the
       file CACHE points at; writes nothing. This is the development
-      stage: the reserved set is reached only by paper5-reservado."""),
+      stage: the reserved set is reached only by pr-reservado."""),
 
-  PAPER5_CHECK("paper5-conferencia", new Paper5CheckCommand(), """
-      Artigo 5: measure the five frozen specifications on the inner
+  PR_CHECK("pr-conferencia", new PullRequestCheckCommand(), """
+      Pull requests: measure the five frozen specifications on the inner
       selection, with the alphas and lambdas from the registration and
       no search -- five fits instead of sixteen hundred. Reports the
       pairwise ordering accuracy and whether the table's order survives
       resampling. Reads CACHE and A4; writes nothing; the reserved set
       is not reached."""),
 
-  PAPER5_ABLATION("paper5-ablacao", new Paper5AblationCommand(), """
-      Artigo 5: strip the size of the change out of each specification
+  PR_ABLATION("pr-ablacao", new PullRequestAblationCommand(), """
+      Pull requests: strip the size of the change out of each specification
       and put what is left against a model that is only the size --
       lines changed, added plus deleted. Development side; the reserved
       partition is not reopened. Reads CACHE and A4, writes nothing."""),
 
-  PAPER5_RESERVED("paper5-reservado", new Paper5ReservedCommand(), """
-      Artigo 5: score the reserved partition ONCE, against the
+  PR_RESERVED("pr-reservado", new PullRequestReservedCommand(), """
+      Pull requests: score the reserved partition ONCE, against the
       specification frozen in REGISTRO-PREVIO.md before this command
       existed. Refits the five specifications on the whole training
       side with the alphas and lambdas the registration fixed, reports
@@ -213,42 +213,42 @@ public enum Command {
       scores the test, all three populations. Reads CACHE, PARAMETROS and
       NUNCA_PONTUADAS; writes PREVISOES; records the run in ISSUES_DB."""),
 
-  PAPER5_AUDIT("paper5-auditoria", new Paper5AuditCommand(), """
-      Artigo 5, auditoria de 28/09/2026: reruns the registered reserved
+  PR_AUDIT("pr-auditoria", new PullRequestAuditCommand(), """
+      Pull requests, auditoria de 28/09/2026: reruns the registered reserved
       task unchanged, proves a second fitting path identical to it bit
       for bit, writes every reserved prediction to PREVISOES, and prints
       the post-opening readings -- per-project ordering, project-level
       intervals, the historical project mean, and the families without
       the columns that read the future. Searches for nothing. Reads
-      CACHE and A4; appends the audit to PAPER5_DB."""),
+      CACHE and A4; appends the audit to PR_DB."""),
 
-  PAPER5_TEMPORAL_AUDIT("paper5-auditoria-temporal", new Paper5TemporalAuditCommand(), """
-      Artigo 5, auditoria de 28/09/2026: for every unit, how many of the
+  PR_TEMPORAL_AUDIT("pr-auditoria-temporal", new PullRequestTemporalAuditCommand(), """
+      Pull requests, auditoria de 28/09/2026: for every unit, how many of the
       pull requests behind the project's typical wait and the author's
       file familiarity were examined or merged at or after t0, and
       whether the value changes using only what was known. Reads
       UNITS_DB and SOURCE_DB; writes the counts to SAIDA, nothing else."""),
 
-  PAPER5_CORRECTION("paper5-correcao-a4", new Paper5CorrectionCommand(), """
-      Artigo 5, correction of 28/09/2026: recomputes the previous paper's
+  PR_CORRECTION("pr-correcao-propria", new PullRequestCorrectionCommand(), """
+      Pull requests, correction of 28/09/2026: recomputes the previous paper's
       columns under the registered rule and the corrected one, requires
       the registered rule to reproduce the stored export A4, and writes
       the corrected export to SAIDA. Reads SOURCE_DB, LEDGER_DB and
       UNITS_DB; writes only the file."""),
 
-  PAPER5_CORRECTED_SWEEP("paper5-varredura-corrigida", new Paper5CorrectedSweepCommand(), """
-      Artigo 5, correction of 28/09/2026: the development sweep, on the
+  PR_CORRECTED_SWEEP("pr-varredura-corrigida", new PullRequestCorrectedSweepCommand(), """
+      Pull requests, correction of 28/09/2026: the development sweep, on the
       inner selection, for the two families with the previous paper's
       columns -- first proving it reproduces the registered choice with
       the registered columns, then with the corrected ones. Reads CACHE,
       A4 and A4_CORRIGIDO; writes nothing; the reserved set is not read."""),
 
-  PAPER5_CORRECTED_RESERVED("paper5-reservado-corrigido", new Paper5CorrectedReservedCommand(), """
-      Artigo 5, correction of 28/09/2026: scores the reserved rows ONCE
+  PR_CORRECTED_RESERVED("pr-reservado-corrigido", new PullRequestCorrectedReservedCommand(), """
+      Pull requests, correction of 28/09/2026: scores the reserved rows ONCE
       with the corrected columns and the pairs frozen in the addendum of
       REGISTRO-DA-CORRECAO.md, beside the three unaffected registered
       specifications. Reads CACHE, A4, A4_CORRIGIDO; writes PREVISOES and
-      appends to PAPER5_DB."""),
+      appends to PR_DB."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both

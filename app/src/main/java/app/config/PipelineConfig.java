@@ -43,7 +43,7 @@ import java.util.Optional;
  *     from, read-only. Defaults to {@code targetDb}, so every command that predates it behaves
  *     exactly as before; that study points it at the frozen database of the previous paper and
  *     writes its own output somewhere else entirely
- * @param paper5Db where the Yu/Chouchen replication writes its attributes and results. Its own
+ * @param prDb where the Yu/Chouchen replication writes its attributes and results. Its own
  *     database by specification: the corpus and both previous papers' databases are read-only to
  *     it, and no stage of it may add a column to them
  * @param issuesDb where the issue-duration study records its runs ({@code smartshark_issues}; the
@@ -62,7 +62,7 @@ public record PipelineConfig(
     String targetDb,
     String ledgerDb,
     String unitsDb,
-    String paper5Db,
+    String prDb,
     String issuesDb,
     Path workDir,
     Path jiraCacheDir,
@@ -84,19 +84,19 @@ public record PipelineConfig(
           "TARGET_DB must differ from SOURCE_DB ('" + sourceDb + "'): writing reconstructed data "
               + "into the source would make provenance unrecoverable");
     }
-    // The same argument, for the one other database this codebase writes to. PAPER5_DB holding
+    // The same argument, for the one other database this codebase writes to. PR_DB holding
     // the corpus, the thesis ledger or the frozen units of the previous paper would put a drop()
     // one command away from data no stage here can rebuild.
-    if (paper5Db.equals(sourceDb) || paper5Db.equals(unitsDb) || paper5Db.equals(ledgerDb)) {
+    if (prDb.equals(sourceDb) || prDb.equals(unitsDb) || prDb.equals(ledgerDb)) {
       throw new IllegalArgumentException(
-          "PAPER5_DB must differ from SOURCE_DB, UNITS_DB and LEDGER_DB (got '" + paper5Db
+          "PR_DB must differ from SOURCE_DB, UNITS_DB and LEDGER_DB (got '" + prDb
               + "'): the replication writes there and reads the other three, which are frozen");
     }
     // The transposition reads the thesis labels from TARGET_DB and never writes there. Its own
     // output going into any database it reads, or into the PR study's, would be the same mistake.
-    if (java.util.List.of(sourceDb, targetDb, unitsDb, ledgerDb, paper5Db).contains(issuesDb)) {
+    if (java.util.List.of(sourceDb, targetDb, unitsDb, ledgerDb, prDb).contains(issuesDb)) {
       throw new IllegalArgumentException(
-          "ISSUES_DB must differ from SOURCE_DB, TARGET_DB, UNITS_DB, LEDGER_DB and PAPER5_DB (got '"
+          "ISSUES_DB must differ from SOURCE_DB, TARGET_DB, UNITS_DB, LEDGER_DB and PR_DB (got '"
               + issuesDb + "'): the transposition writes there and only there");
     }
   }
@@ -109,7 +109,7 @@ public record PipelineConfig(
         targetDb,
         value("LEDGER_DB", targetDb),
         value("UNITS_DB", targetDb),
-        value("PAPER5_DB", "smartshark_paper5"),
+        value("PR_DB", "smartshark_paper5"),
         value("ISSUES_DB", "smartshark_issues"),
         Path.of(value("WORK_DIR", "build/identity-work")),
         Path.of(value("JIRA_CACHE_DIR", "build/jira-cache")),

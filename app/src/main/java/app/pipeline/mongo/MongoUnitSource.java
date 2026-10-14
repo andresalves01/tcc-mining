@@ -3,7 +3,7 @@ package app.pipeline.mongo;
 import app.labels.ChangedMethod;
 import app.labels.ExamOrigin;
 import app.labels.IssueLabel;
-import app.paper5.port.UnitSource;
+import app.pullrequests.port.UnitSource;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
@@ -22,7 +22,7 @@ import org.bson.types.ObjectId;
 /**
  * Reads the frozen merged-pull-request units, and joins each one's creator from the source corpus.
  *
- * <p>Two databases, both read-only: {@code UNITS_DB} holds {@code issue_label} as the Artigo 4
+ * <p>Two databases, both read-only: {@code UNITS_DB} holds {@code issue_label} as the earlier pull-request study
  * pipeline left it, and {@code SOURCE_DB} holds the raw corpus. Nothing in this class writes, and
  * the port it implements offers no way to.
  *

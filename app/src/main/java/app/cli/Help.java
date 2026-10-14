@@ -46,12 +46,12 @@ public final class Help {
           SOURCE_DB         smartshark_2_2      read-only
           TARGET_DB         smartshark_tcc      written to; must differ from SOURCE_DB
           LEDGER_DB         = TARGET_DB          pr-labels, pr-features: read-only ledger/registry
-          UNITS_DB          = TARGET_DB          Artigo 5: read-only merged pull requests
-          PAPER5_DB         smartshark_paper5   Artigo 5: written to; its own database
+          UNITS_DB          = TARGET_DB          Pull requests: read-only merged pull requests
+          PR_DB         smartshark_paper5   Pull requests: written to; its own database
           ISSUES_DB         smartshark_issues   duracao de issues: written to; its own
-          CACHE             (unset)             Artigo 5: file paper5-extract writes and
-                                                paper5-fit-inner reads, to avoid re-mining
-          ORACULO           (unset)             Artigo 5: reference extraction to diff against
+          CACHE             (unset)             Pull requests: file pr-extract writes and
+                                                pr-fit-inner reads, to avoid re-mining
+          ORACULO           (unset)             Pull requests: reference extraction to diff against
           WORK_DIR          build/identity-work
           JIRA_CACHE_DIR    build/jira-cache
           JIRA_DELAY_MS     250                 pause between issue-tracker requests

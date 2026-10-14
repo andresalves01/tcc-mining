@@ -13,10 +13,10 @@ import app.identity.port.PersonRegistry;
 import app.labels.port.LabelSource;
 import app.labels.port.LabelStore;
 import app.model.port.ObservationSource;
-import app.paper4.port.MergedPullRequestSource;
-import app.paper4.port.PullRequestExtraSource;
-import app.paper5.port.TableSource;
-import app.paper5.port.UnitSource;
+import app.pullrequests.port.MergedPullRequestSource;
+import app.pullrequests.port.PullRequestExtraSource;
+import app.pullrequests.port.TableSource;
+import app.pullrequests.port.UnitSource;
 import app.pipeline.port.Corpus;
 import app.pipeline.port.Progress;
 
@@ -67,8 +67,8 @@ public record Context(
     ContributionLedger pullRequestPresence,
     PullRequestExtraSource pullRequestExtras,
     UnitSource units,
-    TableSource paper5Tables,
-    app.paper5.port.ResultStore paper5Results,
+    TableSource prTables,
+    app.pullrequests.port.ResultStore prResults,
     app.issues.port.StudySource study,
-    app.paper5.port.ResultStore issuesResults,
-    app.paper5.port.Artigo4TableSource artigo4Tables) {}
+    app.pullrequests.port.ResultStore issuesResults,
+    app.pullrequests.port.PriorStudyTableSource priorStudyTables) {}

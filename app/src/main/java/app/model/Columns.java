@@ -1,7 +1,7 @@
 package app.model;
 
 import app.labels.TtcTarget;
-import app.paper4.PullRequestExtras;
+import app.pullrequests.PullRequestExtras;
 import java.util.ArrayList;
 import java.util.List;
 
