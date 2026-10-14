@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import app.issues.Augmentation.Variant;
+import app.pipeline.clustering.SmileKMeans;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -49,7 +50,7 @@ class AugmentationTest {
   private static final int DIMENSION = 3;
 
   private Augmentation.Result run(final List<Augmentation.Issue> rows) {
-    return Augmentation.run(rows, fake, DIMENSION);
+    return Augmentation.run(rows, fake, DIMENSION, new SmileKMeans());
   }
 
   /** The description {@code text} embeds as {@code v}, in one chunk. */
@@ -552,6 +553,284 @@ class AugmentationTest {
       }
     }
     assertTrue(outerMoved, "the validation rows are outer training: the outer columns may move");
+    assertEquals(before, run(later("TEST", 5_000)).columns());
+  }
+
+  // ---------------------------------------------------------------- clusters
+
+  private static Double cluster(final Augmentation.Result r, final String id, final int k,
+      final Variant v) {
+    return r.columns().get(id).get(Augmentation.cluster(k, v));
+  }
+
+  private static Augmentation.ClusterQuery assignment(final Augmentation.Result r,
+      final String id, final int k, final Variant v) {
+    return r.clusterQueries().stream().filter(x -> x.id().equals(id) && x.k() == k
+        && x.variant() == v).findFirst().orElseThrow();
+  }
+
+  /** The description {@code text} embeds as {@code v} brought to length one. */
+  private void unit(final String text, final double... v) {
+    final double norm = Math.sqrt(Arrays.stream(v).map(x -> x * x).sum());
+    final float[] out = new float[v.length];
+    for (int d = 0; d < v.length; d++) {
+      out[d] = (float) (v[d] / norm);
+    }
+    vector(text, out);
+  }
+
+  /** The direction of octant {@code g}: each component plus or minus one by a bit of g. */
+  private static double[] octant(final int g, final double jitter) {
+    return new double[] {(g & 1) == 0 ? 1 : -1, ((g & 2) == 0 ? 1 : -1) + jitter,
+        (g & 4) == 0 ? 1 : -1};
+  }
+
+  /**
+   * Eight tight groups of four fitting issues, one per octant, all started at hour 0 so the
+   * fitting rows have no history; group g's issues took 10(g+1) to 10(g+1)+3 hours. The
+   * validation row q{g} lies exactly on group g's first issue, and took 5,000 hours.
+   */
+  private void octants() {
+    for (int g = 0; g < 8; g++) {
+      for (int j = 0; j < 4; j++) {
+        unit("g" + g + "." + j, octant(g, 0.02 * j));
+        fit("g" + g + "." + j, 0, 10L * (g + 1) + j, "g" + g + "." + j);
+      }
+      issue("q" + g, "TRAIN", "TEST", 1_000, 5_000, "g" + g + ".0");
+    }
+  }
+
+  @Test
+  @DisplayName("cluster: the median duration of the historical members of the query's nearest "
+      + "centre, never a centre's coordinate and never a validation outcome")
+  void clusterMedian() {
+    octants();
+    final Augmentation.Result r = run(issues);
+    final List<Double> durations = new ArrayList<>();
+    for (int g = 0; g < 8; g++) {
+      for (int j = 0; j < 4; j++) {
+        durations.add(10.0 * (g + 1) + j);
+      }
+    }
+    for (int g = 0; g < 8; g++) {
+      final String q = "q" + g;
+      assertEquals(10.0 * (g + 1) + 1.5, cluster(r, q, 8, Variant.INNER),
+          "group " + g + ": the median of its four");
+      assertEquals(10.0 * (g + 1), cluster(r, q, 32, Variant.INNER),
+          "32 clusters of 32 vectors: each its own, the query on the first of its group");
+      assertEquals(0.0, assignment(r, q, 32, Variant.INNER).distance(), 1e-6);
+      final double sixteen = cluster(r, q, 16, Variant.INNER);
+      assertTrue(sixteen >= 10.0 * (g + 1) && sixteen <= 10.0 * (g + 1) + 3,
+          "within group " + g + ": " + sixteen);
+      for (final int k : Augmentation.CLUSTER_K) {
+        final double value = cluster(r, q, k, Variant.INNER);
+        boolean median = false;
+        for (final double a : durations) {
+          for (final double b : durations) {
+            median |= value == a || value == (a + b) / 2;
+          }
+        }
+        assertTrue(median, q + " k=" + k + ": " + value + " is no member's duration");
+      }
+    }
+    final Augmentation.ClusterFit whole = r.clusterFits().stream()
+        .filter(f -> f.variant() == Variant.INNER && f.block().equals(Augmentation.WHOLE)
+            && f.k() == 8).findFirst().orElseThrow();
+    assertTrue(whole.fitted());
+    assertEquals(32, whole.vectors());
+    assertEquals(List.of(4, 4, 4, 4, 4, 4, 4, 4),
+        whole.members().stream().map(List::size).toList());
+    for (int g = 0; g < 8; g++) {
+      assertNull(cluster(r, "g" + g + ".0", 8, Variant.INNER), "the fitting rows have no history");
+    }
+  }
+
+  @Test
+  @DisplayName("cluster: a history with fewer distinct vectors than k leaves that k missing for "
+      + "the whole block, k unchanged; the other columns are untouched")
+  void clusterTooFew() {
+    for (int i = 0; i < 12; i++) {
+      unit("d" + i, Math.cos(i % 10), Math.sin(i % 10), 0.5);
+      fit("f" + i, 0, 1 + i, "d" + i);
+    }
+    validation("v", 1_000, "d3");
+    validation("w", 1_000, "d7");
+    final Augmentation.Result r = run(issues);
+    for (final String q : List.of("v", "w")) {
+      assertTrue(cluster(r, q, 8, Variant.INNER) != null, "ten distinct vectors: 8 clusters");
+      assertNull(cluster(r, q, 16, Variant.INNER), q);
+      assertNull(cluster(r, q, 32, Variant.INNER), q);
+      assertTrue(embedding(r, q, 5, Variant.INNER) != null);
+      assertEquals(-1, assignment(r, q, 16, Variant.INNER).cluster());
+    }
+    final List<Augmentation.ClusterFit> whole = r.clusterFits().stream()
+        .filter(f -> f.variant() == Variant.INNER && f.block().equals(Augmentation.WHOLE))
+        .toList();
+    assertEquals(List.of(8, 16, 32), whole.stream().map(Augmentation.ClusterFit::k).toList());
+    assertEquals(List.of(true, false, false),
+        whole.stream().map(Augmentation.ClusterFit::fitted).toList());
+    assertEquals(List.of(10, 10, 10),
+        whole.stream().map(Augmentation.ClusterFit::distinct).toList());
+    assertEquals(List.of(12, 12, 12),
+        whole.stream().map(Augmentation.ClusterFit::vectors).toList());
+    assertTrue(Double.isNaN(whole.get(1).distortion()));
+    assertTrue(whole.get(0).distortion() >= 0);
+  }
+
+  @Test
+  @DisplayName("cluster: missing when the query has no valid vector, or its cluster has no "
+      + "historical member but the issue itself, which is never its own member")
+  void clusterMissing() {
+    for (int g = 0; g < 8; g++) {
+      unit("o" + g, octant(g, 0));
+      fit("f" + g, 0, 10, "o" + g);
+    }
+    vector("long", 2, 0, 0);
+    validation("f7", 1_000, "o7");
+    validation("none", 1_000, null);
+    validation("invalid", 1_000, "long");
+    validation("ok", 1_000, "o0");
+    final Augmentation.Result r = run(issues);
+    assertEquals(10.0, cluster(r, "ok", 8, Variant.INNER));
+    assertEquals(1, assignment(r, "ok", 8, Variant.INNER).members());
+    assertNull(cluster(r, "f7", 8, Variant.INNER),
+        "f7's validation row lands on the fitting f7, alone in its cluster");
+    assertEquals(0, assignment(r, "f7", 8, Variant.INNER).members());
+    for (final String id : List.of("none", "invalid")) {
+      assertNull(cluster(r, id, 8, Variant.INNER), id);
+      assertEquals(-1, assignment(r, id, 8, Variant.INNER).cluster(), id);
+      assertTrue(r.columns().containsKey(id));
+    }
+  }
+
+  /** A random unit vector of the test's dimension for every text of the rows. */
+  private void randomVectors(final long seed) {
+    final Random rng = new Random(seed);
+    for (final Augmentation.Issue i : issues) {
+      if (i.description() != null && !hand.containsKey(i.description())) {
+        unit(i.description(), rng.nextGaussian(), rng.nextGaussian(), rng.nextGaussian());
+      }
+    }
+  }
+
+  @Test
+  @DisplayName("cluster: no member of the query's cluster resolved at or after the reference "
+      + "instant, none from outside the fitting set, never the query; the same blocks, reference "
+      + "instants and splits as Jaccard")
+  void clusterNoLeak() {
+    random(7);
+    randomVectors(3);
+    final Map<String, Augmentation.Issue> byId = new HashMap<>();
+    issues.forEach(i -> byId.put(i.id(), i));
+    final Augmentation.Result r = run(issues);
+    final Map<String, Augmentation.ClusterFit> fits = new HashMap<>();
+    r.clusterFits().forEach(f -> fits.put(f.variant() + " " + f.block() + " " + f.k(), f));
+    int read = 0;
+    for (final Augmentation.ClusterQuery q : r.clusterQueries()) {
+      final Augmentation.Query jaccard = query(r, q.id(), q.variant());
+      assertEquals(jaccard.block(), q.block(), q.id());
+      assertEquals(jaccard.reference(), q.reference(), q.id());
+      assertEquals(jaccard.split(), q.split(), q.id());
+      if (q.cluster() < 0) {
+        continue;
+      }
+      final Augmentation.ClusterFit f = fits.get(q.variant() + " " + q.block() + " " + q.k());
+      int used = 0;
+      for (final String m : f.members().get(q.cluster())) {
+        final Augmentation.Issue h = byId.get(m);
+        assertTrue(h.resolved() < q.reference(), q + " " + m);
+        assertTrue(q.variant() == Variant.INNER ? h.inner().equals("TRAIN")
+            : h.outer().equals("TRAIN"), q + " " + m);
+        used += m.equals(q.id()) ? 0 : 1;
+        read++;
+      }
+      assertEquals(used, q.members(), q.toString());
+    }
+    assertTrue(read > 500, "the corpus exercised the clusters: " + read);
+    assertTrue(r.clusterFits().stream().anyMatch(f -> f.fitted() && f.k() == 32));
+    for (final Augmentation.Block b : r.blocks()) {
+      for (final int k : Augmentation.CLUSTER_K) {
+        final Augmentation.ClusterFit f = fits.get(b.variant() + " " + b.index() + " " + k);
+        assertTrue(f.vectors() <= b.history(), f.toString());
+      }
+    }
+  }
+
+  @Test
+  @DisplayName("cluster: an issue crossing the inner cut enters an outer block's fit only once "
+      + "resolved, and never an inner one; the first block has no history and stays missing")
+  void clusterCrossing() {
+    for (int i = 0; i < 10; i++) {
+      unit("d" + i, Math.cos(i), Math.sin(i), 0.3);
+      unit("e" + i, Math.cos(i + 0.5), Math.sin(i + 0.5), -0.3);
+      fit("f" + i, 10L * i, 5, "d" + i);
+      validation("v" + i, 100 + 10L * i, "e" + i);
+    }
+    unit("c", 0, 0, 1);
+    issue("c", "TRAIN", "CROSSES", 50, 95, "c");
+    final Augmentation.Result r = run(issues);
+    for (final Augmentation.ClusterFit f : r.clusterFits()) {
+      final boolean in = f.members().stream().anyMatch(m -> m.contains("c"));
+      final long begins = f.block().equals(Augmentation.WHOLE) ? Long.MAX_VALUE
+          : r.blocks().stream().filter(b -> b.variant() == f.variant()
+              && Integer.toString(b.index()).equals(f.block())).findFirst().orElseThrow()
+              .begins();
+      if (f.fitted()) {
+        assertEquals(f.variant() == Variant.OUTER && 145 * H < begins, in, f.toString());
+      }
+    }
+    assertTrue(r.clusterFits().stream().anyMatch(f -> f.fitted() && f.variant() == Variant.OUTER
+        && !f.block().equals(Augmentation.WHOLE)), "an outer block was fitted");
+    assertNull(cluster(r, "f0", 8, Variant.INNER));
+    assertNull(cluster(r, "c", 8, Variant.INNER), "outside the inner sets");
+    assertTrue(r.coverage().contains(
+        new Augmentation.Coverage(Augmentation.cluster(8, Variant.INNER), "block",
+            "inner_fitting 1", 2, 0)));
+  }
+
+  @Test
+  @DisplayName("cluster: adding a future issue, or changing a later duration, leaves the cluster "
+      + "columns of earlier rows unchanged")
+  void clusterFuture() {
+    for (int i = 0; i < 40; i++) {
+      unit("d" + i, Math.cos(i), Math.sin(i), Math.cos(3 * i));
+      fit("f" + i, 10L * i, 5 + i % 7, "d" + i);
+    }
+    issue("t", "TEST", "", 1_000, 1, "d3");
+    final Map<String, Map<String, Double>> before = run(issues).columns();
+    // forty-one rows split into blocks at the same places as forty: 8, 16, 24, 32
+    unit("late", 1, 1, 1);
+    fit("late", 395, 1, "late");
+    final Map<String, Map<String, Double>> added = run(issues).columns();
+    issues.set(39, new Augmentation.Issue("f39", "p", "r", 390 * H, 391 * H, "TRAIN", "TRAIN",
+        "d39"));
+    final Map<String, Map<String, Double>> changed = run(issues).columns();
+    for (int i = 0; i < 40; i++) {
+      assertEquals(before.get("f" + i), added.get("f" + i), "f" + i);
+      assertEquals(before.get("f" + i), changed.get("f" + i), "f" + i);
+    }
+    assertTrue(before.get("f39").containsKey(Augmentation.cluster(16, Variant.INNER)),
+        "the cluster columns are among those compared");
+    assertNotEquals(before.get("t"), changed.get("t"), "the test row reads them all");
+  }
+
+  @Test
+  @DisplayName("cluster: changing a validation duration changes no inner cluster column; changing "
+      + "a test duration changes none at all")
+  void clusterScoredOutcomes() {
+    random(11);
+    randomVectors(5);
+    final Map<String, Map<String, Double>> before = run(issues).columns();
+    final Map<String, Map<String, Double>> validation = run(later("VALIDATION", 50)).columns();
+    int observed = 0;
+    for (final String id : before.keySet()) {
+      for (final int k : Augmentation.CLUSTER_K) {
+        final String column = Augmentation.cluster(k, Variant.INNER);
+        assertEquals(before.get(id).get(column), validation.get(id).get(column), id + column);
+        observed += before.get(id).containsKey(column) ? 1 : 0;
+      }
+    }
+    assertTrue(observed > 50, "the inner cluster columns were exercised: " + observed);
     assertEquals(before, run(later("TEST", 5_000)).columns());
   }
 }
