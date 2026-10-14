@@ -1,6 +1,6 @@
 package app.pipeline.mongo;
 
-import app.paper5.port.ResultStore;
+import app.pullrequests.port.ResultStore;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoDatabase;
 import java.util.ArrayList;

@@ -122,14 +122,14 @@ public final class IssuesInProgressExtractTask {
       final Map<Population, String[]> parts = new EnumMap<>(Population.class);
       parts.put(Population.IN_PROGRESS,
           new String[] {outer.name(), inner == null ? "" : inner.name()});
-      final app.paper5.Row row = IssuesExtractTask.row(u.id(), values.get(u.id()));
+      final app.pullrequests.Row row = IssuesExtractTask.row(u.id(), values.get(u.id()));
       final Map<String, Double> withPause = new java.util.LinkedHashMap<>(row.values());
       withPause.put(PAUSED, values.get(u.id()).get(PAUSED));
       entries.add(new RowCache.Entry(new IssueUnit(u.id(), u.key(), u.project(),
           world.person(u.reporter()), at.get(u.id()).executor(),
           Instant.ofEpochMilli(u.created()), Instant.ofEpochMilli(u.resolved()), u.reason(),
           u.moved(), Instant.ofEpochMilli(u.start())),
-          new app.paper5.Row(u.id(), withPause, row.absent()), parts));
+          new app.pullrequests.Row(u.id(), withPause, row.absent()), parts));
     }
     return new Report(IssuesExtractTask.summary(Population.IN_PROGRESS, units.size(), split),
         travel, membership, parity, executors, entries, columns);

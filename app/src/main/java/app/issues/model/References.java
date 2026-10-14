@@ -1,6 +1,6 @@
 package app.issues.model;
 
-import app.paper5.model.Baseline;
+import app.pullrequests.model.Baseline;
 import app.issues.IssueUnit;
 import java.util.ArrayList;
 import java.util.HashMap;

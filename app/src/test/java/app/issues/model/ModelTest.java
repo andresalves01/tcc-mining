@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import app.paper5.Row;
+import app.pullrequests.Row;
 import app.issues.Attribute;
 import app.issues.Attributes;
 import app.issues.Family;

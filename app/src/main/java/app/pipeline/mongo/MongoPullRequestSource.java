@@ -1,8 +1,8 @@
 package app.pipeline.mongo;
 
 import app.labels.ExamOrigin;
-import app.paper4.MergedPullRequest;
-import app.paper4.port.MergedPullRequestSource;
+import app.pullrequests.MergedPullRequest;
+import app.pullrequests.port.MergedPullRequestSource;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;

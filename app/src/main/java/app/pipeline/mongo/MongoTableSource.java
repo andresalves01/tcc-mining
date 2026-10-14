@@ -1,7 +1,7 @@
 package app.pipeline.mongo;
 
-import app.paper5.Tables;
-import app.paper5.port.TableSource;
+import app.pullrequests.Tables;
+import app.pullrequests.port.TableSource;
 import app.pipeline.port.Progress;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoDatabase;
@@ -27,7 +27,7 @@ import org.bson.types.ObjectId;
  *
  * <p>One pass per collection, everything into memory: 52.478 pull requests, 18.786 merge events,
  * 188.500 comments and 127.618 reviews are small next to the corpus they come from, and holding
- * them means every temporal rule is applied once, in {@code app.paper5}, where a test can reach it.
+ * them means every temporal rule is applied once, in {@code app.pullrequests}, where a test can reach it.
  *
  * <p><b>Nothing here filters by {@code t0}.</b> That is deliberate and is what makes the
  * time-travel test possible at all.

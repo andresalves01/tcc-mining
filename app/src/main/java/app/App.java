@@ -145,11 +145,11 @@ public final class App {
             new MongoPersonRegistry(client, config.ledgerDb())),
         new MongoUnitSource(client, config.unitsDb(), config.sourceDb()),
         new MongoTableSource(client, config.sourceDb(), progress),
-        new app.pipeline.mongo.MongoPaper5Store(client, config.paper5Db()),
+        new app.pipeline.mongo.MongoPullRequestStore(client, config.prDb()),
         new app.pipeline.mongo.MongoStudySource(client, config.sourceDb(), config.targetDb(),
             progress),
         new app.pipeline.mongo.MongoIssuesStore(client, config.issuesDb()),
-        new app.pipeline.mongo.MongoArtigo4Tables(client, config.sourceDb(), config.ledgerDb(),
+        new app.pipeline.mongo.MongoPriorStudyTables(client, config.sourceDb(), config.ledgerDb(),
             config.unitsDb(), progress));
   }
 

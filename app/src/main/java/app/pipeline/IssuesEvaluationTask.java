@@ -1,8 +1,8 @@
 package app.pipeline;
 
-import app.paper5.model.Bootstrap;
-import app.paper5.model.Breakdown;
-import app.paper5.model.Score;
+import app.pullrequests.model.Bootstrap;
+import app.pullrequests.model.Breakdown;
+import app.pullrequests.model.Score;
 import app.issues.Attribute;
 import app.issues.Attributes;
 import app.issues.Family;

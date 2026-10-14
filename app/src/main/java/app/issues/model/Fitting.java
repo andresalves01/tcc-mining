@@ -2,9 +2,9 @@ package app.issues.model;
 
 import app.model.ElasticNetModel;
 import app.model.Metrics;
-import app.paper5.Row;
-import app.paper5.model.DesignMatrix;
-import app.paper5.model.Score;
+import app.pullrequests.Row;
+import app.pullrequests.model.DesignMatrix;
+import app.pullrequests.model.Score;
 import app.issues.IssueUnit;
 import app.issues.RowCache;
 import app.issues.Universe;

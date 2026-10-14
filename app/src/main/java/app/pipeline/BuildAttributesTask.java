@@ -1,13 +1,13 @@
 package app.pipeline;
 
 import app.labels.IssueLabel;
-import app.paper5.Extractor;
-import app.paper5.Population;
-import app.paper5.Row;
-import app.paper5.Tables;
-import app.paper5.Unit;
-import app.paper5.port.TableSource;
-import app.paper5.port.UnitSource;
+import app.pullrequests.Extractor;
+import app.pullrequests.Population;
+import app.pullrequests.Row;
+import app.pullrequests.Tables;
+import app.pullrequests.Unit;
+import app.pullrequests.port.TableSource;
+import app.pullrequests.port.UnitSource;
 import app.pipeline.port.Progress;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

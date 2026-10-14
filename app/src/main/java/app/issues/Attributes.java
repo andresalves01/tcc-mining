@@ -1,9 +1,9 @@
 package app.issues;
 
-import static app.paper5.Attribute.Kind.BINARY;
-import static app.paper5.Attribute.Kind.NUMERIC;
-import static app.paper5.Attribute.Transform.LOG1P;
-import static app.paper5.Attribute.Transform.NONE;
+import static app.pullrequests.Attribute.Kind.BINARY;
+import static app.pullrequests.Attribute.Kind.NUMERIC;
+import static app.pullrequests.Attribute.Transform.LOG1P;
+import static app.pullrequests.Attribute.Transform.NONE;
 import static app.issues.Family.ALZUBAIDI;
 import static app.issues.Family.KIKAS;
 import static app.issues.Family.PROPRIA;
@@ -37,13 +37,13 @@ public final class Attributes {
   private Attributes() {}
 
   private static Attribute c1(final String id, final String name, final Family family,
-      final app.paper5.Attribute.Kind kind, final app.paper5.Attribute.Transform t,
+      final app.pullrequests.Attribute.Kind kind, final app.pullrequests.Attribute.Transform t,
       final boolean absent) {
     return new Attribute(id, name, family, null, kind, t, absent, true);
   }
 
   private static Attribute c2(final String id, final String name, final Family family,
-      final Scenario.Block block, final app.paper5.Attribute.Transform t, final boolean absent) {
+      final Scenario.Block block, final app.pullrequests.Attribute.Transform t, final boolean absent) {
     return new Attribute(id, name, family, block, NUMERIC, t, absent, true);
   }
 
