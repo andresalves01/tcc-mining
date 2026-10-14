@@ -33,6 +33,17 @@ public final class EmbeddingModel {
   /** The most tokens one chunk may hold, the classifier and separator tokens included. */
   public static final int MAX_TOKENS = 256;
 
+  /**
+   * The chunking policy {@code OnnxEmbedder} applies, as the embedding cache keys it: a change to
+   * how a text is cut, pooled or combined must change this line, and so empties the cache.
+   */
+  public static final String CHUNKING = "chunking-1: consecutive chunks of at most " + MAX_TOKENS
+      + " tokens, special tokens included; mean pooling over the attention mask at length one; "
+      + "chunks averaged weighted by content tokens, at length one";
+
+  /** The number of components of every vector the model gives. */
+  public static final int DIMENSION = 384;
+
   /** The ONNX model, relative to the model directory. */
   public static final String ONNX = "onnx/model.onnx";
 

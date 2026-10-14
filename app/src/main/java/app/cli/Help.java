@@ -65,6 +65,12 @@ public final class Help {
                                                 issues-in-progress-similarity reads it
           MODEL_DIR         (unset)             issues-download-model: where the embedding model goes;
                                                 the embedder reads and verifies it there
+                                                (issues-in-progress-similarity)
+          REQUIRE_MODEL     (unset)             tests: 1 makes the model tests fail, not skip,
+                                                without a valid model in MODEL_DIR
+          EMBEDDING_CACHE   (unset)             issues-in-progress-similarity: directory of the
+                                                embedding cache, one file per model, revision,
+                                                chunking policy and cleaner version
         """);
   }
 

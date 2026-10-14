@@ -1,15 +1,21 @@
 package app.cli.commands;
 
+import ai.onnxruntime.OrtException;
 import app.cli.CommandFailedException;
 import app.cli.CommandRunner;
 import app.cli.Context;
 import app.issues.Augmentation;
 import app.issues.DescriptionCleaner;
+import app.issues.Embedder;
 import app.issues.Extractor;
 import app.issues.RowCache;
 import app.issues.TeamColumns;
 import app.issues.Universe.Population;
 import app.pipeline.IssuesSimilarityTask;
+import app.pipeline.embedding.EmbeddingCache;
+import app.pipeline.embedding.EmbeddingModel;
+import app.pipeline.embedding.OnnxEmbedder;
+import app.pipeline.embedding.ReferenceCheck;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,18 +26,25 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.function.Function;
 
 /**
  * The similarity stage of the description-similarity chain, after the in-progress extraction.
  * Separate from the registered in-progress chain: it reads that chain's matrix and changes nothing
  * of it.
  *
+ * <p>Before anything else of the model is used, it must reproduce the sentence-transformers
+ * reference ({@link ReferenceCheck}); otherwise the run is refused.
+ *
  * <p>Reads CACHE, the revised team columns {@code issues-in-progress-team} wrote to TEAM_COLUMNS,
  * and the corpus; refuses, writing and recording nothing, unless the four split sizes are the
- * registered study's and the team file holds exactly the matrix's issues. Writes the augmented
- * matrix -- the extracted columns, the four team columns, then the similarity columns -- to MATRIX,
- * the diagnostics as tab-separated files to REPORT_DIR, and records the run, with the SHA-256 of
- * every file it read or wrote, in ISSUES_DB.
+ * registered study's and the team file holds exactly the matrix's issues. Embeds the descriptions
+ * with the pinned model in MODEL_DIR, verified on load, through the {@link EmbeddingCache} in
+ * EMBEDDING_CACHE, which it saves whenever the model computed anything, even when the stage then
+ * fails. Writes the augmented matrix -- the extracted columns, the four team columns, then the
+ * similarity columns -- to MATRIX, the diagnostics as tab-separated files to REPORT_DIR, and
+ * records the run, with the SHA-256 of every file it read or wrote, the model, its revision, the
+ * cache's hits and misses and the time spent, in ISSUES_DB.
  */
 public final class IssuesSimilarityCommand implements CommandRunner {
 
@@ -45,6 +58,8 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     final Path matrix = path("MATRIX");
     final Path reports = path("REPORT_DIR");
     final Path teamFile = path("TEAM_COLUMNS");
+    final Path modelDir = path(OnnxEmbedder.MODEL_DIR);
+    final Path cacheDir = path(EmbeddingCache.ENV);
     final long began = System.nanoTime();
 
     final String cacheSha;
@@ -89,8 +104,53 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     }
     columns.addAll(Extractor.TEAM_REVISED);
 
-    final IssuesSimilarityTask.Report r =
-        new IssuesSimilarityTask(context.study(), context.progress()).run(entries);
+    final IssuesSimilarityTask.Report r;
+    final EmbeddingCache embeddings;
+    final double augmentationSeconds;
+    final ReferenceCheck.Result check;
+    final OnnxEmbedder model;
+    try {
+      model = OnnxEmbedder.load(modelDir);
+    } catch (final IOException e) {
+      throw new CommandFailedException(List.of("  could not load the model in MODEL_DIR "
+          + modelDir + ": " + e.getMessage()));
+    }
+    try (model) {
+      check = selfCheck(model, model::chunks);
+      System.out.printf("  model %s at %s from %s%n", EmbeddingModel.REPOSITORY,
+          EmbeddingModel.REVISION, modelDir);
+      System.out.printf("  model reproduces the sentence-transformers reference: %d sentences, "
+          + "largest difference %.2e (tolerance %.0e)%n", ReferenceCheck.items().size(),
+          check.maxDifference(), ReferenceCheck.TOLERANCE);
+      try {
+        embeddings = EmbeddingCache.open(cacheDir, EmbeddingCache.pinned(), model);
+      } catch (final IOException e) {
+        throw new CommandFailedException(List.of("  could not read EMBEDDING_CACHE " + cacheDir
+            + ": " + e.getMessage()));
+      }
+      System.out.printf("  embedding cache %s%n", embeddings.file());
+      final long augmenting = System.nanoTime();
+      try {
+        r = new IssuesSimilarityTask(context.study(), context.progress(), embeddings)
+            .run(entries);
+      } catch (final RuntimeException e) {
+        throw new CommandFailedException(List.of("  the similarity stage failed, nothing was "
+            + "written or recorded but the embeddings already computed: " + e));
+      } finally {
+        // what the model computed is kept even when the stage fails, so a rerun need not redo it
+        if (embeddings.misses() > 0) {
+          try {
+            embeddings.save();
+          } catch (final IOException e) {
+            throw new CommandFailedException(List.of("  could not save EMBEDDING_CACHE "
+                + embeddings.file() + ": " + e.getMessage()));
+          }
+        }
+      }
+      augmentationSeconds = (System.nanoTime() - augmenting) / 1e9;
+    } catch (final OrtException e) {
+      throw new CommandFailedException(List.of("  could not close the model: " + e.getMessage()));
+    }
     final var s = r.sizes();
     System.out.printf("  outer training %,d  outer test %,d  inner fitting %,d  inner validation "
         + "%,d%n", s.train(), s.test(), s.innerFit(), s.innerSelection());
@@ -118,6 +178,15 @@ public final class IssuesSimilarityCommand implements CommandRunner {
 
     System.out.printf("%n  %,d of %,d issues have a description at their first In Progress "
         + "(cleaner %s)%n", r.described(), entries.size(), DescriptionCleaner.VERSION);
+    final List<Augmentation.Embedded> embedded = r.result().embedded();
+    final long invalid = embedded.stream().filter(e -> e.problem() != null).count();
+    final int maxChunks = embedded.stream().mapToInt(Augmentation.Embedded::chunks).max()
+        .orElse(0);
+    final long multiChunk = embedded.stream().filter(e -> e.chunks() > 1).count();
+    System.out.printf("  %,d descriptions embedded: %,d from the cache, %,d by the model in "
+        + "%.1f s; %,d in more than one chunk (at most %d); %,d invalid vectors left missing%n",
+        embedded.size(), embeddings.hits(), embeddings.misses(), embeddings.modelSeconds(),
+        multiChunk, maxChunks, invalid);
     System.out.printf("%n  COVERAGE BY SPLIT%n");
     final List<Map<String, Object>> rows = new ArrayList<>();
     for (final Augmentation.Coverage c : r.result().coverage()) {
@@ -150,6 +219,25 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     run.put("written_sha256", written);
     run.put("cleaner", DescriptionCleaner.VERSION);
     run.put("jaccard_n", Augmentation.JACCARD_N);
+    run.put("embedding_n", Augmentation.EMBEDDING_N);
+    run.put("model", EmbeddingModel.REPOSITORY);
+    run.put("model_revision", EmbeddingModel.REVISION);
+    run.put("model_onnx_sha256", EmbeddingModel.FILES.get(0).sha256());
+    run.put("chunking", EmbeddingModel.CHUNKING);
+    run.put("reference_max_difference", check.maxDifference());
+    run.put("reference_tolerance", ReferenceCheck.TOLERANCE);
+    run.put("dimension", EmbeddingModel.DIMENSION);
+    run.put("unit_tolerance", Augmentation.UNIT_TOLERANCE);
+    run.put("embedding_cache", embeddings.file().toString());
+    run.put("embedding_cache_format", EmbeddingCache.FORMAT);
+    run.put("embedding_cache_hits", embeddings.hits());
+    run.put("embedding_cache_misses", embeddings.misses());
+    run.put("embedded", embedded.size());
+    run.put("invalid_vectors", invalid);
+    run.put("multi_chunk_descriptions", multiChunk);
+    run.put("max_chunks", maxChunks);
+    run.put("model_seconds", embeddings.modelSeconds());
+    run.put("augmentation_seconds", augmentationSeconds);
     run.put("blocks", Augmentation.BLOCKS);
     run.put("rows", entries.size());
     run.put("described", r.described());
@@ -158,6 +246,30 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     run.put("processors", Runtime.getRuntime().availableProcessors());
     System.out.printf("  run recorded in ISSUES_DB: %s%n",
         context.issuesResults().record(run, rows));
+  }
+
+  /**
+   * The model's run on the six reference sentences, refused unless it reproduces the
+   * sentence-transformers token ids and vectors; run before any description is embedded.
+   */
+  static ReferenceCheck.Result selfCheck(final Embedder model,
+      final Function<String, List<long[]>> chunks) throws CommandFailedException {
+    final ReferenceCheck.Result check;
+    try {
+      check = ReferenceCheck.compare(model, chunks);
+    } catch (final IllegalStateException | java.io.UncheckedIOException e) {
+      throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: the "
+          + "sentence-transformers reference could not be read: " + e.getMessage()));
+    }
+    if (!check.passed()) {
+      final List<String> lines = new ArrayList<>();
+      lines.add("  REFUSED, nothing was written or recorded: the model in MODEL_DIR does not "
+          + "reproduce the sentence-transformers reference (tolerance " + ReferenceCheck.TOLERANCE
+          + ")");
+      check.problems().forEach(p -> lines.add("    " + p));
+      throw new CommandFailedException(lines);
+    }
+    return check;
   }
 
   /** The matrix as read, every column and header name kept, with the new columns after them. */
@@ -196,6 +308,34 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     out.put("jaccard-queries.tsv", queries);
     out.put("jaccard-neighbours.tsv", neighbours);
 
+    final List<String> searches = new ArrayList<>();
+    final List<String> near = new ArrayList<>();
+    final StringBuilder top = new StringBuilder("id\tvariant\tsplit\tblock\treference"
+        + "\tcandidates");
+    Augmentation.EMBEDDING_N.forEach(n -> top.append("\tused_").append(n));
+    searches.add(top.toString());
+    near.add("id\tvariant\trank\tneighbour\tneighbour_project\tdistance");
+    for (final Augmentation.EmbeddingQuery q : r.result().embeddingQueries()) {
+      final StringBuilder line = new StringBuilder(String.join("\t", q.id(), name(q.variant()),
+          q.split(), q.block(), Instant.ofEpochMilli(q.reference()).toString(),
+          Integer.toString(q.candidates())));
+      Augmentation.EMBEDDING_N.forEach(n -> line.append('\t').append(q.used(n)));
+      searches.add(line.toString());
+      for (int k = 0; k < q.nearest().size(); k++) {
+        final Augmentation.Neighbour n = q.nearest().get(k);
+        near.add(String.join("\t", q.id(), name(q.variant()), Integer.toString(k + 1),
+            n.id(), project.get(n.id()), Double.toString(n.distance())));
+      }
+    }
+    out.put("embedding-queries.tsv", searches);
+    out.put("embedding-neighbours.tsv", near);
+
+    final List<String> chunks = new ArrayList<>(List.of("id\tproject\tchunks\tvalid\tproblem"));
+    r.result().embedded().forEach(e -> chunks.add(String.join("\t", e.id(), project.get(e.id()),
+        Integer.toString(e.chunks()), Boolean.toString(e.problem() == null),
+        e.problem() == null ? "" : e.problem())));
+    out.put("embedding-chunks.tsv", chunks);
+
     final List<String> coverage = new ArrayList<>(List.of("column\tby\tgroup\trows\tobserved"));
     r.result().coverage().forEach(c -> coverage.add(String.join("\t", c.column(), c.by(),
         c.group(), Integer.toString(c.rows()), Integer.toString(c.observed()))));
@@ -223,9 +363,8 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     final String fromEnv = System.getenv(name);
     final String value = fromEnv == null || fromEnv.isBlank() ? System.getProperty(name) : fromEnv;
     if (value == null || value.isBlank()) {
-      throw new CommandFailedException(List.of("  CACHE, TEAM_COLUMNS, MATRIX and REPORT_DIR are "
-          + "required; "
-          + "missing " + name));
+      throw new CommandFailedException(List.of("  CACHE, TEAM_COLUMNS, MATRIX, REPORT_DIR, "
+          + "MODEL_DIR and EMBEDDING_CACHE are required; missing " + name));
     }
     return Path.of(value);
   }
