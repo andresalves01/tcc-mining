@@ -62,7 +62,15 @@ dependencies {
     // Reporting only: nothing it answers enters a model or the data.
     implementation(libs.lingua)
 
-    // --- 6. UTILITIES ---
+    // --- 6. SENTENCE EMBEDDINGS ---
+    // all-MiniLM-L6-v2 run in Java, so the description-similarity chain needs no Python: ONNX
+    // Runtime executes the model's own ONNX export, DJL wraps the Hugging Face tokenizer that
+    // sentence-transformers uses. Both jars ship their native libraries, so nothing is fetched at
+    // run time; the model files themselves come from issues-download-model.
+    implementation(libs.onnxruntime)
+    implementation(libs.djl.tokenizers)
+
+    // --- 7. UTILITIES ---
     implementation(libs.guava)
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
@@ -94,6 +102,10 @@ application {
 tasks.named<Test>("test") {
     // Use JUnit Platform for unit tests.
     useJUnitPlatform()
+
+    // The embedder's comparison with sentence-transformers runs only when MODEL_DIR names the
+    // downloaded model; declared an input so setting or clearing it reruns the tests.
+    inputs.property("MODEL_DIR", System.getenv("MODEL_DIR") ?: "")
 
     // Spark needs these JVM opens on Java 17+, same as applicationDefaultJvmArgs above.
     jvmArgs(

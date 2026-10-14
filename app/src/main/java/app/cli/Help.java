@@ -63,6 +63,8 @@ public final class Help {
           MATRIX            (unset)             issues-in-progress-similarity: the augmented matrix
           TEAM_COLUMNS      (unset)             issues-in-progress-team writes it,
                                                 issues-in-progress-similarity reads it
+          MODEL_DIR         (unset)             issues-download-model: where the embedding model goes;
+                                                the embedder reads and verifies it there
         """);
   }
 

@@ -2,15 +2,19 @@
 # https://docs.gradle.org/current/userguide/platforms.html#sub::toml-dependencies-format
 
 [versions]
+djl = "0.38.0"
 guava = "33.4.6-jre"
 junit-jupiter = "5.12.1"
 lingua = "1.2.2"
+onnxruntime = "1.30.0"
 smile = "4.3.0"
 tribuo = "4.3.2"
 
 [libraries]
+djl-tokenizers = { module = "ai.djl.huggingface:tokenizers", version.ref = "djl" }
 guava = { module = "com.google.guava:guava", version.ref = "guava" }
 junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit-jupiter" }
 lingua = { module = "com.github.pemistahl:lingua", version.ref = "lingua" }
+onnxruntime = { module = "com.microsoft.onnxruntime:onnxruntime", version.ref = "onnxruntime" }
 smile-core = { module = "com.github.haifengl:smile-core", version.ref = "smile" }
 tribuo-regression-tree = { module = "org.tribuo:tribuo-regression-tree", version.ref = "tribuo" }
