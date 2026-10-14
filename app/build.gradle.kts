@@ -57,7 +57,12 @@ dependencies {
     // Pinned to the version Spark 3.5.0 ships to avoid a Jackson split-brain on the classpath.
     implementation("com.fasterxml.jackson.core:jackson-databind:2.15.2")
 
-    // --- 5. UTILITIES ---
+    // --- 5. LANGUAGE DETECTION ---
+    // Lingua, every language loaded, for the report on which languages the descriptions are in.
+    // Reporting only: nothing it answers enters a model or the data.
+    implementation(libs.lingua)
+
+    // --- 6. UTILITIES ---
     implementation(libs.guava)
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

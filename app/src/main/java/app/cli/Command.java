@@ -12,6 +12,7 @@ import app.cli.commands.FunnelCommand;
 import app.cli.commands.HarvestJiraCommand;
 import app.cli.commands.IssuesExtractCommand;
 import app.cli.commands.IssuesCheckCommand;
+import app.cli.commands.IssuesDescriptionLanguageCommand;
 import app.cli.commands.IssuesForestCommand;
 import app.cli.commands.IssuesGridCommand;
 import app.cli.commands.IssuesInProgressCheckCommand;
@@ -172,6 +173,15 @@ public enum Command {
       scaled by the ratio of rows), prints the weights and scores the test.
       Reads CACHE and PARAMETERS; writes PREDICTIONS; records the run in
       ISSUES_DB."""),
+
+  ISSUES_DESCRIPTION_LANGUAGE("issues-description-language",
+      new IssuesDescriptionLanguageCommand(), """
+      Issue duration from the first In Progress: the language of each
+      description as it stood at that instant, cleaned of Jira markup, with
+      code and log blocks removed before detection (Lingua, all languages).
+      Writes the count per language, the count with no description and 20
+      non-English descriptions drawn with a fixed seed to REPORT_DIR. Reads
+      the corpus; records nothing in Mongo, so it may run at any time."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both
