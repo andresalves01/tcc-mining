@@ -3,6 +3,7 @@ package app.issues;
 import app.issues.Universe.Population;
 import app.issues.model.Cell;
 import app.issues.model.Fitting;
+import app.issues.model.Forest;
 import app.issues.model.References;
 import app.model.Parallel;
 import app.study.Construct;
@@ -61,6 +62,17 @@ import java.util.concurrent.Callable;
  * column missing on every inner fitting row is removed from the model before the sweep, with the
  * reason recorded, never filled from the validation rows. The registered preparation, sweep and
  * grid are reused as they are.
+ *
+ * <p><b>Random forest</b> (ticket 13, a robustness check, not a new contribution). Beside each
+ * model, once its Elastic Net is chosen, the declared {@link Forest} grid is swept on the same
+ * inner fitting and validation rows, with the same columns -- the similarity medians at the
+ * combination the Elastic Net chose, and every declared column not removed for being missing,
+ * whether or not the Elastic Net gave it a weight -- the same design matrix fitted on the fitting
+ * side, the same {@code log1p} target and back-transform; n and k are not swept again. The point with the lowest inner
+ * validation error is kept; of points whose errors are exactly equal, the first in the grid's
+ * order (the smaller column share, then the smaller leaf; {@link Forest#chosen}). Its column share,
+ * the count that share gave and its leaf go to the parameters file under the step {@link
+ * #FOREST_STEP}.
  */
 public final class ElasticNetSelection {
 
@@ -146,9 +158,10 @@ public final class ElasticNetSelection {
    * @param removed the declared columns left out before the sweep
    * @param combinations every combination swept, in the order of {@link Combination#all}; empty
    *     for a model without the similarity medians
+   * @param forest the forest swept beside it on the same columns and rows, at its chosen point
    */
   public record Model(Cell cell, Combination combination, Fitting.Fitted fitted,
-      List<Removed> removed, List<Swept> combinations) {}
+      List<Removed> removed, List<Swept> combinations, Forest.Fitted forest) {}
 
   /**
    * @param projectMaeHours the project median's error on the inner validation, the sweep's
@@ -172,11 +185,15 @@ public final class ElasticNetSelection {
   public record Parameter(String step, String name, String parameter, String value) {}
 
   /** The first line of every parameters file this step writes. */
-  public static final String HEADER = "# Elastic Net alpha and lambda, and the similarity "
-      + "medians' n, n and k, chosen on the inner validation only; the outer test was not read";
+  public static final String HEADER = "# Elastic Net alpha and lambda, the similarity medians' "
+      + "n, n and k, and each random forest's column share and leaf, chosen on the inner "
+      + "validation only; the outer test was not read";
 
   /** The step of the Elastic Net choices in the parameters file. */
   public static final String STEP = "elastic-net";
+
+  /** The step of the random forests' choices in the parameters file. */
+  public static final String FOREST_STEP = "forest";
 
   /** The name of the lines giving what the choices were made on. */
   public static final String INPUTS = "inputs";
@@ -192,6 +209,12 @@ public final class ElasticNetSelection {
   private static final String EMBEDDING_N = "embedding_n";
 
   private static final String CLUSTER_K = "cluster_k";
+
+  private static final String MTRY_SHARE = "mtry_share";
+
+  private static final String MTRY = "mtry";
+
+  private static final String NODE_SIZE = "node_size";
 
   private ElasticNetSelection() {}
 
@@ -221,7 +244,9 @@ public final class ElasticNetSelection {
    * parameter, value} ({@link #read} reads it): a commented header; a line with the SHA-256 of the
    * matrix the choices were made on; then per model an alpha line and a lambda line, each value
    * as Java prints a double, which reads back to the same number, and for a model with the
-   * similarity medians a {@code jaccard_n}, an {@code embedding_n} and a {@code cluster_k} line.
+   * similarity medians a {@code jaccard_n}, an {@code embedding_n} and a {@code cluster_k} line;
+   * then per model, under the step {@link #FOREST_STEP}, its forest's {@code mtry_share} (as Java
+   * prints the double), {@code mtry} and {@code node_size}.
    */
   public static List<String> parameters(final Result r, final String matrixSha) {
     final List<String> out = new ArrayList<>();
@@ -238,6 +263,42 @@ public final class ElasticNetSelection {
         out.add(String.join("\t", STEP, name, EMBEDDING_N, Integer.toString(c.embeddingN())));
         out.add(String.join("\t", STEP, name, CLUSTER_K, Integer.toString(c.clusterK())));
       }
+    }
+    for (final Model m : r.models()) {
+      final String name = m.cell().label();
+      final Forest.Fitted f = m.forest();
+      out.add(String.join("\t", FOREST_STEP, name, MTRY_SHARE, Double.toString(f.share())));
+      out.add(String.join("\t", FOREST_STEP, name, MTRY, Integer.toString(f.mtry())));
+      out.add(String.join("\t", FOREST_STEP, name, NODE_SIZE, Integer.toString(f.nodeSize())));
+    }
+    return out;
+  }
+
+  /**
+   * Per model, in the file's order, its forest's column share, count and leaf. A model missing
+   * one of the three refuses, as does a point the declared grid does not hold; which models must
+   * have a forest is the caller's to check.
+   */
+  public static Map<String, Forest.Choice> forests(final List<Parameter> parameters) {
+    final Map<String, Map<String, String>> byModel = new LinkedHashMap<>();
+    for (final Parameter p : parameters) {
+      if (!p.step().equals(FOREST_STEP)) {
+        continue;
+      }
+      if (!List.of(MTRY_SHARE, MTRY, NODE_SIZE).contains(p.parameter())) {
+        throw new IllegalArgumentException("no forest parameter " + p.parameter() + " in " + p);
+      }
+      byModel.computeIfAbsent(p.name(), k -> new HashMap<>()).put(p.parameter(), p.value());
+    }
+    final Map<String, Forest.Choice> out = new LinkedHashMap<>();
+    for (final Map.Entry<String, Map<String, String>> e : byModel.entrySet()) {
+      final Map<String, String> v = e.getValue();
+      if (!v.keySet().equals(Set.of(MTRY_SHARE, MTRY, NODE_SIZE))) {
+        throw new IllegalArgumentException(e.getKey() + "'s forest has not its mtry share, mtry "
+            + "and leaf: " + v);
+      }
+      out.put(e.getKey(), new Forest.Choice(Double.parseDouble(v.get(MTRY_SHARE)),
+          Integer.parseInt(v.get(MTRY)), Integer.parseInt(v.get(NODE_SIZE))));
     }
     return out;
   }
@@ -341,6 +402,11 @@ public final class ElasticNetSelection {
    *
    * <p>A combination at which a model has no column observed on the inner fitting rows refuses
    * the whole run, as a model with no column did before, rather than being skipped.
+   *
+   * <p>Then each model's forest is swept on the columns its Elastic Net kept at its chosen
+   * combination, one job per model on the same threads, read back in the models' order. The
+   * forest's trees have seeds of their own, so its choice is the same bits whatever the number of
+   * threads, and the Elastic Net's choices are made before it and do not depend on it.
    */
   public static Result run(final List<RowCache.Entry> entries, final int threads) {
     final List<Combination> combinations = Combination.all();
@@ -365,17 +431,17 @@ public final class ElasticNetSelection {
           final Kept kept = kept(cell, sides.fitRows(), "inner fitting");
           return new Model(cell, combination,
               Fitting.sweep(kept.cell(), sides, projectMae, constantMae, 1), kept.removed(),
-              List.of());
+              List.of(), null);
         });
       }
     }
     final List<Model> swept = Parallel.map(threads, jobs);
 
-    final List<Model> out = new ArrayList<>();
+    final List<Model> chosen = new ArrayList<>();
     int next = 0;
     for (final String name : MODELS) {
       if (!WITH_SIMILARITY.contains(name)) {
-        out.add(swept.get(next++));
+        chosen.add(swept.get(next++));
         continue;
       }
       Model best = null;
@@ -389,8 +455,20 @@ public final class ElasticNetSelection {
           best = m;
         }
       }
-      out.add(new Model(best.cell(), best.combination(), best.fitted(), best.removed(),
-          List.copyOf(each)));
+      chosen.add(new Model(best.cell(), best.combination(), best.fitted(), best.removed(),
+          List.copyOf(each), null));
+    }
+
+    final List<Callable<Forest.Fitted>> trees = new ArrayList<>(chosen.size());
+    for (final Model m : chosen) {
+      trees.add(() -> Forest.sweep(m.fitted().cell(), sides, projectMae, constantMae));
+    }
+    final List<Forest.Fitted> forests = Parallel.map(threads, trees);
+    final List<Model> out = new ArrayList<>(chosen.size());
+    for (int m = 0; m < chosen.size(); m++) {
+      final Model x = chosen.get(m);
+      out.add(new Model(x.cell(), x.combination(), x.fitted(), x.removed(), x.combinations(),
+          forests.get(m)));
     }
     return new Result(sides.fitUnits().size(), observed.length, projectMae, constantMae,
         List.copyOf(out));

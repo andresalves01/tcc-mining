@@ -3,6 +3,7 @@ package app.issues;
 import app.issues.Universe.Population;
 import app.issues.model.Cell;
 import app.issues.model.Fitting;
+import app.issues.model.Forest;
 import app.issues.model.ProjectBootstrap;
 import app.issues.model.References;
 import app.model.Parallel;
@@ -24,11 +25,12 @@ import java.util.concurrent.Callable;
  * outer training set with the parameters the selection step wrote, and the outer test scored
  * once. Chooses nothing.
  *
- * <p><b>Models</b>, nine, in this order: the three references learned on the outer training set
- * -- the global median, the project median and the executor-project median, as the registered
- * chain learns them; and the six Elastic Net models of {@link ElasticNetSelection#cells(Map,
+ * <p><b>Models</b>, fifteen, in this order: the three references learned on the outer training
+ * set -- the global median, the project median and the executor-project median, as the registered
+ * chain learns them; the six Elastic Net models of {@link ElasticNetSelection#cells(Map,
  * Augmentation.Variant)}, in the outer variant, each model with the similarity medians reading
- * them at the Jaccard n, embedding n and cluster k chosen for it. A similarity median is an
+ * them at the Jaccard n, embedding n and cluster k chosen for it; and the six random forests
+ * beside them ({@link #forest(String)}), a robustness check (ticket 13). A similarity median is an
  * attribute of the models that read it and is never scored alone (ticket 11).
  *
  * <p><b>Refit.</b> As the registered reserved run does it: the alpha given, the lambda given
@@ -37,6 +39,12 @@ import java.util.concurrent.Callable;
  * their missing indicators as in selection; a declared column missing on every outer training row
  * is removed, with the reason recorded, as selection removes one missing on every inner fitting
  * row.
+ *
+ * <p><b>Forests.</b> Each on the rows, columns, missing indicators and removals of its Elastic Net
+ * twin (every column it kept, weighted or not), at the point of the grid the selection chose
+ * ({@link Forest#frozen}): the same count of columns drawn at each split and the same leaf. Per
+ * forest, the permutation importance of each design column on the outer test is kept, a
+ * diagnostic.
  *
  * <p><b>Readings.</b> Per model: the error in hours and days, Spearman and pairwise ordering
  * ({@link Score}), the error by band of the true duration with the slowest tenth apart ({@link
@@ -64,13 +72,15 @@ public final class SimilarityScoring {
   /**
    * One model scored on the outer test.
    *
-   * @param kind {@code reference} or {@code elastic-net}
+   * @param kind {@code reference}, {@code elastic-net} or {@code forest}
    * @param fitted the refit, for an Elastic Net model only; null otherwise
-   * @param removed the declared columns left out, for an Elastic Net model; empty otherwise
+   * @param removed the declared columns left out, for an Elastic Net model or a forest; empty
+   *     otherwise
+   * @param forest the refit, for a forest only; null otherwise
    */
   public record Scored(String name, String kind, double[] predictedHours, Score score,
       Breakdown.Errors errors, List<Breakdown.Band> bands, Fitting.Fitted fitted,
-      List<ElasticNetSelection.Removed> removed) {}
+      List<ElasticNetSelection.Removed> removed, Forest.Frozen forest) {}
 
   /**
    * @param innerFitRows the rows the given lambdas were chosen on, which the final lambda scales
@@ -84,6 +94,11 @@ public final class SimilarityScoring {
 
   private SimilarityScoring() {}
 
+  /** The name of the forest beside an Elastic Net model. */
+  public static String forest(final String model) {
+    return model + "_forest";
+  }
+
   /**
    * Refits and scores.
    *
@@ -91,10 +106,13 @@ public final class SimilarityScoring {
    *     for a model with the similarity medians, its combination; exactly the models of {@link
    *     ElasticNetSelection#MODELS}, a combination for exactly those of {@link
    *     ElasticNetSelection#WITH_SIMILARITY}, or the run refuses
+   * @param forests per Elastic Net model, its forest's column share and leaf chosen on the inner
+   *     validation; exactly the models of {@link ElasticNetSelection#MODELS}, or the run refuses
    */
   public static Report run(final List<RowCache.Entry> entries,
-      final Map<String, ElasticNetSelection.Choice> choices) {
-    return run(entries, choices, Parallel.threads(Parallel.ELASTIC_NET_THREADS),
+      final Map<String, ElasticNetSelection.Choice> choices,
+      final Map<String, Forest.Choice> forests) {
+    return run(entries, choices, forests, Parallel.threads(Parallel.ELASTIC_NET_THREADS),
         Parallel.threads(Parallel.BOOTSTRAP_THREADS));
   }
 
@@ -104,11 +122,15 @@ public final class SimilarityScoring {
    * their order, so the report is the same bits whatever the numbers.
    */
   public static Report run(final List<RowCache.Entry> entries,
-      final Map<String, ElasticNetSelection.Choice> choices, final int fitThreads,
-      final int drawThreads) {
+      final Map<String, ElasticNetSelection.Choice> choices,
+      final Map<String, Forest.Choice> forests, final int fitThreads, final int drawThreads) {
     if (!new LinkedHashSet<>(ElasticNetSelection.MODELS).equals(choices.keySet())) {
       throw new IllegalArgumentException("the parameters hold alpha and lambda for "
           + choices.keySet() + "; the models are " + ElasticNetSelection.MODELS);
+    }
+    if (!new LinkedHashSet<>(ElasticNetSelection.MODELS).equals(forests.keySet())) {
+      throw new IllegalArgumentException("the parameters hold a forest for " + forests.keySet()
+          + "; the models are " + ElasticNetSelection.MODELS);
     }
     final List<Cell> cells =
         ElasticNetSelection.cells(ElasticNetSelection.combinations(choices),
@@ -142,10 +164,26 @@ public final class SimilarityScoring {
             Fitting.finalLambda(c.lambda(), fitRows, innerFitRows), projectMae, constantMae);
         return new Scored(cell.label(), "elastic-net", f.predictedHours(), f.score(),
             Breakdown.errors(f.predictedHours(), observed),
-            Breakdown.byTruth(f.predictedHours(), observed), f, kept.removed());
+            Breakdown.byTruth(f.predictedHours(), observed), f, kept.removed(), null);
       });
     }
     models.addAll(Parallel.map(fitThreads, refits));
+
+    final List<Callable<Scored>> trees = new ArrayList<>(cells.size());
+    for (final Cell cell : cells) {
+      trees.add(() -> {
+        final Forest.Choice c = forests.get(cell.label());
+        final ElasticNetSelection.Kept kept =
+            ElasticNetSelection.kept(cell, sides.fitRows(), FITTING_SET);
+        final String name = forest(cell.label());
+        final Forest.Frozen f = Forest.frozen(new Cell(name, cell.family(), cell.scenario(),
+            kept.cell().attributes()), sides, c, projectMae, constantMae);
+        return new Scored(name, "forest", f.predictedHours(), f.score(),
+            Breakdown.errors(f.predictedHours(), observed),
+            Breakdown.byTruth(f.predictedHours(), observed), null, kept.removed(), f);
+      });
+    }
+    models.addAll(Parallel.map(fitThreads, trees));
 
     final Map<String, double[]> errors = new HashMap<>();
     for (final Scored m : models) {
@@ -172,23 +210,49 @@ public final class SimilarityScoring {
   }
 
   /**
-   * The paired comparisons, {@code a} against {@code b}, and only these: the own specification
-   * with similarity against the same without the similarity medians, what similarity adds beside
-   * the other attributes; then every model against the global median, and every model but the
-   * global median against the project median, so the two references are compared once.
+   * The paired comparisons, {@code a} against {@code b}, and only these. First, of the references
+   * and Elastic Net models: the own specification with similarity against the same without the
+   * similarity medians, what similarity adds beside the other attributes; then each of them against
+   * the global median, and each but the global median against the project median, so the two
+   * references are compared once. Then, of the forests (ticket 13), in the order of {@code
+   * models}: each forest against its Elastic Net; the forest of the own specification with
+   * similarity against the forest without; each forest against the global median; each forest
+   * against the project median.
    */
   public static List<String[]> pairs(final List<String> models) {
+    final List<String> forests = new ArrayList<>();
+    for (final String m : ElasticNetSelection.MODELS) {
+      forests.add(forest(m));
+    }
+    final List<String> linear = models.stream().filter(m -> !forests.contains(m)).toList();
+    final List<String> trees = models.stream().filter(forests::contains).toList();
     final List<String[]> out = new ArrayList<>(List.<String[]>of(
         new String[] {"own_with_similarity", "own_without_similarity"}));
-    for (final String m : models) {
+    for (final String m : linear) {
       if (!m.equals(GLOBAL)) {
         out.add(new String[] {m, GLOBAL});
       }
     }
-    for (final String m : models) {
+    for (final String m : linear) {
       if (!m.equals(GLOBAL) && !m.equals(PROJECT)) {
         out.add(new String[] {m, PROJECT});
       }
+    }
+    if (trees.isEmpty()) {
+      return List.copyOf(out);
+    }
+    for (final String f : trees) {
+      out.add(new String[] {f, f.substring(0, f.length() - forest("").length())});
+    }
+    if (trees.containsAll(List.of(forest("own_with_similarity"),
+        forest("own_without_similarity")))) {
+      out.add(new String[] {forest("own_with_similarity"), forest("own_without_similarity")});
+    }
+    for (final String f : trees) {
+      out.add(new String[] {f, GLOBAL});
+    }
+    for (final String f : trees) {
+      out.add(new String[] {f, PROJECT});
     }
     return List.copyOf(out);
   }
@@ -244,6 +308,7 @@ public final class SimilarityScoring {
   private static Scored given(final String name, final String kind, final double[] hours,
       final double[] observed, final double projectMae, final double constantMae) {
     return new Scored(name, kind, hours, Score.of(name, hours, observed, projectMae, constantMae),
-        Breakdown.errors(hours, observed), Breakdown.byTruth(hours, observed), null, List.of());
+        Breakdown.errors(hours, observed), Breakdown.byTruth(hours, observed), null, List.of(),
+        null);
   }
 }
