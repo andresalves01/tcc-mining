@@ -12,10 +12,11 @@ import java.util.List;
 
 /**
  * The sentence-embedding model the description-similarity chain reads, pinned: all-MiniLM-L6-v2 at
- * one Hugging Face revision, its ONNX export and the tokenizer files, each with its SHA-256.
+ * one Hugging Face revision, its weights, its configuration and the tokenizer files, each with
+ * its SHA-256.
  *
- * <p>The hashes were taken from the files as served at that revision; the ONNX file's matches the
- * object id Hugging Face records for it. A file whose bytes hash otherwise is a different model,
+ * <p>The hashes were taken from the files as served at that revision; the weights' matches the
+ * object id Hugging Face records for them. A file whose bytes hash otherwise is a different model,
  * or a corrupted one, and is refused at download and again at every load.
  *
  * <p>The model's limit is the 256 tokens sentence-transformers truncates to
@@ -34,7 +35,7 @@ public final class EmbeddingModel {
   public static final int MAX_TOKENS = 256;
 
   /**
-   * The chunking policy {@code OnnxEmbedder} applies, as the embedding cache keys it: a change to
+   * The chunking policy {@link MiniLmEmbedder} applies, as the embedding cache keys it: a change to
    * how a text is cut, pooled or combined must change this line, and so empties the cache.
    */
   public static final String CHUNKING = "chunking-1: consecutive chunks of at most " + MAX_TOKENS
@@ -44,24 +45,28 @@ public final class EmbeddingModel {
   /** The number of components of every vector the model gives. */
   public static final int DIMENSION = 384;
 
-  /** The ONNX model, relative to the model directory. */
-  public static final String ONNX = "onnx/model.onnx";
+  /** The network's weights, relative to the model directory. */
+  public static final String WEIGHTS = "model.safetensors";
 
-  /** The tokenizer DJL loads, relative to the model directory. */
-  public static final String TOKENIZER = "tokenizer.json";
+  /** The network's shape, relative to the model directory. */
+  public static final String CONFIG = "config.json";
+
+  /** The pooling sentence-transformers applies, relative to the model directory. */
+  public static final String POOLING = "1_Pooling/config.json";
 
   /** One pinned file: its path in the repository and in the model directory, and its SHA-256. */
   public record File(String path, String sha256) {}
 
-  /** Every file the embedder reads, the ONNX model first. */
+  /** Every file the embedder reads, the weights first. */
   public static final List<File> FILES = List.of(
-      new File(ONNX, "6fd5d72fe4589f189f8ebc006442dbb529bb7ce38f8082112682524616046452"),
-      new File(TOKENIZER, "be50c3628f2bf5bb5e3a7f17b1f74611b2561a3a27eeab05e5aa30f411572037"),
+      new File(WEIGHTS, "53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db"),
+      new File(CONFIG, "953f9c0d463486b10a6871cc2fd59f223b2c70184f49815e7efbcab5d8908b41"),
+      new File(POOLING, "4be450dde3b0273bb9787637cfbd28fe04a7ba6ab9d36ac48e92b11e350ffc23"),
+      new File("vocab.txt", "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"),
       new File("tokenizer_config.json",
           "acb92769e8195aabd29b7b2137a9e6d6e25c476a4f15aa4355c233426c61576b"),
       new File("special_tokens_map.json",
-          "303df45a03609e4ead04bc3dc1536d0ab19b5358db685b6f3da123d05ec200e3"),
-      new File("vocab.txt", "07eced375cec144d27c900241f3e339478dec958f92fddbc551f295c992038a3"));
+          "303df45a03609e4ead04bc3dc1536d0ab19b5358db685b6f3da123d05ec200e3"));
 
   private EmbeddingModel() {}
 

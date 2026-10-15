@@ -20,10 +20,10 @@ import java.util.TreeMap;
  * not seen under the same key.
  *
  * <p><b>Key.</b> A vector depends on the text and on everything that turned it into the vector:
- * the model, its revision, the chunking policy and the cleaner version that produced the text. The
- * last four name the file, by the SHA-256 of their line, so a change in any of them reads a
- * different, empty file and the old one is left as it was; the text keys a line within it, by its
- * own SHA-256 in UTF-8.
+ * the model, its revision, the implementation that ran it, the chunking policy and the cleaner
+ * version that produced the text. The last five name the file, by the SHA-256 of their line, so a
+ * change in any of them reads a different, empty file and the old one is left as it was; the text
+ * keys a line within it, by its own SHA-256 in UTF-8.
  *
  * <p><b>File.</b> {@code embeddings-<sha256>.tsv} in the cache directory. The first line is
  * {@link #FORMAT} and the key, tab-separated, and is checked on open: a file whose header is not
@@ -34,7 +34,7 @@ import java.util.TreeMap;
  *
  * <p>Nothing is written until {@link #save}, which writes every entry, sorted by hash, to a
  * temporary file beside the cache and moves it into place, so a run that stops halfway leaves the
- * previous file whole. Not thread-safe, as the model it wraps.
+ * previous file whole. Not thread-safe: it counts hits and misses and fills a map.
  */
 public final class EmbeddingCache implements Embedder {
 
@@ -45,10 +45,11 @@ public final class EmbeddingCache implements Embedder {
   public static final String FORMAT = "embedding-cache-1";
 
   /** What, besides the text, decides a vector. Tabs and line breaks are not allowed in a part. */
-  public record Key(String model, String revision, String chunking, String cleaner) {
+  public record Key(String model, String revision, String implementation, String chunking,
+      String cleaner) {
 
     public Key {
-      for (final String part : List.of(model, revision, chunking, cleaner)) {
+      for (final String part : List.of(model, revision, implementation, chunking, cleaner)) {
         if (part.contains("\t") || part.contains("\n") || part.contains("\r")) {
           throw new IllegalArgumentException("a key part holds a tab or line break: " + part);
         }
@@ -56,8 +57,8 @@ public final class EmbeddingCache implements Embedder {
     }
 
     String line() {
-      return String.join("\t", "model=" + model, "revision=" + revision, "chunking=" + chunking,
-          "cleaner=" + cleaner);
+      return String.join("\t", "model=" + model, "revision=" + revision,
+          "implementation=" + implementation, "chunking=" + chunking, "cleaner=" + cleaner);
     }
   }
 
@@ -77,10 +78,10 @@ public final class EmbeddingCache implements Embedder {
     this.entries = entries;
   }
 
-  /** The key of the pinned model and of the current cleaner. */
+  /** The key of the pinned model, run by {@link MiniLmEmbedder}, and of the current cleaner. */
   public static Key pinned() {
-    return new Key(EmbeddingModel.REPOSITORY, EmbeddingModel.REVISION, EmbeddingModel.CHUNKING,
-        DescriptionCleaner.VERSION);
+    return new Key(EmbeddingModel.REPOSITORY, EmbeddingModel.REVISION,
+        MiniLmEmbedder.IMPLEMENTATION, EmbeddingModel.CHUNKING, DescriptionCleaner.VERSION);
   }
 
   /** The cache of {@code key} in {@code dir}, empty when it has no file yet. */

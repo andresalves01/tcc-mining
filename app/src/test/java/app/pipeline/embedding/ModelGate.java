@@ -33,22 +33,22 @@ final class ModelGate {
 
   /** The gate MODEL_DIR and REQUIRE_MODEL in the environment, or the properties, give. */
   static <M> Gate<M> fromEnvironment(final Loader<M> loader) {
-    return open(setting(OnnxEmbedder.MODEL_DIR), setting(REQUIRE_MODEL), loader);
+    return open(setting(MiniLmEmbedder.MODEL_DIR), setting(REQUIRE_MODEL), loader);
   }
 
   /** The gate a MODEL_DIR and a REQUIRE_MODEL value give, either possibly null. */
   static <M> Gate<M> open(final String dir, final String require, final Loader<M> loader) {
     final boolean required = required(require);
     if (dir == null || dir.isBlank()) {
-      return new Gate<>(null, required ? REQUIRE_MODEL + " is set but " + OnnxEmbedder.MODEL_DIR
+      return new Gate<>(null, required ? REQUIRE_MODEL + " is set but " + MiniLmEmbedder.MODEL_DIR
           + " is unset: the comparison with sentence-transformers needs the model on disk (run "
-          + "issues-download-model into a directory and set " + OnnxEmbedder.MODEL_DIR
+          + "issues-download-model into a directory and set " + MiniLmEmbedder.MODEL_DIR
           + " to it)" : null);
     }
     try {
       return new Gate<>(loader.load(Path.of(dir)), null);
     } catch (final IOException | RuntimeException e) {
-      return new Gate<>(null, OnnxEmbedder.MODEL_DIR + "=" + dir + " holds no valid model ("
+      return new Gate<>(null, MiniLmEmbedder.MODEL_DIR + "=" + dir + " holds no valid model ("
           + e.getMessage() + ")" + (required ? "; " + REQUIRE_MODEL + " is set" : ""));
     }
   }

@@ -201,10 +201,11 @@ public enum Command {
   ISSUES_DOWNLOAD_MODEL("issues-download-model", new IssuesDownloadModelCommand(), """
       Issue duration from the first In Progress, description-similarity
       chain: downloads the sentence-embedding model, all-MiniLM-L6-v2 at
-      its pinned Hugging Face revision (the ONNX model and the tokenizer
-      files), into MODEL_DIR, and refuses any file whose SHA-256 is not the
-      pinned one. The embedder checks the hashes again at every load. A file
-      already there with the pinned hash is kept. Reads neither the corpus
+      its pinned Hugging Face revision (the safetensors weights, the
+      configuration and the tokenizer files), into MODEL_DIR, and refuses
+      any file whose SHA-256 is not the pinned one. The embedder, plain
+      Java with no native code, checks the hashes again at every load. A
+      file already there with the pinned hash is kept. Reads neither the corpus
       nor Mongo and records nothing, so it may run at any time."""),
 
   ISSUES_SIMILARITY("issues-in-progress-similarity", new IssuesSimilarityCommand(), """

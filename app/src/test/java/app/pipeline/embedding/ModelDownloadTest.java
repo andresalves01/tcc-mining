@@ -38,7 +38,7 @@ class ModelDownloadTest {
   }
 
   private static List<EmbeddingModel.File> pinned(final String model, final String vocab) {
-    return List.of(new EmbeddingModel.File("onnx/model.onnx", EmbeddingModel.sha256(
+    return List.of(new EmbeddingModel.File("1_Pooling/config.json", EmbeddingModel.sha256(
         model.getBytes(StandardCharsets.US_ASCII))), new EmbeddingModel.File("vocab.txt",
         EmbeddingModel.sha256(vocab.getBytes(StandardCharsets.US_ASCII))));
   }
@@ -53,11 +53,11 @@ class ModelDownloadTest {
   @Test
   @DisplayName("files whose SHA-256 is the pinned one are installed under the directory")
   void installs(@TempDir final Path dir) throws IOException {
-    final Fake source = new Fake(Map.of("onnx/model.onnx", "model", "vocab.txt", "vocab"));
+    final Fake source = new Fake(Map.of("1_Pooling/config.json", "model", "vocab.txt", "vocab"));
     new ModelDownload(pinned("model", "vocab"), source).into(dir);
 
     assertArrayEquals("model".getBytes(StandardCharsets.US_ASCII),
-        Files.readAllBytes(dir.resolve("onnx/model.onnx")));
+        Files.readAllBytes(dir.resolve("1_Pooling/config.json")));
     assertArrayEquals("vocab".getBytes(StandardCharsets.US_ASCII),
         Files.readAllBytes(dir.resolve("vocab.txt")));
   }
@@ -65,7 +65,7 @@ class ModelDownloadTest {
   @Test
   @DisplayName("a file with a wrong SHA-256 is refused at download and never left in the directory")
   void refusesWrongHash(@TempDir final Path dir) {
-    final Fake source = new Fake(Map.of("onnx/model.onnx", "model", "vocab.txt", "tampered"));
+    final Fake source = new Fake(Map.of("1_Pooling/config.json", "model", "vocab.txt", "tampered"));
     final ModelFileMismatch e = assertThrows(ModelFileMismatch.class,
         () -> new ModelDownload(pinned("model", "vocab"), source).into(dir));
 
@@ -73,7 +73,7 @@ class ModelDownloadTest {
     assertFalse(Files.exists(dir.resolve("vocab.txt")));
     try (var left = Files.walk(dir)) {
       assertEquals(List.of(), left.filter(Files::isRegularFile)
-          .filter(p -> !p.endsWith("onnx/model.onnx")).toList());
+          .filter(p -> !p.endsWith("1_Pooling/config.json")).toList());
     } catch (final IOException io) {
       throw new AssertionError(io);
     }
@@ -83,17 +83,17 @@ class ModelDownloadTest {
   @DisplayName("a file already present with the pinned SHA-256 is not fetched again")
   void keepsVerified(@TempDir final Path dir) throws IOException {
     Files.writeString(dir.resolve("vocab.txt"), "vocab", StandardCharsets.US_ASCII);
-    final Fake source = new Fake(Map.of("onnx/model.onnx", "model", "vocab.txt", "vocab"));
+    final Fake source = new Fake(Map.of("1_Pooling/config.json", "model", "vocab.txt", "vocab"));
     new ModelDownload(pinned("model", "vocab"), source).into(dir);
 
-    assertEquals(List.of("onnx/model.onnx"), source.asked);
+    assertEquals(List.of("1_Pooling/config.json"), source.asked);
   }
 
   @Test
   @DisplayName("a file already present with another SHA-256 is fetched again and replaced")
   void replacesCorrupted(@TempDir final Path dir) throws IOException {
     Files.writeString(dir.resolve("vocab.txt"), "corrupted", StandardCharsets.US_ASCII);
-    final Fake source = new Fake(Map.of("onnx/model.onnx", "model", "vocab.txt", "vocab"));
+    final Fake source = new Fake(Map.of("1_Pooling/config.json", "model", "vocab.txt", "vocab"));
     new ModelDownload(pinned("model", "vocab"), source).into(dir);
 
     assertEquals("vocab", Files.readString(dir.resolve("vocab.txt")));
@@ -104,7 +104,7 @@ class ModelDownloadTest {
       + "refused")
   void dropsCorruptedOnRefusal(@TempDir final Path dir) throws IOException {
     Files.writeString(dir.resolve("vocab.txt"), "corrupted", StandardCharsets.US_ASCII);
-    final Fake source = new Fake(Map.of("onnx/model.onnx", "model", "vocab.txt", "tampered"));
+    final Fake source = new Fake(Map.of("1_Pooling/config.json", "model", "vocab.txt", "tampered"));
     assertThrows(ModelFileMismatch.class,
         () -> new ModelDownload(pinned("model", "vocab"), source).into(dir));
 
@@ -114,8 +114,8 @@ class ModelDownloadTest {
   @Test
   @DisplayName("verifying a directory refuses a file with a wrong SHA-256 or a missing one")
   void verify(@TempDir final Path dir) throws IOException {
-    Files.createDirectories(dir.resolve("onnx"));
-    Files.writeString(dir.resolve("onnx/model.onnx"), "model", StandardCharsets.US_ASCII);
+    Files.createDirectories(dir.resolve("1_Pooling"));
+    Files.writeString(dir.resolve("1_Pooling/config.json"), "model", StandardCharsets.US_ASCII);
     Files.writeString(dir.resolve("vocab.txt"), "tampered", StandardCharsets.US_ASCII);
     final ModelFileMismatch wrong = assertThrows(ModelFileMismatch.class,
         () -> EmbeddingModel.verify(dir, pinned("model", "vocab")));
@@ -128,15 +128,16 @@ class ModelDownloadTest {
   }
 
   @Test
-  @DisplayName("the pinned files are the ONNX model and the tokenizer files of the pinned revision")
+  @DisplayName("the pinned files are the weights, the configurations and the tokenizer files of "
+      + "the pinned revision")
   void pinnedFiles() {
     assertEquals("sentence-transformers/all-MiniLM-L6-v2", EmbeddingModel.REPOSITORY);
     assertEquals("1110a243fdf4706b3f48f1d95db1a4f5529b4d41", EmbeddingModel.REVISION);
-    assertEquals(List.of("onnx/model.onnx", "tokenizer.json", "tokenizer_config.json",
-        "special_tokens_map.json", "vocab.txt"),
+    assertEquals(List.of("model.safetensors", "config.json", "1_Pooling/config.json", "vocab.txt",
+        "tokenizer_config.json", "special_tokens_map.json"),
         EmbeddingModel.FILES.stream().map(EmbeddingModel.File::path).toList());
-    // Hugging Face's own record of the ONNX file at that revision (its LFS object id).
-    assertEquals("6fd5d72fe4589f189f8ebc006442dbb529bb7ce38f8082112682524616046452",
+    // Hugging Face's own record of the weights at that revision (their LFS object id).
+    assertEquals("53aa51172d142c89d9012cce15ae4d6cc0ca6895895114379cacb4fab128d9db",
         EmbeddingModel.FILES.get(0).sha256());
   }
 }
