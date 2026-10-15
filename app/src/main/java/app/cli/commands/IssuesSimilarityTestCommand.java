@@ -28,8 +28,8 @@ import java.util.function.Function;
 
 /**
  * The test step of the description-similarity chain, outer mode only (see {@link
- * SimilarityScoring}): ten models -- the global, project and executor-project medians and the
- * seven Elastic Nets -- refitted on the outer training set with the parameters the selection step
+ * SimilarityScoring}): nine models -- the global, project and executor-project medians and the
+ * six Elastic Nets -- refitted on the outer training set with the parameters the selection step
  * wrote, the outer test scored once, every agreed comparison.
  *
  * <p>Reads MATRIX and ELASTIC_NET_PARAMETERS, which gives per model its alpha and lambda and, for
@@ -61,9 +61,9 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       + "which the earlier study already scored and examined; this run reads it again and is not "
       + "a test untouched by the author";
 
-  private static final String EFFORT = "selection effort differs between families: the three "
-      + "registered cells (previous own specification, Al-Zubaidi, Kikas) chose only alpha and "
-      + "lambda on the 3 x 12 grid; the revised nine chose the same; the three models reading the "
+  private static final String EFFORT = "selection effort differs between families: the two "
+      + "registered cells (Al-Zubaidi, Kikas) chose only alpha and lambda on the 3 x 12 grid; the "
+      + "own specification without similarity chose the same; the three models reading the "
       + "similarity medians chose also their Jaccard n, embedding n and cluster k among "
       + ElasticNetSelection.Combination.all().size() + " "
       + "combinations, each swept on the same grid; the references chose nothing";
@@ -119,7 +119,9 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       final List<String> elasticNetLines =
           new String(elasticNetBytes, StandardCharsets.UTF_8).lines().toList();
       if (!IssuesSimilarityElasticNetCommand.onlyThisStep(elasticNetLines)) {
-        throw refused(elasticNet + " is not the Elastic Net step's parameters file");
+        throw refused(elasticNet + " is not the Elastic Net step's parameters file for the "
+            + "models " + ElasticNetSelection.MODELS + "; it may be another step's, or one "
+            + "written in an earlier format or for the models before ticket 12");
       }
       final List<ElasticNetSelection.Parameter> enParameters;
       try {
@@ -244,6 +246,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     run.put("stage", STAGE);
     run.put("mode", "outer");
     run.put("outer_test", "scored");
+    run.put("models", r.models().stream().map(SimilarityScoring.Scored::name).toList());
     run.putAll(statements());
     run.put("matrix_sha256", matrixSha);
     run.put("elastic_net_parameters_sha256", elasticNetSha);

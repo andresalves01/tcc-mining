@@ -32,15 +32,26 @@ class SimilarityScoringTest {
   /** Each model with the similarity medians at a combination of its own. */
   private static final Map<String, ElasticNetSelection.Combination> COMBINATIONS = Map.of(
       "similarity_alone", new ElasticNetSelection.Combination(5, 20, 8),
-      "revised_twelve", new ElasticNetSelection.Combination(10, 5, 32),
-      "union_revised", new ElasticNetSelection.Combination(20, 10, 16));
+      "own_with_similarity", new ElasticNetSelection.Combination(10, 5, 32),
+      "union_own", new ElasticNetSelection.Combination(20, 10, 16));
 
-  private static final List<String> ELASTIC_NET = List.of("previous_own_start", "revised_nine",
-      "similarity_alone", "revised_twelve", "alzubaidi_start", "kikas_start", "union_revised");
+  private static final List<String> ELASTIC_NET = List.of("own_without_similarity",
+      "similarity_alone", "own_with_similarity", "alzubaidi_start", "kikas_start", "union_own");
 
   private static final List<String> MODELS = List.of("global_median", "project_median",
-      "executor_project_median", "previous_own_start", "revised_nine", "similarity_alone",
-      "revised_twelve", "alzubaidi_start", "kikas_start", "union_revised");
+      "executor_project_median", "own_without_similarity", "similarity_alone",
+      "own_with_similarity", "alzubaidi_start", "kikas_start", "union_own");
+
+  /**
+   * The models ticket 12 does not touch, as the code before it scored them on {@link #corpus}
+   * with {@code choices(0.2)}: the error and a hash of every prediction, as bits. Captured from
+   * commit 2059600, the corpus already drawing each value from its row and column alone.
+   */
+  private static final List<String> BEFORE = List.of(
+      "global_median 4040a728527e2a51 484866c1", "project_median 403fe7487be95da5 12e05fa1",
+      "executor_project_median 403eddb3bf2a5cc9 803e7a3d",
+      "similarity_alone 401225b80f591ceb d45a827e", "alzubaidi_start 4041306449b0d5fa de40e944",
+      "kikas_start 40402687ff26870b 7f7c78a5");
 
   private static Map<String, ElasticNetSelection.Choice> choices(final double lambda) {
     final Map<String, ElasticNetSelection.Choice> out = new LinkedHashMap<>();
@@ -81,9 +92,11 @@ class SimilarityScoringTest {
           if (a.name().startsWith("cluster_") && n % 4 == 0) {
             continue;
           }
-          values.put(a.name(), similarity ? hours * (0.7 + 0.6 * random.nextDouble())
-              : a.kind() == Construct.Kind.CATEGORICAL ? random.nextInt(3)
-              : random.nextInt(50));
+          // its own draw per row and column, so no value moves when another model's columns do
+          final Random draw = new Random(1_000_003L * n + a.name().hashCode());
+          values.put(a.name(), similarity ? hours * (0.7 + 0.6 * draw.nextDouble())
+              : a.kind() == Construct.Kind.CATEGORICAL ? draw.nextInt(3)
+              : draw.nextInt(50));
         }
         final String id = "i" + n++;
         final Instant start = created.plusSeconds(3600L * n);
@@ -133,8 +146,8 @@ class SimilarityScoringTest {
     // the parameters are used, not searched over: another lambda gives other predictions
     final SimilarityScoring.Report other =
         SimilarityScoring.run(corpus(), choices(0.0001));
-    assertNotEquals(model(r, "revised_twelve").predictedHours()[0],
-        model(other, "revised_twelve").predictedHours()[0]);
+    assertNotEquals(model(r, "own_with_similarity").predictedHours()[0],
+        model(other, "own_with_similarity").predictedHours()[0]);
   }
 
   @Test
@@ -142,20 +155,20 @@ class SimilarityScoringTest {
       + "the similarity medians without its combination or one without them given one, refuses")
   void refusesIncompleteParameters() {
     final Map<String, ElasticNetSelection.Choice> missing = new LinkedHashMap<>(choices(0.2));
-    missing.remove("revised_twelve");
+    missing.remove("own_with_similarity");
     assertThrows(IllegalArgumentException.class,
         () -> SimilarityScoring.run(corpus(), missing));
     final Map<String, ElasticNetSelection.Choice> extra = new LinkedHashMap<>(choices(0.2));
-    extra.put("revised_thirteen", new ElasticNetSelection.Choice(0.5, 0.2, null));
+    extra.put("previous_own_start", new ElasticNetSelection.Choice(0.5, 0.2, null));
     assertThrows(IllegalArgumentException.class,
         () -> SimilarityScoring.run(corpus(), extra));
     final Map<String, ElasticNetSelection.Choice> noCombination =
         new LinkedHashMap<>(choices(0.2));
-    noCombination.put("revised_twelve", new ElasticNetSelection.Choice(0.5, 0.2, null));
+    noCombination.put("own_with_similarity", new ElasticNetSelection.Choice(0.5, 0.2, null));
     assertThrows(IllegalArgumentException.class,
         () -> SimilarityScoring.run(corpus(), noCombination));
     final Map<String, ElasticNetSelection.Choice> oneTooMany = new LinkedHashMap<>(choices(0.2));
-    oneTooMany.put("revised_nine", new ElasticNetSelection.Choice(0.5, 0.2,
+    oneTooMany.put("own_without_similarity", new ElasticNetSelection.Choice(0.5, 0.2,
         new ElasticNetSelection.Combination(5, 5, 8)));
     assertThrows(IllegalArgumentException.class,
         () -> SimilarityScoring.run(corpus(), oneTooMany));
@@ -173,7 +186,7 @@ class SimilarityScoringTest {
       assertEquals(java.util.Arrays.toString(model(r, name).predictedHours()),
           java.util.Arrays.toString(model(inner, name).predictedHours()), name);
     }
-    assertTrue(model(r, "revised_twelve").fitted().columns()
+    assertTrue(model(r, "own_with_similarity").fitted().columns()
         .contains("jaccard_median_10_outer"));
   }
 
@@ -185,11 +198,11 @@ class SimilarityScoringTest {
     assertEquals(List.of("jaccard_median_5_outer", "embedding_median_20_outer",
         "cluster_median_8_outer"), model(r, "similarity_alone").fitted().columns().stream()
             .filter(c -> !c.endsWith("_ausente")).toList());
-    assertTrue(model(r, "revised_twelve").fitted().columns().containsAll(List.of(
+    assertTrue(model(r, "own_with_similarity").fitted().columns().containsAll(List.of(
         "jaccard_median_10_outer", "embedding_median_5_outer", "cluster_median_32_outer")));
-    assertTrue(model(r, "union_revised").fitted().columns().containsAll(List.of(
+    assertTrue(model(r, "union_own").fitted().columns().containsAll(List.of(
         "jaccard_median_20_outer", "embedding_median_10_outer", "cluster_median_16_outer")));
-    for (final String name : List.of("previous_own_start", "revised_nine", "alzubaidi_start",
+    for (final String name : List.of("own_without_similarity", "alzubaidi_start",
         "kikas_start")) {
       assertTrue(model(r, name).fitted().columns().stream().noneMatch(c ->
           c.startsWith("jaccard_") || c.startsWith("embedding_") || c.startsWith("cluster_")),
@@ -220,12 +233,12 @@ class SimilarityScoringTest {
 
   @Test
   @DisplayName("exactly the agreed comparisons, none of a similarity median alone as a prediction: "
-      + "revised nine vs previous, revised twelve vs revised nine, every model vs the global "
-      + "median and vs the project median")
+      + "own with similarity vs own without, every model vs the global median and every model "
+      + "but the global median vs the project median")
   void exactlyTheAgreedPairs() {
     final SimilarityScoring.Report r = SimilarityScoring.run(corpus(), choices(0.2));
-    final List<String> expected = new ArrayList<>(List.of(
-        "revised_nine | previous_own_start", "revised_twelve | revised_nine"));
+    final List<String> expected =
+        new ArrayList<>(List.of("own_with_similarity | own_without_similarity"));
     for (final String m : MODELS) {
       if (!m.equals("global_median")) {
         expected.add(m + " | global_median");
@@ -238,11 +251,26 @@ class SimilarityScoringTest {
     }
     assertEquals(expected,
         r.comparisons().stream().map(g -> g.a() + " | " + g.b()).toList());
-    assertEquals(2 + 9 + 8, new HashSet<>(expected).size());
-    assertEquals(10, MODELS.size());
+    assertEquals(1 + 8 + 7, new HashSet<>(expected).size());
+    assertEquals(9, MODELS.size());
     for (final var g : r.comparisons()) {
       assertTrue(g.low() <= g.gapHours() && g.gapHours() <= g.high(), g.toString());
     }
+  }
+
+  @Test
+  @DisplayName("the references, the similarity medians alone, Al-Zubaidi and Kikas score, bit for "
+      + "bit, what they scored before ticket 12")
+  void unchangedModelsAsBefore() {
+    final SimilarityScoring.Report r = SimilarityScoring.run(corpus(), choices(0.2), 1, 1);
+    final List<String> now = new ArrayList<>();
+    for (final String line : BEFORE) {
+      final SimilarityScoring.Scored m = model(r, line.substring(0, line.indexOf(' ')));
+      now.add(m.name() + " "
+          + Long.toHexString(Double.doubleToRawLongBits(m.score().maeHours())) + " "
+          + Integer.toHexString(java.util.Arrays.hashCode(m.predictedHours())));
+    }
+    assertEquals(BEFORE, now);
   }
 
   @Test

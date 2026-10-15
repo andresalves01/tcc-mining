@@ -227,10 +227,14 @@ public enum Command {
       new IssuesSimilarityElasticNetCommand(), """
       Issue duration from the first In Progress, description-similarity
       chain: chooses alpha and lambda on the inner validation, by the
-      registered grid's sweep, for seven Elastic Net models: the previous own
-      specification, Al-Zubaidi and Kikas at the start (the registered
-      cells), the revised nine, the similarity medians alone, the revised
-      twelve, and the literature families with the revised twelve. The
+      registered grid's sweep, for six Elastic Net models: the own
+      specification without similarity (description length, team size, the
+      team's median and spread of lines of code and complexity, the
+      corrected reporter median, the executor's lines of code, complexity
+      and open workload), the similarity medians alone, the own
+      specification with similarity (those ten and the three medians),
+      Al-Zubaidi and Kikas at the start (the registered cells), and the
+      literature families with the own specification with similarity. The
       three models with the similarity medians are swept once for each of
       the 27 combinations of Jaccard n (5, 10, 20), embedding n (5, 10, 20)
       and cluster k (8, 16, 32), and keep the combination whose sweep errs
@@ -241,7 +245,9 @@ public enum Command {
       removed from its models and reported. Refuses unless the four split
       sizes are the registered study's and the matrix has every declared
       column. Reads MATRIX; writes ELASTIC_NET_PARAMETERS, never over a file
-      holding more than its own choices; records the run in ISSUES_DB. The
+      holding more than its own choices or one naming other models, as one
+      written before the own specification took the team size back and
+      left the previous one out; records the run in ISSUES_DB. The
       outer test rows are not read."""),
 
   ISSUES_SIMILARITY_TEST("issues-in-progress-similarity-test",
@@ -256,7 +262,10 @@ public enum Command {
       executor-project medians scores the outer test: error in days,
       Spearman, pairwise ordering, error by duration band with the slowest
       10% apart, and the agreed paired comparisons with intervals
-      resampling whole projects. Refuses unless the parameters file exists,
+      resampling whole projects: the own specification with similarity
+      against the same without, every model against the global median and
+      every model but the global median against the project median.
+      Refuses unless the parameters file exists and is for these models,
       its choices were made on that matrix, the four split sizes are the
       registered study's and every column is present. Writes the per-issue
       predictions and the diagnostics to REPORT_DIR; records the run in
