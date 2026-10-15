@@ -109,7 +109,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     final List<Map<String, Object>> rows = new ArrayList<>();
     for (final ElasticNetSelection.Model m : r.models()) {
       final Fitting.Fitted f = m.fitted();
-      System.out.printf("%n  %-20s alpha %.2f  lambda %-12.6g step %2d of %d%s; MAE %.2f h "
+      System.out.printf("%n  %-22s alpha %.2f  lambda %-12.6g step %2d of %d%s; MAE %.2f h "
           + "(%.2f d); %d columns, %d selected%n", m.cell().label(), f.alpha(), f.lambda(),
           f.step(), Fitting.LAMBDA_STEPS, f.step() == 0 ? " = TOP, ALL ZEROED"
               : f.step() == Fitting.LAMBDA_STEPS - 1 ? " = GRID FLOOR" : "",
@@ -153,6 +153,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     run.put("stage", STAGE);
     run.put("mode", "inner");
     run.put("outer_test", "not read");
+    run.put("models", ElasticNetSelection.MODELS);
     run.put("matrix_sha256", matrixSha);
     run.put("parameters_sha256", parametersSha);
     run.put("jaccard_n", Augmentation.JACCARD_N);
@@ -172,15 +173,17 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
 
   /**
    * Refuses when {@code parameters} exists and is not a file of this step's own choices: it may
-   * be the registered chain's, or one written in an earlier format, and is never overwritten.
+   * be the registered chain's, or one written in an earlier format or for the models before
+   * ticket 12, and is never overwritten.
    */
   private static void refuseForeign(final Path parameters)
       throws IOException, CommandFailedException {
     if (Files.exists(parameters) && !onlyThisStep(Files.readAllLines(parameters))) {
       throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
           + parameters + " exists and is not a file of this step's choices in its current "
-          + "format; it may be the registered chain's or an earlier one, and is never "
-          + "overwritten"));
+          + "format, for the models " + ElasticNetSelection.MODELS + "; it may be the registered "
+          + "chain's, or this step's from an earlier format or for the models before ticket 12, "
+          + "and is never overwritten"));
     }
   }
 
@@ -244,14 +247,21 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     return List.copyOf(out);
   }
 
-  /** A file this step wrote and nothing appended to: its header and its own lines only. */
+  /**
+   * A file this step wrote and nothing appended to: its header and its own lines only, every one
+   * of them for the matrix's inputs or for one of {@link ElasticNetSelection#MODELS}. A file of
+   * the models before ticket 12 ({@code previous_own_start}, {@code revised_nine}, ...) has the
+   * same header and format, and is told apart by its model names.
+   */
   static boolean onlyThisStep(final List<String> lines) {
     if (lines.isEmpty() || !ElasticNetSelection.HEADER.equals(lines.get(0))) {
       return false;
     }
     try {
       return ElasticNetSelection.read(lines).stream()
-          .allMatch(p -> p.step().equals(ElasticNetSelection.STEP));
+          .allMatch(p -> p.step().equals(ElasticNetSelection.STEP)
+              && (p.name().equals(ElasticNetSelection.INPUTS)
+                  || ElasticNetSelection.MODELS.contains(p.name())));
     } catch (final IllegalArgumentException e) {
       return false;
     }

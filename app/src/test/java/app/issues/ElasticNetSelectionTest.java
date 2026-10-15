@@ -32,46 +32,37 @@ class ElasticNetSelectionTest {
 
   private static final Combination TEN_FIVE_32 = new Combination(10, 5, 32);
 
-  private static final List<String> NINE_INNER = List.of("A01_desc_length", "TEAM_loc_median",
-      "TEAM_loc_sd", "TEAM_mccc_median", "TEAM_mccc_sd", "reporter_median_inner",
-      "A09_exec_loc_tot", "A10_exec_mccc_tot", "A13_exec_open_load");
+  /** The own specification without the similarity medians, the ten of ticket 12. */
+  private static final List<String> OWN_INNER = List.of("A01_desc_length", "A03_team_size",
+      "TEAM_loc_median", "TEAM_loc_sd", "TEAM_mccc_median", "TEAM_mccc_sd",
+      "reporter_median_inner", "A09_exec_loc_tot", "A10_exec_mccc_tot", "A13_exec_open_load");
 
   private static final List<String> SIMILARITY_INNER = List.of("jaccard_median_10_inner",
       "embedding_median_5_inner", "cluster_median_32_inner");
 
-  private static final List<String> WITHOUT = List.of("previous_own_start", "revised_nine",
+  private static final List<String> WITHOUT = List.of("own_without_similarity",
       "alzubaidi_start", "kikas_start");
 
-  private static final List<String> WITH = List.of("similarity_alone", "revised_twelve",
-      "union_revised");
+  private static final List<String> WITH = List.of("similarity_alone", "own_with_similarity",
+      "union_own");
 
   /**
-   * The four models without the similarity medians as the code before ticket 11 chose them on
-   * {@link #full}, with the direct predictors' values 10, 5 and 32 (which those models never
-   * read): columns, alpha, lambda and error as raw bits, the sweep's step, and a hash of every
-   * prediction's bits. Captured from commit 793002d.
+   * The three models ticket 12 does not touch as the code before it chose them on {@link #full}:
+   * the chosen combination, columns, alpha, lambda and error as raw bits, the sweep's step, a hash
+   * of every prediction's bits, and a hash of every combination's sweep as bits. Captured from
+   * commit 2059600.
    */
   private static final List<String> BEFORE = List.of(
-      "previous_own_start [A01_desc_length, A03_team_size, A09_exec_loc_tot, A10_exec_mccc_tot, "
-          + "A13_exec_open_load] 3fee666666666666 3f627a0bd85c04e7 11 4053bd0aa481744b fd91daf0",
-      "revised_nine [A01_desc_length, TEAM_loc_median, TEAM_loc_sd, TEAM_mccc_median, "
-          + "TEAM_mccc_sd, reporter_median_inner, reporter_median_inner_ausente, "
-          + "A09_exec_loc_tot, A10_exec_mccc_tot, A13_exec_open_load] 3fee666666666666 "
-          + "3fa8262ebc34ffce 9 404b8031bd17190e 7b93c7c5",
-      "alzubaidi_start [Z08_priority] 3fee666666666666 3f7f2bbb8f5b3bab 7 405558e882b32458 "
-          + "11104a89",
-      "kikas_start [K14_project_issues_90d] 3fee666666666666 3f607dc01af1707f 11 "
-          + "405553055084efd2 e71ee1be");
+      "similarity_alone Combination[jaccardN=5, embeddingN=10, clusterK=32] "
+          + "[jaccard_median_5_inner, embedding_median_10_inner, cluster_median_32_inner] "
+          + "3fee666666666666 3fe593bd1ead13e9 6 400e84ce6b3eec6a 3c1689b4 afe35068",
+      "alzubaidi_start null [Z08_priority] 3fee666666666666 3f7f2bbb8f5b3bab 7 "
+          + "405558e882b32458 11104a89 b62",
+      "kikas_start null [K14_project_issues_90d] 3fee666666666666 3f607dc01af1707f 11 "
+          + "405553055084efd2 e71ee1be b62");
 
-  /**
-   * The three models with the similarity medians as the code before ticket 11 chose them on
-   * {@link #full} at Jaccard 10, embedding 5 and cluster 32: alpha, lambda and error as raw bits.
-   * Captured from commit 793002d.
-   */
-  private static final Map<String, String> BEFORE_AT_TEN_FIVE_32 = Map.of(
-      "similarity_alone", "3fee666666666666 3f84f7c0911875b7 401a2edcd0c015b6",
-      "revised_twelve", "3fee666666666666 3ff8e5d537535666 401e862eb0f33d7d",
-      "union_revised", "3fee666666666666 3ff8e5d537535666 401ea4a255a91da0");
+  private static final List<String> UNTOUCHED =
+      List.of("similarity_alone", "alzubaidi_start", "kikas_start");
 
   private static final Instant T = Instant.parse("2016-01-01T00:00:00Z");
 
@@ -195,12 +186,23 @@ class ElasticNetSelectionTest {
     return Long.toHexString(bits(d));
   }
 
-  /** A swept model as bits: columns, alpha, lambda, step, error and every prediction. */
+  /**
+   * A chosen model as bits: combination, columns, alpha, lambda, step, error, every prediction and
+   * every combination's sweep.
+   */
   private static String fingerprint(final ElasticNetSelection.Model m) {
     final Fitting.Fitted f = m.fitted();
-    return m.cell().label() + " " + f.columns() + " " + hex(f.alpha()) + " " + hex(f.lambda())
-        + " " + f.step() + " " + hex(f.score().maeHours()) + " "
-        + Integer.toHexString(java.util.Arrays.hashCode(f.predictedHours()));
+    final String sweeps = m.combinations().stream().map(w -> w.combination().jaccardN() + " "
+        + w.combination().embeddingN() + " " + w.combination().clusterK() + " "
+        + hex(w.alpha()) + " " + hex(w.lambda()) + " " + hex(w.maeHours())).toList().toString();
+    return m.cell().label() + " " + m.combination() + " " + f.columns() + " " + hex(f.alpha())
+        + " " + hex(f.lambda()) + " " + f.step() + " " + hex(f.score().maeHours()) + " "
+        + Integer.toHexString(java.util.Arrays.hashCode(f.predictedHours())) + " "
+        + Integer.toHexString(sweeps.hashCode());
+  }
+
+  private static Cell cell(final List<Cell> cells, final String name) {
+    return cells.stream().filter(c -> c.label().equals(name)).findFirst().orElseThrow();
   }
 
   @Test
@@ -220,36 +222,59 @@ class ElasticNetSelectionTest {
   }
 
   @Test
-  @DisplayName("each model reads exactly the spec's columns, the split-dependent ones in the inner "
-      + "variant and the similarity medians at the combination given")
+  @DisplayName("six models, the previous own specification not among them, each reading exactly "
+      + "the spec's columns, the split-dependent ones in the inner variant and the similarity "
+      + "medians at the combination given")
   void columnsOfEachModel() {
     final List<Cell> cells = ElasticNetSelection.cells(TEN_FIVE_32, Augmentation.Variant.INNER);
-    assertEquals(List.of("previous_own_start", "revised_nine", "similarity_alone",
-        "revised_twelve", "alzubaidi_start", "kikas_start", "union_revised"),
-        cells.stream().map(Cell::label).toList());
+    assertEquals(List.of("own_without_similarity", "similarity_alone", "own_with_similarity",
+        "alzubaidi_start", "kikas_start", "union_own"), cells.stream().map(Cell::label).toList());
     assertEquals(ElasticNetSelection.MODELS, cells.stream().map(Cell::label).toList());
-    assertEquals(registered("OWN / C1"), names(cells.get(0)));
-    assertEquals(NINE_INNER, names(cells.get(1)));
-    assertEquals(SIMILARITY_INNER, names(cells.get(2)));
-    final List<String> twelve = concat(NINE_INNER, SIMILARITY_INNER);
-    assertEquals(twelve, names(cells.get(3)));
-    assertEquals(registered("ALZUBAIDI / C1"), names(cells.get(4)));
-    assertEquals(registered("KIKAS / C1"), names(cells.get(5)));
+    assertEquals(OWN_INNER, names(cell(cells, "own_without_similarity")));
+    assertEquals(SIMILARITY_INNER, names(cell(cells, "similarity_alone")));
+    final List<String> thirteen = concat(OWN_INNER, SIMILARITY_INNER);
+    assertEquals(thirteen, names(cell(cells, "own_with_similarity")));
+    assertEquals(registered("ALZUBAIDI / C1"), names(cell(cells, "alzubaidi_start")));
+    assertEquals(registered("KIKAS / C1"), names(cell(cells, "kikas_start")));
     // the literature families as the registered union reads them -- Kikas's body length enters
-    // once, as Al-Zubaidi's title and description words -- with the revised twelve
+    // once, as Al-Zubaidi's title and description words -- with the own model with similarity
     final List<String> literature = concat(registered("ALZUBAIDI / C1"),
         registered("KIKAS / C1").stream().filter(n -> !n.equals("K02_body_len")).toList());
-    assertEquals(concat(literature, twelve), names(cells.get(6)));
+    assertEquals(concat(literature, thirteen), names(cell(cells, "union_own")));
+  }
+
+  @Test
+  @DisplayName("the team size in the own models and the union is the registered column, with its "
+      + "log1p and without a missing indicator, as the registered cell reads it")
+  void teamSizeIsTheRegisteredColumn() {
+    final Attribute registered = Cell.byLabel("OWN / C1", Population.IN_PROGRESS).attributes()
+        .stream().filter(a -> a.name().equals("A03_team_size")).findFirst().orElseThrow();
+    assertEquals(Attributes.byName("A03_team_size"), registered);
+    assertEquals(app.study.Construct.Transform.LOG1P, registered.transform());
+    assertFalse(registered.absenceIndicator());
+    for (final Augmentation.Variant v : Augmentation.Variant.values()) {
+      final List<Cell> cells = ElasticNetSelection.cells(TEN_FIVE_32, v);
+      for (final String name : List.of("own_without_similarity", "own_with_similarity",
+          "union_own")) {
+        assertEquals(1, cell(cells, name).attributes().stream().filter(registered::equals)
+            .count(), name);
+      }
+      for (final String name : UNTOUCHED) {
+        assertTrue(cell(cells, name).attributes().stream()
+            .noneMatch(a -> a.name().equals("A03_team_size")), name);
+      }
+    }
   }
 
   @Test
   @DisplayName("the outer variant reads the outer columns, for the test that refits on them")
   void outerVariant() {
     final List<Cell> cells = ElasticNetSelection.cells(TEN_FIVE_32, Augmentation.Variant.OUTER);
-    assertEquals(List.of("A01_desc_length", "TEAM_loc_median", "TEAM_loc_sd",
+    assertEquals(List.of("A01_desc_length", "A03_team_size", "TEAM_loc_median", "TEAM_loc_sd",
         "TEAM_mccc_median", "TEAM_mccc_sd", "reporter_median_outer", "A09_exec_loc_tot",
         "A10_exec_mccc_tot", "A13_exec_open_load", "jaccard_median_10_outer",
-        "embedding_median_5_outer", "cluster_median_32_outer"), names(cells.get(3)));
+        "embedding_median_5_outer", "cluster_median_32_outer"),
+        names(cell(cells, "own_with_similarity")));
   }
 
   @Test
@@ -257,46 +282,39 @@ class ElasticNetSelectionTest {
       + "own; one missing, or one given to a model without them, is refused")
   void cellsOfOneCombinationPerModel() {
     final Map<String, Combination> each = Map.of("similarity_alone", new Combination(5, 20, 8),
-        "revised_twelve", TEN_FIVE_32, "union_revised", new Combination(20, 10, 16));
+        "own_with_similarity", TEN_FIVE_32, "union_own", new Combination(20, 10, 16));
     final List<Cell> cells = ElasticNetSelection.cells(each, Augmentation.Variant.OUTER);
     final List<Cell> atTen = ElasticNetSelection.cells(TEN_FIVE_32, Augmentation.Variant.OUTER);
     assertEquals(List.of("jaccard_median_5_outer", "embedding_median_20_outer",
-        "cluster_median_8_outer"), names(cells.get(2)));
-    assertEquals(atTen.get(3), cells.get(3));
-    final List<String> union = names(cells.get(6));
+        "cluster_median_8_outer"), names(cell(cells, "similarity_alone")));
+    assertEquals(cell(atTen, "own_with_similarity"), cell(cells, "own_with_similarity"));
+    final List<String> union = names(cell(cells, "union_own"));
     assertEquals(List.of("jaccard_median_20_outer", "embedding_median_10_outer",
         "cluster_median_16_outer"), union.subList(union.size() - 3, union.size()));
-    for (final int m : List.of(0, 1, 4, 5)) {
-      assertEquals(atTen.get(m), cells.get(m));
+    for (final String name : WITHOUT) {
+      assertEquals(cell(atTen, name), cell(cells, name));
     }
 
     final Map<String, Combination> missing = new HashMap<>(each);
-    missing.remove("union_revised");
+    missing.remove("union_own");
     assertThrows(IllegalArgumentException.class,
         () -> ElasticNetSelection.cells(missing, Augmentation.Variant.INNER));
     final Map<String, Combination> extra = new HashMap<>(each);
-    extra.put("revised_nine", TEN_FIVE_32);
+    extra.put("own_without_similarity", TEN_FIVE_32);
     assertThrows(IllegalArgumentException.class,
         () -> ElasticNetSelection.cells(extra, Augmentation.Variant.INNER));
   }
 
   @Test
-  @DisplayName("the four models without the similarity medians choose, bit for bit, what they "
-      + "chose before ticket 11, and the other three's sweep at Jaccard 10, embedding 5 and "
-      + "cluster 32 is the one the earlier code ran at those values")
+  @DisplayName("the similarity medians alone, Al-Zubaidi and Kikas choose, bit for bit, what they "
+      + "chose before ticket 12: combination, alpha, lambda, error, predictions and every sweep")
   void unchangedModelsAsBefore() {
     full();
     final ElasticNetSelection.Result r = ElasticNetSelection.run(entries, 1);
-    assertEquals(BEFORE, WITHOUT.stream().map(name -> fingerprint(model(r, name))).toList());
+    assertEquals(BEFORE, UNTOUCHED.stream().map(name -> fingerprint(model(r, name))).toList());
     for (final String name : WITHOUT) {
       assertNull(model(r, name).combination(), name);
       assertEquals(List.of(), model(r, name).combinations(), name);
-    }
-    for (final String name : WITH) {
-      final ElasticNetSelection.Swept at = model(r, name).combinations().stream()
-          .filter(s -> s.combination().equals(TEN_FIVE_32)).findFirst().orElseThrow();
-      assertEquals(BEFORE_AT_TEN_FIVE_32.get(name),
-          hex(at.alpha()) + " " + hex(at.lambda()) + " " + hex(at.maeHours()), name);
     }
   }
 
@@ -376,8 +394,8 @@ class ElasticNetSelectionTest {
               .filter(x -> x.column().contains("_median_")).toList(), name);
       assertFalse(m.fitted().columns().stream().anyMatch(c -> c.startsWith("cluster_")));
     }
-    assertEquals(List.of(), model(r, "revised_nine").removed());
-    assertEquals(1, model(r, "revised_twelve").removed().size());
+    assertEquals(List.of(), model(r, "own_without_similarity").removed());
+    assertEquals(1, model(r, "own_with_similarity").removed().size());
   }
 
   @Test
@@ -423,7 +441,7 @@ class ElasticNetSelectionTest {
     }
     final ElasticNetSelection.Result r = ElasticNetSelection.run(changed);
     assertEquals(before, choices(r));
-    assertTrue(model(r, "revised_twelve").fitted().columns().stream()
+    assertTrue(model(r, "own_with_similarity").fitted().columns().stream()
         .noneMatch(c -> c.contains("_outer")));
   }
 
@@ -453,7 +471,7 @@ class ElasticNetSelectionTest {
   void missingIsHandedOnWithItsIndicator() {
     full();
     final List<String> columns =
-        model(ElasticNetSelection.run(entries), "revised_nine").fitted().columns();
+        model(ElasticNetSelection.run(entries), "own_without_similarity").fitted().columns();
     assertTrue(columns.contains("reporter_median_inner"));
     assertTrue(columns.contains("reporter_median_inner_ausente"));
     // observed on every fitting row: the indicator is constant there, and the preparation drops it
@@ -464,15 +482,15 @@ class ElasticNetSelectionTest {
   }
 
   @Test
-  @DisplayName("the three registered cells choose the alpha and lambda the registered grid does")
+  @DisplayName("the two registered cells choose the alpha and lambda the registered grid does")
   void registeredCellsAsTheGrid() {
     full();
     final ElasticNetSelection.Result r = ElasticNetSelection.run(entries);
     final app.pipeline.IssuesGridTask.Report grid =
         new app.pipeline.IssuesGridTask(app.pipeline.port.Progress.silent()).run(entries,
             Population.IN_PROGRESS);
-    for (final String[] pair : new String[][] {{"previous_own_start", "OWN / C1"},
-        {"alzubaidi_start", "ALZUBAIDI / C1"}, {"kikas_start", "KIKAS / C1"}}) {
+    for (final String[] pair : new String[][] {{"alzubaidi_start", "ALZUBAIDI / C1"},
+        {"kikas_start", "KIKAS / C1"}}) {
       final Fitting.Fitted registered = grid.fits().stream()
           .map(app.pipeline.IssuesGridTask.Timed::fitted)
           .filter(f -> f.cell().label().equals(pair[1])).findFirst().orElseThrow();
@@ -494,17 +512,19 @@ class ElasticNetSelectionTest {
     assertEquals(ElasticNetSelection.HEADER, lines.get(0));
     final List<String> data = lines.stream().filter(l -> !l.startsWith("#")).toList();
     assertEquals("elastic-net\tinputs\tmatrix_sha256\tcd34", data.get(0));
-    assertEquals(1 + 2 * 7 + 3 * 3, data.size());
+    assertEquals(1 + 2 * 6 + 3 * 3, data.size());
     assertTrue(data.stream().noneMatch(l -> l.contains("similarity_parameters")));
-    final ElasticNetSelection.Model twelve = model(r, "revised_twelve");
-    assertTrue(data.contains("elastic-net\trevised_twelve\talpha\t" + twelve.fitted().alpha()));
-    assertTrue(data.contains("elastic-net\trevised_twelve\tjaccard_n\t"
-        + twelve.combination().jaccardN()));
-    assertTrue(data.contains("elastic-net\trevised_twelve\tembedding_n\t"
-        + twelve.combination().embeddingN()));
-    assertTrue(data.contains("elastic-net\trevised_twelve\tcluster_k\t"
-        + twelve.combination().clusterK()));
-    assertTrue(data.stream().noneMatch(l -> l.startsWith("elastic-net\trevised_nine\tjaccard")));
+    final ElasticNetSelection.Model own = model(r, "own_with_similarity");
+    assertTrue(data.contains("elastic-net\town_with_similarity\talpha\t" + own.fitted().alpha()));
+    assertTrue(data.contains("elastic-net\town_with_similarity\tjaccard_n\t"
+        + own.combination().jaccardN()));
+    assertTrue(data.contains("elastic-net\town_with_similarity\tembedding_n\t"
+        + own.combination().embeddingN()));
+    assertTrue(data.contains("elastic-net\town_with_similarity\tcluster_k\t"
+        + own.combination().clusterK()));
+    assertTrue(data.stream()
+        .noneMatch(l -> l.startsWith("elastic-net\town_without_similarity\tjaccard")));
+    assertTrue(data.stream().noneMatch(l -> l.contains("previous_own_start")));
 
     final List<ElasticNetSelection.Parameter> read = ElasticNetSelection.read(lines);
     final Map<String, ElasticNetSelection.Choice> back = ElasticNetSelection.choices(read);

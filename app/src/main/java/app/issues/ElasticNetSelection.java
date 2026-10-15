@@ -22,16 +22,21 @@ import java.util.concurrent.Callable;
  * the three models reading the similarity medians, of the Jaccard n, embedding n and cluster k
  * they read.
  *
- * <p><b>Models.</b> Seven, each a {@link Cell}. Three are the registered in-progress cells read
- * as they are: the previous own specification at the start ({@code OWN / C1}), Al-Zubaidi at the
- * start ({@code ALZUBAIDI / C1}) and Kikas at the start ({@code KIKAS / C1}). The revised twelve
- * are description length; the team's median and spread of lines of code and of cyclomatic
- * complexity; the corrected reporter median; the executor's lines of code, cyclomatic complexity
- * and open workload, the registered {@code A09}, {@code A10} and {@code A13}; and the Jaccard,
- * embedding and cluster medians. The revised nine are the same without the three medians; the
- * similarity block alone is the three medians; the union is the literature families as the
- * registered union reads them, Kikas's body length entering once as Al-Zubaidi's word counts,
- * followed by the revised twelve.
+ * <p><b>Models.</b> Six, each a {@link Cell}. Two are the registered in-progress cells read as
+ * they are: Al-Zubaidi at the start ({@code ALZUBAIDI / C1}) and Kikas at the start ({@code
+ * KIKAS / C1}). The own specification with similarity, the study's own contribution, is
+ * description length and team size, the registered {@code A01} and {@code A03}; the team's median
+ * and spread of lines of code and of cyclomatic complexity; the corrected reporter median; the
+ * executor's lines of code, cyclomatic complexity and open workload, the registered {@code A09},
+ * {@code A10} and {@code A13}; and the Jaccard, embedding and cluster medians, thirteen in all.
+ * The own specification without similarity, its control, is the same ten without the three
+ * medians; the similarity block alone is the three medians; the union is the literature families
+ * as the registered union reads them, Kikas's body length entering once as Al-Zubaidi's word
+ * counts, followed by the own specification with similarity.
+ *
+ * <p><b>Ticket 12.</b> The previous own specification ({@code OWN / C1}) is no longer a model of
+ * this chain, and the team size returns to the own specification. The registered in-progress
+ * chain, its cell and its outputs, are untouched.
  *
  * <p><b>Similarity medians as attributes</b> (ticket 11, reversing ticket 08's choice by each
  * median's error read alone as a prediction). The three models with the medians ({@link
@@ -42,8 +47,8 @@ import java.util.concurrent.Callable;
  * when its error is strictly lower, so the earlier point of the grid wins); across combinations
  * the same rule is read in the order of {@link Combination#all}, so of combinations whose errors
  * are exactly equal the one with the smaller Jaccard n wins, then the smaller embedding n, then
- * the smaller k. No tolerance: the sweep has none. The four models without the medians are swept
- * once, exactly as before ticket 11.
+ * the smaller k. No tolerance: the sweep has none. The three models without the medians are swept
+ * once.
  *
  * <p><b>Columns.</b> The reporter median and the three similarity medians depend on the split;
  * each model reads them in the variant of its mode, {@code _inner} here. The three similarity
@@ -51,19 +56,21 @@ import java.util.concurrent.Callable;
  * the four team columns take the transform of the registered columns they revise ({@code D05};
  * {@code A04} to {@code A07}), which is also {@code log1p}. Every new column carries a missing
  * indicator: a missing value is handed to the registered preparation as missing, filled there by
- * the fitting set's median. A declared column missing on every inner fitting row is removed from
- * the model before the sweep, with the reason recorded, never filled from the validation rows.
- * The registered preparation, sweep and grid are reused as they are.
+ * the fitting set's median. The registered columns ({@code A01}, {@code A03}, {@code A09},
+ * {@code A10}, {@code A13}) keep their own transform and missing-indicator setting. A declared
+ * column missing on every inner fitting row is removed from the model before the sweep, with the
+ * reason recorded, never filled from the validation rows. The registered preparation, sweep and
+ * grid are reused as they are.
  */
 public final class ElasticNetSelection {
 
-  /** The seven models, in their order. */
-  public static final List<String> MODELS = List.of("previous_own_start", "revised_nine",
-      "similarity_alone", "revised_twelve", "alzubaidi_start", "kikas_start", "union_revised");
+  /** The six models, in their order. */
+  public static final List<String> MODELS = List.of("own_without_similarity", "similarity_alone",
+      "own_with_similarity", "alzubaidi_start", "kikas_start", "union_own");
 
   /** The models that read the similarity medians, whose n, n and k are chosen with them. */
   public static final List<String> WITH_SIMILARITY =
-      List.of("similarity_alone", "revised_twelve", "union_revised");
+      List.of("similarity_alone", "own_with_similarity", "union_own");
 
   private static final Population P = Population.IN_PROGRESS;
 
@@ -172,7 +179,7 @@ public final class ElasticNetSelection {
   public static final String STEP = "elastic-net";
 
   /** The name of the lines giving what the choices were made on. */
-  private static final String INPUTS = "inputs";
+  public static final String INPUTS = "inputs";
 
   private static final String MATRIX_SHA = "matrix_sha256";
 
@@ -461,7 +468,7 @@ public final class ElasticNetSelection {
 
   /**
    * Every model at every combination, in the given variant: the combinations in {@link
-   * Combination#all}'s order, the seven models of each in theirs. What the selection may read.
+   * Combination#all}'s order, the six models of each in theirs. What the selection may read.
    */
   public static List<Cell> everyCell(final Augmentation.Variant variant) {
     final List<Cell> out = new ArrayList<>();
@@ -472,7 +479,7 @@ public final class ElasticNetSelection {
   }
 
   /**
-   * The seven models in their order, reading the split-dependent columns of the given variant,
+   * The six models in their order, reading the split-dependent columns of the given variant,
    * each with the similarity medians at its own combination.
    *
    * @param combinations per model of {@link #WITH_SIMILARITY}, the values it reads the medians
@@ -495,26 +502,27 @@ public final class ElasticNetSelection {
   }
 
   /**
-   * The seven models in their order, reading the split-dependent columns of the given variant,
-   * the three with the similarity medians at {@code c}; the other four do not depend on it.
+   * The six models in their order, reading the split-dependent columns of the given variant,
+   * the three with the similarity medians at {@code c}; the other three do not depend on it.
    */
   public static List<Cell> cells(final Combination c, final Augmentation.Variant variant) {
-    final List<Attribute> nine = new ArrayList<>();
-    nine.add(Attributes.byName("A01_desc_length"));
+    final List<Attribute> without = new ArrayList<>();
+    without.add(Attributes.byName("A01_desc_length"));
+    without.add(Attributes.byName("A03_team_size"));
     for (final String team : Extractor.TEAM_REVISED) {
-      nine.add(revised(team));
+      without.add(revised(team));
     }
-    nine.add(revised(Augmentation.reporter(variant)));
+    without.add(revised(Augmentation.reporter(variant)));
     for (final String executor : List.of("A09_exec_loc_tot", "A10_exec_mccc_tot",
         "A13_exec_open_load")) {
-      nine.add(Attributes.byName(executor));
+      without.add(Attributes.byName(executor));
     }
     final List<Attribute> similarity = List.of(
         revised(Augmentation.jaccard(c.jaccardN(), variant)),
         revised(Augmentation.embedding(c.embeddingN(), variant)),
         revised(Augmentation.cluster(c.clusterK(), variant)));
-    final List<Attribute> twelve = new ArrayList<>(nine);
-    twelve.addAll(similarity);
+    final List<Attribute> with = new ArrayList<>(without);
+    with.addAll(similarity);
 
     final List<Attribute> union = new ArrayList<>();
     for (final Attribute a : Attributes.ofInProgress(Family.UNION, Scenario.C1)) {
@@ -522,16 +530,15 @@ public final class ElasticNetSelection {
         union.add(a);
       }
     }
-    union.addAll(twelve);
+    union.addAll(with);
 
     return List.of(
-        registered(MODELS.get(0), "OWN / C1"),
-        new Cell(MODELS.get(1), Family.OWN, Scenario.C1, nine),
-        new Cell(MODELS.get(2), Family.OWN, Scenario.C1, similarity),
-        new Cell(MODELS.get(3), Family.OWN, Scenario.C1, twelve),
-        registered(MODELS.get(4), "ALZUBAIDI / C1"),
-        registered(MODELS.get(5), "KIKAS / C1"),
-        new Cell(MODELS.get(6), Family.UNION, Scenario.C1, union));
+        new Cell(MODELS.get(0), Family.OWN, Scenario.C1, without),
+        new Cell(MODELS.get(1), Family.OWN, Scenario.C1, similarity),
+        new Cell(MODELS.get(2), Family.OWN, Scenario.C1, with),
+        registered(MODELS.get(3), "ALZUBAIDI / C1"),
+        registered(MODELS.get(4), "KIKAS / C1"),
+        new Cell(MODELS.get(5), Family.UNION, Scenario.C1, union));
   }
 
   private static Cell registered(final String name, final String label) {

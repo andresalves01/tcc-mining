@@ -105,14 +105,14 @@ class IssuesSimilarityTestCommandTest {
     final Path matrix = matrix();
     final Path elasticNet = elasticNet(IssuesReservedCommand.sha256(matrix));
     final List<String> lines = new java.util.ArrayList<>(Files.readAllLines(elasticNet));
-    lines.remove("elastic-net\tunion_revised\tcluster_k\t32");
+    lines.remove("elastic-net\tunion_own\tcluster_k\t32");
     Files.write(elasticNet, lines);
     set(matrix, elasticNet);
     assertTrue(refusal().contains("only part of its"));
   }
 
   @Test
-  @DisplayName("a parameters file without one of the seven models refuses the run before any "
+  @DisplayName("a parameters file without one of the six models refuses the run before any "
       + "column is checked")
   void refusesAMissingModel() throws IOException {
     final Path matrix = matrix();
@@ -135,6 +135,30 @@ class IssuesSimilarityTestCommandTest {
             + IssuesReservedCommand.sha256(matrix)));
     set(matrix, old);
     assertTrue(refusal().contains("is not the Elastic Net step's parameters file"));
+  }
+
+  @Test
+  @DisplayName("a parameters file written before ticket 12, its models named as they were then, "
+      + "refuses the run")
+  void refusesAFileOfTheEarlierModels() throws IOException {
+    final Path matrix = matrix();
+    final String sha = IssuesReservedCommand.sha256(matrix);
+    final List<String> lines = new java.util.ArrayList<>(List.of(ElasticNetSelection.HEADER,
+        "# step\tname\tparameter\tvalue", "elastic-net\tinputs\tmatrix_sha256\t" + sha));
+    for (final String m : List.of("previous_own_start", "revised_nine", "similarity_alone",
+        "revised_twelve", "alzubaidi_start", "kikas_start", "union_revised")) {
+      lines.add("elastic-net\t" + m + "\talpha\t0.5");
+      lines.add("elastic-net\t" + m + "\tlambda\t0.1");
+      if (List.of("similarity_alone", "revised_twelve", "union_revised").contains(m)) {
+        lines.add("elastic-net\t" + m + "\tjaccard_n\t10");
+        lines.add("elastic-net\t" + m + "\tembedding_n\t5");
+        lines.add("elastic-net\t" + m + "\tcluster_k\t32");
+      }
+    }
+    set(matrix, Files.write(dir.resolve("before-12.tsv"), lines));
+    final String why = refusal();
+    assertTrue(why.contains("is not the Elastic Net step's parameters file for the models "
+        + ElasticNetSelection.MODELS), why);
   }
 
   @Test

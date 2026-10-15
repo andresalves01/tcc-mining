@@ -24,9 +24,9 @@ import java.util.concurrent.Callable;
  * outer training set with the parameters the selection step wrote, and the outer test scored
  * once. Chooses nothing.
  *
- * <p><b>Models</b>, ten, in this order: the three references learned on the outer training set
+ * <p><b>Models</b>, nine, in this order: the three references learned on the outer training set
  * -- the global median, the project median and the executor-project median, as the registered
- * chain learns them; and the seven Elastic Net models of {@link ElasticNetSelection#cells(Map,
+ * chain learns them; and the six Elastic Net models of {@link ElasticNetSelection#cells(Map,
  * Augmentation.Variant)}, in the outer variant, each model with the similarity medians reading
  * them at the Jaccard n, embedding n and cluster k chosen for it. A similarity median is an
  * attribute of the models that read it and is never scored alone (ticket 11).
@@ -172,15 +172,14 @@ public final class SimilarityScoring {
   }
 
   /**
-   * The paired comparisons, {@code a} against {@code b}, and only these: revised nine against the
-   * previous specification; revised twelve against revised nine; then every model against the
-   * global median, and every model but the global median against the project median, so the two
-   * references are compared once.
+   * The paired comparisons, {@code a} against {@code b}, and only these: the own specification
+   * with similarity against the same without the similarity medians, what similarity adds beside
+   * the other attributes; then every model against the global median, and every model but the
+   * global median against the project median, so the two references are compared once.
    */
   public static List<String[]> pairs(final List<String> models) {
-    final List<String[]> out = new ArrayList<>(List.of(
-        new String[] {"revised_nine", "previous_own_start"},
-        new String[] {"revised_twelve", "revised_nine"}));
+    final List<String[]> out = new ArrayList<>(List.<String[]>of(
+        new String[] {"own_with_similarity", "own_without_similarity"}));
     for (final String m : models) {
       if (!m.equals(GLOBAL)) {
         out.add(new String[] {m, GLOBAL});
