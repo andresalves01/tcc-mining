@@ -10,6 +10,7 @@ import app.issues.ElasticNetSelection.Combination;
 import app.issues.Universe.Population;
 import app.issues.model.Cell;
 import app.issues.model.Fitting;
+import app.issues.model.Forest;
 import app.issues.model.ParallelSweepTest;
 import app.study.Row;
 import java.time.Instant;
@@ -60,6 +61,30 @@ class ElasticNetSelectionTest {
           + "405558e882b32458 11104a89 b62",
       "kikas_start null [K14_project_issues_90d] 3fee666666666666 3f607dc01af1707f 11 "
           + "405553055084efd2 e71ee1be b62");
+
+  /** All six models as the code before ticket 13 chose them on {@link #full}, from 0869f6d. */
+  private static final List<String> BEFORE_FORESTS = List.of(
+      "own_without_similarity null [A01_desc_length, A03_team_size, TEAM_loc_median, "
+          + "TEAM_loc_sd, TEAM_mccc_median, TEAM_mccc_sd, reporter_median_inner, "
+          + "reporter_median_inner_ausente, A09_exec_loc_tot, A10_exec_mccc_tot, "
+          + "A13_exec_open_load] 3fee666666666666 3f8219b66a183d8a 11 404bbb6aa86b3f03 e21d060b "
+          + "b62",
+      BEFORE.get(0),
+      "own_with_similarity Combination[jaccardN=5, embeddingN=10, clusterK=32] [A01_desc_length, "
+          + "A03_team_size, TEAM_loc_median, TEAM_loc_sd, TEAM_mccc_median, TEAM_mccc_sd, "
+          + "reporter_median_inner, reporter_median_inner_ausente, A09_exec_loc_tot, "
+          + "A10_exec_mccc_tot, A13_exec_open_load, jaccard_median_5_inner, "
+          + "embedding_median_10_inner, cluster_median_32_inner] 3fee666666666666 "
+          + "3ff8ec46c6bfa70d 5 4014bb663cf7e450 fc2b575d f7fc06ad",
+      BEFORE.get(1),
+      BEFORE.get(2),
+      "union_own Combination[jaccardN=5, embeddingN=10, clusterK=32] [Z08_priority, "
+          + "K14_project_issues_90d, A01_desc_length, A03_team_size, TEAM_loc_median, "
+          + "TEAM_loc_sd, TEAM_mccc_median, TEAM_mccc_sd, reporter_median_inner, "
+          + "reporter_median_inner_ausente, A09_exec_loc_tot, A10_exec_mccc_tot, "
+          + "A13_exec_open_load, jaccard_median_5_inner, embedding_median_10_inner, "
+          + "cluster_median_32_inner] 3fee666666666666 3ff8ec46c6bfa70d 5 4014b1a37921acfb "
+          + "af928561 d86fa9e3");
 
   private static final List<String> UNTOUCHED =
       List.of("similarity_alone", "alzubaidi_start", "kikas_start");
@@ -414,6 +439,9 @@ class ElasticNetSelectionTest {
       assertEquals(one.models().get(m).combinations(), many.models().get(m).combinations());
       ParallelSweepTest.assertIdentical(one.models().get(m).fitted(),
           many.models().get(m).fitted());
+      assertEquals(one.models().get(m).forest().trials(), many.models().get(m).forest().trials());
+      assertEquals(java.util.Arrays.toString(one.models().get(m).forest().predictedHours()),
+          java.util.Arrays.toString(many.models().get(m).forest().predictedHours()));
     }
     assertEquals(ElasticNetSelection.parameters(one, "m"),
         ElasticNetSelection.parameters(many, "m"));
@@ -512,7 +540,17 @@ class ElasticNetSelectionTest {
     assertEquals(ElasticNetSelection.HEADER, lines.get(0));
     final List<String> data = lines.stream().filter(l -> !l.startsWith("#")).toList();
     assertEquals("elastic-net\tinputs\tmatrix_sha256\tcd34", data.get(0));
-    assertEquals(1 + 2 * 6 + 3 * 3, data.size());
+    assertEquals(1 + 2 * 6 + 3 * 3 + 3 * 6, data.size());
+    // the Elastic Net lines first, as before the forests; then three forest lines per model
+    assertTrue(data.subList(0, 1 + 2 * 6 + 3 * 3).stream()
+        .allMatch(l -> l.startsWith("elastic-net\t")));
+    assertEquals(ElasticNetSelection.MODELS, data.subList(1 + 2 * 6 + 3 * 3, data.size()).stream()
+        .map(l -> l.split("\t")[1]).distinct().toList());
+    final Forest.Fitted ownForest = model(r, "own_with_similarity").forest();
+    assertTrue(data.contains("forest\town_with_similarity\tmtry_share\t" + ownForest.share()));
+    assertTrue(data.contains("forest\town_with_similarity\tmtry\t" + ownForest.mtry()));
+    assertTrue(data.contains("forest\town_with_similarity\tnode_size\t"
+        + ownForest.nodeSize()));
     assertTrue(data.stream().noneMatch(l -> l.contains("similarity_parameters")));
     final ElasticNetSelection.Model own = model(r, "own_with_similarity");
     assertTrue(data.contains("elastic-net\town_with_similarity\talpha\t" + own.fitted().alpha()));
@@ -534,6 +572,42 @@ class ElasticNetSelectionTest {
           m.combination()), back.get(m.cell().label()));
     }
     assertEquals("cd34", ElasticNetSelection.matrixSha(read));
+    final Map<String, Forest.Choice> forests = ElasticNetSelection.forests(read);
+    assertEquals(ElasticNetSelection.MODELS, List.copyOf(forests.keySet()));
+    for (final ElasticNetSelection.Model m : r.models()) {
+      assertEquals(new Forest.Choice(m.forest().share(), m.forest().mtry(),
+          m.forest().nodeSize()), forests.get(m.cell().label()));
+    }
+  }
+
+  @Test
+  @DisplayName("a forest without its mtry share, mtry or leaf, an unknown forest parameter, or a "
+      + "point the declared grid does not hold, is refused")
+  void refusesIncompleteForests() {
+    final List<String> head = List.of(ElasticNetSelection.HEADER,
+        "forest\tkikas_start\tmtry_share\t" + (1.0 / 3), "forest\tkikas_start\tmtry\t1");
+    assertThrows(IllegalArgumentException.class,
+        () -> ElasticNetSelection.forests(ElasticNetSelection.read(head)));
+    final List<String> whole = new ArrayList<>(head);
+    whole.add("forest\tkikas_start\tnode_size\t25");
+    assertEquals(new Forest.Choice(1.0 / 3, 1, 25),
+        ElasticNetSelection.forests(ElasticNetSelection.read(whole)).get("kikas_start"));
+    final List<String> unknown = new ArrayList<>(whole);
+    unknown.add("forest\tkikas_start\ttrees\t300");
+    assertThrows(IllegalArgumentException.class,
+        () -> ElasticNetSelection.forests(ElasticNetSelection.read(unknown)));
+    for (final String[] off : new String[][] {{"mtry_share", "0.5"}, {"node_size", "10"},
+        {"mtry", "0"}}) {
+      final List<String> lines = new ArrayList<>(List.of(ElasticNetSelection.HEADER,
+          "forest\tkikas_start\tmtry_share\t" + (1.0 / 3), "forest\tkikas_start\tmtry\t1",
+          "forest\tkikas_start\tnode_size\t25"));
+      lines.replaceAll(l -> l.startsWith("forest\tkikas_start\t" + off[0] + "\t")
+          ? "forest\tkikas_start\t" + off[0] + "\t" + off[1] : l);
+      assertThrows(IllegalArgumentException.class,
+          () -> ElasticNetSelection.forests(ElasticNetSelection.read(lines)), off[0]);
+    }
+    // the Elastic Net's choices do not read the forest lines
+    assertEquals(Map.of(), ElasticNetSelection.choices(ElasticNetSelection.read(whole)));
   }
 
   @Test
@@ -560,6 +634,48 @@ class ElasticNetSelectionTest {
         () -> ElasticNetSelection.read(List.of("elastic-net\tx")));
     assertThrows(IllegalArgumentException.class, () -> ElasticNetSelection.read(List.of(
         "elastic-net\tx\talpha\t0.5", "elastic-net\tx\talpha\t0.1")));
+  }
+
+  @Test
+  @DisplayName("every Elastic Net model chooses, bit for bit, what it chose before the forests: "
+      + "combination, columns, alpha, lambda, error, predictions and every sweep")
+  void elasticNetAsBeforeTheForests() {
+    full();
+    final ElasticNetSelection.Result r = ElasticNetSelection.run(entries, 1);
+    assertEquals(BEFORE_FORESTS, r.models().stream().map(ElasticNetSelectionTest::fingerprint)
+        .toList());
+  }
+
+  @Test
+  @DisplayName("beside each of the six models a forest is swept on its Elastic Net's columns -- "
+      + "the similarity medians at the n and k the Elastic Net chose -- and the same rows, keeping "
+      + "the grid point that errs least on the inner validation")
+  void forestBesideEachModel() {
+    full();
+    final ElasticNetSelection.Result r = ElasticNetSelection.run(entries);
+    assertEquals(ElasticNetSelection.MODELS, r.models().stream().map(m -> m.forest().cell()
+        .label()).toList());
+    for (final ElasticNetSelection.Model m : r.models()) {
+      final String name = m.cell().label();
+      final Forest.Fitted f = m.forest();
+      assertEquals(m.fitted().cell(), f.cell(), name);
+      assertEquals(m.fitted().columns(), f.columns(), name);
+      assertEquals(m.fitted().dropped(), f.dropped(), name);
+      assertEquals(20, f.predictedHours().length, name);
+      final int p = f.columns().size();
+      final long points = java.util.Arrays.stream(Forest.MTRY_SHARES)
+          .mapToInt(s -> Forest.mtry(s, p)).distinct().count() * Forest.NODE_SIZES.length;
+      assertEquals(points, f.trials().size(), name);
+      final Forest.Trial chosen = f.trials().get(Forest.chosen(f.trials()));
+      assertEquals(bits(chosen.maeHours()), bits(f.score().maeHours()), name);
+      assertEquals(new Forest.Choice(chosen.share(), chosen.mtry(), chosen.nodeSize()),
+          new Forest.Choice(f.share(), f.mtry(), f.nodeSize()), name);
+    }
+    final Combination c = model(r, "own_with_similarity").combination();
+    assertTrue(model(r, "own_with_similarity").forest().columns().containsAll(List.of(
+        Augmentation.jaccard(c.jaccardN(), Augmentation.Variant.INNER),
+        Augmentation.embedding(c.embeddingN(), Augmentation.Variant.INNER),
+        Augmentation.cluster(c.clusterK(), Augmentation.Variant.INNER))));
   }
 
   @Test

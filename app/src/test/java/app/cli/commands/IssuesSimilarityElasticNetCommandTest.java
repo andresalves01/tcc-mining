@@ -27,6 +27,21 @@ class IssuesSimilarityElasticNetCommandTest {
         "elastic-net\town_with_similarity\tlambda\t0.1",
         "elastic-net\town_with_similarity\tjaccard_n\t10");
     assertTrue(IssuesSimilarityElasticNetCommand.onlyThisStep(own));
+    final List<String> withForest = new ArrayList<>(own);
+    withForest.add("forest\town_with_similarity\tmtry_share\t0.3333333333333333");
+    withForest.add("forest\town_with_similarity\tnode_size\t25");
+    assertTrue(IssuesSimilarityElasticNetCommand.onlyThisStep(withForest));
+    final List<String> foreignForest = new ArrayList<>(own);
+    foreignForest.add("forest\tprevious_own_start\tnode_size\t25");
+    assertFalse(IssuesSimilarityElasticNetCommand.onlyThisStep(foreignForest));
+    final List<String> forestInputs = new ArrayList<>(own);
+    forestInputs.add("forest\tinputs\tmatrix_sha256\tab12");
+    assertFalse(IssuesSimilarityElasticNetCommand.onlyThisStep(forestInputs));
+    // ticket 12's file, without the forests, under its header then
+    final List<String> beforeForests = new ArrayList<>(own);
+    beforeForests.set(0, "# Elastic Net alpha and lambda, and the similarity medians' n, n and "
+        + "k, chosen on the inner validation only; the outer test was not read");
+    assertFalse(IssuesSimilarityElasticNetCommand.onlyThisStep(beforeForests));
     // ticket 11's file, same header and format, with the models as they were named then
     for (final String before : List.of("previous_own_start", "revised_nine", "revised_twelve",
         "union_revised")) {

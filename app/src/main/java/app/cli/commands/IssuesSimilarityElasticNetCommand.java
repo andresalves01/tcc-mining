@@ -11,11 +11,13 @@ import app.issues.RegistrationInProgress;
 import app.issues.RowCache;
 import app.issues.model.Cell;
 import app.issues.model.Fitting;
+import app.issues.model.Forest;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -27,7 +29,9 @@ import java.util.Set;
  * The selection step of the description-similarity chain, inner mode only: each Elastic Net
  * model's alpha and lambda, by the registered chain's sweep on the inner validation, and, for the
  * three models reading the similarity medians, the Jaccard n, embedding n and cluster k they read,
- * the combination of the 27 whose sweep errs least (see {@link ElasticNetSelection}).
+ * the combination of the 27 whose sweep errs least (see {@link ElasticNetSelection}); and beside
+ * each model, as a robustness check, a random forest's column share and leaf, swept on the same
+ * rows and columns.
  *
  * <p>Reads MATRIX; refuses, writing and recording nothing, unless the four split sizes are the
  * registered study's and the matrix has every column the models declare at every combination.
@@ -39,6 +43,12 @@ import java.util.Set;
 public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
 
   public static final String STAGE = "issues-in-progress-similarity-elastic-net";
+
+  /** What the forest is in this study, stated in both steps' run records. */
+  static final String FOREST_ROLE = "the random forest beside each Elastic Net is a robustness "
+      + "check, not a new contribution: it answers whether the small gains come from relations "
+      + "the linear model cannot capture; added after an inner-validation prototype and before "
+      + "the outer test was opened";
 
   @Override
   public void run(final Context context) throws CommandFailedException {
@@ -133,6 +143,16 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
         System.out.printf("    dropped for being constant on the inner fitting rows: %s%n",
             f.dropped());
       }
+      final Forest.Fitted forest = m.forest();
+      System.out.printf("    random forest (robustness check): mtry %d (share %.3f), leaf %d; MAE "
+          + "%.2f h (%.2f d), Elastic Net minus forest %+.2f h%n", forest.mtry(), forest.share(),
+          forest.nodeSize(), forest.score().maeHours(), forest.score().maeHours() / 24,
+          f.score().maeHours() - forest.score().maeHours());
+      final StringBuilder grid = new StringBuilder("      grid (mtry/leaf: MAE h)");
+      for (final Forest.Trial t : forest.trials()) {
+        grid.append(String.format("  %d/%d %.2f", t.mtry(), t.nodeSize(), t.maeHours()));
+      }
+      System.out.println(grid);
       rows.add(row(m));
     }
 
@@ -161,6 +181,10 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     run.put("cluster_k", Augmentation.CLUSTER_K);
     run.put("ties", "within a sweep the earlier point; across combinations the smaller Jaccard n, "
         + "then embedding n, then cluster k");
+    run.put("forest_role", FOREST_ROLE);
+    run.put("forest_grid", forestGrid());
+    run.put("forest_ties", "the first point of the grid in its order: the smaller column share, "
+        + "then the smaller leaf");
     run.put("fit_rows", r.fitRows());
     run.put("validation_rows", r.validationRows());
     run.put("project_mae_hours", r.projectMaeHours());
@@ -182,8 +206,8 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
       throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
           + parameters + " exists and is not a file of this step's choices in its current "
           + "format, for the models " + ElasticNetSelection.MODELS + "; it may be the registered "
-          + "chain's, or this step's from an earlier format or for the models before ticket 12, "
-          + "and is never overwritten"));
+          + "chain's, or this step's from an earlier format, without the forests or for the "
+          + "models before ticket 12, and is never overwritten"));
     }
   }
 
@@ -225,7 +249,36 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     }
     row.put("removed", removed);
     row.put("dropped_constant", f.dropped());
+    final Forest.Fitted forest = m.forest();
+    final Map<String, Object> trees = new LinkedHashMap<>();
+    trees.put("mtry_share", forest.share());
+    trees.put("mtry", forest.mtry());
+    trees.put("node_size", forest.nodeSize());
+    trees.put("mae_hours", forest.score().maeHours());
+    trees.put("columns", forest.columns());
+    final List<Map<String, Object>> grid = new ArrayList<>();
+    for (final Forest.Trial t : forest.trials()) {
+      final Map<String, Object> one = new LinkedHashMap<>();
+      one.put("mtry_share", t.share());
+      one.put("mtry", t.mtry());
+      one.put("node_size", t.nodeSize());
+      one.put("mae_hours", t.maeHours());
+      grid.add(one);
+    }
+    trees.put("grid", grid);
+    row.put("forest", trees);
     return row;
+  }
+
+  /** The forest's declared grid as a document, for the run records of both steps. */
+  static Map<String, Object> forestGrid() {
+    final Map<String, Object> out = new LinkedHashMap<>();
+    out.put("trees", Forest.TREES);
+    out.put("max_depth", Forest.MAX_DEPTH);
+    out.put("mtry_shares", Arrays.stream(Forest.MTRY_SHARES).boxed().toList());
+    out.put("node_sizes", Arrays.stream(Forest.NODE_SIZES).boxed().toList());
+    out.put("seed", Forest.SEED);
+    return out;
   }
 
   /** The columns the models declare that the matrix does not have, in the models' order. */
@@ -249,9 +302,10 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
 
   /**
    * A file this step wrote and nothing appended to: its header and its own lines only, every one
-   * of them for the matrix's inputs or for one of {@link ElasticNetSelection#MODELS}. A file of
-   * the models before ticket 12 ({@code previous_own_start}, {@code revised_nine}, ...) has the
-   * same header and format, and is told apart by its model names.
+   * of them an Elastic Net line for the matrix's inputs or for one of {@link
+   * ElasticNetSelection#MODELS}, or a forest line for one of those models. A file written before
+   * ticket 13, without the forests, has another header; one of the models before ticket 12
+   * ({@code previous_own_start}, {@code revised_nine}, ...) is told apart by its model names.
    */
   static boolean onlyThisStep(final List<String> lines) {
     if (lines.isEmpty() || !ElasticNetSelection.HEADER.equals(lines.get(0))) {
@@ -261,7 +315,9 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
       return ElasticNetSelection.read(lines).stream()
           .allMatch(p -> p.step().equals(ElasticNetSelection.STEP)
               && (p.name().equals(ElasticNetSelection.INPUTS)
-                  || ElasticNetSelection.MODELS.contains(p.name())));
+                  || ElasticNetSelection.MODELS.contains(p.name()))
+              || p.step().equals(ElasticNetSelection.FOREST_STEP)
+                  && ElasticNetSelection.MODELS.contains(p.name()));
     } catch (final IllegalArgumentException e) {
       return false;
     }

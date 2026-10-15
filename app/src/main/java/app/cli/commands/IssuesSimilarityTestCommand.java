@@ -10,6 +10,7 @@ import app.issues.RegistrationInProgress;
 import app.issues.RowCache;
 import app.issues.SimilarityScoring;
 import app.issues.model.Fitting;
+import app.issues.model.Forest;
 import app.issues.model.ProjectBootstrap;
 import app.pipeline.embedding.EmbeddingModel;
 import app.study.model.Breakdown;
@@ -28,16 +29,19 @@ import java.util.function.Function;
 
 /**
  * The test step of the description-similarity chain, outer mode only (see {@link
- * SimilarityScoring}): nine models -- the global, project and executor-project medians and the
- * six Elastic Nets -- refitted on the outer training set with the parameters the selection step
- * wrote, the outer test scored once, every agreed comparison.
+ * SimilarityScoring}): fifteen models -- the global, project and executor-project medians, the
+ * six Elastic Nets and, as a robustness check, the random forest beside each -- refitted on the
+ * outer training set with the parameters the selection step wrote, the outer test scored once,
+ * every agreed comparison.
  *
- * <p>Reads MATRIX and ELASTIC_NET_PARAMETERS, which gives per model its alpha and lambda and, for
- * the three with the similarity medians, the Jaccard n, embedding n and cluster k they read; it
- * chooses nothing. Refuses, scoring, writing and recording nothing, unless the parameters file
+ * <p>Reads MATRIX and ELASTIC_NET_PARAMETERS, which gives per model its alpha and lambda, for
+ * the three with the similarity medians the Jaccard n, embedding n and cluster k they read, and
+ * its forest's column share and leaf; it chooses nothing. A parameters file without a forest for
+ * every model is refused. Refuses, scoring, writing and recording nothing, unless the parameters file
  * exists and is the step's own, its choices were made on this very matrix (by SHA-256), the four
  * split sizes are the registered study's, and the matrix has every column the models read.
- * Writes the per-issue predictions and the models' diagnostics to REPORT_DIR; records the run,
+ * Writes the per-issue predictions, the models' diagnostics and the forests' permutation
+ * importance to REPORT_DIR; records the run,
  * with the SHA-256 of every input and output, the time taken, the hardware and the versions, in
  * ISSUES_DB under its own stage name.
  */
@@ -50,6 +54,12 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
 
   /** Per model, each column it was declared with: its weight, or why it was left out. */
   public static final String DIAGNOSTICS = "similarity-test-diagnostics.tsv";
+
+  /**
+   * Per forest, each design column's permutation importance on the outer test: the rise in mean
+   * absolute error, in hours, when its values are shuffled. A diagnostic.
+   */
+  public static final String IMPORTANCE = "similarity-test-forest-importance.tsv";
 
   /**
    * The SHA-256 of the two inputs the predictions beside it came from: a rerun is compared with
@@ -66,7 +76,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       + "own specification without similarity chose the same; the three models reading the "
       + "similarity medians chose also their Jaccard n, embedding n and cluster k among "
       + ElasticNetSelection.Combination.all().size() + " "
-      + "combinations, each swept on the same grid; the references chose nothing";
+      + "combinations, each swept on the same grid; each forest chose its column share and leaf "
+      + "on its own grid with every column its Elastic Net kept; the references chose nothing";
 
   /** Where each setting is read from: the environment, then the system properties. */
   private final Function<String, String> settings;
@@ -94,8 +105,9 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final Path predictionsFile = reports.resolve(PREDICTIONS);
     final Path diagnosticsFile = reports.resolve(DIAGNOSTICS);
     final Path inputsFile = reports.resolve(INPUTS);
+    final Path importanceFile = reports.resolve(IMPORTANCE);
     final long began = System.nanoTime();
-    for (final Path out : List.of(predictionsFile, diagnosticsFile, inputsFile)) {
+    for (final Path out : List.of(predictionsFile, diagnosticsFile, inputsFile, importanceFile)) {
       for (final Path in : List.of(matrix, elasticNet)) {
         if (same(out, in)) {
           throw new CommandFailedException(List.of("  REFUSED, nothing was scored, written or "
@@ -107,6 +119,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final String matrixSha;
     final String elasticNetSha;
     final Map<String, ElasticNetSelection.Choice> choices;
+    final Map<String, Forest.Choice> forests;
     final List<RowCache.Entry> entries;
     final List<String> columns;
     try {
@@ -127,12 +140,18 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       try {
         enParameters = ElasticNetSelection.read(elasticNetLines);
         choices = ElasticNetSelection.choices(enParameters);
+        forests = ElasticNetSelection.forests(enParameters);
       } catch (final IllegalArgumentException e) {
         throw refused(e.getMessage());
       }
       if (!Set.copyOf(ElasticNetSelection.MODELS).equals(choices.keySet())) {
         throw refused(elasticNet + " holds alpha and lambda for " + choices.keySet()
             + "; the models are " + ElasticNetSelection.MODELS);
+      }
+      if (!Set.copyOf(ElasticNetSelection.MODELS).equals(forests.keySet())) {
+        throw refused(elasticNet + " holds the forest parameters for " + forests.keySet()
+            + "; every model has a forest, " + ElasticNetSelection.MODELS + "; run "
+            + "issues-in-progress-similarity-elastic-net again");
       }
       elasticNetSha = sha256(elasticNetBytes);
       matrixSha = IssuesReservedCommand.sha256(matrix);
@@ -175,7 +194,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final long fitting = System.nanoTime();
     final SimilarityScoring.Report r;
     try {
-      r = SimilarityScoring.run(entries, choices);
+      r = SimilarityScoring.run(entries, choices, forests);
     } catch (final IllegalArgumentException e) {
       throw refused(e.getMessage());
     }
@@ -185,6 +204,9 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         + "outer test%n", r.fitRows(), r.scoredRows());
     System.out.printf("  final lambda = chosen lambda x %,d / %,d, alpha as chosen; no "
         + "recalibration%n", r.fitRows(), r.innerFitRows());
+    System.out.printf("  random forests (robustness check): %d trees, depth %d, seed %d, the chosen "
+        + "count of columns per split and the chosen leaf%n", Forest.TREES,
+        Forest.MAX_DEPTH, Forest.SEED);
     System.out.printf("  test projects with no issue in training (there the project median is "
         + "the global one): %,d issues, %s%n", r.unseenRows(), r.unseenProjects());
 
@@ -196,6 +218,10 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       System.out.printf("  %-24s %9.2f %9.2f %9.3f %9.3f %9.2f%n", m.name(), sc.maeHours(),
           sc.maeDays(), sc.spearman(), sc.pairwise(), m.bands().get(4).mae() / 24);
       rows.add(modelRow(m, choices.get(m.name())));
+      if (m.forest() != null) {
+        System.out.printf("    %-22s mtry %d (share %.3f), leaf %d%n", "", m.forest().mtry(),
+            m.forest().share(), m.forest().nodeSize());
+      }
     }
     System.out.printf("%n  error by band of the true duration, MAE in days%n");
     for (final SimilarityScoring.Scored m : r.models()) {
@@ -218,6 +244,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final Double rerun;
     final String predictionsSha;
     final String diagnosticsSha;
+    final String importanceSha;
     try {
       Files.createDirectories(reports);
       final List<String> inputs = List.of("matrix_sha256\t" + matrixSha,
@@ -226,8 +253,10 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       write(inputsFile, inputs);
       write(predictionsFile, predictions);
       write(diagnosticsFile, diagnostics(r));
+      write(importanceFile, importance(r));
       predictionsSha = IssuesReservedCommand.sha256(predictionsFile);
       diagnosticsSha = IssuesReservedCommand.sha256(diagnosticsFile);
+      importanceSha = IssuesReservedCommand.sha256(importanceFile);
     } catch (final IOException e) {
       throw new CommandFailedException(List.of("  could not write to " + reports + ": " + e));
     }
@@ -235,6 +264,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         predictionsSha);
     System.out.printf("  diagnostics written to %s  sha256 %s%n", diagnosticsFile,
         diagnosticsSha);
+    System.out.printf("  forests' permutation importance written to %s  sha256 %s%n",
+        importanceFile, importanceSha);
     if (rerun != null) {
       System.out.printf("  against the predictions of the previous run there: largest "
           + "difference %.3g h, tolerance %.0e h: %s%n", rerun,
@@ -252,6 +283,9 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     run.put("elastic_net_parameters_sha256", elasticNetSha);
     run.put("predictions_sha256", predictionsSha);
     run.put("diagnostics_sha256", diagnosticsSha);
+    run.put("forest_importance_sha256", importanceSha);
+    run.put("forest_grid", IssuesSimilarityElasticNetCommand.forestGrid());
+    run.put("forest_permutation_repeats", Forest.PERMUTATION_REPEATS);
     final Map<String, Object> candidates = new LinkedHashMap<>();
     ElasticNetSelection.combinations(choices).forEach((name, c) -> candidates.put(name,
         combination(c)));
@@ -284,6 +318,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final Map<String, Object> out = new LinkedHashMap<>();
     out.put("outer_test_examined_before", EXAMINED);
     out.put("selection_effort", EFFORT);
+    out.put("forest_role", IssuesSimilarityElasticNetCommand.FOREST_ROLE);
     return out;
   }
 
@@ -310,11 +345,25 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     }
   }
 
-  /** Per model, each declared column: its weight, its removal or its drop for being constant. */
+  /**
+   * Per model, each declared column: its weight, its removal or its drop for being constant. A
+   * forest has no weight: only its removals and drops are listed, its columns' importance being in
+   * {@link #IMPORTANCE}.
+   */
   static List<String> diagnostics(final SimilarityScoring.Report r) {
     final List<String> out = new ArrayList<>();
     out.add("model\tcolumn\tstatus\tcoefficient\tselected\treason");
     for (final SimilarityScoring.Scored m : r.models()) {
+      if (m.forest() != null) {
+        for (final ElasticNetSelection.Removed x : m.removed()) {
+          out.add(String.join("\t", m.name(), x.column(), "removed", "", "", x.reason()));
+        }
+        for (final String d : m.forest().dropped()) {
+          out.add(String.join("\t", m.name(), d, "dropped", "", "",
+              "constant on the outer training rows"));
+        }
+        continue;
+      }
       if (m.fitted() == null) {
         continue;
       }
@@ -328,6 +377,33 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       for (final Fitting.Contribution c : m.fitted().contributions()) {
         out.add(String.join("\t", m.name(), c.column(), "fitted",
             Double.toString(c.coefficient()), Boolean.toString(c.selected()), ""));
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Per forest, each design column's permutation importance on the outer test: the mean rise in
+   * mean absolute error, in hours, over the repeats, then each repeat's, as Java prints a double.
+   */
+  static List<String> importance(final SimilarityScoring.Report r) {
+    final List<String> out = new ArrayList<>();
+    final StringBuilder header = new StringBuilder("model\tcolumn\tmean_mae_increase_h");
+    for (int k = 1; k <= Forest.PERMUTATION_REPEATS; k++) {
+      header.append("\trepeat_").append(k).append("_h");
+    }
+    out.add(header.toString());
+    for (final SimilarityScoring.Scored m : r.models()) {
+      if (m.forest() == null) {
+        continue;
+      }
+      for (final Forest.Importance i : m.forest().importance()) {
+        final StringBuilder line = new StringBuilder(m.name()).append('\t').append(i.column())
+            .append('\t').append(i.meanIncreaseHours());
+        for (final double v : i.increases()) {
+          line.append('\t').append(v);
+        }
+        out.add(line.toString());
       }
     }
     return out;
@@ -384,6 +460,14 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       row.put("selected", m.fitted().selected());
       row.put("removed", m.removed().stream().map(x -> x.column() + ": " + x.reason()).toList());
       row.put("dropped_constant", m.fitted().dropped());
+    }
+    if (m.forest() != null) {
+      row.put("mtry_share", m.forest().share());
+      row.put("mtry", m.forest().mtry());
+      row.put("node_size", m.forest().nodeSize());
+      row.put("columns", m.forest().columns());
+      row.put("removed", m.removed().stream().map(x -> x.column() + ": " + x.reason()).toList());
+      row.put("dropped_constant", m.forest().dropped());
     }
     return row;
   }

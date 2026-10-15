@@ -75,6 +75,65 @@ class ForestTest {
   }
 
   @Test
+  @DisplayName("of grid points whose errors tie exactly, the first in the grid's order is kept: "
+      + "the smaller share, then the smaller leaf")
+  void tiesGoToTheFirstPoint() {
+    final double third = 1.0 / 3;
+    final List<Forest.Trial> tied = List.of(new Forest.Trial(1.0 / 6, 1, 5, 7.0),
+        new Forest.Trial(1.0 / 6, 1, 25, 7.0), new Forest.Trial(third, 2, 5, 7.0));
+    assertEquals(0, Forest.chosen(tied));
+    final List<Forest.Trial> later = List.of(new Forest.Trial(1.0 / 6, 1, 5, 9.0),
+        new Forest.Trial(1.0 / 6, 1, 25, 7.0), new Forest.Trial(third, 2, 5, 7.0),
+        new Forest.Trial(third, 2, 25, 8.0));
+    assertEquals(1, Forest.chosen(later));
+
+    // the sweep keeps the point chosen() picks from its own trials, and records its share
+    final Fitting.Sides sides = Fitting.sides(corpus(), Fitting.Mode.INNER, Population.FIXED);
+    final Forest.Fitted f = Forest.sweep(Cell.byLabel(CELL), sides, 1, 1);
+    final Forest.Trial kept = f.trials().get(Forest.chosen(f.trials()));
+    assertEquals(List.of(kept.share(), (double) kept.mtry(), (double) kept.nodeSize()),
+        List.of(f.share(), (double) f.mtry(), (double) f.nodeSize()));
+  }
+
+  @Test
+  @DisplayName("permutation importance: the column the duration follows raises the error most "
+      + "when shuffled, and the same model and rows give the same importance")
+  void permutationImportance() {
+    final Random random = new Random(3);
+    final int n = 300;
+    final double[][] x = new double[n][2];
+    final double[] y = new double[n];
+    final double[] hours = new double[n];
+    for (int i = 0; i < n; i++) {
+      x[i][0] = random.nextDouble() * 2 - 1;
+      x[i][1] = random.nextDouble() * 2 - 1;
+      hours[i] = 50 * x[i][0] * x[i][0] + random.nextDouble();
+      y[i] = Math.log1p(hours[i]);
+    }
+    final List<String> names = List.of("a", "b");
+    final RandomForestModel model = RandomForestModel.fit(x, y, names, 50, 1, 20, 5, 7L);
+    final double[] fitted = Forest.hours(model.predict(x));
+    final List<Forest.Importance> one =
+        Forest.permutationImportance(model, names, x, fitted, hours);
+    // the rows handed in are never shuffled in place
+    assertArrayEquals(fitted, Forest.hours(model.predict(x)), 0.0);
+    assertEquals(names, one.stream().map(Forest.Importance::column).toList());
+    assertEquals(Forest.PERMUTATION_REPEATS, one.get(0).increases().length);
+    assertTrue(one.get(0).meanIncreaseHours() > 5 * Math.abs(one.get(1).meanIncreaseHours()),
+        one.toString());
+    double sum = 0;
+    for (final double v : one.get(0).increases()) {
+      sum += v;
+    }
+    assertEquals(sum / Forest.PERMUTATION_REPEATS, one.get(0).meanIncreaseHours(), 1e-12);
+    final List<Forest.Importance> two =
+        Forest.permutationImportance(model, names, x, fitted, hours);
+    for (int c = 0; c < names.size(); c++) {
+      assertArrayEquals(one.get(c).increases(), two.get(c).increases(), 0.0);
+    }
+  }
+
+  @Test
   @DisplayName("the same rows give the same forest, and it follows a shape the line cannot")
   void deterministicAndNonLinear() {
     final Random random = new Random(3);

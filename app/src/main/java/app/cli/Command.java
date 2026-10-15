@@ -239,15 +239,22 @@ public enum Command {
       the 27 combinations of Jaccard n (5, 10, 20), embedding n (5, 10, 20)
       and cluster k (8, 16, 32), and keep the combination whose sweep errs
       least; exact ties go to the smaller Jaccard n, then embedding n, then
-      cluster k. Prints each model's choice and, for those three, the best
-      error of every combination. The split-dependent columns are read in
-      their inner variant; a column missing on every inner fitting row is
+      cluster k. As a robustness check, not a new contribution, a random
+      forest is swept beside each model on the same rows and every column
+      its Elastic Net kept, weighted or not, the similarity medians at the
+      chosen n and k (300 trees, depth 20, column share 1/6, 1/3 or 2/3,
+      leaf 5, 25 or 100, seed 20260927); the lowest inner validation error
+      is kept, exact ties going to the first point of the grid. Prints each
+      model's choice and, for those three, the best error of every
+      combination, and each forest's grid. The split-dependent columns are
+      read in their inner variant; a column missing on every inner fitting row is
       removed from its models and reported. Refuses unless the four split
       sizes are the registered study's and the matrix has every declared
-      column. Reads MATRIX; writes ELASTIC_NET_PARAMETERS, never over a file
-      holding more than its own choices or one naming other models, as one
-      written before the own specification took the team size back and
-      left the previous one out; records the run in ISSUES_DB. The
+      column. Reads MATRIX; writes ELASTIC_NET_PARAMETERS, the forests'
+      column share and leaf among them, never over a file holding more than
+      its own choices, one naming other models, as one written before the
+      own specification took the team size back and left the previous one
+      out, or one written before the forests; records the run in ISSUES_DB. The
       outer test rows are not read."""),
 
   ISSUES_SIMILARITY_TEST("issues-in-progress-similarity-test",
@@ -258,18 +265,23 @@ public enum Command {
       model on the outer training set with its chosen alpha and the chosen
       lambda times the ratio of rows, as the registered reserved run does,
       the similarity medians at the Jaccard n, embedding n and cluster k
-      chosen for each model, and with the global, project and
-      executor-project medians scores the outer test: error in days,
-      Spearman, pairwise ordering, error by duration band with the slowest
-      10% apart, and the agreed paired comparisons with intervals
-      resampling whole projects: the own specification with similarity
-      against the same without, every model against the global median and
-      every model but the global median against the project median.
-      Refuses unless the parameters file exists and is for these models,
-      its choices were made on that matrix, the four split sizes are the
-      registered study's and every column is present. Writes the per-issue
-      predictions and the diagnostics to REPORT_DIR; records the run in
-      ISSUES_DB. States that the earlier study already examined this test."""),
+      chosen for each model; refits beside each, as a robustness check, its
+      random forest with the chosen count of columns per split and leaf; and with the
+      global, project and executor-project medians scores the outer test:
+      error in days, Spearman, pairwise ordering, error by duration band
+      with the slowest 10% apart, and the agreed paired comparisons with
+      intervals resampling whole projects: the own specification with
+      similarity against the same without, every model against the global
+      median and every model but the global median against the project
+      median; each forest against its Elastic Net, the forest with
+      similarity against the forest without, and every forest against the
+      global and the project median. Refuses unless the parameters file
+      exists and is for these models with a forest for each, its choices
+      were made on that matrix, the four split sizes are the registered
+      study's and every column is present. Writes the per-issue
+      predictions, the diagnostics and each forest's permutation
+      importance to REPORT_DIR; records the run in ISSUES_DB. States that
+      the earlier study already examined this test."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both

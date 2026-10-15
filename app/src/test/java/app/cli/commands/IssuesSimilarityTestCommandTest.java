@@ -58,6 +58,11 @@ class IssuesSimilarityTestCommandTest {
         lines.add("elastic-net\t" + m + "\tcluster_k\t32");
       }
     }
+    for (final String m : ElasticNetSelection.MODELS) {
+      lines.add("forest\t" + m + "\tmtry_share\t" + (1.0 / 3));
+      lines.add("forest\t" + m + "\tmtry\t2");
+      lines.add("forest\t" + m + "\tnode_size\t25");
+    }
     return Files.write(dir.resolve("elastic-net.tsv"), lines);
   }
 
@@ -125,6 +130,49 @@ class IssuesSimilarityTestCommandTest {
   }
 
   @Test
+  @DisplayName("a parameters file without the forest entries, or without one model's forest, "
+      + "refuses the run before anything is scored")
+  void refusesWithoutTheForests() throws IOException {
+    final Path matrix = matrix();
+    final Path elasticNet = elasticNet(IssuesReservedCommand.sha256(matrix));
+    final List<String> all = Files.readAllLines(elasticNet);
+    set(matrix, elasticNet);
+
+    final List<String> none = new java.util.ArrayList<>(all);
+    none.removeIf(l -> l.startsWith("forest\t"));
+    Files.write(elasticNet, none);
+    String why = refusal();
+    assertTrue(why.contains("holds the forest parameters for []"), why);
+
+    final List<String> one = new java.util.ArrayList<>(all);
+    one.removeIf(l -> l.startsWith("forest\tunion_own\t"));
+    Files.write(elasticNet, one);
+    why = refusal();
+    assertTrue(why.contains("every model has a forest"), why);
+
+    final List<String> partial = new java.util.ArrayList<>(all);
+    partial.remove("forest\tunion_own\tnode_size\t25");
+    Files.write(elasticNet, partial);
+    why = refusal();
+    assertTrue(why.contains("union_own's forest has not its mtry share, mtry and leaf"), why);
+  }
+
+  @Test
+  @DisplayName("a parameters file written before the forests, under its header then, refuses the "
+      + "run")
+  void refusesAFileBeforeTheForests() throws IOException {
+    final Path matrix = matrix();
+    final Path elasticNet = elasticNet(IssuesReservedCommand.sha256(matrix));
+    final List<String> before = new java.util.ArrayList<>(Files.readAllLines(elasticNet));
+    before.removeIf(l -> l.startsWith("forest\t"));
+    before.set(0, "# Elastic Net alpha and lambda, and the similarity medians' n, n and k, chosen "
+        + "on the inner validation only; the outer test was not read");
+    set(matrix, Files.write(dir.resolve("before-13.tsv"), before));
+    final String why = refusal();
+    assertTrue(why.contains("is not the Elastic Net step's parameters file"), why);
+  }
+
+  @Test
   @DisplayName("a parameters file that is not the step's own, as one in the format before "
       + "ticket 11, refuses the run")
   void refusesAForeignFile() throws IOException {
@@ -179,5 +227,6 @@ class IssuesSimilarityTestCommandTest {
     final Map<String, Object> run = IssuesSimilarityTestCommand.statements();
     assertTrue(run.get("outer_test_examined_before").toString().contains("earlier"));
     assertTrue(run.get("selection_effort").toString().contains("differs"));
+    assertTrue(run.get("forest_role").toString().contains("robustness check"));
   }
 }
