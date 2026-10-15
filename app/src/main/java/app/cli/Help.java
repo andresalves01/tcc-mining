@@ -63,8 +63,8 @@ public final class Help {
                                                 issues-in-progress-similarity-test: where their
                                                 files go
           MATRIX            (unset)             issues-in-progress-similarity: the augmented matrix
-                                                written; issues-in-progress-similarity-selection,
-                                                -elastic-net and -test: the one they read
+                                                written; issues-in-progress-similarity-elastic-net
+                                                and -test: the one they read
           TEAM_COLUMNS      (unset)             issues-in-progress-team writes it,
                                                 issues-in-progress-similarity reads it
           MODEL_DIR         (unset)             issues-download-model: where the embedding model goes;
@@ -86,13 +86,10 @@ public final class Help {
           BOOTSTRAP_THREADS (processors)        threads for the draws of the project-resampled
                                                 intervals; 1 runs them in sequence. Same
                                                 intervals, bit for bit, on any number of threads
-          SIMILARITY_PARAMETERS (unset)         issues-in-progress-similarity-selection: where the
-                                                chosen values go; never the registered PARAMETERS;
-                                                issues-in-progress-similarity-elastic-net and
-                                                -test read it
           ELASTIC_NET_PARAMETERS (unset)        issues-in-progress-similarity-elastic-net: where
-                                                each model's alpha and lambda go; never
-                                                SIMILARITY_PARAMETERS nor PARAMETERS;
+                                                each model's alpha and lambda go, and the Jaccard
+                                                n, embedding n and cluster k of the three models
+                                                with the similarity medians; never PARAMETERS;
                                                 issues-in-progress-similarity-test reads it
         """);
   }
