@@ -58,11 +58,13 @@ public final class Help {
                                                 0 turns the rule off -- every pair is eligible
           TEAM_WINDOW_DAYS  90                  features: how far back the active team is read
           PILOT             (unset)             ledger and funnel: restrict to matching projects
-          REPORT_DIR        (unset)             issues-description-language and
-                                                issues-in-progress-similarity: where their files go
+          REPORT_DIR        (unset)             issues-description-language,
+                                                issues-in-progress-similarity and
+                                                issues-in-progress-similarity-test: where their
+                                                files go
           MATRIX            (unset)             issues-in-progress-similarity: the augmented matrix
-                                                written; issues-in-progress-similarity-selection
-                                                and -elastic-net: the one they read
+                                                written; issues-in-progress-similarity-selection,
+                                                -elastic-net and -test: the one they read
           TEAM_COLUMNS      (unset)             issues-in-progress-team writes it,
                                                 issues-in-progress-similarity reads it
           MODEL_DIR         (unset)             issues-download-model: where the embedding model goes;
@@ -75,10 +77,12 @@ public final class Help {
                                                 chunking policy and cleaner version
           SIMILARITY_PARAMETERS (unset)         issues-in-progress-similarity-selection: where the
                                                 chosen values go; never the registered PARAMETERS;
-                                                issues-in-progress-similarity-elastic-net reads it
+                                                issues-in-progress-similarity-elastic-net and
+                                                -test read it
           ELASTIC_NET_PARAMETERS (unset)        issues-in-progress-similarity-elastic-net: where
                                                 each model's alpha and lambda go; never
-                                                SIMILARITY_PARAMETERS nor PARAMETERS
+                                                SIMILARITY_PARAMETERS nor PARAMETERS;
+                                                issues-in-progress-similarity-test reads it
         """);
   }
 
