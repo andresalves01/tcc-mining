@@ -25,6 +25,7 @@ import app.cli.commands.IssuesReservedCommand;
 import app.cli.commands.IssuesSimilarityCommand;
 import app.cli.commands.IssuesSimilarityElasticNetCommand;
 import app.cli.commands.IssuesSimilaritySelectionCommand;
+import app.cli.commands.IssuesSimilarityTestCommand;
 import app.cli.commands.ReconstructPeopleCommand;
 import app.cli.commands.SeniorityCommand;
 import app.cli.commands.SplitCommand;
@@ -252,6 +253,25 @@ public enum Command {
       SIMILARITY_PARAMETERS; writes ELASTIC_NET_PARAMETERS, never over a
       file holding more than its own choices; records the run in ISSUES_DB.
       The outer test rows are not read."""),
+
+  ISSUES_SIMILARITY_TEST("issues-in-progress-similarity-test",
+      new IssuesSimilarityTestCommand(), """
+      Issue duration from the first In Progress, description-similarity
+      chain, outer mode only: SCORES THE OUTER TEST. Reads MATRIX,
+      SIMILARITY_PARAMETERS and ELASTIC_NET_PARAMETERS and chooses nothing:
+      refits every Elastic Net model on the outer training set with its
+      chosen alpha and the chosen lambda times the ratio of rows, as the
+      registered reserved run does, reads the direct predictors at their
+      chosen values and the global, project and executor-project medians,
+      and scores the outer test: error in days, Spearman, pairwise
+      ordering, error by duration band with the slowest 10% apart, and the
+      agreed paired comparisons with intervals resampling whole projects.
+      Refuses unless both parameters files exist, the Elastic Net choices
+      were made with that direct predictors' file and on that matrix, the
+      four split sizes are the registered study's and every column is
+      present. Writes the per-issue predictions and the diagnostics to
+      REPORT_DIR; records the run in ISSUES_DB. States that the earlier
+      study already examined this test."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both

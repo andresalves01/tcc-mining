@@ -175,19 +175,7 @@ public final class ElasticNetSelection {
     final List<Cell> cells = cells(chosen, Augmentation.Variant.INNER);
     final List<RowCache.Entry> training =
         entries.stream().filter(e -> TRAIN.equals(e.outer(P))).toList();
-    final Fitting.Sides raw = Fitting.sides(training, Fitting.Mode.INNER, P);
-
-    final Set<String> added = new HashSet<>();
-    for (final Cell cell : cells) {
-      for (final Attribute a : cell.attributes()) {
-        if (!Attributes.all().contains(a)) {
-          added.add(a.name());
-        }
-      }
-    }
-    final Fitting.Sides sides = new Fitting.Sides(raw.fitUnits(),
-        flagged(raw.fitRows(), added), raw.scoreUnits(), flagged(raw.scoreRows(), added),
-        raw.observed());
+    final Fitting.Sides sides = flagged(Fitting.sides(training, Fitting.Mode.INNER, P), cells);
 
     final References refs = References.learnedOn(sides.fitUnits());
     final double[] observed = sides.observed();
@@ -196,26 +184,60 @@ public final class ElasticNetSelection {
 
     final List<Model> out = new ArrayList<>();
     for (final Cell cell : cells) {
-      final List<Attribute> kept = new ArrayList<>();
-      final List<Removed> removed = new ArrayList<>();
-      for (final Attribute a : cell.attributes()) {
-        if (sides.fitRows().stream().noneMatch(r -> r.values().containsKey(a.name()))) {
-          removed.add(new Removed(a.name(), "missing on all " + sides.fitRows().size()
-              + " inner fitting rows"));
-        } else {
-          kept.add(a);
-        }
-      }
-      if (kept.isEmpty()) {
-        throw new IllegalArgumentException(cell.label() + " has no column observed on the inner "
-            + "fitting rows");
-      }
-      final Cell fitted = new Cell(cell.label(), cell.family(), cell.scenario(), kept);
-      out.add(new Model(cell, Fitting.sweep(fitted, sides, projectMae, constantMae),
-          List.copyOf(removed)));
+      final Kept kept = kept(cell, sides.fitRows(), "inner fitting");
+      out.add(new Model(cell, Fitting.sweep(kept.cell(), sides, projectMae, constantMae),
+          kept.removed()));
     }
     return new Result(sides.fitUnits().size(), observed.length, projectMae, constantMae,
         List.copyOf(out));
+  }
+
+  /**
+   * A model with the declared columns that are missing on every fitting row left out, and those
+   * columns with the reason.
+   */
+  public record Kept(Cell cell, List<Removed> removed) {}
+
+  /**
+   * Leaves out of {@code cell} every column missing on all of {@code fitRows}, recording why; it is
+   * never filled from the scored rows. A model left with no column refuses.
+   *
+   * @param fittingSet the fitting set's name in the reason, as "inner fitting"
+   */
+  public static Kept kept(final Cell cell, final List<Row> fitRows, final String fittingSet) {
+    final List<Attribute> kept = new ArrayList<>();
+    final List<Removed> removed = new ArrayList<>();
+    for (final Attribute a : cell.attributes()) {
+      if (fitRows.stream().noneMatch(r -> r.values().containsKey(a.name()))) {
+        removed.add(new Removed(a.name(), "missing on all " + fitRows.size() + " " + fittingSet
+            + " rows"));
+      } else {
+        kept.add(a);
+      }
+    }
+    if (kept.isEmpty()) {
+      throw new IllegalArgumentException(cell.label() + " has no column observed on the "
+          + fittingSet + " rows");
+    }
+    return new Kept(new Cell(cell.label(), cell.family(), cell.scenario(), kept),
+        List.copyOf(removed));
+  }
+
+  /**
+   * Both sides with a missing indicator beside every column of {@code cells} the registered matrix
+   * does not hold (see {@link #flagged(List, Set)}).
+   */
+  public static Fitting.Sides flagged(final Fitting.Sides raw, final List<Cell> cells) {
+    final Set<String> added = new HashSet<>();
+    for (final Cell cell : cells) {
+      for (final Attribute a : cell.attributes()) {
+        if (!Attributes.all().contains(a)) {
+          added.add(a.name());
+        }
+      }
+    }
+    return new Fitting.Sides(raw.fitUnits(), flagged(raw.fitRows(), added), raw.scoreUnits(),
+        flagged(raw.scoreRows(), added), raw.observed());
   }
 
   /**
