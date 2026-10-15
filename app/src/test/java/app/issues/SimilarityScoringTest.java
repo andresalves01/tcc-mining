@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import app.issues.Universe.Population;
 import app.issues.model.Cell;
 import app.issues.model.Fitting;
+import app.issues.model.ParallelSweepTest;
 import app.study.Construct;
 import app.study.Row;
 import java.time.Instant;
@@ -273,6 +274,30 @@ class SimilarityScoringTest {
       assertTrue(ids.add(f[0]), "twice: " + f[0]);
     }
     assertEquals(new HashSet<>(r.scoredUnits().stream().map(IssueUnit::issueId).toList()), ids);
+  }
+
+  @Test
+  @DisplayName("refitted and resampled on several threads, every prediction, score, coefficient "
+      + "and interval is, bit for bit, what one thread gives")
+  void parallelIsSequential() {
+    final List<RowCache.Entry> entries = corpus();
+    final SimilarityScoring.Report one = SimilarityScoring.run(entries, CHOSEN, choices(0.2), 1, 1);
+    final SimilarityScoring.Report many =
+        SimilarityScoring.run(entries, CHOSEN, choices(0.2), 6, 6);
+    assertEquals(SimilarityScoring.predictions(one), SimilarityScoring.predictions(many));
+    assertEquals(one.comparisons(), many.comparisons(), "every interval, as exact doubles");
+    assertEquals(one.models().size(), many.models().size());
+    for (int m = 0; m < one.models().size(); m++) {
+      final SimilarityScoring.Scored a = one.models().get(m);
+      final SimilarityScoring.Scored b = many.models().get(m);
+      assertEquals(a.name(), b.name());
+      assertEquals(a.score(), b.score());
+      assertEquals(a.removed(), b.removed());
+      assertEquals(a.fitted() == null, b.fitted() == null);
+      if (a.fitted() != null) {
+        ParallelSweepTest.assertIdentical(a.fitted(), b.fitted());
+      }
+    }
   }
 
   @Test

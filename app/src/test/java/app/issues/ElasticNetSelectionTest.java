@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import app.issues.Universe.Population;
 import app.issues.model.Cell;
+import app.issues.model.ParallelSweepTest;
 import app.study.Row;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -171,6 +172,26 @@ class ElasticNetSelectionTest {
     assertEquals(List.of(cluster), model(r, "revised_twelve").removed());
     assertEquals(List.of(), model(r, "revised_nine").removed());
     assertTrue(model(r, "revised_twelve").fitted().columns().contains("jaccard_median_10_inner"));
+  }
+
+  @Test
+  @DisplayName("each model's sweep on several threads chooses and reports, bit for bit, what the "
+      + "sweep on one thread does, the models in the same order")
+  void parallelIsSequential() {
+    inner();
+    final ElasticNetSelection.Result one = ElasticNetSelection.run(entries, CHOSEN, 1);
+    final ElasticNetSelection.Result many = ElasticNetSelection.run(entries, CHOSEN, 6);
+    assertEquals(one.models().size(), many.models().size());
+    assertEquals(Double.doubleToRawLongBits(one.projectMaeHours()),
+        Double.doubleToRawLongBits(many.projectMaeHours()));
+    for (int m = 0; m < one.models().size(); m++) {
+      assertEquals(one.models().get(m).cell(), many.models().get(m).cell());
+      assertEquals(one.models().get(m).removed(), many.models().get(m).removed());
+      ParallelSweepTest.assertIdentical(one.models().get(m).fitted(),
+          many.models().get(m).fitted());
+    }
+    assertEquals(ElasticNetSelection.parameters(one, "m", "s"),
+        ElasticNetSelection.parameters(many, "m", "s"));
   }
 
   /** What a choice is: per model, the columns read, alpha, lambda and the validation error. */

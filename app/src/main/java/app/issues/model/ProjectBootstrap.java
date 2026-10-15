@@ -1,11 +1,14 @@
 package app.issues.model;
 
+import app.model.Parallel;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.Callable;
+import java.util.function.ToDoubleFunction;
 
 /**
  * An interval for a model's gain over a reference, resampling <b>whole projects</b>.
@@ -59,28 +62,75 @@ public final class ProjectBootstrap {
   /**
    * The paired comparison with projects as the unit of resampling: the tie criterion of the
    * reserved run. The row-paired one stays beside it as the narrower
-   * reading.
+   * reading. The draws are evaluated on the threads {@link Parallel#BOOTSTRAP_THREADS} asks for.
    *
    * @param errorsA absolute error per row of {@code a}, {@code errorsB} of {@code b}, same rows
    */
   public static Gap compare(final List<String> projectOfRow, final String a,
       final double[] errorsA, final String b, final double[] errorsB) {
+    return compare(projectOfRow, a, errorsA, b, errorsB,
+        Parallel.threads(Parallel.BOOTSTRAP_THREADS));
+  }
+
+  /**
+   * The comparison with its draws evaluated on up to {@code threads} threads, the same bits on any
+   * number: the projects of every draw are picked in sequence before any is evaluated.
+   */
+  public static Gap compare(final List<String> projectOfRow, final String a,
+      final double[] errorsA, final String b, final double[] errorsB, final int threads) {
     if (errorsA.length != errorsB.length || errorsA.length != projectOfRow.size()) {
       throw new IllegalArgumentException("the two errors must be of the same rows");
     }
     final List<List<Integer>> projects = clusters(projectOfRow);
     final double point = gapOf(allRows(errorsA.length), errorsA, errorsB);
-    final double[] draws = new double[DRAWS];
-    final Random random = new Random(SEED);
-    for (int d = 0; d < DRAWS; d++) {
-      final List<Integer> sample = new ArrayList<>(errorsA.length);
-      for (int p = 0; p < projects.size(); p++) {
-        sample.addAll(projects.get(random.nextInt(projects.size())));
-      }
-      draws[d] = gapOf(sample, errorsA, errorsB);
-    }
+    final double[] draws = draws(projects, errorsA.length, threads,
+        sample -> gapOf(sample, errorsA, errorsB));
     Arrays.sort(draws);
     return new Gap(a, b, point, draws[(int) (0.025 * DRAWS)], draws[(int) (0.975 * DRAWS) - 1]);
+  }
+
+  /**
+   * Each draw's statistic, in the order of the draws. The projects of every draw are picked first,
+   * all on this thread from one {@code Random(SEED)} in the same sequence as ever -- draw by draw,
+   * {@code projects.size()} picks each -- so the samples do not depend on the threads. Then each
+   * draw is evaluated alone, on one of up to {@code threads} threads, over its rows in the order
+   * they were drawn, and written to its own slot: every value is what the sequential loop gave.
+   *
+   * @param rows the number of rows, the capacity of a sample
+   */
+  private static double[] draws(final List<List<Integer>> projects, final int rows,
+      final int threads, final ToDoubleFunction<List<Integer>> statistic) {
+    final Random random = new Random(SEED);
+    final int[][] picks = new int[DRAWS][projects.size()];
+    for (int d = 0; d < DRAWS; d++) {
+      for (int p = 0; p < projects.size(); p++) {
+        picks[d][p] = random.nextInt(projects.size());
+      }
+    }
+    final int chunks = Math.min(DRAWS, Math.max(1, threads) * 4);
+    final List<Callable<double[]>> jobs = new ArrayList<>(chunks);
+    for (int c = 0; c < chunks; c++) {
+      final int from = (int) ((long) c * DRAWS / chunks);
+      final int to = (int) ((long) (c + 1) * DRAWS / chunks);
+      jobs.add(() -> {
+        final double[] out = new double[to - from];
+        for (int d = from; d < to; d++) {
+          final List<Integer> sample = new ArrayList<>(rows);
+          for (final int pick : picks[d]) {
+            sample.addAll(projects.get(pick));
+          }
+          out[d - from] = statistic.applyAsDouble(sample);
+        }
+        return out;
+      });
+    }
+    final double[] draws = new double[DRAWS];
+    int at = 0;
+    for (final double[] part : Parallel.map(threads, jobs)) {
+      System.arraycopy(part, 0, draws, at, part.length);
+      at += part.length;
+    }
+    return draws;
   }
 
   private static List<List<Integer>> clusters(final List<String> projectOfRow) {
@@ -100,20 +150,27 @@ public final class ProjectBootstrap {
     return sum / sample.size();
   }
 
+  /**
+   * The model's gain over the reference with its 95% interval from resampling whole projects; the
+   * draws are evaluated on the threads {@link Parallel#BOOTSTRAP_THREADS} asks for.
+   */
   public static Interval gain(final List<String> projectOfRow, final double[] model,
       final double[] reference, final double[] observed) {
+    return gain(projectOfRow, model, reference, observed,
+        Parallel.threads(Parallel.BOOTSTRAP_THREADS));
+  }
+
+  /**
+   * The gain with its draws evaluated on up to {@code threads} threads, the same bits on any
+   * number: the projects of every draw are picked in sequence before any is evaluated.
+   */
+  public static Interval gain(final List<String> projectOfRow, final double[] model,
+      final double[] reference, final double[] observed, final int threads) {
 
     final List<List<Integer>> projects = clusters(projectOfRow);
     final double point = gainOf(allRows(observed.length), model, reference, observed);
-    final double[] draws = new double[DRAWS];
-    final Random random = new Random(SEED);
-    for (int d = 0; d < DRAWS; d++) {
-      final List<Integer> sample = new ArrayList<>(observed.length);
-      for (int p = 0; p < projects.size(); p++) {
-        sample.addAll(projects.get(random.nextInt(projects.size())));
-      }
-      draws[d] = gainOf(sample, model, reference, observed);
-    }
+    final double[] draws = draws(projects, observed.length, threads,
+        sample -> gainOf(sample, model, reference, observed));
     Arrays.sort(draws);
     return new Interval(point, draws[(int) (0.025 * DRAWS)], draws[(int) (0.975 * DRAWS) - 1]);
   }

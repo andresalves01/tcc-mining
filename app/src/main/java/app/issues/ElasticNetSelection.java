@@ -4,6 +4,7 @@ import app.issues.Universe.Population;
 import app.issues.model.Cell;
 import app.issues.model.Fitting;
 import app.issues.model.References;
+import app.model.Parallel;
 import app.study.Construct;
 import app.study.Row;
 import java.util.ArrayList;
@@ -172,6 +173,15 @@ public final class ElasticNetSelection {
    */
   public static Result run(final List<RowCache.Entry> entries,
       final Map<String, Integer> chosen) {
+    return run(entries, chosen, Parallel.threads(Parallel.ELASTIC_NET_THREADS));
+  }
+
+  /**
+   * The choice with each model's sweep fitted on up to {@code threads} threads; the models are
+   * swept one after the other, and the result is the same bits whatever the number.
+   */
+  public static Result run(final List<RowCache.Entry> entries,
+      final Map<String, Integer> chosen, final int threads) {
     final List<Cell> cells = cells(chosen, Augmentation.Variant.INNER);
     final List<RowCache.Entry> training =
         entries.stream().filter(e -> TRAIN.equals(e.outer(P))).toList();
@@ -185,8 +195,8 @@ public final class ElasticNetSelection {
     final List<Model> out = new ArrayList<>();
     for (final Cell cell : cells) {
       final Kept kept = kept(cell, sides.fitRows(), "inner fitting");
-      out.add(new Model(cell, Fitting.sweep(kept.cell(), sides, projectMae, constantMae),
-          kept.removed()));
+      out.add(new Model(cell,
+          Fitting.sweep(kept.cell(), sides, projectMae, constantMae, threads), kept.removed()));
     }
     return new Result(sides.fitUnits().size(), observed.length, projectMae, constantMae,
         List.copyOf(out));

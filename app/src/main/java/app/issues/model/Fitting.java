@@ -2,6 +2,7 @@ package app.issues.model;
 
 import app.model.ElasticNetModel;
 import app.model.Metrics;
+import app.model.Parallel;
 import app.study.Row;
 import app.study.model.DesignMatrix;
 import app.study.model.Score;
@@ -10,6 +11,7 @@ import app.issues.RowCache;
 import app.issues.Universe;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Callable;
 
 /**
  * One way to fit and one way to score, shared by the grid, the check and the reserved run.
@@ -177,39 +179,70 @@ public final class Fitting {
 
   /**
    * Sweeps the declared grid on the fitting side and keeps the pair with the lowest absolute error
-   * on the scored side. Only ever called with {@link Mode#INNER} sides.
+   * on the scored side. Only ever called with {@link Mode#INNER} sides. The points are fitted on
+   * the threads {@link Parallel#ELASTIC_NET_THREADS} asks for (see {@link #sweep(Cell, Sides,
+   * double, double, int)}).
    */
   public static Fitted sweep(final Cell cell, final Sides sides, final double baselineMae,
       final double constantMae) {
+    return sweep(cell, sides, baselineMae, constantMae,
+        Parallel.threads(Parallel.ELASTIC_NET_THREADS));
+  }
+
+  /**
+   * The sweep with its points fitted on up to {@code threads} threads. Each point is one fit and
+   * one error, computed alone on one thread from the same matrices, which every point only reads;
+   * the choice then reads the errors in the grid's order, mixture by mixture and penalty by
+   * penalty, and keeps a point only when its error is strictly lower, so a tie keeps the earlier
+   * point. One thread is the sequential sweep, and any number gives its result bit for bit.
+   */
+  public static Fitted sweep(final Cell cell, final Sides sides, final double baselineMae,
+      final double constantMae, final int threads) {
 
     final DesignMatrix matrix = DesignMatrix.fittedOn(sides.fitRows(), cell.attributes());
     final double[][] x = matrix.applyAll(sides.fitRows());
     final double[][] xs = matrix.applyAll(sides.scoreRows());
     final double[] y = target(sides.fitUnits());
-    ElasticNetModel best = null;
-    double bestMae = Double.POSITIVE_INFINITY;
-    int bestStep = -1;
-    final List<Trial> trials = new ArrayList<>();
+    final List<Trial> points = new ArrayList<>();
     for (final double alpha : ALPHAS) {
       final double[] grid = lambdas(x, y, alpha);
       for (int step = 0; step < grid.length; step++) {
+        points.add(new Trial(alpha, step, grid[step], Double.NaN));
+      }
+    }
+    final List<Callable<Point>> jobs = new ArrayList<>(points.size());
+    for (final Trial p : points) {
+      jobs.add(() -> {
         final ElasticNetModel model =
-            ElasticNetModel.fit(x, y, matrix.columns(), alpha, grid[step]);
+            ElasticNetModel.fit(x, y, matrix.columns(), p.alpha(), p.lambda());
         double sum = 0;
         for (int i = 0; i < xs.length; i++) {
           sum += Math.abs(DesignMatrix.hours(model.predict(xs[i])) - sides.observed()[i]);
         }
-        trials.add(new Trial(alpha, step, grid[step], sum / xs.length));
-        if (sum / xs.length < bestMae) {
-          bestMae = sum / xs.length;
-          best = model;
-          bestStep = step;
-        }
+        return new Point(model, sum / xs.length);
+      });
+    }
+    final List<Point> fitted = Parallel.map(threads, jobs);
+    ElasticNetModel best = null;
+    double bestMae = Double.POSITIVE_INFINITY;
+    int bestStep = -1;
+    final List<Trial> trials = new ArrayList<>(points.size());
+    for (int k = 0; k < points.size(); k++) {
+      final Trial p = points.get(k);
+      final Point f = fitted.get(k);
+      trials.add(new Trial(p.alpha(), p.step(), p.lambda(), f.maeHours()));
+      if (f.maeHours() < bestMae) {
+        bestMae = f.maeHours();
+        best = f.model();
+        bestStep = p.step();
       }
     }
     return result(cell, matrix, x, y, xs, best, sides.observed(), baselineMae, constantMae,
         bestStep, List.copyOf(trials));
   }
+
+  /** One point of the sweep fitted: the model and its error on the scored side, in hours. */
+  private record Point(ElasticNetModel model, double maeHours) {}
 
   /**
    * Decision 20, registered before the reserved rows are scored: the penalty of the final fit is
