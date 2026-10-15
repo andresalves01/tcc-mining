@@ -1,6 +1,5 @@
 package app.cli.commands;
 
-import ai.onnxruntime.OrtException;
 import app.cli.CommandFailedException;
 import app.cli.CommandRunner;
 import app.cli.Context;
@@ -14,7 +13,7 @@ import app.issues.Universe.Population;
 import app.pipeline.IssuesSimilarityTask;
 import app.pipeline.embedding.EmbeddingCache;
 import app.pipeline.embedding.EmbeddingModel;
-import app.pipeline.embedding.OnnxEmbedder;
+import app.pipeline.embedding.MiniLmEmbedder;
 import app.pipeline.embedding.ReferenceCheck;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -58,7 +57,7 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     final Path matrix = path("MATRIX");
     final Path reports = path("REPORT_DIR");
     final Path teamFile = path("TEAM_COLUMNS");
-    final Path modelDir = path(OnnxEmbedder.MODEL_DIR);
+    final Path modelDir = path(MiniLmEmbedder.MODEL_DIR);
     final Path cacheDir = path(EmbeddingCache.ENV);
     final long began = System.nanoTime();
 
@@ -108,49 +107,45 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     final EmbeddingCache embeddings;
     final double augmentationSeconds;
     final ReferenceCheck.Result check;
-    final OnnxEmbedder model;
+    final MiniLmEmbedder model;
     try {
-      model = OnnxEmbedder.load(modelDir);
+      model = MiniLmEmbedder.load(modelDir);
     } catch (final IOException e) {
       throw new CommandFailedException(List.of("  could not load the model in MODEL_DIR "
           + modelDir + ": " + e.getMessage()));
     }
-    try (model) {
-      check = selfCheck(model, model::chunks);
-      System.out.printf("  model %s at %s from %s%n", EmbeddingModel.REPOSITORY,
-          EmbeddingModel.REVISION, modelDir);
-      System.out.printf("  model reproduces the sentence-transformers reference: %d sentences, "
-          + "largest difference %.2e (tolerance %.0e)%n", ReferenceCheck.items().size(),
-          check.maxDifference(), ReferenceCheck.TOLERANCE);
-      try {
-        embeddings = EmbeddingCache.open(cacheDir, EmbeddingCache.pinned(), model);
-      } catch (final IOException e) {
-        throw new CommandFailedException(List.of("  could not read EMBEDDING_CACHE " + cacheDir
-            + ": " + e.getMessage()));
-      }
-      System.out.printf("  embedding cache %s%n", embeddings.file());
-      final long augmenting = System.nanoTime();
-      try {
-        r = new IssuesSimilarityTask(context.study(), context.progress(), embeddings)
-            .run(entries);
-      } catch (final RuntimeException e) {
-        throw new CommandFailedException(List.of("  the similarity stage failed, nothing was "
-            + "written or recorded but the embeddings already computed: " + e));
-      } finally {
-        // what the model computed is kept even when the stage fails, so a rerun need not redo it
-        if (embeddings.misses() > 0) {
-          try {
-            embeddings.save();
-          } catch (final IOException e) {
-            throw new CommandFailedException(List.of("  could not save EMBEDDING_CACHE "
-                + embeddings.file() + ": " + e.getMessage()));
-          }
+    check = selfCheck(model, model::chunks);
+    System.out.printf("  model %s at %s from %s, run by %s%n", EmbeddingModel.REPOSITORY,
+        EmbeddingModel.REVISION, modelDir, MiniLmEmbedder.IMPLEMENTATION);
+    System.out.printf("  model reproduces the sentence-transformers reference: %d sentences, "
+        + "largest difference %.2e (tolerance %.0e)%n", ReferenceCheck.items().size(),
+        check.maxDifference(), ReferenceCheck.TOLERANCE);
+    try {
+      embeddings = EmbeddingCache.open(cacheDir, EmbeddingCache.pinned(), model);
+    } catch (final IOException e) {
+      throw new CommandFailedException(List.of("  could not read EMBEDDING_CACHE " + cacheDir
+          + ": " + e.getMessage()));
+    }
+    System.out.printf("  embedding cache %s%n", embeddings.file());
+    final long augmenting = System.nanoTime();
+    try {
+      r = new IssuesSimilarityTask(context.study(), context.progress(), embeddings)
+          .run(entries);
+    } catch (final RuntimeException e) {
+      throw new CommandFailedException(List.of("  the similarity stage failed, nothing was "
+          + "written or recorded but the embeddings already computed: " + e));
+    } finally {
+      // what the model computed is kept even when the stage fails, so a rerun need not redo it
+      if (embeddings.misses() > 0) {
+        try {
+          embeddings.save();
+        } catch (final IOException e) {
+          throw new CommandFailedException(List.of("  could not save EMBEDDING_CACHE "
+              + embeddings.file() + ": " + e.getMessage()));
         }
       }
-      augmentationSeconds = (System.nanoTime() - augmenting) / 1e9;
-    } catch (final OrtException e) {
-      throw new CommandFailedException(List.of("  could not close the model: " + e.getMessage()));
     }
+    augmentationSeconds = (System.nanoTime() - augmenting) / 1e9;
     final var s = r.sizes();
     System.out.printf("  outer training %,d  outer test %,d  inner fitting %,d  inner validation "
         + "%,d%n", s.train(), s.test(), s.innerFit(), s.innerSelection());
@@ -222,7 +217,8 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     run.put("embedding_n", Augmentation.EMBEDDING_N);
     run.put("model", EmbeddingModel.REPOSITORY);
     run.put("model_revision", EmbeddingModel.REVISION);
-    run.put("model_onnx_sha256", EmbeddingModel.FILES.get(0).sha256());
+    run.put("model_weights_sha256", EmbeddingModel.FILES.get(0).sha256());
+    run.put("embedder", MiniLmEmbedder.IMPLEMENTATION);
     run.put("chunking", EmbeddingModel.CHUNKING);
     run.put("reference_max_difference", check.maxDifference());
     run.put("reference_tolerance", ReferenceCheck.TOLERANCE);

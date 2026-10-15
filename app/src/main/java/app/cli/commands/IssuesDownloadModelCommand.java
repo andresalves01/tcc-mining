@@ -6,7 +6,7 @@ import app.cli.Context;
 import app.pipeline.embedding.EmbeddingModel;
 import app.pipeline.embedding.ModelDownload;
 import app.pipeline.embedding.ModelFileMismatch;
-import app.pipeline.embedding.OnnxEmbedder;
+import app.pipeline.embedding.MiniLmEmbedder;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
@@ -20,11 +20,11 @@ public final class IssuesDownloadModelCommand implements CommandRunner {
 
   @Override
   public void run(final Context context) throws CommandFailedException {
-    final String fromEnv = System.getenv(OnnxEmbedder.MODEL_DIR);
+    final String fromEnv = System.getenv(MiniLmEmbedder.MODEL_DIR);
     final String dir = fromEnv == null || fromEnv.isBlank()
-        ? System.getProperty(OnnxEmbedder.MODEL_DIR) : fromEnv;
+        ? System.getProperty(MiniLmEmbedder.MODEL_DIR) : fromEnv;
     if (dir == null || dir.isBlank()) {
-      throw new CommandFailedException(List.of("  " + OnnxEmbedder.MODEL_DIR
+      throw new CommandFailedException(List.of("  " + MiniLmEmbedder.MODEL_DIR
           + "=<model directory> is required"));
     }
     System.out.printf("  %s at revision %s into %s%n", EmbeddingModel.REPOSITORY,

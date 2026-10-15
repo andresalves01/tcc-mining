@@ -63,12 +63,9 @@ dependencies {
     implementation(libs.lingua)
 
     // --- 6. SENTENCE EMBEDDINGS ---
-    // all-MiniLM-L6-v2 run in Java, so the description-similarity chain needs no Python: ONNX
-    // Runtime executes the model's own ONNX export, DJL wraps the Hugging Face tokenizer that
-    // sentence-transformers uses. Both jars ship their native libraries, so nothing is fetched at
-    // run time; the model files themselves come from issues-download-model.
-    implementation(libs.onnxruntime)
-    implementation(libs.djl.tokenizers)
+    // all-MiniLM-L6-v2 runs in plain Java (app.pipeline.embedding), with no library of its own:
+    // ONNX Runtime crashed the JVM under the launcher's long command line, and native code made
+    // launching fragile. The model files come from issues-download-model.
 
     // --- 7. UTILITIES ---
     implementation(libs.guava)

@@ -1,5 +1,6 @@
 package app.pipeline.embedding;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -13,44 +14,39 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import org.junit.jupiter.api.AfterAll;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * The Java embedder against vectors sentence-transformers produced once for six sentences, read
- * through {@link ReferenceCheck}, the comparison the similarity command runs too. Needs the model
- * on disk: set MODEL_DIR to a directory issues-download-model filled, or these are skipped; with
- * REQUIRE_MODEL=1 they fail instead (see {@link ModelGate}).
+ * The plain-Java embedder against vectors sentence-transformers produced once for six sentences,
+ * read through {@link ReferenceCheck}, the comparison the similarity command runs too. Needs the
+ * model on disk: set MODEL_DIR to a directory issues-download-model filled, or these are skipped;
+ * with REQUIRE_MODEL=1 they fail instead (see {@link ModelGate}).
  */
-class OnnxEmbedderTest {
+class MiniLmEmbedderTest {
 
-  private static OnnxEmbedder embedder;
+  private static MiniLmEmbedder embedder;
   private static String failure;
 
   @BeforeAll
   static void load() {
-    final ModelGate.Gate<OnnxEmbedder> gate = ModelGate.fromEnvironment(OnnxEmbedder::load);
+    final ModelGate.Gate<MiniLmEmbedder> gate = ModelGate.fromEnvironment(MiniLmEmbedder::load);
     embedder = gate.model();
     failure = gate.failure();
-  }
-
-  @AfterAll
-  static void close() throws Exception {
-    if (embedder != null) {
-      embedder.close();
-    }
   }
 
   private static void needsModel() {
     if (failure != null) {
       fail(failure);
     }
-    assumeTrue(embedder != null, OnnxEmbedder.MODEL_DIR + " is unset: the comparison with "
+    assumeTrue(embedder != null, MiniLmEmbedder.MODEL_DIR + " is unset: the comparison with "
         + "sentence-transformers needs the model on disk (run issues-download-model into a "
-        + "directory and set " + OnnxEmbedder.MODEL_DIR + " to it); skipped. Set "
+        + "directory and set " + MiniLmEmbedder.MODEL_DIR + " to it); skipped. Set "
         + ModelGate.REQUIRE_MODEL + "=1 to fail instead");
   }
 
@@ -77,7 +73,8 @@ class OnnxEmbedderTest {
     final int repeats = 40;
     final String text = String.join(" ", Collections.nCopies(repeats, item.text()));
 
-    // WordPiece splits on whitespace first, so the repeated sentence is its content tokens repeated.
+    // WordPiece splits on whitespace first, so the repeated sentence is its content tokens
+    // repeated.
     final List<Long> expected = new ArrayList<>();
     for (int r = 0; r < repeats; r++) {
       for (int i = 1; i < one.length - 1; i++) {
@@ -111,8 +108,29 @@ class OnnxEmbedderTest {
       Files.writeString(dir.resolve(f.path()), "not the model");
     }
     final ModelFileMismatch e = assertThrows(ModelFileMismatch.class,
-        () -> OnnxEmbedder.load(dir));
-    assertTrue(e.getMessage().contains(EmbeddingModel.ONNX), e.getMessage());
+        () -> MiniLmEmbedder.load(dir));
+    assertTrue(e.getMessage().contains(EmbeddingModel.WEIGHTS), e.getMessage());
+  }
+
+  @Test
+  @DisplayName("the same text gives the same vector bit for bit, also from several threads at once")
+  void deterministic() throws Exception {
+    needsModel();
+    final ReferenceCheck.Item item = ReferenceCheck.items().get(1);
+    final String text = String.join(" ", Collections.nCopies(30, item.text()));
+    final float[] first = embedder.embed(text).vector();
+    final ExecutorService pool = Executors.newFixedThreadPool(4);
+    try {
+      final List<Future<float[]>> runs = new ArrayList<>();
+      for (int r = 0; r < 8; r++) {
+        runs.add(pool.submit(() -> embedder.embed(text).vector()));
+      }
+      for (final Future<float[]> run : runs) {
+        assertArrayEquals(first, run.get());
+      }
+    } finally {
+      pool.shutdown();
+    }
   }
 
   private static double norm(final float[] v) {

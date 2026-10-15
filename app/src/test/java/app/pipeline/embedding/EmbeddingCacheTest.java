@@ -20,7 +20,7 @@ import org.junit.jupiter.api.io.TempDir;
 class EmbeddingCacheTest {
 
   private static final EmbeddingCache.Key KEY =
-      new EmbeddingCache.Key("model", "revision", "chunking", "cleaner");
+      new EmbeddingCache.Key("model", "revision", "implementation", "chunking", "cleaner");
 
   /** Every text the fake model was asked for, in order. */
   private final List<String> asked = new ArrayList<>();
@@ -59,27 +59,34 @@ class EmbeddingCacheTest {
   }
 
   @Test
-  @DisplayName("a change of the text, the model, its revision, the chunking policy or the cleaner "
-      + "version asks the model again")
+  @DisplayName("a change of the text, the model, its revision, the implementation that runs it, "
+      + "the chunking policy or the cleaner version asks the model again")
   void invalidated(@TempDir final Path dir) throws IOException {
     once(dir, KEY, "text");
     once(dir, KEY, "text ");
-    once(dir, new EmbeddingCache.Key("other model", "revision", "chunking", "cleaner"), "text");
-    once(dir, new EmbeddingCache.Key("model", "other revision", "chunking", "cleaner"), "text");
-    once(dir, new EmbeddingCache.Key("model", "revision", "other chunking", "cleaner"), "text");
-    once(dir, new EmbeddingCache.Key("model", "revision", "chunking", "other cleaner"), "text");
-    assertEquals(6, asked.size(), asked.toString());
+    once(dir, key("other model", "revision", "implementation", "chunking", "cleaner"), "text");
+    once(dir, key("model", "other revision", "implementation", "chunking", "cleaner"), "text");
+    once(dir, key("model", "revision", "other implementation", "chunking", "cleaner"), "text");
+    once(dir, key("model", "revision", "implementation", "other chunking", "cleaner"), "text");
+    once(dir, key("model", "revision", "implementation", "chunking", "other cleaner"), "text");
+    assertEquals(7, asked.size(), asked.toString());
     once(dir, KEY, "text");
-    assertEquals(6, asked.size(), "the first key is still cached");
+    assertEquals(7, asked.size(), "the first key is still cached");
+  }
+
+  private static EmbeddingCache.Key key(final String model, final String revision,
+      final String implementation, final String chunking, final String cleaner) {
+    return new EmbeddingCache.Key(model, revision, implementation, chunking, cleaner);
   }
 
   @Test
-  @DisplayName("the pinned key names the model, its revision, the chunk limit and the cleaner "
-      + "version")
+  @DisplayName("the pinned key names the model, its revision, the Java implementation, the chunk "
+      + "limit and the cleaner version")
   void pinned() {
     final EmbeddingCache.Key k = EmbeddingCache.pinned();
     assertEquals(EmbeddingModel.REPOSITORY, k.model());
     assertEquals(EmbeddingModel.REVISION, k.revision());
+    assertEquals(MiniLmEmbedder.IMPLEMENTATION, k.implementation());
     assertTrue(k.chunking().contains(Integer.toString(EmbeddingModel.MAX_TOKENS)), k.chunking());
     assertEquals(DescriptionCleaner.VERSION, k.cleaner());
   }
