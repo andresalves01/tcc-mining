@@ -10,6 +10,7 @@ import app.issues.Extractor;
 import app.issues.RowCache;
 import app.issues.TeamColumns;
 import app.issues.Universe.Population;
+import app.model.Parallel;
 import app.pipeline.IssuesSimilarityTask;
 import app.pipeline.clustering.SmileKMeans;
 import app.pipeline.embedding.EmbeddingCache;
@@ -42,11 +43,13 @@ import java.util.function.Function;
  * registered study's and the team file holds exactly the matrix's issues. Embeds the descriptions
  * with the pinned model in MODEL_DIR, verified on load, through the {@link EmbeddingCache} in
  * EMBEDDING_CACHE, which it saves whenever the model computed anything, even when the stage then
- * fails. The clusters are Smile's K-means ({@link SmileKMeans}). Writes the augmented matrix --
- * the extracted columns, the four team columns, then the similarity columns -- to MATRIX, the
- * diagnostics as tab-separated files to REPORT_DIR, and records the run, with the SHA-256 of
- * every file it read or wrote, the model, its revision, the cache's hits and misses, the
- * clusterer, its seed, runs and the distortion of every fit, and the time spent, in ISSUES_DB.
+ * fails; the descriptions the cache misses are embedded on the threads EMBEDDING_THREADS asks
+ * for, every processor when unset, with the same vectors as on one. The clusters are Smile's
+ * K-means ({@link SmileKMeans}). Writes the augmented matrix -- the extracted columns, the four
+ * team columns, then the similarity columns -- to MATRIX, the diagnostics as tab-separated files
+ * to REPORT_DIR, and records the run, with the SHA-256 of every file it read or wrote, the model,
+ * its revision, the cache's hits and misses, the embedding threads, the clusterer, its seed, runs
+ * and the distortion of every fit, and the time spent, in ISSUES_DB.
  */
 public final class IssuesSimilarityCommand implements CommandRunner {
 
@@ -62,6 +65,12 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     final Path teamFile = path("TEAM_COLUMNS");
     final Path modelDir = path(MiniLmEmbedder.MODEL_DIR);
     final Path cacheDir = path(EmbeddingCache.ENV);
+    final int embeddingThreads;
+    try {
+      embeddingThreads = Parallel.threads(Parallel.EMBEDDING_THREADS);
+    } catch (final IllegalArgumentException e) {
+      throw new CommandFailedException(List.of("  " + e.getMessage()));
+    }
     final long began = System.nanoTime();
     final SmileKMeans clusterer = new SmileKMeans();
 
@@ -125,12 +134,14 @@ public final class IssuesSimilarityCommand implements CommandRunner {
         + "largest difference %.2e (tolerance %.0e)%n", ReferenceCheck.items().size(),
         check.maxDifference(), ReferenceCheck.TOLERANCE);
     try {
-      embeddings = EmbeddingCache.open(cacheDir, EmbeddingCache.pinned(), model);
+      embeddings = EmbeddingCache.open(cacheDir, EmbeddingCache.pinned(), model,
+          embeddingThreads);
     } catch (final IOException e) {
       throw new CommandFailedException(List.of("  could not read EMBEDDING_CACHE " + cacheDir
           + ": " + e.getMessage()));
     }
-    System.out.printf("  embedding cache %s%n", embeddings.file());
+    System.out.printf("  embedding cache %s; the model runs on %d thread%s%n", embeddings.file(),
+        embeddingThreads, embeddingThreads == 1 ? "" : "s");
     final long augmenting = System.nanoTime();
     try {
       r = new IssuesSimilarityTask(context.study(), context.progress(), embeddings, clusterer)
@@ -251,6 +262,7 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     run.put("multi_chunk_descriptions", multiChunk);
     run.put("max_chunks", maxChunks);
     run.put("model_seconds", embeddings.modelSeconds());
+    run.put("embedding_threads", embeddingThreads);
     run.put("augmentation_seconds", augmentationSeconds);
     run.put("blocks", Augmentation.BLOCKS);
     run.put("rows", entries.size());

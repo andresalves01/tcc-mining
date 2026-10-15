@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -685,10 +686,11 @@ public final class Augmentation {
 
   /**
    * Every described issue's vector, one row of a flat array each, embedded once for the whole
-   * run; an issue with no description, or whose vector is refused, has no row. A vector is
-   * refused unless it has {@code dimension} finite components and length one within {@link
-   * #UNIT_TOLERANCE}; it is used as given, never rescaled. An issue id given twice keeps its last
-   * row's description, as the Jaccard tokens do.
+   * run, every description handed to the embedder in one list in the rows' order ({@link
+   * Embedder#embedAll}); an issue with no description, or whose vector is refused, has no row.
+   * A vector is refused unless it has {@code dimension} finite components and length one within
+   * {@link #UNIT_TOLERANCE}; it is used as given, never rescaled. An issue id given twice keeps its
+   * last row's description, as the Jaccard tokens do.
    */
   private static final class Vectors {
 
@@ -700,14 +702,26 @@ public final class Augmentation {
 
     Vectors(final List<Issue> issues, final Embedder embedder, final int dimension) {
       this.dimension = dimension;
+      final List<String> texts = new ArrayList<>();
+      for (final Issue i : issues) {
+        if (described(i)) {
+          texts.add(i.description());
+        }
+      }
+      final List<Embedder.Embedding> all = embedder.embedAll(texts);
+      if (all.size() != texts.size()) {
+        throw new IllegalStateException("the embedder gave " + all.size() + " embeddings for "
+            + texts.size() + " descriptions");
+      }
+      final Iterator<Embedder.Embedding> embeddings = all.iterator();
       final Map<String, float[]> byId = new LinkedHashMap<>();
       for (final Issue i : issues) {
         byId.remove(i.id());
         embedded.remove(i.id());
-        if (i.description() == null || i.description().isBlank()) {
+        if (!described(i)) {
           continue;
         }
-        final Embedder.Embedding e = embedder.embed(i.description());
+        final Embedder.Embedding e = embeddings.next();
         final float[] v = e == null ? null : e.vector();
         final String problem = problem(v, dimension);
         embedded.put(i.id(), new Embedded(i.id(), e == null ? 0 : e.chunks(), problem));
@@ -723,6 +737,10 @@ public final class Augmentation {
         rows.put(e.getKey(), r++);
       }
       doubles = new double[byId.size()][];
+    }
+
+    private static boolean described(final Issue i) {
+      return i.description() != null && !i.description().isBlank();
     }
 
     /** Why {@code v} is not a unit vector of {@code dimension} components, null when it is. */

@@ -75,6 +75,17 @@ public final class Help {
           EMBEDDING_CACHE   (unset)             issues-in-progress-similarity: directory of the
                                                 embedding cache, one file per model, revision,
                                                 chunking policy and cleaner version
+          EMBEDDING_THREADS (processors)        issues-in-progress-similarity: threads that embed
+                                                the descriptions the cache misses; 1 embeds them
+                                                one by one. Same vectors, bit for bit, on any
+                                                number of threads
+          ELASTIC_NET_THREADS 1                 threads for the Elastic Net fits: the sweep's
+                                                points and the similarity test's refits; 1 fits
+                                                them in sequence. Same numbers, bit for bit, on
+                                                any number of threads
+          BOOTSTRAP_THREADS (processors)        threads for the draws of the project-resampled
+                                                intervals; 1 runs them in sequence. Same
+                                                intervals, bit for bit, on any number of threads
           SIMILARITY_PARAMETERS (unset)         issues-in-progress-similarity-selection: where the
                                                 chosen values go; never the registered PARAMETERS;
                                                 issues-in-progress-similarity-elastic-net and

@@ -5,6 +5,7 @@ import app.issues.model.Cell;
 import app.issues.model.Fitting;
 import app.issues.model.ProjectBootstrap;
 import app.issues.model.References;
+import app.model.Parallel;
 import app.study.model.Bootstrap;
 import app.study.model.Breakdown;
 import app.study.model.Score;
@@ -16,6 +17,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.Callable;
 
 /**
  * The test of the description-similarity chain, outer mode only: every model refitted on the
@@ -104,6 +106,18 @@ public final class SimilarityScoring {
    */
   public static Report run(final List<RowCache.Entry> entries, final Map<String, Integer> chosen,
       final Map<String, ElasticNetSelection.Choice> choices) {
+    return run(entries, chosen, choices, Parallel.threads(Parallel.ELASTIC_NET_THREADS),
+        Parallel.threads(Parallel.BOOTSTRAP_THREADS));
+  }
+
+  /**
+   * Refits and scores, the models refitted each alone on up to {@code fitThreads} threads and the
+   * draws of every interval evaluated each alone on up to {@code drawThreads}, all read back in
+   * their order, so the report is the same bits whatever the numbers.
+   */
+  public static Report run(final List<RowCache.Entry> entries, final Map<String, Integer> chosen,
+      final Map<String, ElasticNetSelection.Choice> choices, final int fitThreads,
+      final int drawThreads) {
     final List<Cell> cells = ElasticNetSelection.cells(chosen, Augmentation.Variant.OUTER);
     final Set<String> names = new LinkedHashSet<>(cells.stream().map(Cell::label).toList());
     if (!names.equals(choices.keySet())) {
@@ -157,16 +171,20 @@ public final class SimilarityScoring {
       models.add(given(direct(method), "direct", predicted, observed, projectMae, constantMae));
     }
 
+    final List<Callable<Scored>> refits = new ArrayList<>(cells.size());
     for (final Cell cell : cells) {
-      final ElasticNetSelection.Choice c = choices.get(cell.label());
-      final ElasticNetSelection.Kept kept =
-          ElasticNetSelection.kept(cell, sides.fitRows(), FITTING_SET);
-      final Fitting.Fitted f = Fitting.frozen(kept.cell(), sides, c.alpha(),
-          Fitting.finalLambda(c.lambda(), fitRows, innerFitRows), projectMae, constantMae);
-      models.add(new Scored(cell.label(), "elastic-net", f.predictedHours(), f.score(),
-          Breakdown.errors(f.predictedHours(), observed),
-          Breakdown.byTruth(f.predictedHours(), observed), f, kept.removed()));
+      refits.add(() -> {
+        final ElasticNetSelection.Choice c = choices.get(cell.label());
+        final ElasticNetSelection.Kept kept =
+            ElasticNetSelection.kept(cell, sides.fitRows(), FITTING_SET);
+        final Fitting.Fitted f = Fitting.frozen(kept.cell(), sides, c.alpha(),
+            Fitting.finalLambda(c.lambda(), fitRows, innerFitRows), projectMae, constantMae);
+        return new Scored(cell.label(), "elastic-net", f.predictedHours(), f.score(),
+            Breakdown.errors(f.predictedHours(), observed),
+            Breakdown.byTruth(f.predictedHours(), observed), f, kept.removed());
+      });
     }
+    models.addAll(Parallel.map(fitThreads, refits));
 
     final Map<String, double[]> errors = new HashMap<>();
     for (final Scored m : models) {
@@ -175,7 +193,7 @@ public final class SimilarityScoring {
     final List<ProjectBootstrap.Gap> comparisons = new ArrayList<>();
     for (final String[] pair : pairs(models.stream().map(Scored::name).toList())) {
       comparisons.add(ProjectBootstrap.compare(projects, pair[0], errors.get(pair[0]), pair[1],
-          errors.get(pair[1])));
+          errors.get(pair[1]), drawThreads));
     }
 
     final Set<String> seen = new HashSet<>();

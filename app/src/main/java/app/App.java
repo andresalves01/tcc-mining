@@ -6,6 +6,7 @@ import app.cli.ConsoleProgress;
 import app.cli.Context;
 import app.cli.Help;
 import app.config.PipelineConfig;
+import app.model.Parallel;
 import app.pipeline.jira.JiraChangelogSource;
 import app.pipeline.port.Progress;
 import app.pipeline.mongo.GridFsGitIdentitySource;
@@ -78,6 +79,8 @@ public final class App {
     final PipelineConfig config;
     try {
       config = PipelineConfig.fromEnvironment();
+      // a bad thread count refuses the run here, before any stage reads or writes anything
+      Parallel.check();
     } catch (final IllegalArgumentException e) {
       System.err.println("configuration error: " + e.getMessage());
       System.exit(EXIT_MISUSE);

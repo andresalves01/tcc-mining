@@ -2,6 +2,7 @@ package app.pipeline.embedding;
 
 import app.issues.DescriptionCleaner;
 import app.issues.Embedder;
+import app.model.Parallel;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -9,10 +10,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * The embeddings of descriptions already embedded, kept on disk so a rerun need not run the model
@@ -34,7 +39,19 @@ import java.util.TreeMap;
  *
  * <p>Nothing is written until {@link #save}, which writes every entry, sorted by hash, to a
  * temporary file beside the cache and moves it into place, so a run that stops halfway leaves the
- * previous file whole. Not thread-safe: it counts hits and misses and fills a map.
+ * previous file whole.
+ *
+ * <p><b>Threads.</b> {@link #embedAll} asks the model for the texts it misses on up to the
+ * threads it was opened with, each text on one thread, computed alone in the model's own fixed
+ * order, so a vector is the same bits however many threads ran. Everything else -- the counts,
+ * the map, the order the answers are read in -- stays on the calling thread and follows the texts'
+ * order, exactly as embedding them one by one would: the same vectors in the same order, the same
+ * hits and misses, the same entries, and a failure surfacing at the text it would have stopped at,
+ * with the texts before it kept and none after. The model is asked once per distinct text: a
+ * repeated text it gave no vector for is answered again from that one call, which the loop would
+ * have asked anew of a model that, being deterministic, answers the same. One thread is that
+ * loop, and a supported setting. The cache itself is not thread-safe: it is called from one
+ * thread.
  */
 public final class EmbeddingCache implements Embedder {
 
@@ -66,16 +83,18 @@ public final class EmbeddingCache implements Embedder {
   private final String header;
   private final Embedder model;
   private final Map<String, Embedding> entries;
+  private final int threads;
   private int hits;
   private int misses;
   private long modelNanos;
 
   private EmbeddingCache(final Path file, final String header, final Embedder model,
-      final Map<String, Embedding> entries) {
+      final Map<String, Embedding> entries, final int threads) {
     this.file = file;
     this.header = header;
     this.model = model;
     this.entries = entries;
+    this.threads = threads;
   }
 
   /** The key of the pinned model, run by {@link MiniLmEmbedder}, and of the current cleaner. */
@@ -84,9 +103,25 @@ public final class EmbeddingCache implements Embedder {
         MiniLmEmbedder.IMPLEMENTATION, EmbeddingModel.CHUNKING, DescriptionCleaner.VERSION);
   }
 
-  /** The cache of {@code key} in {@code dir}, empty when it has no file yet. */
+  /**
+   * The cache of {@code key} in {@code dir}, empty when it has no file yet, asking the model on
+   * one thread.
+   */
   public static EmbeddingCache open(final Path dir, final Key key, final Embedder model)
       throws IOException {
+    return open(dir, key, model, 1);
+  }
+
+  /**
+   * The cache of {@code key} in {@code dir}, empty when it has no file yet, asking the model for
+   * the texts {@link #embedAll} misses on up to {@code threads} threads; {@code model} must then
+   * be safe to call from several threads at once, as {@link MiniLmEmbedder} is.
+   */
+  public static EmbeddingCache open(final Path dir, final Key key, final Embedder model,
+      final int threads) throws IOException {
+    if (threads < 1) {
+      throw new IllegalArgumentException(threads + " threads: at least one is needed");
+    }
     final String header = FORMAT + "\t" + key.line();
     final Path file = dir.resolve("embeddings-"
         + EmbeddingModel.sha256(key.line().getBytes(StandardCharsets.UTF_8)) + ".tsv");
@@ -104,7 +139,7 @@ public final class EmbeddingCache implements Embedder {
         }
       }
     }
-    return new EmbeddingCache(file, header, model, entries);
+    return new EmbeddingCache(file, header, model, entries, threads);
   }
 
   @Override
@@ -123,6 +158,91 @@ public final class EmbeddingCache implements Embedder {
       entries.put(hash, new Embedding(e.vector().clone(), e.chunks()));
     }
     return e;
+  }
+
+  /**
+   * The embeddings of {@code texts}, in their order, as embedding them one by one with {@link
+   * #embed} gives and leaves them; only the model runs on several threads (see the class).
+   */
+  @Override
+  public List<Embedding> embedAll(final List<String> texts) {
+    final String[] hashes = new String[texts.size()];
+    final Map<String, Integer> asked = new HashMap<>();
+    final List<String> missing = new ArrayList<>();
+    for (int i = 0; i < hashes.length; i++) {
+      hashes[i] = EmbeddingModel.sha256(texts.get(i).getBytes(StandardCharsets.UTF_8));
+      if (!entries.containsKey(hashes[i]) && !asked.containsKey(hashes[i])) {
+        asked.put(hashes[i], missing.size());
+        missing.add(texts.get(i));
+      }
+    }
+    final List<Answer> answers = ask(missing);
+    // read back as embed would have run, text by text: a text the model gave a vector for is a
+    // hit when it comes again; one it gave none for is counted a miss every time, as the loop
+    // counts it, though the model was asked for it once and its one answer is reused
+    final List<Embedding> out = new ArrayList<>(texts.size());
+    for (final String hash : hashes) {
+      final Embedding known = entries.get(hash);
+      if (known != null) {
+        hits++;
+        out.add(new Embedding(known.vector().clone(), known.chunks()));
+        continue;
+      }
+      misses++;
+      final Answer a = answers.get(asked.get(hash));
+      if (a.failure() instanceof RuntimeException r) {
+        throw r;
+      }
+      if (a.failure() instanceof Error r) {
+        throw r;
+      }
+      if (a == SKIPPED) {
+        throw new IllegalStateException("a text after a failure was read back before it");
+      }
+      final Embedding e = a.embedding();
+      if (e != null && e.vector() != null) {
+        entries.put(hash, new Embedding(e.vector().clone(), e.chunks()));
+      }
+      out.add(e);
+    }
+    return out;
+  }
+
+  /** What the model answered for one text: its embedding, or what it threw. */
+  private record Answer(Embedding embedding, Throwable failure) {}
+
+  /** The answer of a text never asked for, because one before it had already failed. */
+  private static final Answer SKIPPED = new Answer(null, null);
+
+  /**
+   * The model's answers for {@code texts}, in their order, on up to {@link #threads} threads. Once
+   * a text has failed, the texts after it are not asked for: the loop would never reach them.
+   */
+  private List<Answer> ask(final List<String> texts) {
+    if (texts.isEmpty()) {
+      return List.of();
+    }
+    final AtomicInteger failed = new AtomicInteger(Integer.MAX_VALUE);
+    final List<Callable<Answer>> jobs = new ArrayList<>(texts.size());
+    for (int k = 0; k < texts.size(); k++) {
+      final int at = k;
+      final String text = texts.get(k);
+      jobs.add(() -> {
+        if (at > failed.get()) {
+          return SKIPPED;
+        }
+        try {
+          return new Answer(model.embed(text), null);
+        } catch (final RuntimeException | Error e) {
+          failed.accumulateAndGet(at, Math::min);
+          return new Answer(null, e);
+        }
+      });
+    }
+    final long began = System.nanoTime();
+    final List<Answer> answers = Parallel.map(threads, jobs);
+    modelNanos += System.nanoTime() - began;
+    return answers;
   }
 
   /** Writes every entry, replacing the file in one move. */
@@ -161,7 +281,10 @@ public final class EmbeddingCache implements Embedder {
     return misses;
   }
 
-  /** The time spent in the model, on the misses. */
+  /**
+   * The time spent in the model, on the misses: for {@link #embedAll}, the wall time the model's
+   * threads took, not the sum of each thread's.
+   */
   public double modelSeconds() {
     return modelNanos / 1e9;
   }
