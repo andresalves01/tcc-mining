@@ -8,7 +8,6 @@ import app.issues.DescriptionCleaner;
 import app.issues.ElasticNetSelection;
 import app.issues.RegistrationInProgress;
 import app.issues.RowCache;
-import app.issues.Selection;
 import app.issues.SimilarityScoring;
 import app.issues.model.Fitting;
 import app.issues.model.ProjectBootstrap;
@@ -24,20 +23,23 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Function;
 
 /**
  * The test step of the description-similarity chain, outer mode only (see {@link
- * SimilarityScoring}): every model refitted on the outer training set with the parameters the two
- * selection steps wrote, the outer test scored once, every comparison the handout names.
+ * SimilarityScoring}): ten models -- the global, project and executor-project medians and the
+ * seven Elastic Nets -- refitted on the outer training set with the parameters the selection step
+ * wrote, the outer test scored once, every agreed comparison.
  *
- * <p>Reads MATRIX, SIMILARITY_PARAMETERS and ELASTIC_NET_PARAMETERS, and chooses nothing. Refuses,
- * scoring, writing and recording nothing, unless both parameters files exist and are each step's
- * own, the Elastic Net choices were made with this very direct predictors' file and on this very
- * matrix (by SHA-256), the four split sizes are the registered study's, and the matrix has every
- * column the models read. Writes the per-issue predictions and the models' diagnostics to
- * REPORT_DIR; records the run, with the SHA-256 of every input and output, the time taken, the
- * hardware and the versions, in ISSUES_DB under its own stage name.
+ * <p>Reads MATRIX and ELASTIC_NET_PARAMETERS, which gives per model its alpha and lambda and, for
+ * the three with the similarity medians, the Jaccard n, embedding n and cluster k they read; it
+ * chooses nothing. Refuses, scoring, writing and recording nothing, unless the parameters file
+ * exists and is the step's own, its choices were made on this very matrix (by SHA-256), the four
+ * split sizes are the registered study's, and the matrix has every column the models read.
+ * Writes the per-issue predictions and the models' diagnostics to REPORT_DIR; records the run,
+ * with the SHA-256 of every input and output, the time taken, the hardware and the versions, in
+ * ISSUES_DB under its own stage name.
  */
 public final class IssuesSimilarityTestCommand implements CommandRunner {
 
@@ -50,7 +52,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
   public static final String DIAGNOSTICS = "similarity-test-diagnostics.tsv";
 
   /**
-   * The SHA-256 of the three inputs the predictions beside it came from: a rerun is compared with
+   * The SHA-256 of the two inputs the predictions beside it came from: a rerun is compared with
    * the previous predictions only when these are the same.
    */
   public static final String INPUTS = "similarity-test-inputs.tsv";
@@ -61,9 +63,10 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
 
   private static final String EFFORT = "selection effort differs between families: the three "
       + "registered cells (previous own specification, Al-Zubaidi, Kikas) chose only alpha and "
-      + "lambda on the 3 x 12 grid; the revised models chose the same, and every model reading a "
-      + "similarity median carries also the choice of its number of neighbours or clusters among "
-      + "three values; the references and the direct predictors chose nothing else";
+      + "lambda on the 3 x 12 grid; the revised nine chose the same; the three models reading the "
+      + "similarity medians chose also their Jaccard n, embedding n and cluster k among "
+      + ElasticNetSelection.Combination.all().size() + " "
+      + "combinations, each swept on the same grid; the references chose nothing";
 
   /** Where each setting is read from: the environment, then the system properties. */
   private final Function<String, String> settings;
@@ -86,7 +89,6 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
   @Override
   public void run(final Context context) throws CommandFailedException {
     final Path matrix = path("MATRIX");
-    final Path similarity = path("SIMILARITY_PARAMETERS");
     final Path elasticNet = path("ELASTIC_NET_PARAMETERS");
     final Path reports = path("REPORT_DIR");
     final Path predictionsFile = reports.resolve(PREDICTIONS);
@@ -94,7 +96,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final Path inputsFile = reports.resolve(INPUTS);
     final long began = System.nanoTime();
     for (final Path out : List.of(predictionsFile, diagnosticsFile, inputsFile)) {
-      for (final Path in : List.of(matrix, similarity, elasticNet)) {
+      for (final Path in : List.of(matrix, elasticNet)) {
         if (same(out, in)) {
           throw new CommandFailedException(List.of("  REFUSED, nothing was scored, written or "
               + "recorded: " + out + " is an input of this step and is never written"));
@@ -103,47 +105,34 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     }
 
     final String matrixSha;
-    final String similaritySha;
     final String elasticNetSha;
-    final Map<String, Integer> chosen;
     final Map<String, ElasticNetSelection.Choice> choices;
     final List<RowCache.Entry> entries;
     final List<String> columns;
     try {
-      for (final Path p : List.of(similarity, elasticNet)) {
-        if (!Files.exists(p)) {
-          throw refused(p + " does not exist; run issues-in-progress-similarity-selection and "
-              + "issues-in-progress-similarity-elastic-net first");
-        }
+      if (!Files.exists(elasticNet)) {
+        throw refused(elasticNet + " does not exist; run "
+            + "issues-in-progress-similarity-elastic-net first");
       }
-      // each file parsed and hashed from the same bytes, so the hash recorded is of what was read
-      final byte[] similarityBytes = Files.readAllBytes(similarity);
-      final List<String> similarityLines =
-          new String(similarityBytes, StandardCharsets.UTF_8).lines().toList();
-      if (!IssuesSimilaritySelectionCommand.onlyThisStep(similarityLines)) {
-        throw refused(similarity + " is not the direct predictors' parameters file");
-      }
+      // parsed and hashed from the same bytes, so the hash recorded is of what was read
       final byte[] elasticNetBytes = Files.readAllBytes(elasticNet);
       final List<String> elasticNetLines =
           new String(elasticNetBytes, StandardCharsets.UTF_8).lines().toList();
       if (!IssuesSimilarityElasticNetCommand.onlyThisStep(elasticNetLines)) {
         throw refused(elasticNet + " is not the Elastic Net step's parameters file");
       }
-      final List<Selection.Parameter> enParameters;
+      final List<ElasticNetSelection.Parameter> enParameters;
       try {
-        chosen = Selection.chosen(Selection.read(similarityLines));
-        enParameters = Selection.read(elasticNetLines);
+        enParameters = ElasticNetSelection.read(elasticNetLines);
         choices = ElasticNetSelection.choices(enParameters);
       } catch (final IllegalArgumentException e) {
         throw refused(e.getMessage());
       }
-      similaritySha = sha256(similarityBytes);
-      elasticNetSha = sha256(elasticNetBytes);
-      if (!similaritySha.equals(ElasticNetSelection.similaritySha(enParameters))) {
-        throw refused("the choices in " + elasticNet + " were chosen with another direct "
-            + "predictors' file (sha256 " + ElasticNetSelection.similaritySha(enParameters)
-            + "), not " + similarity + " (sha256 " + similaritySha + ")");
+      if (!Set.copyOf(ElasticNetSelection.MODELS).equals(choices.keySet())) {
+        throw refused(elasticNet + " holds alpha and lambda for " + choices.keySet()
+            + "; the models are " + ElasticNetSelection.MODELS);
       }
+      elasticNetSha = sha256(elasticNetBytes);
       matrixSha = IssuesReservedCommand.sha256(matrix);
       if (!matrixSha.equals(ElasticNetSelection.matrixSha(enParameters))) {
         throw refused("the choices in " + elasticNet + " were chosen on another matrix (sha256 "
@@ -159,11 +148,9 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     System.out.printf("%n  DURATION FROM IN PROGRESS -- DESCRIPTION SIMILARITY -- OUTER TEST%n");
     System.out.printf("  matrix read %s  sha256 %s (%,d rows)%n", matrix, matrixSha,
         entries.size());
-    System.out.printf("  direct predictors' choices %s  sha256 %s: %s%n", similarity,
-        similaritySha, chosen);
     System.out.printf("  Elastic Net choices %s  sha256 %s (%d models)%n", elasticNet,
         elasticNetSha, choices.size());
-    final RegistrationInProgress.Sizes s = Selection.sizes(entries);
+    final RegistrationInProgress.Sizes s = ElasticNetSelection.sizes(entries);
     System.out.printf("  outer training %,d  outer test %,d  inner fitting %,d  inner validation "
         + "%,d%n", s.train(), s.test(), s.innerFit(), s.innerSelection());
     if (!RegistrationInProgress.SIZES.equals(s)) {
@@ -172,9 +159,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     }
     final List<String> missing;
     try {
-      // the direct predictors' columns are the revised twelve's, so this covers them too
-      missing = IssuesSimilarityElasticNetCommand.missing(
-          ElasticNetSelection.cells(chosen, Augmentation.Variant.OUTER), columns);
+      missing = IssuesSimilarityElasticNetCommand.missing(ElasticNetSelection.cells(
+          ElasticNetSelection.combinations(choices), Augmentation.Variant.OUTER), columns);
     } catch (final IllegalArgumentException e) {
       throw refused(e.getMessage());
     }
@@ -187,7 +173,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final long fitting = System.nanoTime();
     final SimilarityScoring.Report r;
     try {
-      r = SimilarityScoring.run(entries, chosen, choices);
+      r = SimilarityScoring.run(entries, choices);
     } catch (final IllegalArgumentException e) {
       throw refused(e.getMessage());
     }
@@ -197,8 +183,6 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         + "outer test%n", r.fitRows(), r.scoredRows());
     System.out.printf("  final lambda = chosen lambda x %,d / %,d, alpha as chosen; no "
         + "recalibration%n", r.fitRows(), r.innerFitRows());
-    System.out.printf("  a direct predictor's missing value reads the outer training median, "
-        + "%.1f h%n", r.fallbackHours());
     System.out.printf("  test projects with no issue in training (there the project median is "
         + "the global one): %,d issues, %s%n", r.unseenRows(), r.unseenProjects());
 
@@ -209,7 +193,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       final Score sc = m.score();
       System.out.printf("  %-24s %9.2f %9.2f %9.3f %9.3f %9.2f%n", m.name(), sc.maeHours(),
           sc.maeDays(), sc.spearman(), sc.pairwise(), m.bands().get(4).mae() / 24);
-      rows.add(modelRow(m));
+      rows.add(modelRow(m, choices.get(m.name())));
     }
     System.out.printf("%n  error by band of the true duration, MAE in days%n");
     for (final SimilarityScoring.Scored m : r.models()) {
@@ -218,13 +202,6 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         line.append(String.format("  %s %.2f", b.label(), b.mae() / 24));
       }
       System.out.println(line);
-    }
-    System.out.printf("%n  direct predictors' coverage on the outer test%n");
-    for (final SimilarityScoring.Direct d : r.directs()) {
-      System.out.printf("  %-24s %s: %,d of %,d observed (%.1f%%), MAE on those %.2f h%n",
-          d.name(), d.column(), d.observed(), r.scoredRows(), 100.0 * d.observed()
-              / r.scoredRows(), d.maeObservedHours());
-      rows.add(directRow(d, r.scoredRows()));
     }
     System.out.printf("%n  paired comparisons: MAE(a) - MAE(b) in hours, 95%% interval resampling "
         + "whole projects (%d draws); an interval containing zero is a tie%n",
@@ -242,7 +219,6 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     try {
       Files.createDirectories(reports);
       final List<String> inputs = List.of("matrix_sha256\t" + matrixSha,
-          "similarity_parameters_sha256\t" + similaritySha,
           "elastic_net_parameters_sha256\t" + elasticNetSha);
       rerun = rerun(predictionsFile, inputsFile, inputs, predictions);
       write(inputsFile, inputs);
@@ -270,16 +246,17 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     run.put("outer_test", "scored");
     run.putAll(statements());
     run.put("matrix_sha256", matrixSha);
-    run.put("similarity_parameters_sha256", similaritySha);
     run.put("elastic_net_parameters_sha256", elasticNetSha);
     run.put("predictions_sha256", predictionsSha);
     run.put("diagnostics_sha256", diagnosticsSha);
-    run.put("candidates", new LinkedHashMap<>(chosen));
+    final Map<String, Object> candidates = new LinkedHashMap<>();
+    ElasticNetSelection.combinations(choices).forEach((name, c) -> candidates.put(name,
+        combination(c)));
+    run.put("candidates", candidates);
     run.put("fit_rows", r.fitRows());
     run.put("scored_rows", r.scoredRows());
     run.put("inner_fit_rows", r.innerFitRows());
     run.put("final_lambda", "chosen lambda x fit_rows / inner_fit_rows; alpha as chosen");
-    run.put("fallback_hours", r.fallbackHours());
     run.put("bootstrap_draws", ProjectBootstrap.DRAWS);
     run.put("bootstrap_seed", ProjectBootstrap.SEED);
     run.put("rerun_tolerance_hours", SimilarityScoring.RERUN_TOLERANCE_HOURS);
@@ -308,7 +285,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
   }
 
   /**
-   * Against a previous run's predictions from the same three inputs, the largest difference; null
+   * Against a previous run's predictions from the same two inputs, the largest difference; null
    * when there is none, or when its inputs are unknown or differ.
    */
   private static Double rerun(final Path file, final Path inputsFile, final List<String> inputs,
@@ -353,7 +330,20 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     return out;
   }
 
-  private static Map<String, Object> modelRow(final SimilarityScoring.Scored m) {
+  /** A combination as a document, its fields in a fixed order. */
+  private static Map<String, Object> combination(final ElasticNetSelection.Combination c) {
+    final Map<String, Object> out = new LinkedHashMap<>();
+    out.put("jaccard_n", c.jaccardN());
+    out.put("embedding_n", c.embeddingN());
+    out.put("cluster_k", c.clusterK());
+    return out;
+  }
+
+  /**
+   * @param choice the model's parameters; null for a reference
+   */
+  private static Map<String, Object> modelRow(final SimilarityScoring.Scored m,
+      final ElasticNetSelection.Choice choice) {
     final Map<String, Object> row = new LinkedHashMap<>();
     row.put("kind", "model");
     row.put("model", m.name());
@@ -384,24 +374,14 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     if (m.fitted() != null) {
       row.put("alpha", m.fitted().alpha());
       row.put("final_lambda", m.fitted().lambda());
+      if (choice != null && choice.combination() != null) {
+        row.putAll(combination(choice.combination()));
+      }
       row.put("columns", m.fitted().columns());
       row.put("selected", m.fitted().selected());
       row.put("removed", m.removed().stream().map(x -> x.column() + ": " + x.reason()).toList());
       row.put("dropped_constant", m.fitted().dropped());
     }
-    return row;
-  }
-
-  private static Map<String, Object> directRow(final SimilarityScoring.Direct d,
-      final int rows) {
-    final Map<String, Object> row = new LinkedHashMap<>();
-    row.put("kind", "coverage");
-    row.put("model", d.name());
-    row.put("column", d.column());
-    row.put("rows", rows);
-    row.put("observed", d.observed());
-    row.put("mae_observed_hours", Double.isNaN(d.maeObservedHours()) ? null
-        : d.maeObservedHours());
     return row;
   }
 
@@ -444,8 +424,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
   private Path path(final String name) throws CommandFailedException {
     final String value = settings.apply(name);
     if (value == null || value.isBlank()) {
-      throw new CommandFailedException(List.of("  MATRIX, SIMILARITY_PARAMETERS, "
-          + "ELASTIC_NET_PARAMETERS and REPORT_DIR are required; missing " + name));
+      throw new CommandFailedException(List.of("  MATRIX, ELASTIC_NET_PARAMETERS and "
+          + "REPORT_DIR are required; missing " + name));
     }
     return Path.of(value);
   }

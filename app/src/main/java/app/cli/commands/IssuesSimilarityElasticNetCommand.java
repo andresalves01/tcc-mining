@@ -9,11 +9,9 @@ import app.issues.Augmentation;
 import app.issues.ElasticNetSelection;
 import app.issues.RegistrationInProgress;
 import app.issues.RowCache;
-import app.issues.Selection;
 import app.issues.model.Cell;
 import app.issues.model.Fitting;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -22,22 +20,21 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.LinkedHashSet;
 import java.util.Set;
 
 /**
- * The second selection step of the description-similarity chain, inner mode only: each Elastic
- * Net model's alpha and lambda, by the registered chain's sweep on the inner validation (see
- * {@link ElasticNetSelection}), the similarity medians read at the values the direct predictors
- * chose.
+ * The selection step of the description-similarity chain, inner mode only: each Elastic Net
+ * model's alpha and lambda, by the registered chain's sweep on the inner validation, and, for the
+ * three models reading the similarity medians, the Jaccard n, embedding n and cluster k they read,
+ * the combination of the 27 whose sweep errs least (see {@link ElasticNetSelection}).
  *
- * <p>Reads MATRIX and SIMILARITY_PARAMETERS, the file {@code
- * issues-in-progress-similarity-selection} wrote, which it never writes; refuses, writing and
- * recording nothing, unless the four split sizes are the registered study's, that file holds a
- * value for each of the three methods, and the matrix has every column the models declare. The
- * outer test is counted by its split labels and nothing else. Writes the choices to
- * ELASTIC_NET_PARAMETERS -- neither SIMILARITY_PARAMETERS nor the registered PARAMETERS, and never
- * over a file holding anything but this step's own lines, a check made before anything is fitted --
- * and records the run, with the SHA-256 of the matrix and of both parameters files, in ISSUES_DB.
+ * <p>Reads MATRIX; refuses, writing and recording nothing, unless the four split sizes are the
+ * registered study's and the matrix has every column the models declare at every combination.
+ * The outer test is counted by its split labels and nothing else. Writes the choices to
+ * ELASTIC_NET_PARAMETERS -- never the registered PARAMETERS, and never over a file holding
+ * anything but this step's own lines under its own header, a check made before anything is fitted
+ * -- and records the run, with the SHA-256 of the matrix and of the parameters file, in ISSUES_DB.
  */
 public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
 
@@ -46,10 +43,9 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
   @Override
   public void run(final Context context) throws CommandFailedException {
     final Path matrix = path("MATRIX");
-    final Path similarity = path("SIMILARITY_PARAMETERS");
     final Path parameters = path("ELASTIC_NET_PARAMETERS");
     final long began = System.nanoTime();
-    final List<Path> others = new ArrayList<>(List.of(matrix, similarity));
+    final List<Path> others = new ArrayList<>(List.of(matrix));
     final String registered = env("PARAMETERS");
     if (registered != null) {
       others.add(Path.of(registered));
@@ -62,50 +58,23 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     }
 
     final String matrixSha;
-    final String similaritySha;
     final List<RowCache.Entry> entries;
     final List<String> columns;
-    final Map<String, Integer> chosen;
     try {
-      if (!Files.exists(similarity)) {
-        throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
-            + similarity + " does not exist; run issues-in-progress-similarity-selection first"));
-      }
-      // parsed and hashed from the same bytes, so the hash recorded is of the choices read
-      final byte[] bytes = Files.readAllBytes(similarity);
-      final List<String> lines =
-          new String(bytes, StandardCharsets.UTF_8).lines().toList();
-      if (!IssuesSimilaritySelectionCommand.onlyThisStep(lines)) {
-        throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
-            + similarity + " is not the direct predictors' parameters file"));
-      }
-      try {
-        chosen = Selection.chosen(Selection.read(lines));
-      } catch (final IllegalArgumentException e) {
-        throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
-            + similarity + ": " + e.getMessage()));
-      }
-      similaritySha = sha256(bytes);
-      if (Files.exists(parameters) && !onlyThisStep(Files.readAllLines(parameters))) {
-        throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
-            + parameters + " exists and holds more than this step's choices; it may be the "
-            + "registered chain's or the direct predictors', and is never overwritten"));
-      }
+      refuseForeign(parameters);
       matrixSha = IssuesReservedCommand.sha256(matrix);
       entries = RowCache.read(matrix);
       columns = RowCache.columns(matrix);
     } catch (final IOException e) {
-      throw new CommandFailedException(List.of("  could not read " + matrix + " or " + similarity
-          + ": " + e));
+      throw new CommandFailedException(List.of("  could not read " + matrix + " or "
+          + parameters + ": " + e));
     }
     System.out.printf("%n  DURATION FROM IN PROGRESS -- DESCRIPTION SIMILARITY -- ELASTIC NET "
         + "ON THE INNER VALIDATION%n");
     System.out.printf("  matrix read %s  sha256 %s (%,d rows)%n", matrix, matrixSha,
         entries.size());
-    System.out.printf("  direct predictors' choices read %s  sha256 %s: %s%n", similarity,
-        similaritySha, chosen);
 
-    final RegistrationInProgress.Sizes s = Selection.sizes(entries);
+    final RegistrationInProgress.Sizes s = ElasticNetSelection.sizes(entries);
     System.out.printf("  outer training %,d  outer test %,d  inner fitting %,d  inner validation "
         + "%,d%n", s.train(), s.test(), s.innerFit(), s.innerSelection());
     if (!RegistrationInProgress.SIZES.equals(s)) {
@@ -114,13 +83,13 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     }
     final ElasticNetSelection.Result r;
     try {
-      final List<String> missing =
-          missing(ElasticNetSelection.cells(chosen, Augmentation.Variant.INNER), columns);
+      final List<String> missing = missing(
+          ElasticNetSelection.everyCell(Augmentation.Variant.INNER), columns);
       if (!missing.isEmpty()) {
         throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
             + matrix + " has no column " + missing));
       }
-      r = ElasticNetSelection.run(entries, chosen);
+      r = ElasticNetSelection.run(entries);
     } catch (final IllegalArgumentException e) {
       throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
           + e.getMessage()));
@@ -132,6 +101,11 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
         + "references on the inner validation: project median %.2f h, fitting median %.2f h%n",
         java.util.Arrays.toString(Fitting.ALPHAS), Fitting.LAMBDA_STEPS, r.projectMaeHours(),
         r.constantMaeHours());
+    System.out.printf("  the models with the similarity medians sweep each of %d combinations of "
+        + "Jaccard n %s, embedding n %s and cluster k %s; exact ties go to the smaller values, "
+        + "Jaccard n first, then embedding n, then cluster k%n",
+        ElasticNetSelection.Combination.all().size(), Augmentation.JACCARD_N,
+        Augmentation.EMBEDDING_N, Augmentation.CLUSTER_K);
     final List<Map<String, Object>> rows = new ArrayList<>();
     for (final ElasticNetSelection.Model m : r.models()) {
       final Fitting.Fitted f = m.fitted();
@@ -140,6 +114,18 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
           f.step(), Fitting.LAMBDA_STEPS, f.step() == 0 ? " = TOP, ALL ZEROED"
               : f.step() == Fitting.LAMBDA_STEPS - 1 ? " = GRID FLOOR" : "",
           f.score().maeHours(), f.score().maeHours() / 24, f.columns().size(), f.selected());
+      if (m.combination() != null) {
+        System.out.printf("    chosen: Jaccard n %d, embedding n %d, cluster k %d%n",
+            m.combination().jaccardN(), m.combination().embeddingN(),
+            m.combination().clusterK());
+        System.out.printf("    each combination's best on the inner validation (Jaccard n, "
+            + "embedding n, cluster k: MAE h)%n");
+        for (final ElasticNetSelection.Swept x : m.combinations()) {
+          System.out.printf("      %2d %2d %2d: %.2f%s%n", x.combination().jaccardN(),
+              x.combination().embeddingN(), x.combination().clusterK(), x.maeHours(),
+              x.combination().equals(m.combination()) ? "  chosen" : "");
+        }
+      }
       for (final ElasticNetSelection.Removed removed : m.removed()) {
         System.out.printf("    removed %s: %s%n", removed.column(), removed.reason());
       }
@@ -152,13 +138,9 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
 
     final String parametersSha;
     try {
-      if (Files.exists(parameters) && !onlyThisStep(Files.readAllLines(parameters))) {
-        throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
-            + parameters + " exists and holds more than this step's choices; it may be the "
-            + "registered chain's or the direct predictors', and is never overwritten"));
-      }
+      refuseForeign(parameters);
       final Path partial = parameters.resolveSibling(parameters.getFileName() + ".partial");
-      Files.write(partial, ElasticNetSelection.parameters(r, matrixSha, similaritySha));
+      Files.write(partial, ElasticNetSelection.parameters(r, matrixSha));
       Files.move(partial, parameters, StandardCopyOption.REPLACE_EXISTING,
           StandardCopyOption.ATOMIC_MOVE);
       parametersSha = IssuesReservedCommand.sha256(parameters);
@@ -172,9 +154,12 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     run.put("mode", "inner");
     run.put("outer_test", "not read");
     run.put("matrix_sha256", matrixSha);
-    run.put("similarity_parameters_sha256", similaritySha);
     run.put("parameters_sha256", parametersSha);
-    run.put("candidates", new LinkedHashMap<>(chosen));
+    run.put("jaccard_n", Augmentation.JACCARD_N);
+    run.put("embedding_n", Augmentation.EMBEDDING_N);
+    run.put("cluster_k", Augmentation.CLUSTER_K);
+    run.put("ties", "within a sweep the earlier point; across combinations the smaller Jaccard n, "
+        + "then embedding n, then cluster k");
     run.put("fit_rows", r.fitRows());
     run.put("validation_rows", r.validationRows());
     run.put("project_mae_hours", r.projectMaeHours());
@@ -185,12 +170,43 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
         context.issuesResults().record(run, rows));
   }
 
+  /**
+   * Refuses when {@code parameters} exists and is not a file of this step's own choices: it may
+   * be the registered chain's, or one written in an earlier format, and is never overwritten.
+   */
+  private static void refuseForeign(final Path parameters)
+      throws IOException, CommandFailedException {
+    if (Files.exists(parameters) && !onlyThisStep(Files.readAllLines(parameters))) {
+      throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
+          + parameters + " exists and is not a file of this step's choices in its current "
+          + "format; it may be the registered chain's or an earlier one, and is never "
+          + "overwritten"));
+    }
+  }
+
   /** One model as a document: its choice, what it read, and what it left out and why. */
   static Map<String, Object> row(final ElasticNetSelection.Model m) {
     final Fitting.Fitted f = m.fitted();
     final Map<String, Object> row = new LinkedHashMap<>();
     row.put("model", m.cell().label());
     row.put("declared", m.cell().attributes().stream().map(Attribute::name).toList());
+    if (m.combination() != null) {
+      row.put("jaccard_n", m.combination().jaccardN());
+      row.put("embedding_n", m.combination().embeddingN());
+      row.put("cluster_k", m.combination().clusterK());
+      final List<Map<String, Object>> each = new ArrayList<>();
+      for (final ElasticNetSelection.Swept x : m.combinations()) {
+        final Map<String, Object> one = new LinkedHashMap<>();
+        one.put("jaccard_n", x.combination().jaccardN());
+        one.put("embedding_n", x.combination().embeddingN());
+        one.put("cluster_k", x.combination().clusterK());
+        one.put("alpha", x.alpha());
+        one.put("lambda", x.lambda());
+        one.put("mae_hours", x.maeHours());
+        each.add(one);
+      }
+      row.put("combinations", each);
+    }
     row.put("alpha", f.alpha());
     row.put("lambda", f.lambda());
     row.put("step", f.step());
@@ -212,7 +228,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
   /** The columns the models declare that the matrix does not have, in the models' order. */
   static List<String> missing(final List<Cell> cells, final List<String> columns) {
     final Set<String> have = new HashSet<>(columns);
-    final Set<String> out = new java.util.LinkedHashSet<>();
+    final Set<String> out = new LinkedHashSet<>();
     for (final Cell cell : cells) {
       for (final Attribute a : cell.attributes()) {
         if (!have.contains(a.name())) {
@@ -234,19 +250,10 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
       return false;
     }
     try {
-      return Selection.read(lines).stream()
+      return ElasticNetSelection.read(lines).stream()
           .allMatch(p -> p.step().equals(ElasticNetSelection.STEP));
     } catch (final IllegalArgumentException e) {
       return false;
-    }
-  }
-
-  private static String sha256(final byte[] bytes) {
-    try {
-      return java.util.HexFormat.of().formatHex(
-          java.security.MessageDigest.getInstance("SHA-256").digest(bytes));
-    } catch (final java.security.NoSuchAlgorithmException e) {
-      throw new IllegalStateException(e);
     }
   }
 
@@ -263,8 +270,8 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
   private static Path path(final String name) throws CommandFailedException {
     final String value = env(name);
     if (value == null) {
-      throw new CommandFailedException(List.of("  MATRIX, SIMILARITY_PARAMETERS and "
-          + "ELASTIC_NET_PARAMETERS are required; missing " + name));
+      throw new CommandFailedException(List.of("  MATRIX and ELASTIC_NET_PARAMETERS "
+          + "are required; missing " + name));
     }
     return Path.of(value);
   }

@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import app.cli.CommandFailedException;
 import app.cli.Context;
 import app.issues.ElasticNetSelection;
-import app.issues.Selection;
 import app.pipeline.port.Progress;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -47,28 +46,23 @@ class IssuesSimilarityTestCommandTest {
     return Files.writeString(dir.resolve("matrix.tsv"), "placeholder, never parsed\n");
   }
 
-  private Path similarity() throws IOException {
-    return Files.write(dir.resolve("similarity.tsv"), List.of(Selection.HEADER,
-        "# step\tname\tparameter\tvalue", "direct\tcluster_median\tcandidate\t32",
-        "direct\tembedding_median\tcandidate\t5", "direct\tjaccard_median\tcandidate\t10"));
-  }
-
-  private Path elasticNet(final String matrixSha, final String similaritySha) throws IOException {
+  private Path elasticNet(final String matrixSha) throws IOException {
     final List<String> lines = new java.util.ArrayList<>(List.of(ElasticNetSelection.HEADER,
-        "# step\tname\tparameter\tvalue",
-        "elastic-net\tinputs\tmatrix_sha256\t" + matrixSha,
-        "elastic-net\tinputs\tsimilarity_parameters_sha256\t" + similaritySha));
-    for (final String m : List.of("previous_own_start", "revised_nine", "similarity_alone",
-        "revised_twelve", "alzubaidi_start", "kikas_start", "union_revised")) {
+        "# step\tname\tparameter\tvalue", "elastic-net\tinputs\tmatrix_sha256\t" + matrixSha));
+    for (final String m : ElasticNetSelection.MODELS) {
       lines.add("elastic-net\t" + m + "\talpha\t0.5");
       lines.add("elastic-net\t" + m + "\tlambda\t0.1");
+      if (ElasticNetSelection.WITH_SIMILARITY.contains(m)) {
+        lines.add("elastic-net\t" + m + "\tjaccard_n\t10");
+        lines.add("elastic-net\t" + m + "\tembedding_n\t5");
+        lines.add("elastic-net\t" + m + "\tcluster_k\t32");
+      }
     }
     return Files.write(dir.resolve("elastic-net.tsv"), lines);
   }
 
-  private void set(final Path matrix, final Path similarity, final Path elasticNet) {
+  private void set(final Path matrix, final Path elasticNet) {
     settings.put("MATRIX", matrix.toString());
-    settings.put("SIMILARITY_PARAMETERS", similarity.toString());
     settings.put("ELASTIC_NET_PARAMETERS", elasticNet.toString());
     settings.put("REPORT_DIR", dir.resolve("out").toString());
   }
@@ -83,43 +77,63 @@ class IssuesSimilarityTestCommandTest {
   @Test
   @DisplayName("a missing Elastic Net parameters file refuses the run")
   void refusesWithoutElasticNetParameters() throws IOException {
-    set(matrix(), similarity(), dir.resolve("absent.tsv"));
+    set(matrix(), dir.resolve("absent.tsv"));
     assertTrue(refusal().contains("absent.tsv does not exist"));
   }
 
   @Test
-  @DisplayName("a missing direct predictors' parameters file refuses the run")
-  void refusesWithoutSimilarityParameters() throws IOException {
+  @DisplayName("a SIMILARITY_PARAMETERS setting is not read: the run needs and reads only the "
+      + "Elastic Net parameters")
+  void readsNoDirectPredictorsFile() throws IOException {
     final Path matrix = matrix();
-    set(matrix, dir.resolve("absent.tsv"), elasticNet("x", "y"));
-    assertTrue(refusal().contains("absent.tsv does not exist"));
-  }
-
-  @Test
-  @DisplayName("parameters chosen with another direct predictors' file refuse the run")
-  void refusesAnotherSimilarityFile() throws IOException {
-    final Path matrix = matrix();
-    final Path similarity = similarity();
-    set(matrix, similarity,
-        elasticNet(IssuesReservedCommand.sha256(matrix), "0".repeat(64)));
-    assertTrue(refusal().contains("were chosen with another"));
+    set(matrix, elasticNet("0".repeat(64)));
+    settings.put("SIMILARITY_PARAMETERS", dir.resolve("absent.tsv").toString());
+    final String why = refusal();
+    assertTrue(why.contains("were chosen on another matrix"), why);
   }
 
   @Test
   @DisplayName("parameters chosen on another matrix refuse the run")
   void refusesAnotherMatrix() throws IOException {
-    final Path matrix = matrix();
-    final Path similarity = similarity();
-    set(matrix, similarity,
-        elasticNet("0".repeat(64), IssuesReservedCommand.sha256(similarity)));
+    set(matrix(), elasticNet("0".repeat(64)));
     assertTrue(refusal().contains("were chosen on another matrix"));
   }
 
   @Test
-  @DisplayName("a parameters file that is not the step's own refuses the run")
+  @DisplayName("a model with the similarity medians without its n, n and k refuses the run")
+  void refusesAModelWithoutItsCombination() throws IOException {
+    final Path matrix = matrix();
+    final Path elasticNet = elasticNet(IssuesReservedCommand.sha256(matrix));
+    final List<String> lines = new java.util.ArrayList<>(Files.readAllLines(elasticNet));
+    lines.remove("elastic-net\tunion_revised\tcluster_k\t32");
+    Files.write(elasticNet, lines);
+    set(matrix, elasticNet);
+    assertTrue(refusal().contains("only part of its"));
+  }
+
+  @Test
+  @DisplayName("a parameters file without one of the seven models refuses the run before any "
+      + "column is checked")
+  void refusesAMissingModel() throws IOException {
+    final Path matrix = matrix();
+    final Path elasticNet = elasticNet(IssuesReservedCommand.sha256(matrix));
+    final List<String> lines = new java.util.ArrayList<>(Files.readAllLines(elasticNet));
+    lines.removeIf(l -> l.startsWith("elastic-net\tkikas_start\t"));
+    Files.write(elasticNet, lines);
+    set(matrix, elasticNet);
+    assertTrue(refusal().contains("the models are"));
+  }
+
+  @Test
+  @DisplayName("a parameters file that is not the step's own, as one in the format before "
+      + "ticket 11, refuses the run")
   void refusesAForeignFile() throws IOException {
     final Path matrix = matrix();
-    set(matrix, similarity(), similarity());
+    final Path old = Files.write(dir.resolve("old.tsv"), List.of(
+        "# Elastic Net alpha and lambda chosen on the inner validation only; the outer test was "
+            + "not read", "elastic-net\tinputs\tmatrix_sha256\t"
+            + IssuesReservedCommand.sha256(matrix)));
+    set(matrix, old);
     assertTrue(refusal().contains("is not the Elastic Net step's parameters file"));
   }
 
@@ -128,9 +142,7 @@ class IssuesSimilarityTestCommandTest {
   void refusesOutputOverAnInput() throws IOException {
     final Path matrix = Files.writeString(dir.resolve(IssuesSimilarityTestCommand.PREDICTIONS),
         "placeholder, never parsed\n");
-    final Path similarity = similarity();
-    set(matrix, similarity, elasticNet(IssuesReservedCommand.sha256(matrix),
-        IssuesReservedCommand.sha256(similarity)));
+    set(matrix, elasticNet(IssuesReservedCommand.sha256(matrix)));
     settings.put("REPORT_DIR", dir.toString());
     final CommandFailedException e = assertThrows(CommandFailedException.class,
         () -> command().run(context()));

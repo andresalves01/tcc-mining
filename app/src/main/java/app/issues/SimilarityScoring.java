@@ -21,14 +21,15 @@ import java.util.concurrent.Callable;
 
 /**
  * The test of the description-similarity chain, outer mode only: every model refitted on the
- * outer training set with the parameters the two selection steps wrote, and the outer test scored
+ * outer training set with the parameters the selection step wrote, and the outer test scored
  * once. Chooses nothing.
  *
- * <p><b>Models</b>, in this order: the three references learned on the outer training set -- the
- * global median, the project median and the executor-project median, as the registered chain
- * learns them; the three direct predictors, each the similarity median at its chosen value read
- * as the prediction in hours, the outer training set's global median where it is missing; and the
- * seven Elastic Net models of {@link ElasticNetSelection#cells}, in the outer variant.
+ * <p><b>Models</b>, ten, in this order: the three references learned on the outer training set
+ * -- the global median, the project median and the executor-project median, as the registered
+ * chain learns them; and the seven Elastic Net models of {@link ElasticNetSelection#cells(Map,
+ * Augmentation.Variant)}, in the outer variant, each model with the similarity medians reading
+ * them at the Jaccard n, embedding n and cluster k chosen for it. A similarity median is an
+ * attribute of the models that read it and is never scored alone (ticket 11).
  *
  * <p><b>Refit.</b> As the registered reserved run does it: the alpha given, the lambda given
  * times the ratio of the outer training rows to the inner fitting rows ({@link
@@ -63,7 +64,7 @@ public final class SimilarityScoring {
   /**
    * One model scored on the outer test.
    *
-   * @param kind {@code reference}, {@code direct} or {@code elastic-net}
+   * @param kind {@code reference} or {@code elastic-net}
    * @param fitted the refit, for an Elastic Net model only; null otherwise
    * @param removed the declared columns left out, for an Elastic Net model; empty otherwise
    */
@@ -72,41 +73,28 @@ public final class SimilarityScoring {
       List<ElasticNetSelection.Removed> removed) {}
 
   /**
-   * A direct predictor's column and its coverage.
-   *
-   * @param observed outer test rows where the column has a value; the others read the fallback
-   * @param maeObservedHours the error on those rows alone; NaN when there is none
-   */
-  public record Direct(String name, String column, int observed, double maeObservedHours) {}
-
-  /**
    * @param innerFitRows the rows the given lambdas were chosen on, which the final lambda scales
    *     by
-   * @param fallbackHours the outer training set's global median, a direct predictor's missing value
    * @param unseenProjects outer test projects with no outer training row, where the project
    *     median is the global one
    */
-  public record Report(int fitRows, int scoredRows, int innerFitRows, double fallbackHours,
-      List<IssueUnit> scoredUnits, double[] observed, List<Scored> models, List<Direct> directs,
+  public record Report(int fitRows, int scoredRows, int innerFitRows,
+      List<IssueUnit> scoredUnits, double[] observed, List<Scored> models,
       List<ProjectBootstrap.Gap> comparisons, Set<String> unseenProjects, int unseenRows) {}
 
   private SimilarityScoring() {}
 
-  /** A direct predictor's name: the method's, {@code jaccard_median} giving {@code jaccard_direct}. */
-  public static String direct(final String method) {
-    return method.replace("_median", "") + "_direct";
-  }
-
   /**
    * Refits and scores.
    *
-   * @param chosen per similarity method, the candidate value the direct predictors chose
-   * @param choices per Elastic Net model, its alpha and lambda chosen on the inner validation;
-   *     exactly the models of {@link ElasticNetSelection#cells}, or the run refuses
+   * @param choices per Elastic Net model, its alpha and lambda chosen on the inner validation and,
+   *     for a model with the similarity medians, its combination; exactly the models of {@link
+   *     ElasticNetSelection#MODELS}, a combination for exactly those of {@link
+   *     ElasticNetSelection#WITH_SIMILARITY}, or the run refuses
    */
-  public static Report run(final List<RowCache.Entry> entries, final Map<String, Integer> chosen,
+  public static Report run(final List<RowCache.Entry> entries,
       final Map<String, ElasticNetSelection.Choice> choices) {
-    return run(entries, chosen, choices, Parallel.threads(Parallel.ELASTIC_NET_THREADS),
+    return run(entries, choices, Parallel.threads(Parallel.ELASTIC_NET_THREADS),
         Parallel.threads(Parallel.BOOTSTRAP_THREADS));
   }
 
@@ -115,15 +103,16 @@ public final class SimilarityScoring {
    * draws of every interval evaluated each alone on up to {@code drawThreads}, all read back in
    * their order, so the report is the same bits whatever the numbers.
    */
-  public static Report run(final List<RowCache.Entry> entries, final Map<String, Integer> chosen,
+  public static Report run(final List<RowCache.Entry> entries,
       final Map<String, ElasticNetSelection.Choice> choices, final int fitThreads,
       final int drawThreads) {
-    final List<Cell> cells = ElasticNetSelection.cells(chosen, Augmentation.Variant.OUTER);
-    final Set<String> names = new LinkedHashSet<>(cells.stream().map(Cell::label).toList());
-    if (!names.equals(choices.keySet())) {
+    if (!new LinkedHashSet<>(ElasticNetSelection.MODELS).equals(choices.keySet())) {
       throw new IllegalArgumentException("the parameters hold alpha and lambda for "
-          + choices.keySet() + "; the models are " + names);
+          + choices.keySet() + "; the models are " + ElasticNetSelection.MODELS);
     }
+    final List<Cell> cells =
+        ElasticNetSelection.cells(ElasticNetSelection.combinations(choices),
+            Augmentation.Variant.OUTER);
     final Fitting.Sides sides = ElasticNetSelection.flagged(
         Fitting.sides(entries, Fitting.Mode.RESERVED, P), cells);
     final int innerFitRows = Fitting.sides(entries, Fitting.Mode.INNER, P).fitUnits().size();
@@ -142,34 +131,6 @@ public final class SimilarityScoring {
     models.add(given(PROJECT, "reference", projectHours, observed, projectMae, constantMae));
     models.add(given(PAIR, "reference", refs.pairHours(sides.scoreUnits()), observed, projectMae,
         constantMae));
-
-    final List<Direct> directs = new ArrayList<>();
-    for (final String method : ElasticNetSelection.METHODS) {
-      final int value = chosen.get(method);
-      final String column = switch (method) {
-        case "jaccard_median" -> Augmentation.jaccard(value, Augmentation.Variant.OUTER);
-        case "embedding_median" -> Augmentation.embedding(value, Augmentation.Variant.OUTER);
-        default -> Augmentation.cluster(value, Augmentation.Variant.OUTER);
-      };
-      final double[] predicted = new double[observed.length];
-      int seen = 0;
-      double seenError = 0;
-      for (int i = 0; i < predicted.length; i++) {
-        final Double v = sides.scoreRows().get(i).values().get(column);
-        if (v != null && !Double.isFinite(v)) {
-          throw new IllegalArgumentException(column + " of "
-              + sides.scoreUnits().get(i).issueId() + " is " + v + ", not a duration");
-        }
-        predicted[i] = v == null ? refs.constantHours() : v;
-        if (v != null) {
-          seen++;
-          seenError += Math.abs(v - observed[i]);
-        }
-      }
-      directs.add(new Direct(direct(method), column, seen,
-          seen == 0 ? Double.NaN : seenError / seen));
-      models.add(given(direct(method), "direct", predicted, observed, projectMae, constantMae));
-    }
 
     final List<Callable<Scored>> refits = new ArrayList<>(cells.size());
     for (final Cell cell : cells) {
@@ -206,24 +167,20 @@ public final class SimilarityScoring {
         unseenRows++;
       }
     }
-    return new Report(fitRows, observed.length, innerFitRows, refs.constantHours(),
-        List.copyOf(sides.scoreUnits()), observed, List.copyOf(models), List.copyOf(directs),
-        List.copyOf(comparisons), unseen, unseenRows);
+    return new Report(fitRows, observed.length, innerFitRows, List.copyOf(sides.scoreUnits()),
+        observed, List.copyOf(models), List.copyOf(comparisons), unseen, unseenRows);
   }
 
   /**
    * The paired comparisons, {@code a} against {@code b}, and only these: revised nine against the
-   * previous specification; revised twelve against revised nine; the embedding direct predictor
-   * against Jaccard's; the cluster direct predictor against the embedding one; then every model
-   * against the global median, and every model but the global median against the project median,
-   * so the two references are compared once.
+   * previous specification; revised twelve against revised nine; then every model against the
+   * global median, and every model but the global median against the project median, so the two
+   * references are compared once.
    */
   public static List<String[]> pairs(final List<String> models) {
     final List<String[]> out = new ArrayList<>(List.of(
         new String[] {"revised_nine", "previous_own_start"},
-        new String[] {"revised_twelve", "revised_nine"},
-        new String[] {direct("embedding_median"), direct("jaccard_median")},
-        new String[] {direct("cluster_median"), direct("embedding_median")}));
+        new String[] {"revised_twelve", "revised_nine"}));
     for (final String m : models) {
       if (!m.equals(GLOBAL)) {
         out.add(new String[] {m, GLOBAL});
