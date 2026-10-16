@@ -25,13 +25,14 @@ import java.util.concurrent.Callable;
  * outer training set with the parameters the selection step wrote, and the outer test scored
  * once. Chooses nothing.
  *
- * <p><b>Models</b>, fifteen, in this order: the three references learned on the outer training
+ * <p><b>Models</b>, seventeen, in this order: the three references learned on the outer training
  * set -- the global median, the project median and the executor-project median, as the registered
- * chain learns them; the six Elastic Net models of {@link ElasticNetSelection#cells(Map,
+ * chain learns them; the seven Elastic Net models of {@link ElasticNetSelection#cells(Map,
  * Augmentation.Variant)}, in the outer variant, each model with the similarity medians reading
- * them at the Jaccard n, embedding n and cluster k chosen for it; and the six random forests
- * beside them ({@link #forest(String)}), a robustness check (ticket 13). A similarity median is an
- * attribute of the models that read it and is never scored alone (ticket 11).
+ * them at the Jaccard n, embedding n and cluster k chosen for it, the retrospective one last
+ * (ticket 15); and the seven random forests beside them ({@link #forest(String)}), a robustness
+ * check (ticket 13). A similarity median is an attribute of the models that read it and is never
+ * scored alone (ticket 11).
  *
  * <p><b>Refit.</b> As the registered reserved run does it: the alpha given, the lambda given
  * times the ratio of the outer training rows to the inner fitting rows ({@link
@@ -50,7 +51,10 @@ import java.util.concurrent.Callable;
  * error's distribution with the slowest tenth left out ({@link Breakdown#errors}) and the error by
  * band of the true business days, 1, 2-3, 4-10 and 11 or more ({@link BusinessDays#bands}).
  * Paired comparisons, gap in mean absolute error with the interval from resampling whole projects
- * ({@link ProjectBootstrap#compare}), for exactly the pairs of {@link #pairs}.
+ * ({@link ProjectBootstrap#compare}), for exactly the pairs of {@link #pairs}. Beside them, a side
+ * reading (ticket 15): the pairs of {@link #WITH_COMMITS} again on the scored issues with at least
+ * one implementation commit only, those with the retrospective Java lines ({@link
+ * Retrospective#LINES}) observed.
  *
  * <p><b>Unit</b> (ticket 14). Every duration, prediction and error is in whole business days
  * ({@link BusinessDays}), the outcome each unit carries ({@link IssueUnit#duration}); the
@@ -69,6 +73,18 @@ public final class SimilarityScoring {
   public static final String GLOBAL = "global_median";
   public static final String PROJECT = "project_median";
   public static final String PAIR = "executor_project_median";
+
+  private static final String RETROSPECTIVE = ElasticNetSelection.RETROSPECTIVE;
+
+  private static final String WITH_SIMILARITY = "own_with_similarity";
+
+  /**
+   * The comparisons of the side reading on the scored issues with an implementation commit: the
+   * retrospective model against the own specification with similarity, Elastic Net and forest.
+   */
+  public static final List<String[]> WITH_COMMITS = List.of(
+      new String[] {RETROSPECTIVE, WITH_SIMILARITY},
+      new String[] {forest(RETROSPECTIVE), forest(WITH_SIMILARITY)});
 
   private static final Population P = Population.IN_PROGRESS;
 
@@ -92,10 +108,13 @@ public final class SimilarityScoring {
    *     by
    * @param unseenProjects outer test projects with no outer training row, where the project
    *     median is the global one
+   * @param withCommitRows the scored issues with at least one implementation commit
+   * @param withCommits the side reading: the pairs of {@link #WITH_COMMITS} on those issues only
    */
   public record Report(int fitRows, int scoredRows, int innerFitRows,
       List<IssueUnit> scoredUnits, double[] observed, List<Scored> models,
-      List<ProjectBootstrap.Gap> comparisons, Set<String> unseenProjects, int unseenRows) {}
+      List<ProjectBootstrap.Gap> comparisons, Set<String> unseenProjects, int unseenRows,
+      int withCommitRows, List<ProjectBootstrap.Gap> withCommits) {}
 
   private SimilarityScoring() {}
 
@@ -199,6 +218,21 @@ public final class SimilarityScoring {
       comparisons.add(ProjectBootstrap.compare(projects, pair[0], errors.get(pair[0]), pair[1],
           errors.get(pair[1]), drawThreads));
     }
+    final List<Integer> withCommit = new ArrayList<>();
+    for (int i = 0; i < sides.scoreRows().size(); i++) {
+      if (sides.scoreRows().get(i).values().containsKey(Retrospective.LINES)) {
+        withCommit.add(i);
+      }
+    }
+    final List<ProjectBootstrap.Gap> side = new ArrayList<>();
+    if (!withCommit.isEmpty()) {
+      final List<String> sideProjects = withCommit.stream().map(projects::get).toList();
+      for (final String[] pair : WITH_COMMITS) {
+        side.add(ProjectBootstrap.compare(sideProjects, pair[0],
+            rows(errors.get(pair[0]), withCommit), pair[1], rows(errors.get(pair[1]), withCommit),
+            drawThreads));
+      }
+    }
 
     final Set<String> seen = new HashSet<>();
     sides.fitUnits().forEach(u -> seen.add(u.project()));
@@ -211,18 +245,29 @@ public final class SimilarityScoring {
       }
     }
     return new Report(fitRows, observed.length, innerFitRows, List.copyOf(sides.scoreUnits()),
-        observed, List.copyOf(models), List.copyOf(comparisons), unseen, unseenRows);
+        observed, List.copyOf(models), List.copyOf(comparisons), unseen, unseenRows,
+        withCommit.size(), List.copyOf(side));
+  }
+
+  private static double[] rows(final double[] values, final List<Integer> rows) {
+    final double[] out = new double[rows.size()];
+    for (int k = 0; k < out.length; k++) {
+      out[k] = values[rows.get(k)];
+    }
+    return out;
   }
 
   /**
    * The paired comparisons, {@code a} against {@code b}, and only these. First, of the references
    * and Elastic Net models: the own specification with similarity against the same without the
-   * similarity medians, what similarity adds beside the other attributes; then each of them against
-   * the global median, and each but the global median against the project median, so the two
-   * references are compared once. Then, of the forests (ticket 13), in the order of {@code
-   * models}: each forest against its Elastic Net; the forest of the own specification with
-   * similarity against the forest without; each forest against the global median; each forest
-   * against the project median.
+   * similarity medians, what similarity adds beside the other attributes; the retrospective model
+   * against the own specification with similarity, what the eight attributes observed up to the
+   * resolution add (ticket 15); then each of them against the global median, and each but the
+   * global median against the project median, so the two references are compared once. Then, of
+   * the forests (ticket 13), in the order of {@code models}: each forest against its Elastic Net;
+   * the forest of the own specification with similarity against the forest without; the
+   * retrospective forest against the forest with similarity; each forest against the global
+   * median; each forest against the project median.
    */
   public static List<String[]> pairs(final List<String> models) {
     final List<String> forests = new ArrayList<>();
@@ -233,6 +278,9 @@ public final class SimilarityScoring {
     final List<String> trees = models.stream().filter(forests::contains).toList();
     final List<String[]> out = new ArrayList<>(List.<String[]>of(
         new String[] {"own_with_similarity", "own_without_similarity"}));
+    if (linear.containsAll(List.of(RETROSPECTIVE, WITH_SIMILARITY))) {
+      out.add(WITH_COMMITS.get(0));
+    }
     for (final String m : linear) {
       if (!m.equals(GLOBAL)) {
         out.add(new String[] {m, GLOBAL});
@@ -252,6 +300,9 @@ public final class SimilarityScoring {
     if (trees.containsAll(List.of(forest("own_with_similarity"),
         forest("own_without_similarity")))) {
       out.add(new String[] {forest("own_with_similarity"), forest("own_without_similarity")});
+    }
+    if (trees.containsAll(List.of(forest(RETROSPECTIVE), forest(WITH_SIMILARITY)))) {
+      out.add(WITH_COMMITS.get(1));
     }
     for (final String f : trees) {
       out.add(new String[] {f, GLOBAL});

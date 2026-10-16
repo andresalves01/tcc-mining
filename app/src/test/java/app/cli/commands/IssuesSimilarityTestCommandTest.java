@@ -39,7 +39,7 @@ class IssuesSimilarityTestCommandTest {
     return new Context(null, null, null, null, null, null, null, null, null, null, null, null,
         null, null, Progress.silent(), null, (run, rows) -> {
           throw new AssertionError("recorded " + run);
-        });
+        }, null);
   }
 
   private Path matrix() throws IOException {
@@ -254,6 +254,19 @@ class IssuesSimilarityTestCommandTest {
       assertTrue(run.get("target").toString().startsWith("whole business days"), run.toString());
       assertTrue(run.get("population").toString().contains("at least one business day"));
       assertTrue(run.get("holidays").toString().contains("holidays ignored"));
+    }
+  }
+
+  @Test
+  @DisplayName("the run records of both steps name the retrospective scenario and state that its "
+      + "counts grow with the duration itself")
+  void retrospectiveStatements() {
+    for (final Map<String, Object> run : List.of(IssuesSimilarityTestCommand.statements(),
+        IssuesSimilarityElasticNetCommand.statements())) {
+      final String scenario = run.get("retrospective_scenario").toString();
+      assertTrue(scenario.startsWith("retrospective"), scenario);
+      assertTrue(scenario.contains("grow with the duration itself"), scenario);
+      assertTrue(scenario.contains("not a prediction"), scenario);
     }
   }
 }

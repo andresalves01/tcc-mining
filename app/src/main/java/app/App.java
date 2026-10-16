@@ -127,7 +127,8 @@ public final class App {
         progress,
         new app.pipeline.mongo.MongoStudySource(client, config.sourceDb(), config.targetDb(),
             progress),
-        new app.pipeline.mongo.MongoIssuesStore(client, config.issuesDb()));
+        new app.pipeline.mongo.MongoIssuesStore(client, config.issuesDb()),
+        new app.pipeline.mongo.MongoChangedMethodSource(client, config.sourceDb(), progress));
   }
 
   private App() {}
