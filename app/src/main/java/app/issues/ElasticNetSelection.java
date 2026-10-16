@@ -210,8 +210,8 @@ public final class ElasticNetSelection {
   /** The first line of every parameters file this step writes. */
   public static final String HEADER = "# Elastic Net alpha and lambda, the similarity medians' "
       + "n, n and k, and each random forest's column share and leaf, chosen on the inner "
-      + "validation only, the target in whole business days on the issues of at least one; the "
-      + "outer test was not read";
+      + "validation only, the target in whole business days on the issues of at least one, for "
+      + "seven models with the retrospective one; the outer test was not read";
 
   /** The step of the Elastic Net choices in the parameters file. */
   public static final String STEP = "elastic-net";

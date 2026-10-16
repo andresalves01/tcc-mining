@@ -250,7 +250,8 @@ class RetrospectiveTest {
 
   @Test
   @DisplayName("participants: distinct people who commented or changed a field in [t0, t1), bots "
-      + "out, the reporter only if active, the resolution's action and commit authors not counted")
+      + "out, the reporter only if active, the resolution's action, ProjectImport events and commit "
+      + "authors not counted")
   void participants() {
     final Fixture f = new Fixture();
     f.started("a", "P-1", "r");
@@ -263,8 +264,10 @@ class RetrospectiveTest {
     f.event("a", T0 + D, "labels", "bot", "", "x");
     f.comment("a", "early", T0 - H);
     f.event("a", T0 - H, "priority", "early", "Minor", "Major");
+    f.event("a", T0 + D, "ProjectImport", "importer", null, "x");
     f.commit("c", "coder", T0 + D, 10, new int[] {1}, "a");
-    // dev (the move to In Progress at t0), person-1 and u3; not r, closer, bot, early or coder
+    // dev (the move to In Progress at t0), person-1 and u3; not r, closer, bot, early, importer
+    // (a ProjectImport event is a migration, not a person taking part) or coder
     assertEquals(3.0, f.row("a", Set.of("bot")).get(Retrospective.PARTICIPANTS));
 
     final Fixture g = new Fixture();

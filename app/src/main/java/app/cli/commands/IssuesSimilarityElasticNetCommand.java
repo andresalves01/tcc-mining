@@ -365,7 +365,8 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
    * A file this step wrote and nothing appended to: its header and its own lines only, every one
    * of them an Elastic Net line for the matrix's inputs or for one of {@link
    * ElasticNetSelection#MODELS}, or a forest line for one of those models. A file written before
-   * ticket 13, without the forests, has another header; one of the models before ticket 12
+   * ticket 13, without the forests, has another header, and so has one of ticket 14's six models,
+   * without the retrospective one; one of the models before ticket 12
    * ({@code previous_own_start}, {@code revised_nine}, ...) is told apart by its model names.
    */
   static boolean onlyThisStep(final List<String> lines) {

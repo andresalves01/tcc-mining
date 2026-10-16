@@ -18,7 +18,7 @@ class IssuesSimilarityElasticNetCommandTest {
   @Test
   @DisplayName("only a file of this step's own choices in its current format is overwritten: not "
       + "the registered chain's, not one in the format before ticket 11, not one naming the "
-      + "models before ticket 12")
+      + "models before ticket 12, not one of the six models before the retrospective one")
   void overwritesOnlyItsOwnFile() {
     final List<String> own = List.of(ElasticNetSelection.HEADER,
         "# step\tname\tparameter\tvalue",
@@ -42,6 +42,13 @@ class IssuesSimilarityElasticNetCommandTest {
     beforeForests.set(0, "# Elastic Net alpha and lambda, and the similarity medians' n, n and "
         + "k, chosen on the inner validation only; the outer test was not read");
     assertFalse(IssuesSimilarityElasticNetCommand.onlyThisStep(beforeForests));
+    // ticket 14's file, six models without the retrospective one, under its header then
+    final List<String> beforeRetrospective = new ArrayList<>(own);
+    beforeRetrospective.set(0, "# Elastic Net alpha and lambda, the similarity medians' n, n and "
+        + "k, and each random forest's column share and leaf, chosen on the inner validation "
+        + "only, the target in whole business days on the issues of at least one; the outer test "
+        + "was not read");
+    assertFalse(IssuesSimilarityElasticNetCommand.onlyThisStep(beforeRetrospective));
     // ticket 11's file, same header and format, with the models as they were named then
     for (final String before : List.of("previous_own_start", "revised_nine", "revised_twelve",
         "union_revised")) {

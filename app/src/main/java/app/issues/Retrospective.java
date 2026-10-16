@@ -44,7 +44,8 @@ import java.util.Set;
  *   <li>{@link #COMMENTS}: the comments.
  *   <li>{@link #PARTICIPANTS}: the distinct canonical people who commented or changed any field;
  *       the reporter only when active; the resolution's own action, at t1, outside the window;
- *       commit authors not counted.
+ *       {@code ProjectImport} events (a migration, not a person taking part) and commit authors
+ *       not counted.
  *   <li>{@link #ASSIGNEE_CHANGES}: the changes of the assignee whose old and new values differ
  *       once normalised ({@link Initial#norm}): nobody to a person, a person to nobody and a
  *       person to another alike.
@@ -235,7 +236,7 @@ public final class Retrospective {
     }
     int assignees = 0;
     for (final Corpus.Event e : universe.events(u.id())) {
-      if (!inside(e.at(), t0, t1) || bot(e.author())) {
+      if (!inside(e.at(), t0, t1) || bot(e.author()) || "ProjectImport".equals(e.field())) {
         continue;
       }
       if (e.author() != null) {
