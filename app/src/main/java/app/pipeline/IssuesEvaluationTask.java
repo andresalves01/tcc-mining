@@ -70,7 +70,7 @@ public final class IssuesEvaluationTask {
    * numbers never reach, goes to the constant, the simpler of the two.
    */
   public record MainReference(double constantMae, double projectMae,
-      double pairMaeHours) {
+      double pairMae) {
 
     /** The main study's rule: two candidates. */
     public MainReference(final double constantMae, final double projectMae) {
@@ -79,7 +79,7 @@ public final class IssuesEvaluationTask {
 
     public boolean constant() {
       return constantMae <= projectMae
-          && (Double.isNaN(pairMaeHours) || constantMae <= pairMaeHours);
+          && (Double.isNaN(pairMae) || constantMae <= pairMae);
     }
 
     /**
@@ -90,7 +90,7 @@ public final class IssuesEvaluationTask {
       if (constant()) {
         return "constante";
       }
-      return Double.isNaN(pairMaeHours) || projectMae <= pairMaeHours ? "project median"
+      return Double.isNaN(pairMae) || projectMae <= pairMae ? "project median"
           : "executor-project pair median";
     }
   }

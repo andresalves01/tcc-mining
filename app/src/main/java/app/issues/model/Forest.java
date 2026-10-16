@@ -13,7 +13,7 @@ import java.util.Random;
  * after the reserved run: a comparison of estimators, not a new registered test).
  *
  * <p>Everything the linear model gets, this gets: the same cell, the same fitting and scored sides,
- * the same design matrix learned on the fitting side, the target {@code log1p} of hours and the
+ * the same design matrix learned on the fitting side, the target {@code log1p} of the duration and the
  * prediction back through {@code expm1}, held at zero. The grid below was declared before the
  * forest ran; the point with the smallest mean absolute error on the scored side is kept, as the
  * linear sweep keeps its own.
@@ -84,9 +84,9 @@ public final class Forest {
 
   /**
    * A column's permutation importance on the scored side: how much the mean absolute error, in
-   * hours, rises when that column's values are shuffled among the scored rows.
+   * the target's unit, rises when that column's values are shuffled among the scored rows.
    *
-   * @param increases the rise of each repeat, in hours, in the order drawn
+   * @param increases the rise of each repeat, in the target's unit, in the order drawn
    */
   public record Importance(String column, double meanIncrease, double[] increases) {}
 

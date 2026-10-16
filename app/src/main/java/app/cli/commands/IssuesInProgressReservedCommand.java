@@ -91,7 +91,7 @@ public final class IssuesInProgressReservedCommand implements CommandRunner {
     System.out.printf("  main reference by the rule (P12: lowest MAE on the inner selection among "
         + "three): %s (constant %.2f h, project median %.2f h, pair median %.2f h); the "
         + "others are secondary%n", r.main().name().toUpperCase(), r.main().constantMae(),
-        r.main().projectMae(), r.main().pairMaeHours());
+        r.main().projectMae(), r.main().pairMae());
     System.out.printf("  test projects with no issue in training (there the project median is the "
         + "constant): %,d issues, %s%n", r.unseenRows(), r.unseenProjects());
 

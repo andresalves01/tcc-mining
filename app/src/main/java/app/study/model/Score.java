@@ -15,8 +15,8 @@ import java.util.List;
  * the business days of the in-progress similarity chain, where {@code maeDays} means nothing and
  * is never read.
  *
- * <p>So this type carries the mean absolute error in hours, the same number in days because that is
- * how a reader thinks about a unit, the gap against the baseline in both absolute and
+ * <p>So this type carries the mean absolute error in the target's unit, the same number divided by
+ * 24 ({@code maeDays}, meaningful only when the unit is hours), the gap against the baseline in both absolute and
  * relative terms, and Spearman as the secondary question of whether the ordering is right.
  *
  * @param mae the formal metric
@@ -41,28 +41,28 @@ public record Score(String label, int n, double mae, double maeDays,
 
   /**
    * @param predicted one prediction per row, in the target's unit, on the original scale
-   * @param observedHours the truth, same order
-   * @param baselineMaeHours what the mandatory reference scored on the same rows
+   * @param observed the truth, same order
+   * @param baselineMae what the mandatory reference scored on the same rows
    */
   public static Score of(final String label, final double[] predicted,
-      final double[] observedHours, final double baselineMaeHours, final double constantMae) {
+      final double[] observed, final double baselineMae, final double constantMae) {
 
-    if (predicted.length != observedHours.length) {
+    if (predicted.length != observed.length) {
       throw new IllegalArgumentException("predictions and truths must line up row for row");
     }
     double sum = 0;
     for (int i = 0; i < predicted.length; i++) {
-      sum += Math.abs(predicted[i] - observedHours[i]);
+      sum += Math.abs(predicted[i] - observed[i]);
     }
     final double mae = sum / predicted.length;
     return new Score(label, predicted.length, mae, mae / 24.0,
-        baselineMaeHours - mae,
-        baselineMaeHours == 0 ? 0 : 100.0 * (baselineMaeHours - mae) / baselineMaeHours,
+        baselineMae - mae,
+        baselineMae == 0 ? 0 : 100.0 * (baselineMae - mae) / baselineMae,
         constantMae == 0 ? 0 : 100.0 * (constantMae - mae) / constantMae,
         // Reused rather than reimplemented: the same ranking correlation the previous paper used,
         // so that a difference between the two studies is never an artefact of two tie rules.
-        Metrics.spearman(predicted, observedHours),
-        pairwiseAccuracy(predicted, observedHours));
+        Metrics.spearman(predicted, observed),
+        pairwiseAccuracy(predicted, observed));
   }
 
   /**
@@ -103,13 +103,13 @@ public record Score(String label, int n, double mae, double maeDays,
 
   /** A reference scores itself, so its row of the table comes out of the same code path. */
   public static Score reference(final String label, final double[] predicted,
-      final double[] observedHours, final double constantMae) {
+      final double[] observed, final double constantMae) {
 
     double sum = 0;
     for (int i = 0; i < predicted.length; i++) {
-      sum += Math.abs(predicted[i] - observedHours[i]);
+      sum += Math.abs(predicted[i] - observed[i]);
     }
-    return of(label, predicted, observedHours, sum / predicted.length, constantMae);
+    return of(label, predicted, observed, sum / predicted.length, constantMae);
   }
 
   /**
