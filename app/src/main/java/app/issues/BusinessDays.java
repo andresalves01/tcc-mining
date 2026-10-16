@@ -77,41 +77,31 @@ public final class BusinessDays {
         ElasticNetSelection.sizes(out));
   }
 
+  /**
+   * The entries as they are, every one carrying its business days; refuses one that does not, as
+   * an entry that did not go through {@link #population}: the chain's target is never the hours.
+   */
+  static List<RowCache.Entry> counted(final List<RowCache.Entry> entries) {
+    for (final RowCache.Entry e : entries) {
+      if (e.unit().businessDays() == null) {
+        throw new IllegalArgumentException(e.unit().issueId() + " has no business days set: the "
+            + "entries of the in-progress similarity chain are BusinessDays.population's");
+      }
+    }
+    return entries;
+  }
+
   /** The upper ends of the bands of true business days the error is reported by, the last open. */
-  private static final double[] BAND_TOPS = {1, 3, 10, Double.POSITIVE_INFINITY};
+  private static final double[] BAND_TOPS = {1, 3, 10};
 
   private static final String[] BAND_LABELS = {"1", "2-3", "4-10", "11+"};
 
   /**
-   * The predictions' error by band of the true business days: 1, 2-3, 4-10 and 11 or more. The
-   * bands only group the rows; every error is the whole, unclipped one.
+   * The predictions' error by band of the true business days: 1, 2-3, 4-10 and 11 or more ({@link
+   * Breakdown#byEdges}). The bands only group the rows; every error is the whole, unclipped one.
    */
   public static List<Breakdown.Band> bands(final double[] predicted, final double[] observed) {
-    final List<Breakdown.Band> out = new ArrayList<>(BAND_LABELS.length);
-    for (int b = 0; b < BAND_LABELS.length; b++) {
-      final double low = b == 0 ? Double.NEGATIVE_INFINITY : BAND_TOPS[b - 1];
-      final List<Double> truths = new ArrayList<>();
-      final List<Double> errors = new ArrayList<>();
-      for (int i = 0; i < observed.length; i++) {
-        if (observed[i] > low && observed[i] <= BAND_TOPS[b]) {
-          truths.add(observed[i]);
-          errors.add(Math.abs(predicted[i] - observed[i]));
-        }
-      }
-      out.add(new Breakdown.Band(BAND_LABELS[b], errors.size(), median(truths),
-          errors.stream().mapToDouble(Double::doubleValue).average().orElse(Double.NaN),
-          median(errors)));
-    }
-    return List.copyOf(out);
-  }
-
-  private static double median(final List<Double> values) {
-    if (values.isEmpty()) {
-      return Double.NaN;
-    }
-    final double[] s = values.stream().mapToDouble(Double::doubleValue).sorted().toArray();
-    final int n = s.length;
-    return n % 2 == 1 ? s[n / 2] : (s[n / 2 - 1] + s[n / 2]) / 2.0;
+    return Breakdown.byEdges(predicted, observed, BAND_TOPS, BAND_LABELS);
   }
 
   /**

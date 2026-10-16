@@ -2,8 +2,6 @@ package app.issues;
 
 import app.features.TeamSummary;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -131,19 +129,8 @@ public final class Extractor {
 
   /** The human author of the first linked commit visible before {@code limit}, by authoring. */
   World.Commit executorCommit(final String issue, final long limit) {
-    final List<World.Commit> commits = executorCommits(issue, limit);
+    final List<World.Commit> commits = world.implementation(issue, limit);
     return commits.isEmpty() ? null : commits.get(0);
-  }
-
-  private List<World.Commit> executorCommits(final String issue, final long limit) {
-    final List<World.Commit> out = new ArrayList<>();
-    for (final World.Commit c : world.linked(issue)) {
-      if (c.visible() < limit && c.who() != null && !c.bot()) {
-        out.add(c);
-      }
-    }
-    out.sort(Comparator.comparingLong(World.Commit::authoredAt).thenComparing(World.Commit::hash));
-    return out;
   }
 
   /**
@@ -509,7 +496,7 @@ public final class Extractor {
         fi != null && fi < t1 ? Math.max(0.0, (fi - t0) / (double) World.HOUR) : null);
 
     // ------------------------------------------------------------ retrospective executor
-    final List<World.Commit> exCommits = executorCommits(u.id(), t1);
+    final List<World.Commit> exCommits = world.implementation(u.id(), t1);
     final String ex = exCommits.isEmpty() ? null : exCommits.get(0).who();
     v.put("EXE_known", bool(ex != null));
     // the person the executor's columns describe: the retrospective one in the main study, the one
@@ -547,19 +534,10 @@ public final class Extractor {
           - ownAssignedAt(u.id(), person, p, t0)));
     }
     if (ex != null) {
-      double whole = 0;
-      double shared = 0;
-      final Set<Integer> files = new HashSet<>();
-      for (final World.Commit c : exCommits) {
-        whole += c.loc();
-        shared += c.loc() / (double) Math.max(1, c.linked().size());
-        final int[] f = world.corpus.files().get(c.id());
-        if (f != null) {
-          Arrays.stream(f).forEach(files::add);
-        }
-      }
-      v.put("A15_change_loc", shared);
-      v.put("A15w_change_loc_whole", whole);
+      final World.Change change = world.change(exCommits);
+      final Set<Integer> files = change.files();
+      v.put("A15_change_loc", change.sharedLines());
+      v.put("A15w_change_loc_whole", change.wholeLines());
       if (!files.isEmpty()) {
         final Map<Integer, Long> touch = firstTouch.getOrDefault(ex + "\u0000" + p, Map.of());
         final long knownFiles =

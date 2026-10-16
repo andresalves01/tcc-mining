@@ -110,11 +110,6 @@ class IssuesRetrospectiveTest {
         ids.stream().filter(methods::containsKey).forEach(id -> out.put(id, methods.get(id)));
         return out;
       }
-
-      @Override
-      public Set<String> reads() {
-        return Set.of();
-      }
     };
   }
 
@@ -140,7 +135,7 @@ class IssuesRetrospectiveTest {
     methods.put("late", Map.of("M.n()", new ChangedMethod("M.n()", 99, 99)));
     commit("cv", T0 + 21 * D, 0, "v");
     commit("ct", T0 + 31 * D, 10, "t");
-    comments.add(new Corpus.Comment("a", "u", T0 + 3 * D, 4));
+    comments.add(new Corpus.Comment("a", "u", T0 + 3 * D, 4, false));
   }
 
   @Test

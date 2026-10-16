@@ -19,13 +19,15 @@ import java.util.Set;
  * grows with the duration itself, so a model reading them shows association with the duration,
  * not a prediction available during the work.
  *
- * <p><b>Implementation commits</b>: the issue's linked commits by a human author (not a bot
- * commit, {@link World.Commit#bot}) visible before t1, those before t0 included; nothing visible
- * at or after t1. Without one, the five content attributes are missing, never zero.
+ * <p><b>Implementation commits</b> ({@link World#implementation}, the executor's commits of the
+ * registered columns): the issue's linked commits by a human author (not a bot commit, {@link
+ * World.Commit#bot}) visible before t1, those before t0 included; nothing visible at or after t1.
+ * Without one, the five content attributes are missing, never zero.
  *
  * <ol>
  *   <li>{@link #LINES}: the sum over those commits of their Java lines added and removed, each
- *       commit's split evenly among the issues it cites; 0 when they changed no Java.
+ *       commit's split evenly among the issues it cites ({@link World#change}, as the registered
+ *       {@code A15}); 0 when they changed no Java.
  *   <li>{@link #MCCC} and {@link #NESTING}: the mean cyclomatic complexity and nesting of the
  *       methods those commits changed, by the funnel's rule for which methods a commit changed,
  *       each method once at its latest state ({@link MethodDeduplication#byLatestChange}); no
@@ -66,7 +68,10 @@ public final class Retrospective {
   public static final String PARTICIPANTS = "RETRO_participants";
   public static final String ASSIGNEE_CHANGES = "RETRO_assignee_changes";
 
-  /** The five read from the implementation commits, missing together without one. */
+  /**
+   * The five read from the implementation commits, missing together without one: the ones that
+   * can be missing, each with its missing indicator.
+   */
   public static final List<String> CONTENT = List.of(LINES, MCCC, NESTING, FILES, FAMILIARITY);
 
   /** The eight, in the ticket's order. */
@@ -76,9 +81,6 @@ public final class Retrospective {
   /** The counts and volumes, which enter as {@code log1p}; the ratio and means enter raw. */
   public static final Set<String> COUNTS =
       Set.of(LINES, FILES, COMMENTS, PARTICIPANTS, ASSIGNEE_CHANGES);
-
-  /** The ones that can be missing, each with its missing indicator. */
-  public static final Set<String> CAN_BE_MISSING = Set.copyOf(CONTENT);
 
   /** What the scenario is, for the help text and the run records. */
   public static final String SCENARIO = "retrospective: eight attributes observed between the "
@@ -108,21 +110,6 @@ public final class Retrospective {
   }
 
   /**
-   * The issue's implementation commits: linked, by a human author, visible before {@code t1}; in
-   * authoring order, the revision hash breaking ties.
-   */
-  public List<World.Commit> implementation(final String issue, final long t1) {
-    final List<World.Commit> out = new ArrayList<>();
-    for (final World.Commit c : world.linked(issue)) {
-      if (c.visible() < t1 && c.who() != null && !c.bot()) {
-        out.add(c);
-      }
-    }
-    out.sort(Comparator.comparingLong(World.Commit::authoredAt).thenComparing(World.Commit::hash));
-    return out;
-  }
-
-  /**
    * The eight attributes of one In-Progress unit, a missing one as null.
    *
    * @param methods per commit id, the methods it changed; a commit absent or empty changed none
@@ -140,30 +127,23 @@ public final class Retrospective {
 
   private void content(final Universe.Unit u, final long t0, final long t1,
       final Map<String, Map<String, ChangedMethod>> methods, final Map<String, Double> v) {
-    final List<World.Commit> commits = implementation(u.id(), t1);
+    final List<World.Commit> commits = world.implementation(u.id(), t1);
     if (commits.isEmpty()) {
       CONTENT.forEach(column -> v.put(column, null));
       return;
     }
-    double lines = 0;
-    final Set<Integer> files = new HashSet<>();
+    final World.Change change = world.change(commits);
+    final Set<Integer> files = change.files();
     final Set<String> authors = new HashSet<>();
     final List<CommitMethods> changed = new ArrayList<>();
     for (final World.Commit c : commits) {
-      lines += c.loc() / (double) Math.max(1, c.linked().size());
-      final int[] touched = world.corpus.files().get(c.id());
-      if (touched != null) {
-        for (final int f : touched) {
-          files.add(f);
-        }
-      }
       authors.add(c.who());
       final Map<String, ChangedMethod> m = methods.getOrDefault(c.id(), Map.of());
       if (!m.isEmpty()) {
         changed.add(new CommitMethods(c.hash(), Instant.ofEpochMilli(c.authoredAt()), m));
       }
     }
-    v.put(LINES, lines);
+    v.put(LINES, change.sharedLines());
     final List<ChangedMethod> deduplicated = MethodDeduplication.byLatestChange(changed);
     v.put(MCCC, deduplicated.isEmpty() ? null
         : deduplicated.stream().mapToDouble(ChangedMethod::mccc).average().orElseThrow());

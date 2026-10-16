@@ -47,8 +47,8 @@ public final class IssuesCheckCommand implements CommandRunner {
       if (population == Population.IN_PROGRESS) {
         System.out.printf("  main reference by the rule (P12: lowest MAE on the inner selection "
             + "among three): %s (constant %.2f h, project median %.2f h, pair median "
-            + "%.2f h)%n", report.main().name().toUpperCase(), report.main().constantMaeHours(),
-            report.main().projectMaeHours(), report.main().pairMaeHours());
+            + "%.2f h)%n", report.main().name().toUpperCase(), report.main().constantMae(),
+            report.main().projectMae(), report.main().pairMaeHours());
       }
       rows.addAll(IssuesPrinting.evaluation(report));
     }

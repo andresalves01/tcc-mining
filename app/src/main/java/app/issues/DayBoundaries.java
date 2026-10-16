@@ -50,6 +50,10 @@ public final class DayBoundaries {
   /** ... and at least this share of them opening like a bot's template. */
   public static final double BOT_TEMPLATED_SHARE = 0.25;
 
+  /** The bot rule in words, as the run records of the stages that leave bots out state it. */
+  public static final String BOT_RULE = "at least " + BOT_MIN_COMMENTS + " comments, at least "
+      + BOT_TEMPLATED_SHARE + " of them opening like a bot's template";
+
   /**
    * How a bot's comment opens: GitHub mirroring, commit notices, build reports, patch-test reports.
    * Read on the text with its tabs and line breaks turned into spaces, from its first character.
@@ -97,15 +101,6 @@ public final class DayBoundaries {
     return bots;
   }
 
-  /** A raw account as its canonical identity in {@code people}, the raw id when there is none. */
-  public static String person(final String raw, final Map<String, Corpus.Person> people) {
-    if (raw == null) {
-      return null;
-    }
-    final Corpus.Person p = people.get(raw);
-    return p != null && p.canonical() != null ? p.canonical() : raw;
-  }
-
   /** How much of a comment's opening is read for a template, far beyond its longest pattern. */
   private static final int OPENING = 240;
 
@@ -147,7 +142,7 @@ public final class DayBoundaries {
    * #bots} of those issues' comments; each author read as their canonical identity in {@code
    * people}, the raw id when there is none.
    */
-  public static List<Action> actions(final List<Corpus.Event> events,
+  static List<Action> actions(final List<Corpus.Event> events,
       final List<Corpus.Comment> comments, final Map<String, String> projectOfIssue,
       final Map<String, Corpus.Person> people) {
     return actions(events, comments, projectOfIssue, people,
@@ -178,7 +173,7 @@ public final class DayBoundaries {
     if (project == null || author == null || at == null || bots.contains(author)) {
       return;
     }
-    out.add(new Action(at, person(author, people), issue, project));
+    out.add(new Action(at, World.person(author, people), issue, project));
   }
 
   /**
@@ -196,7 +191,7 @@ public final class DayBoundaries {
   }
 
   /** The boundaries read from {@code actions}, already kept. */
-  public static DayBoundaries of(final List<Action> actions) {
+  static DayBoundaries of(final List<Action> actions) {
     return of(actions, Set.of());
   }
 

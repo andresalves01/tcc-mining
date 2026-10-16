@@ -13,6 +13,7 @@ import app.issues.RegistrationInProgress;
 import app.issues.RowCache;
 import app.issues.Universe;
 import app.issues.Universe.Population;
+import app.issues.World;
 import app.issues.port.StudySource;
 import app.pipeline.embedding.EmbeddingModel;
 import app.pipeline.port.Progress;
@@ -112,7 +113,7 @@ public final class IssuesSimilarityTask {
       final String id = e.unit().issueId();
       final Universe.Unit started = universe.unit(P, id);
       final String clicker = started == null ? null
-          : DayBoundaries.person(started.startedBy(), corpus.people());
+          : World.person(started.startedBy(), corpus.people());
       boundaries.put(id, days.at(clicker, e.unit().project(),
           e.unit().startedAt().toEpochMilli()));
     }

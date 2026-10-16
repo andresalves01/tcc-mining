@@ -51,14 +51,14 @@ public final class Forest {
    *
    * @param share the entry of {@link #MTRY_SHARES} that gave {@code mtry}
    */
-  public record Trial(double share, int mtry, int nodeSize, double maeHours) {}
+  public record Trial(double share, int mtry, int nodeSize, double mae) {}
 
   /**
    * @param share the entry of {@link #MTRY_SHARES} that gave {@code mtry}
    * @param importance per column, how much it lowered the squared error over all splits
    */
   public record Fitted(Cell cell, double share, int mtry, int nodeSize, List<String> columns,
-      List<String> dropped, double[] importance, double[] predictedHours, Score score,
+      List<String> dropped, double[] importance, double[] predicted, Score score,
       List<Trial> trials) {}
 
   /**
@@ -88,7 +88,7 @@ public final class Forest {
    *
    * @param increases the rise of each repeat, in hours, in the order drawn
    */
-  public record Importance(String column, double meanIncreaseHours, double[] increases) {}
+  public record Importance(String column, double meanIncrease, double[] increases) {}
 
   /**
    * One forest refitted with given parameters and scored once. Searches nothing.
@@ -98,7 +98,7 @@ public final class Forest {
    *     side
    */
   public record Frozen(Cell cell, double share, int mtry, int nodeSize, List<String> columns,
-      List<String> dropped, double[] predictedHours, Score score, List<Importance> importance) {}
+      List<String> dropped, double[] predicted, Score score, List<Importance> importance) {}
 
   private Forest() {}
 
@@ -162,8 +162,8 @@ public final class Forest {
     int best = -1;
     double bestMae = Double.POSITIVE_INFINITY;
     for (int t = 0; t < trials.size(); t++) {
-      if (trials.get(t).maeHours() < bestMae) {
-        bestMae = trials.get(t).maeHours();
+      if (trials.get(t).mae() < bestMae) {
+        bestMae = trials.get(t).mae();
         best = t;
       }
     }

@@ -57,43 +57,47 @@ class ElasticNetSelectionTest {
       "RETRO_comments", "RETRO_participants", "RETRO_assignee_changes");
 
   /**
-   * The three models ticket 12 does not touch as the code before it chose them on {@link #full}:
-   * the chosen combination, columns, alpha, lambda and error as raw bits, the sweep's step, a hash
-   * of every prediction's bits, and a hash of every combination's sweep as bits. Captured from
-   * commit 2059600.
+   * The three models ticket 12 does not touch, as the code chose them on {@link #full}: the
+   * chosen combination, columns, alpha, lambda and error as raw bits, the sweep's step, a hash of
+   * every prediction's bits, and a hash of every combination's sweep as bits. First captured from
+   * commit 2059600 on the hours; regenerated once by ticket 17, when the fixture moved onto
+   * business days through the population, by the code of 11d6710 (main after ticket 15).
    */
   private static final List<String> BEFORE = List.of(
-      "similarity_alone Combination[jaccardN=5, embeddingN=10, clusterK=32] "
-          + "[jaccard_median_5_inner, embedding_median_10_inner, cluster_median_32_inner] "
-          + "3fee666666666666 3fe593bd1ead13e9 6 400e84ce6b3eec6a 3c1689b4 afe35068",
-      "alzubaidi_start null [Z08_priority] 3fee666666666666 3f7f2bbb8f5b3bab 7 "
-          + "405558e882b32458 11104a89 b62",
-      "kikas_start null [K14_project_issues_90d] 3fee666666666666 3f607dc01af1707f 11 "
-          + "405553055084efd2 e71ee1be b62");
+      "similarity_alone Combination[jaccardN=20, embeddingN=5, clusterK=32] "
+          + "[jaccard_median_20_inner, embedding_median_5_inner, cluster_median_32_inner] "
+          + "3fee666666666666 3f71f4e8ef7da155 11 3ff78469881149d8 974effbc 9de1ea2a",
+      "alzubaidi_start null [Z08_priority] 3fee666666666666 3f027ac90ffbb6b3 11 "
+          + "400b9501a993aa38 aaa13482 b62",
+      "kikas_start null [K14_project_issues_90d] 3fee666666666666 3f57e2f83a2b3163 9 "
+          + "400b86b507b027a6 fcb8b148 b62");
 
-  /** All six models as the code before ticket 13 chose them on {@link #full}, from 0869f6d. */
+  /**
+   * All six models of the start as the code chose them on {@link #full}: first captured from
+   * 0869f6d, before ticket 13, on the hours; regenerated once by ticket 17 with {@link #BEFORE}.
+   */
   private static final List<String> BEFORE_FORESTS = List.of(
       "own_without_similarity null [A01_desc_length, A03_team_size, TEAM_loc_median, "
           + "TEAM_loc_sd, TEAM_mccc_median, TEAM_mccc_sd, reporter_median_inner, "
           + "reporter_median_inner_ausente, A09_exec_loc_tot, A10_exec_mccc_tot, "
-          + "A13_exec_open_load] 3fee666666666666 3f8219b66a183d8a 11 404bbb6aa86b3f03 e21d060b "
+          + "A13_exec_open_load] 3fee666666666666 3f6f586aa3de7da9 11 4004b7ddbc073745 f5df19a7 "
           + "b62",
       BEFORE.get(0),
-      "own_with_similarity Combination[jaccardN=5, embeddingN=10, clusterK=32] [A01_desc_length, "
-          + "A03_team_size, TEAM_loc_median, TEAM_loc_sd, TEAM_mccc_median, TEAM_mccc_sd, "
-          + "reporter_median_inner, reporter_median_inner_ausente, A09_exec_loc_tot, "
-          + "A10_exec_mccc_tot, A13_exec_open_load, jaccard_median_5_inner, "
-          + "embedding_median_10_inner, cluster_median_32_inner] 3fee666666666666 "
-          + "3ff8ec46c6bfa70d 5 4014bb663cf7e450 fc2b575d f7fc06ad",
+      "own_with_similarity Combination[jaccardN=5, embeddingN=5, clusterK=32] "
+          + "[A01_desc_length, A03_team_size, TEAM_loc_median, TEAM_loc_sd, TEAM_mccc_median, "
+          + "TEAM_mccc_sd, reporter_median_inner, reporter_median_inner_ausente, "
+          + "A09_exec_loc_tot, A10_exec_mccc_tot, A13_exec_open_load, jaccard_median_5_inner, "
+          + "embedding_median_5_inner, cluster_median_32_inner] 3fee666666666666 3f720868e0e6ede1 "
+          + "11 3ff5684caf8bf0d7 2828f000 719940f1",
       BEFORE.get(1),
       BEFORE.get(2),
-      "union_own Combination[jaccardN=5, embeddingN=10, clusterK=32] [Z08_priority, "
+      "union_own Combination[jaccardN=5, embeddingN=5, clusterK=32] [Z08_priority, "
           + "K14_project_issues_90d, A01_desc_length, A03_team_size, TEAM_loc_median, "
           + "TEAM_loc_sd, TEAM_mccc_median, TEAM_mccc_sd, reporter_median_inner, "
           + "reporter_median_inner_ausente, A09_exec_loc_tot, A10_exec_mccc_tot, "
-          + "A13_exec_open_load, jaccard_median_5_inner, embedding_median_10_inner, "
-          + "cluster_median_32_inner] 3fee666666666666 3ff8ec46c6bfa70d 5 4014b1a37921acfb "
-          + "af928561 d86fa9e3");
+          + "A13_exec_open_load, jaccard_median_5_inner, embedding_median_5_inner, "
+          + "cluster_median_32_inner] 3fee666666666666 3f720868e0e6ede1 11 3ff51fe8cd20a5a5 "
+          + "8ce9d2ac d67cd950");
 
   private static final List<String> UNTOUCHED =
       List.of("similarity_alone", "alzubaidi_start", "kikas_start");
@@ -102,8 +106,17 @@ class ElasticNetSelectionTest {
 
   private final List<RowCache.Entry> entries = new ArrayList<>();
 
-  /** An issue of {@code hours} in the given split; a null value is a missing one. */
+  /**
+   * An issue drawn as {@code hours} in the given split, lasting a business day per 24 of them
+   * ({@link BusinessDayFixtures#days}); a null value is a missing one.
+   */
   private void row(final String id, final double hours, final String outer, final String inner,
+      final Map<String, Double> values) {
+    rowOfDays(id, BusinessDayFixtures.days(hours), outer, inner, values);
+  }
+
+  /** An issue of {@code days} business days in the given split; a null value is a missing one. */
+  private void rowOfDays(final String id, final int days, final String outer, final String inner,
       final Map<String, Double> values) {
     final Map<Population, String[]> parts = new EnumMap<>(Population.class);
     parts.put(Population.IN_PROGRESS, new String[] {outer, inner});
@@ -118,7 +131,7 @@ class ElasticNetSelectionTest {
       }
     });
     entries.add(new RowCache.Entry(new IssueUnit(id, "P-" + id, "p" + id.hashCode() % 3, "r",
-        "d", T, start.plusMillis((long) (hours * 3_600_000)), "Fixed", false, start),
+        "d", T, BusinessDayFixtures.after(start, days), "Fixed", false, start),
         new Row(id, present, absent), parts));
   }
 
@@ -251,10 +264,10 @@ class ElasticNetSelectionTest {
     final Fitting.Fitted f = m.fitted();
     final String sweeps = m.combinations().stream().map(w -> w.combination().jaccardN() + " "
         + w.combination().embeddingN() + " " + w.combination().clusterK() + " "
-        + hex(w.alpha()) + " " + hex(w.lambda()) + " " + hex(w.maeHours())).toList().toString();
+        + hex(w.alpha()) + " " + hex(w.lambda()) + " " + hex(w.mae())).toList().toString();
     return m.cell().label() + " " + m.combination() + " " + f.columns() + " " + hex(f.alpha())
-        + " " + hex(f.lambda()) + " " + f.step() + " " + hex(f.score().maeHours()) + " "
-        + Integer.toHexString(java.util.Arrays.hashCode(f.predictedHours())) + " "
+        + " " + hex(f.lambda()) + " " + f.step() + " " + hex(f.score().mae()) + " "
+        + Integer.toHexString(java.util.Arrays.hashCode(f.predicted())) + " "
         + Integer.toHexString(sweeps.hashCode());
   }
 
@@ -407,7 +420,7 @@ class ElasticNetSelectionTest {
       + "chose before ticket 12: combination, alpha, lambda, error, predictions and every sweep")
   void unchangedModelsAsBefore() {
     full();
-    final ElasticNetSelection.Result r = ElasticNetSelection.run(entries, 1);
+    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries), 1);
     assertEquals(BEFORE, UNTOUCHED.stream().map(name -> fingerprint(model(r, name))).toList());
     for (final String name : WITHOUT) {
       assertNull(model(r, name).combination(), name);
@@ -420,17 +433,17 @@ class ElasticNetSelectionTest {
       + "over alpha and lambda, the one with the lowest inner validation error")
   void keepsTheLowestCombination() {
     full();
-    final ElasticNetSelection.Result r = ElasticNetSelection.run(entries);
+    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries));
     for (final String name : WITH) {
       final ElasticNetSelection.Model m = model(r, name);
       assertEquals(Combination.all(),
           m.combinations().stream().map(ElasticNetSelection.Swept::combination).toList(), name);
       final double lowest = m.combinations().stream()
-          .mapToDouble(ElasticNetSelection.Swept::maeHours).min().orElseThrow();
-      assertEquals(bits(lowest), bits(m.fitted().score().maeHours()), name);
+          .mapToDouble(ElasticNetSelection.Swept::mae).min().orElseThrow();
+      assertEquals(bits(lowest), bits(m.fitted().score().mae()), name);
       final ElasticNetSelection.Swept chosen = m.combinations().stream()
           .filter(s -> s.combination().equals(m.combination())).findFirst().orElseThrow();
-      assertEquals(bits(lowest), bits(chosen.maeHours()), name);
+      assertEquals(bits(lowest), bits(chosen.mae()), name);
       assertEquals(bits(chosen.alpha()), bits(m.fitted().alpha()), name);
       assertEquals(bits(chosen.lambda()), bits(m.fitted().lambda()), name);
       final Combination c = m.combination();
@@ -443,7 +456,7 @@ class ElasticNetSelectionTest {
     }
     // the fixture makes the combinations differ, so a choice is not the first by default
     assertTrue(WITH.stream().allMatch(name -> model(r, name).combinations().stream()
-        .mapToLong(s -> bits(s.maeHours())).distinct().count() > 1));
+        .mapToLong(s -> bits(s.mae())).distinct().count() > 1));
   }
 
   @Test
@@ -451,10 +464,10 @@ class ElasticNetSelectionTest {
       + "first, then embedding n, then cluster k")
   void tiesGoToTheSmallerValues() {
     tied();
-    final ElasticNetSelection.Result r = ElasticNetSelection.run(entries);
+    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries));
     for (final String name : WITH) {
       final ElasticNetSelection.Model m = model(r, name);
-      assertEquals(1, m.combinations().stream().mapToLong(s -> bits(s.maeHours())).distinct()
+      assertEquals(1, m.combinations().stream().mapToLong(s -> bits(s.mae())).distinct()
           .count(), name + " does not tie: " + m.combinations());
       assertEquals(new Combination(5, 5, 8), m.combination(), name);
     }
@@ -479,7 +492,7 @@ class ElasticNetSelectionTest {
       blanked.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values, absent),
           e.parts()));
     }
-    final ElasticNetSelection.Result r = ElasticNetSelection.run(blanked);
+    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(blanked));
     assertEquals(40, r.fitRows());
     assertEquals(20, r.validationRows());
     for (final String name : WITH) {
@@ -500,10 +513,10 @@ class ElasticNetSelectionTest {
       + "gives, the models and combinations in the same order")
   void parallelIsSequential() {
     full();
-    final ElasticNetSelection.Result one = ElasticNetSelection.run(entries, 1);
-    final ElasticNetSelection.Result many = ElasticNetSelection.run(entries, 6);
+    final ElasticNetSelection.Result one = ElasticNetSelection.run(counted(entries), 1);
+    final ElasticNetSelection.Result many = ElasticNetSelection.run(counted(entries), 6);
     assertEquals(one.models().size(), many.models().size());
-    assertEquals(bits(one.projectMaeHours()), bits(many.projectMaeHours()));
+    assertEquals(bits(one.projectMae()), bits(many.projectMae()));
     for (int m = 0; m < one.models().size(); m++) {
       assertEquals(one.models().get(m).cell(), many.models().get(m).cell());
       assertEquals(one.models().get(m).combination(), many.models().get(m).combination());
@@ -512,8 +525,8 @@ class ElasticNetSelectionTest {
       ParallelSweepTest.assertIdentical(one.models().get(m).fitted(),
           many.models().get(m).fitted());
       assertEquals(one.models().get(m).forest().trials(), many.models().get(m).forest().trials());
-      assertEquals(java.util.Arrays.toString(one.models().get(m).forest().predictedHours()),
-          java.util.Arrays.toString(many.models().get(m).forest().predictedHours()));
+      assertEquals(java.util.Arrays.toString(one.models().get(m).forest().predicted()),
+          java.util.Arrays.toString(many.models().get(m).forest().predicted()));
     }
     assertEquals(ElasticNetSelection.parameters(one, "m"),
         ElasticNetSelection.parameters(many, "m"));
@@ -523,7 +536,7 @@ class ElasticNetSelectionTest {
   private static List<String> choices(final ElasticNetSelection.Result r) {
     return r.models().stream().map(m -> m.cell().label() + " " + m.combination() + " "
         + m.fitted().columns() + " " + m.fitted().alpha() + " " + m.fitted().lambda() + " "
-        + m.fitted().score().maeHours() + " " + m.combinations()).toList();
+        + m.fitted().score().mae() + " " + m.combinations()).toList();
   }
 
   @Test
@@ -531,7 +544,7 @@ class ElasticNetSelectionTest {
       + "changes no choice")
   void readsTheInnerVariant() {
     full();
-    final List<String> before = choices(ElasticNetSelection.run(entries));
+    final List<String> before = choices(ElasticNetSelection.run(counted(entries)));
     final List<RowCache.Entry> changed = new ArrayList<>();
     for (final RowCache.Entry e : entries) {
       final Map<String, Double> values = new HashMap<>(e.row().values());
@@ -539,7 +552,7 @@ class ElasticNetSelectionTest {
       changed.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values,
           e.row().absent()), e.parts()));
     }
-    final ElasticNetSelection.Result r = ElasticNetSelection.run(changed);
+    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(changed));
     assertEquals(before, choices(r));
     assertTrue(model(r, "own_with_similarity").fitted().columns().stream()
         .noneMatch(c -> c.contains("_outer")));
@@ -550,7 +563,7 @@ class ElasticNetSelectionTest {
       + "not even values that would refuse the run")
   void neverReadsTheOuterTest() {
     full();
-    final List<String> before = choices(ElasticNetSelection.run(entries));
+    final List<String> before = choices(ElasticNetSelection.run(counted(entries)));
     final Map<String, Double> poison = new HashMap<>();
     for (final String column : List.of("reporter_median_inner", "TEAM_loc_median")) {
       poison.put(column, Double.NaN);
@@ -562,7 +575,7 @@ class ElasticNetSelectionTest {
       row("t" + k, 90_000, "TEST", "", poison);
       row("x" + k, 90_000, "CROSSES", "", poison);
     }
-    assertEquals(before, choices(ElasticNetSelection.run(entries)));
+    assertEquals(before, choices(ElasticNetSelection.run(counted(entries))));
   }
 
   @Test
@@ -571,23 +584,24 @@ class ElasticNetSelectionTest {
   void missingIsHandedOnWithItsIndicator() {
     full();
     final List<String> columns =
-        model(ElasticNetSelection.run(entries), "own_without_similarity").fitted().columns();
+        model(ElasticNetSelection.run(counted(entries)), "own_without_similarity").fitted()
+            .columns();
     assertTrue(columns.contains("reporter_median_inner"));
     assertTrue(columns.contains("reporter_median_inner_ausente"));
     // observed on every fitting row: the indicator is constant there, and the preparation drops it
     assertFalse(columns.contains("TEAM_loc_median_ausente"));
 
     row("nan", 10, "TRAIN", "TRAIN", Map.of("TEAM_loc_sd", Double.NaN));
-    assertThrows(IllegalArgumentException.class, () -> ElasticNetSelection.run(entries));
+    assertThrows(IllegalArgumentException.class, () -> ElasticNetSelection.run(counted(entries)));
   }
 
   @Test
   @DisplayName("the two registered cells choose the alpha and lambda the registered grid does")
   void registeredCellsAsTheGrid() {
     full();
-    final ElasticNetSelection.Result r = ElasticNetSelection.run(entries);
+    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries));
     final app.pipeline.IssuesGridTask.Report grid =
-        new app.pipeline.IssuesGridTask(app.pipeline.port.Progress.silent()).run(entries,
+        new app.pipeline.IssuesGridTask(app.pipeline.port.Progress.silent()).run(counted(entries),
             Population.IN_PROGRESS);
     for (final String[] pair : new String[][] {{"alzubaidi_start", "ALZUBAIDI / C1"},
         {"kikas_start", "KIKAS / C1"}}) {
@@ -598,16 +612,16 @@ class ElasticNetSelectionTest {
       assertEquals(registered.alpha(), mine.alpha(), pair[0]);
       assertEquals(registered.lambda(), mine.lambda(), pair[0]);
       assertEquals(registered.columns(), mine.columns(), pair[0]);
-      assertEquals(registered.score().maeHours(), mine.score().maeHours(), pair[0]);
+      assertEquals(registered.score().mae(), mine.score().mae(), pair[0]);
     }
   }
 
   @Test
   @DisplayName("the parameters file holds the matrix's hash, each model's alpha and lambda, and "
-      + "the chosen n, n and k of the three with the similarity medians, read back exactly")
+      + "the chosen n, n and k of the four with the similarity medians, read back exactly")
   void parametersFile() {
     full();
-    final ElasticNetSelection.Result r = ElasticNetSelection.run(entries);
+    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries));
     final List<String> lines = ElasticNetSelection.parameters(r, "cd34");
     assertEquals(ElasticNetSelection.HEADER, lines.get(0));
     final List<String> data = lines.stream().filter(l -> !l.startsWith("#")).toList();
@@ -714,7 +728,7 @@ class ElasticNetSelectionTest {
       + "combination, columns, alpha, lambda, error, predictions and every sweep")
   void elasticNetAsBeforeTheForests() {
     full();
-    final ElasticNetSelection.Result r = ElasticNetSelection.run(entries, 1);
+    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries), 1);
     assertEquals(BEFORE_FORESTS, SIX.stream().map(name -> fingerprint(model(r, name))).toList());
     assertEquals(ElasticNetSelection.MODELS, r.models().stream().map(m -> m.cell().label())
         .toList());
@@ -728,11 +742,11 @@ class ElasticNetSelectionTest {
       without.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values, absent),
           e.parts()));
     }
-    final ElasticNetSelection.Result before = ElasticNetSelection.run(without, 1);
+    final ElasticNetSelection.Result before = ElasticNetSelection.run(counted(without), 1);
     for (final String name : SIX) {
       assertEquals(fingerprint(model(before, name)), fingerprint(model(r, name)), name);
-      assertEquals(java.util.Arrays.toString(model(before, name).forest().predictedHours()),
-          java.util.Arrays.toString(model(r, name).forest().predictedHours()), name);
+      assertEquals(java.util.Arrays.toString(model(before, name).forest().predicted()),
+          java.util.Arrays.toString(model(r, name).forest().predicted()), name);
       assertEquals(model(before, name).forest().trials(), model(r, name).forest().trials(), name);
     }
   }
@@ -742,7 +756,7 @@ class ElasticNetSelectionTest {
       + "the thirteen, missing indicators for the content, and has its forest on the same columns")
   void retrospectiveChosen() {
     full();
-    final ElasticNetSelection.Result r = ElasticNetSelection.run(entries, 1);
+    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries), 1);
     final ElasticNetSelection.Model m = model(r, "own_retrospective");
     assertEquals(27, m.combinations().size());
     assertEquals(List.of(), m.removed());
@@ -759,7 +773,7 @@ class ElasticNetSelectionTest {
       + "the grid point that errs least on the inner validation")
   void forestBesideEachModel() {
     full();
-    final ElasticNetSelection.Result r = ElasticNetSelection.run(entries);
+    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries));
     assertEquals(ElasticNetSelection.MODELS, r.models().stream().map(m -> m.forest().cell()
         .label()).toList());
     for (final ElasticNetSelection.Model m : r.models()) {
@@ -768,13 +782,13 @@ class ElasticNetSelectionTest {
       assertEquals(m.fitted().cell(), f.cell(), name);
       assertEquals(m.fitted().columns(), f.columns(), name);
       assertEquals(m.fitted().dropped(), f.dropped(), name);
-      assertEquals(20, f.predictedHours().length, name);
+      assertEquals(20, f.predicted().length, name);
       final int p = f.columns().size();
       final long points = java.util.Arrays.stream(Forest.MTRY_SHARES)
           .mapToInt(s -> Forest.mtry(s, p)).distinct().count() * Forest.NODE_SIZES.length;
       assertEquals(points, f.trials().size(), name);
       final Forest.Trial chosen = f.trials().get(Forest.chosen(f.trials()));
-      assertEquals(bits(chosen.maeHours()), bits(f.score().maeHours()), name);
+      assertEquals(bits(chosen.mae()), bits(f.score().mae()), name);
       assertEquals(new Forest.Choice(chosen.share(), chosen.mtry(), chosen.nodeSize()),
           new Forest.Choice(f.share(), f.mtry(), f.nodeSize()), name);
     }
@@ -804,20 +818,38 @@ class ElasticNetSelectionTest {
       + "inner fitting nor the inner validation; the target and references are business days")
   void businessDayPopulation() {
     full();
-    final List<RowCache.Entry> bounded = new ArrayList<>();
-    for (final RowCache.Entry e : entries) {
-      final Map<String, Double> values = new HashMap<>(e.row().values());
-      values.put(BusinessDays.BOUNDARY, 4.0);
-      bounded.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values,
-          e.row().absent()), e.parts()));
+    for (int k = 0; k < 6; k++) {
+      rowOfDays("zero" + k, 0, "TRAIN", k < 4 ? "TRAIN" : "TEST", base(new Random(k), 5, k));
     }
-    final BusinessDays.Population p = BusinessDays.population(bounded);
-    assertTrue(p.kept().innerFit() < p.all().innerFit());
-    assertTrue(p.kept().innerSelection() < p.all().innerSelection());
+    final BusinessDays.Population p =
+        BusinessDays.population(BusinessDayFixtures.bounded(entries));
+    assertEquals(p.all().innerFit() - 4, p.kept().innerFit());
+    assertEquals(p.all().innerSelection() - 2, p.kept().innerSelection());
     final ElasticNetSelection.Result r = ElasticNetSelection.run(p.entries(), 1);
     assertEquals(p.kept().innerFit(), r.fitRows());
     assertEquals(p.kept().innerSelection(), r.validationRows());
-    final double error = model(r, "own_with_similarity").fitted().score().maeHours();
+    final double error = model(r, "own_with_similarity").fitted().score().mae();
     assertTrue(error < 50, "an error in business days, not in hours: " + error);
+  }
+
+  @Test
+  @DisplayName("an outer training entry whose business days are not set, as one that did not go "
+      + "through the population, refuses the run: no silent fallback to the hours")
+  void refusesEntriesWithoutBusinessDays() {
+    full();
+    final IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+        () -> ElasticNetSelection.run(entries, 1));
+    assertTrue(e.getMessage().contains("business days"), e.getMessage());
+    final List<RowCache.Entry> one = new ArrayList<>(counted(entries));
+    final RowCache.Entry first = one.get(0);
+    final IssueUnit u = first.unit();
+    one.set(0, new RowCache.Entry(new IssueUnit(u.issueId(), u.key(), u.project(), u.reporter(),
+        u.executor(), u.createdAt(), u.resolvedAt(), u.reason(), u.moved(), u.startedAt()),
+        first.row(), first.parts()));
+    assertThrows(IllegalArgumentException.class, () -> ElasticNetSelection.run(one, 1));
+  }
+
+  private static List<RowCache.Entry> counted(final List<RowCache.Entry> entries) {
+    return BusinessDayFixtures.counted(entries);
   }
 }

@@ -81,12 +81,29 @@ public final class Breakdown {
       edges[i] = quantile(truth, CUTS[i]);
     }
 
-    final String[] labels = {"fastest 25%", "25% a 50%", "50% a 75%", "75% a 90%",
-        "slowest 10%"};
+    return byEdges(predicted, observed, edges, new String[] {"fastest 25%", "25% a 50%",
+        "50% a 75%", "75% a 90%", "slowest 10%"});
+  }
+
+  /**
+   * The same predictions, split by fixed bands of the true duration: band {@code b} holds the
+   * rows above the previous top and at or under {@code tops[b]}, the first open below and the
+   * last, the one beyond the final top, open above. The bands only group the rows; every error is
+   * the whole one.
+   *
+   * @param tops the upper end of every band but the last, ascending
+   * @param labels one per band, one more than the tops
+   */
+  public static List<Band> byEdges(final double[] predicted, final double[] observed,
+      final double[] tops, final String[] labels) {
+    if (labels.length != tops.length + 1) {
+      throw new IllegalArgumentException(labels.length + " labels for " + (tops.length + 1)
+          + " bands");
+    }
     final List<Band> bands = new ArrayList<>(labels.length);
     for (int b = 0; b < labels.length; b++) {
-      final double low = b == 0 ? Double.NEGATIVE_INFINITY : edges[b - 1];
-      final double high = b == labels.length - 1 ? Double.POSITIVE_INFINITY : edges[b];
+      final double low = b == 0 ? Double.NEGATIVE_INFINITY : tops[b - 1];
+      final double high = b == labels.length - 1 ? Double.POSITIVE_INFINITY : tops[b];
       final List<Double> errors = new ArrayList<>();
       final List<Double> truths = new ArrayList<>();
       for (int i = 0; i < observed.length; i++) {

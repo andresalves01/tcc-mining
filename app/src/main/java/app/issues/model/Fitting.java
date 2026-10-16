@@ -63,21 +63,21 @@ public final class Fitting {
    */
   public record Fitted(Cell cell, double alpha, double lambda, List<String> columns,
       List<String> dropped, List<Contribution> contributions, int selected,
-      double[] predictedHours, Score score, int step, List<Trial> trials,
+      double[] predicted, Score score, int step, List<Trial> trials,
       Recalibration recalibration) {
 
     /** A reference or a given prediction: nothing was swept and nothing recalibrated. */
     public Fitted(final Cell cell, final double alpha, final double lambda,
         final List<String> columns, final List<String> dropped,
-        final List<Contribution> contributions, final int selected, final double[] predictedHours,
+        final List<Contribution> contributions, final int selected, final double[] predicted,
         final Score score, final int step) {
-      this(cell, alpha, lambda, columns, dropped, contributions, selected, predictedHours, score,
+      this(cell, alpha, lambda, columns, dropped, contributions, selected, predicted, score,
           step, List.of(), null);
     }
 
     /** The 10th, 50th and 90th percentiles of the predictions, in hours: how much they spread. */
     public double[] spread() {
-      final double[] sorted = predictedHours.clone();
+      final double[] sorted = predicted.clone();
       java.util.Arrays.sort(sorted);
       final int n = sorted.length;
       return new double[] {sorted[n / 10], sorted[n / 2], sorted[Math.min(n - 1, 9 * n / 10)]};
@@ -85,7 +85,7 @@ public final class Fitting {
   }
 
   /** One point of the grid: the scored side's error of the fit with this mixture and penalty. */
-  public record Trial(double alpha, int step, double lambda, double maeHours) {}
+  public record Trial(double alpha, int step, double lambda, double mae) {}
 
   /**
    * A linear recalibration on the log scale, measured beside the model and never in place of it
@@ -95,7 +95,7 @@ public final class Fitting {
    * the penalty's shrinking. It is monotone, so the ordering -- Spearman, pairwise -- cannot
    * change; only the error in hours and its spread over bands can.
    */
-  public record Recalibration(double a, double b, double[] predictedHours) {}
+  public record Recalibration(double a, double b, double[] predicted) {}
 
   private Fitting() {}
 
@@ -230,9 +230,9 @@ public final class Fitting {
     for (int k = 0; k < points.size(); k++) {
       final Trial p = points.get(k);
       final Point f = fitted.get(k);
-      trials.add(new Trial(p.alpha(), p.step(), p.lambda(), f.maeHours()));
-      if (f.maeHours() < bestMae) {
-        bestMae = f.maeHours();
+      trials.add(new Trial(p.alpha(), p.step(), p.lambda(), f.mae()));
+      if (f.mae() < bestMae) {
+        bestMae = f.mae();
         best = f.model();
         bestStep = p.step();
       }
@@ -242,7 +242,7 @@ public final class Fitting {
   }
 
   /** One point of the sweep fitted: the model and its error on the scored side, in hours. */
-  private record Point(ElasticNetModel model, double maeHours) {}
+  private record Point(ElasticNetModel model, double mae) {}
 
   /**
    * Decision 20, registered before the reserved rows are scored: the penalty of the final fit is

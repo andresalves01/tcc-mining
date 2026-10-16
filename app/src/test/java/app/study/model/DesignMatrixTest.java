@@ -26,7 +26,13 @@ class DesignMatrixTest {
     }
   }
 
-  private record Done(String project, double durationHours) implements Outcome {}
+  private record Done(String project, double durationHours) implements Outcome {
+
+    @Override
+    public double duration() {
+      return durationHours;
+    }
+  }
 
   private static final Column COUNT =
       new Column("count", Construct.Kind.NUMERIC, Construct.Transform.LOG1P, false);

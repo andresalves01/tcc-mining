@@ -184,8 +184,7 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
     out.put("discussion", "in [first In Progress, first resolution), bots left out: comments; "
         + "distinct people who commented or changed a field, the reporter only if active, commit "
         + "authors not counted; effective changes of the assignee (all log1p, never missing)");
-    out.put("bots", "at least " + DayBoundaries.BOT_MIN_COMMENTS + " comments, at least "
-        + DayBoundaries.BOT_TEMPLATED_SHARE + " of them opening like a bot's template");
+    out.put("bots", DayBoundaries.BOT_RULE);
     out.put("excluded", EXCLUDED);
     return out;
   }

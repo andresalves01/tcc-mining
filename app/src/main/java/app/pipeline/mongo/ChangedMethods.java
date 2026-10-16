@@ -1,15 +1,18 @@
 package app.pipeline.mongo;
 
 import app.labels.ChangedMethod;
+import app.pipeline.port.Progress;
 import com.mongodb.client.MongoDatabase;
 import com.mongodb.client.model.Filters;
 import com.mongodb.client.model.Projections;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.BiConsumer;
 import org.bson.Document;
 import org.bson.types.ObjectId;
 
@@ -122,6 +125,34 @@ final class ChangedMethods {
           ((Number) metrics.get("NL")).doubleValue()));
     }
     return new Extraction(changed, unrecoverable);
+  }
+
+  /** The collection of the files, read once per scan for the {@code .java} ones. */
+  static final String FILE = "file";
+
+  /** Every collection a {@link #scan} opens. */
+  static final Set<String> SCAN_READS = Set.of(FILE, FILE_ACTION, HUNK, ENTITY_STATE);
+
+  private static final int PROGRESS_EVERY = 2_000;
+
+  /**
+   * What each of {@code commitIds} changed, in their order, handed to {@code sink}: the {@code
+   * .java} files indexed once first, then each commit read alone, the progress told every 2,000
+   * commits. The one loop of the stages that read the changed methods of many commits.
+   */
+  static void scan(final MongoDatabase source, final Collection<String> commitIds,
+      final Progress progress, final BiConsumer<String, Extraction> sink) {
+    progress.detail("indexing .java files");
+    final Set<ObjectId> javaFiles = javaFileIds(source, FILE);
+    progress.detail("%,d .java files", javaFiles.size());
+    final ChangedMethods reader = new ChangedMethods(source);
+    int scanned = 0;
+    for (final String id : commitIds) {
+      sink.accept(id, reader.of(new ObjectId(id), javaFiles));
+      if (++scanned % PROGRESS_EVERY == 0) {
+        progress.count(scanned, commitIds.size(), "commits read");
+      }
+    }
   }
 
   /** Every {@code .java} file in the corpus, by id — the set both stages intersect against. */

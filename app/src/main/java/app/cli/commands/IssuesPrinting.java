@@ -68,7 +68,7 @@ final class IssuesPrinting {
 
   static void row(final Score s) {
     System.out.printf("  %-52s %6d %9.2f %8.2f %8.1f %9.1f %8.3f %8.1f%n", s.label(), s.n(),
-        s.maeHours(), s.maeDays(), s.gainPercent(), s.gainOverConstantPercent(), s.spearman(),
+        s.mae(), s.maeDays(), s.gainPercent(), s.gainOverConstantPercent(), s.spearman(),
         100 * s.pairwise());
   }
 
@@ -176,7 +176,7 @@ final class IssuesPrinting {
         "MAE h var.", "pair base", "pair var.");
     for (final var s : r.sensitivities()) {
       System.out.printf("  %-44s %-40s %10.2f %10.2f %10.1f %10.1f%n", s.what(), s.cell(),
-          s.base().maeHours(), s.changed().maeHours(), 100 * s.base().pairwise(),
+          s.base().mae(), s.changed().mae(), 100 * s.base().pairwise(),
           100 * s.changed().pairwise());
     }
 
@@ -199,7 +199,7 @@ final class IssuesPrinting {
         "p10/p50/p90 rec.");
     for (final var c : r.recalibrated()) {
       System.out.printf("  %-26s %7.3f %6.3f %9.2f %9.2f  %-24s %-24s %-16s %-16s%n", c.cell(),
-          c.a(), c.b(), c.base().maeHours(), c.recalibrated().maeHours(),
+          c.a(), c.b(), c.base().mae(), c.recalibrated().mae(),
           interval(c.baseOverConstant()), interval(c.overConstant()), spread(c.baseSpread()),
           spread(c.spread()));
     }
@@ -255,7 +255,7 @@ final class IssuesPrinting {
         app.issues.model.ProjectBootstrap.DRAWS);
     for (final var g : list) {
       System.out.printf("    %-30s x %-30s  diff. %+8.2f h  CI [%+8.2f, %+8.2f]  %s%n", g.a(),
-          g.b(), g.gapHours(), g.low(), g.high(), g.tied() ? "TIE" : "distinguishable");
+          g.b(), g.gap(), g.low(), g.high(), g.tied() ? "TIE" : "distinguishable");
     }
   }
 
@@ -274,7 +274,7 @@ final class IssuesPrinting {
     row.put("kind", kind);
     row.put("specification", s.label());
     row.put("n", s.n());
-    row.put("mae_hours", s.maeHours());
+    row.put("mae_hours", s.mae());
     row.put("mae_days", s.maeDays());
     row.put("gain_percent", s.gainPercent());
     row.put("gain_over_constant_percent", s.gainOverConstantPercent());

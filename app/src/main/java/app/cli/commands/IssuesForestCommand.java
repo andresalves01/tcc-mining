@@ -87,7 +87,7 @@ public final class IssuesForestCommand implements CommandRunner {
     for (final var c : r.cells()) {
       final var g = c.forestMinusLinear();
       System.out.printf("    %-30s diff. %+9.2f h  CI [%+9.2f, %+9.2f]  %s%n",
-          c.linear().cell().label(), g.gapHours(), g.low(), g.high(),
+          c.linear().cell().label(), g.gap(), g.low(), g.high(),
           g.tied() ? "TIE" : "distinguishable");
     }
 
@@ -98,7 +98,7 @@ public final class IssuesForestCommand implements CommandRunner {
       final StringBuilder line = new StringBuilder();
       for (final Forest.Trial t : f.trials()) {
         final boolean chosen = t.mtry() == f.mtry() && t.nodeSize() == f.nodeSize();
-        line.append(String.format("  %d/%d %.2f%s", t.mtry(), t.nodeSize(), t.maeHours(),
+        line.append(String.format("  %d/%d %.2f%s", t.mtry(), t.nodeSize(), t.mae(),
             chosen ? "*" : ""));
       }
       System.out.printf("    %-26s %d columns:%s%n", f.cell().label(), f.columns().size(), line);
@@ -140,7 +140,7 @@ public final class IssuesForestCommand implements CommandRunner {
           c.forestOverProject().high()));
       m.put("ci_gain_constant", List.of(c.forestOverConstant().low(),
           c.forestOverConstant().high()));
-      m.put("mae_diff_forest_minus_elastic_net", c.forestMinusLinear().gapHours());
+      m.put("mae_diff_forest_minus_elastic_net", c.forestMinusLinear().gap());
       m.put("ci_projects", List.of(c.forestMinusLinear().low(), c.forestMinusLinear().high()));
       out.add(m);
     }

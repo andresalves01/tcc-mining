@@ -11,7 +11,13 @@ import org.junit.jupiter.api.Test;
 /** The mandatory reference, and the four things section 9.1 forbids it from doing. */
 class BaselineTest {
 
-  private record Done(String id, String project, double durationHours) implements Outcome {}
+  private record Done(String id, String project, double durationHours) implements Outcome {
+
+    @Override
+    public double duration() {
+      return durationHours;
+    }
+  }
 
   private static Done unit(final String id, final String project, final double hours) {
     return new Done(id, project, hours);
@@ -58,14 +64,14 @@ class BaselineTest {
     final double[] truth = {10, 20, 30, 40};
     final Score perfect = Score.of("perfeito", truth.clone(), truth, 100.0, 80.0);
 
-    assertEquals(0.0, perfect.maeHours(), 1e-12);
-    assertEquals(100.0, perfect.gainHours(), 1e-12);
+    assertEquals(0.0, perfect.mae(), 1e-12);
+    assertEquals(100.0, perfect.gain(), 1e-12);
     assertEquals(100.0, perfect.gainPercent(), 1e-9);
     assertEquals(100.0, perfect.gainOverConstantPercent(), 1e-9);
     assertEquals(1.0, perfect.spearman(), 1e-9, "a perfect prediction orders perfectly too");
 
     final Score self = Score.reference("obrigatoria", truth.clone(), truth, 80.0);
-    assertEquals(0.0, self.gainHours(), 1e-12, "a reference gains nothing against itself");
+    assertEquals(0.0, self.gain(), 1e-12, "a reference gains nothing against itself");
   }
 
   @Test
@@ -76,7 +82,7 @@ class BaselineTest {
     final Score score = Score.of("x", new double[] {100, 100}, new double[] {0, 0},
         /* mandatory baseline MAE */ 200.0, /* best constant MAE */ 110.0);
 
-    assertEquals(100.0, score.maeHours(), 1e-12);
+    assertEquals(100.0, score.mae(), 1e-12);
     assertEquals(50.0, score.gainPercent(), 1e-9, "half the mandatory reference's error");
     assertEquals(100.0 * (110.0 - 100.0) / 110.0, score.gainOverConstantPercent(), 1e-9);
     assertTrue(score.gainPercent() > score.gainOverConstantPercent(),
@@ -112,8 +118,8 @@ class BaselineTest {
   void hoursAndDaysAgree() {
     final Score score = Score.of("x", new double[] {48, 0}, new double[] {0, 0}, 100.0, 100.0);
 
-    assertEquals(24.0, score.maeHours(), 1e-12);
+    assertEquals(24.0, score.mae(), 1e-12);
     assertEquals(1.0, score.maeDays(), 1e-12);
-    assertTrue(score.gainHours() > 0);
+    assertTrue(score.gain() > 0);
   }
 }

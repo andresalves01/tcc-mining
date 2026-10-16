@@ -69,17 +69,17 @@ public final class IssuesEvaluationTask {
    * selection of the population -- a rule, so another corpus chooses by itself. A tie, which these
    * numbers never reach, goes to the constant, the simpler of the two.
    */
-  public record MainReference(double constantMaeHours, double projectMaeHours,
+  public record MainReference(double constantMae, double projectMae,
       double pairMaeHours) {
 
     /** The main study's rule: two candidates. */
-    public MainReference(final double constantMaeHours, final double projectMaeHours) {
-      this(constantMaeHours, projectMaeHours, Double.NaN);
+    public MainReference(final double constantMae, final double projectMae) {
+      this(constantMae, projectMae, Double.NaN);
     }
 
     public boolean constant() {
-      return constantMaeHours <= projectMaeHours
-          && (Double.isNaN(pairMaeHours) || constantMaeHours <= pairMaeHours);
+      return constantMae <= projectMae
+          && (Double.isNaN(pairMaeHours) || constantMae <= pairMaeHours);
     }
 
     /**
@@ -90,7 +90,7 @@ public final class IssuesEvaluationTask {
       if (constant()) {
         return "constante";
       }
-      return Double.isNaN(pairMaeHours) || projectMaeHours <= pairMaeHours ? "project median"
+      return Double.isNaN(pairMaeHours) || projectMae <= pairMaeHours ? "project median"
           : "executor-project pair median";
     }
   }
@@ -134,21 +134,21 @@ public final class IssuesEvaluationTask {
     final boolean started = population == Population.IN_PROGRESS;
     final MainReference main = new MainReference(
         Fitting.mae(innerRefs.constant(inner.observed().length), inner.observed()),
-        Fitting.mae(innerRefs.projectHours(inner.scoreUnits()), inner.observed()),
-        started ? Fitting.mae(innerRefs.pairHours(inner.scoreUnits()), inner.observed())
+        Fitting.mae(innerRefs.projectMedian(inner.scoreUnits()), inner.observed()),
+        started ? Fitting.mae(innerRefs.pairMedian(inner.scoreUnits()), inner.observed())
             : Double.NaN);
     final double[] observed = sides.observed();
     final List<String> projects = sides.projects();
     final References refs = References.learnedOn(sides.fitUnits());
-    final double[] projectHours = refs.projectHours(sides.scoreUnits());
+    final double[] projectHours = refs.projectMedian(sides.scoreUnits());
     final double[] constantHours = refs.constant(observed.length);
-    final double[] pairHours = refs.pairHours(sides.scoreUnits());
+    final double[] pairHours = refs.pairMedian(sides.scoreUnits());
     final double constantMae = Fitting.mae(constantHours, observed);
 
     final Score project = Score.reference("reference: project median", projectHours,
         observed, constantMae);
     final Score constant = Score.reference(String.format(
-        "reference: constant = fit median (%.1f h)", refs.constantHours()),
+        "reference: constant = fit median (%.1f h)", refs.constantMedian()),
         constantHours, observed, constantMae);
     final Score pair = Score.reference(started
         ? "reference: executor-project pair median (executor at t0)"
@@ -175,7 +175,7 @@ public final class IssuesEvaluationTask {
       progress.item(++done, mine.size(), population + " " + f.cell(),
           mode == Fitting.Mode.INNER ? "inner selection" : "refit on the outer training side");
       final Fitting.Fitted fitted = Fitting.frozen(Cell.byLabel(f.cell(), population), sides, f.alpha(),
-          lambdas.get(f.cell()), project.maeHours(), constantMae);
+          lambdas.get(f.cell()), project.mae(), constantMae);
       evaluated.add(evaluate(fitted, projects, projectHours, constantHours, pairHours, observed));
     }
 
@@ -184,7 +184,7 @@ public final class IssuesEvaluationTask {
         .filter(e -> e.fitted().cell().scenario() == Scenario.C1).toList();
     final List<Bootstrap.Comparison> families = Bootstrap.allPairs(
         atCreation.stream().map(e -> e.fitted().cell().label()).toList(),
-        atCreation.stream().map(e -> Bootstrap.errors(e.fitted().predictedHours(), observed))
+        atCreation.stream().map(e -> Bootstrap.errors(e.fitted().predicted(), observed))
             .toList());
     final List<ProjectBootstrap.Gap> familiesByProjects = new ArrayList<>();
     for (int i = 0; i < atCreation.size(); i++) {
@@ -202,8 +202,8 @@ public final class IssuesEvaluationTask {
       }
       find(evaluated, cell.family(), Scenario.C1).ifPresent(lower -> {
         blocks.add(Bootstrap.compare(cell.label(), Bootstrap.errors(
-            upper.fitted().predictedHours(), observed), lower.fitted().cell().label(),
-            Bootstrap.errors(lower.fitted().predictedHours(), observed)));
+            upper.fitted().predicted(), observed), lower.fitted().cell().label(),
+            Bootstrap.errors(lower.fitted().predicted(), observed)));
         blocksByProjects.add(gap(projects, upper, lower, observed));
       });
     }
@@ -223,7 +223,7 @@ public final class IssuesEvaluationTask {
             cell.scenario(), whole);
         sensitivities.add(new Sensitivity("A15 with the whole commit", cell.label(),
             scoreOf(evaluated, cell), Fitting.frozen(variant, sides, f.alpha(),
-                lambdas.get(f.cell()), project.maeHours(), constantMae).score()));
+                lambdas.get(f.cell()), project.mae(), constantMae).score()));
       }
     }
     // the main study reads its C1 cells without the moved issues; the secondary study reads every
@@ -234,7 +234,7 @@ public final class IssuesEvaluationTask {
     final References stillRefs = References.learnedOn(still.fitUnits());
     final double stillConstant = Fitting.mae(stillRefs.constant(still.observed().length),
         still.observed());
-    final double stillProject = Fitting.mae(stillRefs.projectHours(still.scoreUnits()),
+    final double stillProject = Fitting.mae(stillRefs.projectMedian(still.scoreUnits()),
         still.observed());
     for (final Frozen f : mine) {
       final Cell cell = Cell.byLabel(f.cell(), population);
@@ -254,12 +254,12 @@ public final class IssuesEvaluationTask {
     for (final Evaluated e : mode == Fitting.Mode.INNER && !started ? evaluated
         : List.<Evaluated>of()) {
       final Fitting.Fitted f = e.fitted();
-      final double[] hours = f.recalibration().predictedHours();
+      final double[] hours = f.recalibration().predicted();
       final Fitting.Fitted asIf = new Fitting.Fitted(f.cell(), f.alpha(), f.lambda(), f.columns(),
           f.dropped(), f.contributions(), f.selected(), hours, f.score(), f.step());
       recalibrated.add(new Recalibrated(f.cell().label(), f.recalibration().a(),
           f.recalibration().b(), f.score(), Score.of(f.cell().label() + " [recalibrada]", hours,
-              observed, project.maeHours(), constantMae), e.overConstant(),
+              observed, project.mae(), constantMae), e.overConstant(),
           ProjectBootstrap.gain(projects, hours, constantHours, observed), e.bands(),
           Breakdown.byTruth(hours, observed), e.body(),
           Breakdown.body(hours, observed, 0.25, 0.90), f.spread(), asIf.spread()));
@@ -286,8 +286,8 @@ public final class IssuesEvaluationTask {
   private static ProjectBootstrap.Gap gap(final List<String> projects, final Evaluated a,
       final Evaluated b, final double[] observed) {
     return ProjectBootstrap.compare(projects, a.fitted().cell().label(),
-        Bootstrap.errors(a.fitted().predictedHours(), observed), b.fitted().cell().label(),
-        Bootstrap.errors(b.fitted().predictedHours(), observed));
+        Bootstrap.errors(a.fitted().predicted(), observed), b.fitted().cell().label(),
+        Bootstrap.errors(b.fitted().predicted(), observed));
   }
 
   private static double[] pick(final double[] values, final List<Integer> rows) {
@@ -323,7 +323,7 @@ public final class IssuesEvaluationTask {
   private static Evaluated evaluate(final Fitting.Fitted fitted, final List<String> projects,
       final double[] projectHours, final double[] constantHours, final double[] pairHours,
       final double[] observed) {
-    final double[] predicted = fitted.predictedHours();
+    final double[] predicted = fitted.predicted();
     return new Evaluated(fitted,
         ProjectBootstrap.gain(projects, predicted, projectHours, observed),
         ProjectBootstrap.gain(projects, predicted, constantHours, observed),

@@ -360,8 +360,7 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     out.put("fallback_hour_utc", DayBoundaries.FALLBACK_HOUR);
     out.put("ties", "the boundary closest to " + DayBoundaries.FALLBACK_HOUR
         + ":00 UTC, then the earlier hour");
-    out.put("bots", "at least " + DayBoundaries.BOT_MIN_COMMENTS + " comments, at least "
-        + DayBoundaries.BOT_TEMPLATED_SHARE + " of them opening like a bot's template");
+    out.put("bots", DayBoundaries.BOT_RULE);
     return out;
   }
 

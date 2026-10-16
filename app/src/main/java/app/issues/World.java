@@ -77,11 +77,19 @@ public final class World {
   // ------------------------------------------------------------------ people
 
   public String person(final String id) {
-    if (id == null) {
+    return person(id, corpus.people());
+  }
+
+  /**
+   * A raw account as its canonical identity in {@code people}, the raw id when there is none; null
+   * for no account. The one lookup of a person, here and in the day boundaries.
+   */
+  public static String person(final String raw, final Map<String, Corpus.Person> people) {
+    if (raw == null) {
       return null;
     }
-    final Corpus.Person p = corpus.people().get(id);
-    return p != null && p.canonical() != null ? p.canonical() : id;
+    final Corpus.Person p = people.get(raw);
+    return p != null && p.canonical() != null ? p.canonical() : raw;
   }
 
   private boolean personIsBot(final String id) {
@@ -348,6 +356,50 @@ public final class World {
 
   public List<Commit> linked(final String issue) {
     return linked.getOrDefault(issue, List.of());
+  }
+
+  /**
+   * The issue's implementation commits: linked to it, by a human author (not a bot commit),
+   * visible before {@code limit}; in authoring order, the revision hash breaking ties. The first is
+   * the retrospective executor's; all of them are the change the retrospective columns read.
+   */
+  public List<Commit> implementation(final String issue, final long limit) {
+    final List<Commit> out = new ArrayList<>();
+    for (final Commit c : linked(issue)) {
+      if (c.visible() < limit && c.who() != null && !c.bot()) {
+        out.add(c);
+      }
+    }
+    out.sort(java.util.Comparator.comparingLong(Commit::authoredAt).thenComparing(Commit::hash));
+    return out;
+  }
+
+  /**
+   * What a set of commits changed.
+   *
+   * @param sharedLines their Java lines added and removed, each commit's split evenly among the
+   *     issues it cites (A15, decision 12)
+   * @param wholeLines the same lines, each commit whole (A15w)
+   * @param files the distinct files they touched, of any type; empty when the corpus records none
+   */
+  public record Change(double sharedLines, double wholeLines, Set<Integer> files) {}
+
+  /** What {@code commits} changed, summed in their order. */
+  public Change change(final List<Commit> commits) {
+    double whole = 0;
+    double shared = 0;
+    final Set<Integer> files = new HashSet<>();
+    for (final Commit c : commits) {
+      whole += c.loc();
+      shared += c.loc() / (double) Math.max(1, c.linked().size());
+      final int[] touched = corpus.files().get(c.id());
+      if (touched != null) {
+        for (final int f : touched) {
+          files.add(f);
+        }
+      }
+    }
+    return new Change(shared, whole, files);
   }
 
   // ------------------------------------------------------------------ comments and mentions

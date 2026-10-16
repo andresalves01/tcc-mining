@@ -44,9 +44,9 @@ public final class ProjectBootstrap {
    * Two specifications scored on the same rows, their gap in mean absolute error with its 95%
    * interval from resampling whole projects, both errors recomputed on the same draw.
    *
-   * @param gapHours {@code MAE(a) - MAE(b)} on every row: negative when {@code a} errs less
+   * @param gap {@code MAE(a) - MAE(b)} on every row: negative when {@code a} errs less
    */
-  public record Gap(String a, String b, double gapHours, double low, double high) {
+  public record Gap(String a, String b, double gap, double low, double high) {
 
     /**
      * The registered criterion (the pre-registration, section 8): an interval that contains zero is a

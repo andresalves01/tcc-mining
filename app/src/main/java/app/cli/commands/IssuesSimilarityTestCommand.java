@@ -41,7 +41,7 @@ import java.util.function.Function;
  * every error, band and comparison is in business days.
  *
  * <p>Reads MATRIX and ELASTIC_NET_PARAMETERS, which gives per model its alpha and lambda, for
- * the three with the similarity medians the Jaccard n, embedding n and cluster k they read, and
+ * the four with the similarity medians the Jaccard n, embedding n and cluster k they read, and
  * its forest's column share and leaf; it chooses nothing. A parameters file without a forest for
  * every model is refused. Refuses, scoring, writing and recording nothing, unless the parameters file
  * exists and is the step's own, its choices were made on this very matrix (by SHA-256), the four
@@ -239,7 +239,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         r.scoredRows());
     for (final SimilarityScoring.Scored m : r.models()) {
       final Score sc = m.score();
-      System.out.printf("  %-24s %9.3f %12.3f %9.3f %9.3f%n", m.name(), sc.maeHours(),
+      System.out.printf("  %-24s %9.3f %12.3f %9.3f %9.3f%n", m.name(), sc.mae(),
           m.errors().trimmedMae(), sc.spearman(), sc.pairwise());
       rows.add(modelRow(m, choices.get(m.name())));
       if (m.forest() != null) {
@@ -261,7 +261,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         ProjectBootstrap.DRAWS);
     for (final ProjectBootstrap.Gap g : r.comparisons()) {
       System.out.printf("  %-24s vs %-24s %10.3f [%10.3f, %10.3f]%s%n", g.a(), g.b(),
-          g.gapHours(), g.low(), g.high(), g.tied() ? "  tie" : "");
+          g.gap(), g.low(), g.high(), g.tied() ? "  tie" : "");
       rows.add(comparisonRow(g));
     }
     System.out.printf("%n  side reading, the retrospective scenario on the %,d of %,d scored issues "
@@ -269,7 +269,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         r.withCommitRows(), r.scoredRows());
     for (final ProjectBootstrap.Gap g : r.withCommits()) {
       System.out.printf("  %-24s vs %-24s %10.3f [%10.3f, %10.3f]%s%n", g.a(), g.b(),
-          g.gapHours(), g.low(), g.high(), g.tied() ? "  tie" : "");
+          g.gap(), g.low(), g.high(), g.tied() ? "  tie" : "");
       final Map<String, Object> row = comparisonRow(g);
       row.put("kind", "side_reading_with_commits");
       row.put("n", r.withCommitRows());
@@ -446,7 +446,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       }
       for (final Forest.Importance i : m.forest().importance()) {
         final StringBuilder line = new StringBuilder(m.name()).append('\t').append(i.column())
-            .append('\t').append(i.meanIncreaseHours());
+            .append('\t').append(i.meanIncrease());
         for (final double v : i.increases()) {
           line.append('\t').append(v);
         }
@@ -476,7 +476,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     row.put("family", m.kind());
     final Score s = m.score();
     row.put("n", s.n());
-    row.put("mae_business_days", s.maeHours());
+    row.put("mae_business_days", s.mae());
     row.put("gain_over_project_percent", s.gainPercent());
     row.put("gain_over_global_percent", s.gainOverConstantPercent());
     row.put("spearman", s.spearman());
@@ -524,7 +524,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     row.put("kind", "comparison");
     row.put("a", g.a());
     row.put("b", g.b());
-    row.put("mae_diff_business_days", g.gapHours());
+    row.put("mae_diff_business_days", g.gap());
     row.put("ci_projects", List.of(g.low(), g.high()));
     row.put("tie", g.tied());
     return row;

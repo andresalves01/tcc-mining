@@ -51,7 +51,13 @@ public record IssueUnit(String issueId, String key, String project, String repor
     return Duration.between(startedAt, resolvedAt).toMillis() / 3_600_000.0;
   }
 
-  /** The business days when set, the hours otherwise. */
+  /**
+   * The target: the business days when the unit carries them, which only {@link
+   * BusinessDays#population} sets; the hours for a unit of every other study, the creation-based
+   * one and the registered in-progress chain, which build theirs without. The in-progress
+   * similarity chain never reads the hours here: both its steps refuse a unit without business
+   * days ({@link ElasticNetSelection#run(java.util.List, int)}, {@link SimilarityScoring}).
+   */
   @Override
   public double duration() {
     return businessDays == null ? durationHours() : businessDays;

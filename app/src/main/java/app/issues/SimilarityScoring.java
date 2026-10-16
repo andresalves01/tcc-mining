@@ -57,9 +57,10 @@ import java.util.concurrent.Callable;
  * Retrospective#LINES}) observed.
  *
  * <p><b>Unit</b> (ticket 14). Every duration, prediction and error is in whole business days
- * ({@link BusinessDays}), the outcome each unit carries ({@link IssueUnit#duration}); the
- * {@code Hours} in the shared names of the fitting code is that unit here. The entries must be
- * {@link BusinessDays#population}'s: the issues of at least one business day.
+ * ({@link BusinessDays}), the outcome each unit carries ({@link IssueUnit#duration}); the shared
+ * names of the fitting code are unit-neutral (ticket 17). The entries must be
+ * {@link BusinessDays#population}'s, the issues of at least one business day: an entry whose
+ * business days are not set refuses the run.
  */
 public final class SimilarityScoring {
 
@@ -99,7 +100,7 @@ public final class SimilarityScoring {
    *     otherwise
    * @param forest the refit, for a forest only; null otherwise
    */
-  public record Scored(String name, String kind, double[] predictedHours, Score score,
+  public record Scored(String name, String kind, double[] predicted, Score score,
       Breakdown.Errors errors, List<Breakdown.Band> bands, Fitting.Fitted fitted,
       List<ElasticNetSelection.Removed> removed, Forest.Frozen forest) {}
 
@@ -156,6 +157,7 @@ public final class SimilarityScoring {
       throw new IllegalArgumentException("the parameters hold a forest for " + forests.keySet()
           + "; the models are " + ElasticNetSelection.MODELS);
     }
+    BusinessDays.counted(entries);
     final List<Cell> cells =
         ElasticNetSelection.cells(ElasticNetSelection.combinations(choices),
             Augmentation.Variant.OUTER);
@@ -167,15 +169,15 @@ public final class SimilarityScoring {
     final List<String> projects = sides.projects();
 
     final References refs = References.learnedOn(sides.fitUnits());
-    final double[] globalHours = refs.constant(observed.length);
-    final double[] projectHours = refs.projectHours(sides.scoreUnits());
-    final double constantMae = Fitting.mae(globalHours, observed);
-    final double projectMae = Fitting.mae(projectHours, observed);
+    final double[] globalMedian = refs.constant(observed.length);
+    final double[] projectMedian = refs.projectMedian(sides.scoreUnits());
+    final double constantMae = Fitting.mae(globalMedian, observed);
+    final double projectMae = Fitting.mae(projectMedian, observed);
 
     final List<Scored> models = new ArrayList<>();
-    models.add(given(GLOBAL, "reference", globalHours, observed, projectMae, constantMae));
-    models.add(given(PROJECT, "reference", projectHours, observed, projectMae, constantMae));
-    models.add(given(PAIR, "reference", refs.pairHours(sides.scoreUnits()), observed, projectMae,
+    models.add(given(GLOBAL, "reference", globalMedian, observed, projectMae, constantMae));
+    models.add(given(PROJECT, "reference", projectMedian, observed, projectMae, constantMae));
+    models.add(given(PAIR, "reference", refs.pairMedian(sides.scoreUnits()), observed, projectMae,
         constantMae));
 
     final List<Callable<Scored>> refits = new ArrayList<>(cells.size());
@@ -186,9 +188,9 @@ public final class SimilarityScoring {
             ElasticNetSelection.kept(cell, sides.fitRows(), FITTING_SET);
         final Fitting.Fitted f = Fitting.frozen(kept.cell(), sides, c.alpha(),
             Fitting.finalLambda(c.lambda(), fitRows, innerFitRows), projectMae, constantMae);
-        return new Scored(cell.label(), "elastic-net", f.predictedHours(), f.score(),
-            Breakdown.errors(f.predictedHours(), observed),
-            BusinessDays.bands(f.predictedHours(), observed), f, kept.removed(), null);
+        return new Scored(cell.label(), "elastic-net", f.predicted(), f.score(),
+            Breakdown.errors(f.predicted(), observed),
+            BusinessDays.bands(f.predicted(), observed), f, kept.removed(), null);
       });
     }
     models.addAll(Parallel.map(fitThreads, refits));
@@ -202,16 +204,16 @@ public final class SimilarityScoring {
         final String name = forest(cell.label());
         final Forest.Frozen f = Forest.frozen(new Cell(name, cell.family(), cell.scenario(),
             kept.cell().attributes()), sides, c, projectMae, constantMae);
-        return new Scored(name, "forest", f.predictedHours(), f.score(),
-            Breakdown.errors(f.predictedHours(), observed),
-            BusinessDays.bands(f.predictedHours(), observed), null, kept.removed(), f);
+        return new Scored(name, "forest", f.predicted(), f.score(),
+            Breakdown.errors(f.predicted(), observed),
+            BusinessDays.bands(f.predicted(), observed), null, kept.removed(), f);
       });
     }
     models.addAll(Parallel.map(fitThreads, trees));
 
     final Map<String, double[]> errors = new HashMap<>();
     for (final Scored m : models) {
-      errors.put(m.name(), Bootstrap.errors(m.predictedHours(), observed));
+      errors.put(m.name(), Bootstrap.errors(m.predicted(), observed));
     }
     final List<ProjectBootstrap.Gap> comparisons = new ArrayList<>();
     for (final String[] pair : pairs(models.stream().map(Scored::name).toList())) {
@@ -329,7 +331,7 @@ public final class SimilarityScoring {
       line.append(u.issueId()).append('\t').append(u.key()).append('\t').append(u.project())
           .append('\t').append(r.observed()[i]);
       for (final Scored m : r.models()) {
-        line.append('\t').append(m.predictedHours()[i]);
+        line.append('\t').append(m.predicted()[i]);
       }
       out.add(line.toString());
     }
@@ -362,10 +364,11 @@ public final class SimilarityScoring {
     return largest;
   }
 
-  private static Scored given(final String name, final String kind, final double[] hours,
+  private static Scored given(final String name, final String kind, final double[] predicted,
       final double[] observed, final double projectMae, final double constantMae) {
-    return new Scored(name, kind, hours, Score.of(name, hours, observed, projectMae, constantMae),
-        Breakdown.errors(hours, observed), BusinessDays.bands(hours, observed), null, List.of(),
-        null);
+    return new Scored(name, kind, predicted,
+        Score.of(name, predicted, observed, projectMae, constantMae),
+        Breakdown.errors(predicted, observed), BusinessDays.bands(predicted, observed), null,
+        List.of(), null);
   }
 }

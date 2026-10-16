@@ -8,10 +8,8 @@ public interface Outcome {
   double durationHours();
 
   /**
-   * The duration the models fit and are scored on: the hours, unless the study measures its
-   * target in another unit (the in-progress similarity chain's business days).
+   * The duration the models fit and are scored on, in the unit of the study's target: the hours,
+   * or the in-progress similarity chain's business days.
    */
-  default double duration() {
-    return durationHours();
-  }
+  double duration();
 }
