@@ -73,6 +73,13 @@ import java.util.concurrent.Callable;
  * order (the smaller column share, then the smaller leaf; {@link Forest#chosen}). Its column share,
  * the count that share gave and its leaf go to the parameters file under the step {@link
  * #FOREST_STEP}.
+ *
+ * <p><b>Business days</b> (ticket 14). The target is whole business days ({@link BusinessDays}),
+ * the outcome each unit carries, and the rows are the issues of at least one: the entries are
+ * {@link BusinessDays#population}'s. Every error the selection reads and keeps -- the {@code Hours}
+ * of the shared names included -- is in business days. The procedures, grids and tie rules are
+ * those chosen for the hours, unchanged. A parameters file written for the hours has another
+ * {@link #HEADER} and is never read or overwritten.
  */
 public final class ElasticNetSelection {
 
@@ -187,7 +194,8 @@ public final class ElasticNetSelection {
   /** The first line of every parameters file this step writes. */
   public static final String HEADER = "# Elastic Net alpha and lambda, the similarity medians' "
       + "n, n and k, and each random forest's column share and leaf, chosen on the inner "
-      + "validation only; the outer test was not read";
+      + "validation only, the target in whole business days on the issues of at least one; the "
+      + "outer test was not read";
 
   /** The step of the Elastic Net choices in the parameters file. */
   public static final String STEP = "elastic-net";

@@ -39,7 +39,7 @@ public final class DesignMatrix {
 
   /** The outcome, on the scale the models are fitted on. */
   public static double target(final Outcome unit) {
-    return Math.log1p(unit.durationHours());
+    return Math.log1p(unit.duration());
   }
 
   /**

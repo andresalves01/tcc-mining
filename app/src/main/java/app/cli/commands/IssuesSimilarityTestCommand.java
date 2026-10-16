@@ -4,6 +4,7 @@ import app.cli.CommandFailedException;
 import app.cli.CommandRunner;
 import app.cli.Context;
 import app.issues.Augmentation;
+import app.issues.BusinessDays;
 import app.issues.DescriptionCleaner;
 import app.issues.ElasticNetSelection;
 import app.issues.RegistrationInProgress;
@@ -32,7 +33,10 @@ import java.util.function.Function;
  * SimilarityScoring}): fifteen models -- the global, project and executor-project medians, the
  * six Elastic Nets and, as a robustness check, the random forest beside each -- refitted on the
  * outer training set with the parameters the selection step wrote, the outer test scored once,
- * every agreed comparison.
+ * every agreed comparison. The target is whole business days, on the issues of at least one
+ * ({@link BusinessDays}): every row is read with its day boundary from the matrix and those of 0
+ * business days are dropped from the outer training and the outer test before anything is fitted;
+ * every error, band and comparison is in business days.
  *
  * <p>Reads MATRIX and ELASTIC_NET_PARAMETERS, which gives per model its alpha and lambda, for
  * the three with the similarity medians the Jaccard n, embedding n and cluster k they read, and
@@ -57,7 +61,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
 
   /**
    * Per forest, each design column's permutation importance on the outer test: the rise in mean
-   * absolute error, in hours, when its values are shuffled. A diagnostic.
+   * absolute error, in business days, when its values are shuffled. A diagnostic.
    */
   public static final String IMPORTANCE = "similarity-test-forest-importance.tsv";
 
@@ -188,13 +192,28 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     if (!missing.isEmpty()) {
       throw refused(matrix + " has no column " + missing);
     }
+    if (!columns.contains(BusinessDays.BOUNDARY)) {
+      throw refused(matrix + " has no " + BusinessDays.BOUNDARY + "; it was written before "
+          + "business days");
+    }
+    final BusinessDays.Population population;
+    try {
+      population = BusinessDays.population(entries);
+    } catch (final IllegalArgumentException e) {
+      throw refused(e.getMessage());
+    }
 
     System.out.printf("%n  NOTE: %s.%n  NOTE: %s.%n", EXAMINED, EFFORT);
+    System.out.printf("  target: %s; %s%n", BusinessDays.TARGET, BusinessDays.HOLIDAYS);
+    System.out.printf("  population: %s%n", BusinessDays.POPULATION);
+    System.out.printf("  issues of at least one business day: outer training %,d of %,d, outer "
+        + "test %,d of %,d%n", population.kept().train(), population.all().train(),
+        population.kept().test(), population.all().test());
     System.out.printf("  the parameters are read, never chosen; the outer test is scored now%n");
     final long fitting = System.nanoTime();
     final SimilarityScoring.Report r;
     try {
-      r = SimilarityScoring.run(entries, choices, forests);
+      r = SimilarityScoring.run(population.entries(), choices, forests);
     } catch (final IllegalArgumentException e) {
       throw refused(e.getMessage());
     }
@@ -211,31 +230,34 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         + "the global one): %,d issues, %s%n", r.unseenRows(), r.unseenProjects());
 
     final List<Map<String, Object>> rows = new ArrayList<>();
-    System.out.printf("%n  %-24s %9s %9s %9s %9s %9s%n", "model", "MAE h", "MAE d", "Spearman",
-        "pairwise", "slow10% d");
+    System.out.printf("%n  %-24s %9s %12s %9s %9s  (w/o slow10%%: the rows at or under the "
+        + "90th percentile of the truth, %,d of %,d; ties at it all kept)%n", "model", "MAE bd",
+        "w/o slow10%", "Spearman", "pairwise", r.models().get(0).errors().trimmedN(),
+        r.scoredRows());
     for (final SimilarityScoring.Scored m : r.models()) {
       final Score sc = m.score();
-      System.out.printf("  %-24s %9.2f %9.2f %9.3f %9.3f %9.2f%n", m.name(), sc.maeHours(),
-          sc.maeDays(), sc.spearman(), sc.pairwise(), m.bands().get(4).mae() / 24);
+      System.out.printf("  %-24s %9.3f %12.3f %9.3f %9.3f%n", m.name(), sc.maeHours(),
+          m.errors().trimmedMae(), sc.spearman(), sc.pairwise());
       rows.add(modelRow(m, choices.get(m.name())));
       if (m.forest() != null) {
         System.out.printf("    %-22s mtry %d (share %.3f), leaf %d%n", "", m.forest().mtry(),
             m.forest().share(), m.forest().nodeSize());
       }
     }
-    System.out.printf("%n  error by band of the true duration, MAE in days%n");
+    System.out.printf("%n  error by band of the true business days (1, 2-3, 4-10, 11+), MAE in "
+        + "business days%n");
     for (final SimilarityScoring.Scored m : r.models()) {
       final StringBuilder line = new StringBuilder(String.format("  %-24s", m.name()));
       for (final Breakdown.Band b : m.bands()) {
-        line.append(String.format("  %s %.2f", b.label(), b.mae() / 24));
+        line.append(String.format("  %s: %.3f (n %d)", b.label(), b.mae(), b.n()));
       }
       System.out.println(line);
     }
-    System.out.printf("%n  paired comparisons: MAE(a) - MAE(b) in hours, 95%% interval resampling "
-        + "whole projects (%d draws); an interval containing zero is a tie%n",
+    System.out.printf("%n  paired comparisons: MAE(a) - MAE(b) in business days, 95%% interval "
+        + "resampling whole projects (%d draws); an interval containing zero is a tie%n",
         ProjectBootstrap.DRAWS);
     for (final ProjectBootstrap.Gap g : r.comparisons()) {
-      System.out.printf("  %-24s vs %-24s %10.2f [%10.2f, %10.2f]%s%n", g.a(), g.b(),
+      System.out.printf("  %-24s vs %-24s %10.3f [%10.3f, %10.3f]%s%n", g.a(), g.b(),
           g.gapHours(), g.low(), g.high(), g.tied() ? "  tie" : "");
       rows.add(comparisonRow(g));
     }
@@ -268,9 +290,9 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         importanceFile, importanceSha);
     if (rerun != null) {
       System.out.printf("  against the predictions of the previous run there: largest "
-          + "difference %.3g h, tolerance %.0e h: %s%n", rerun,
-          SimilarityScoring.RERUN_TOLERANCE_HOURS,
-          rerun <= SimilarityScoring.RERUN_TOLERANCE_HOURS ? "REPRODUCED" : "NOT REPRODUCED");
+          + "difference %.3g business days, tolerance %.0e: %s%n", rerun,
+          SimilarityScoring.RERUN_TOLERANCE,
+          rerun <= SimilarityScoring.RERUN_TOLERANCE ? "REPRODUCED" : "NOT REPRODUCED");
     }
 
     final Map<String, Object> run = new LinkedHashMap<>();
@@ -279,6 +301,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     run.put("outer_test", "scored");
     run.put("models", r.models().stream().map(SimilarityScoring.Scored::name).toList());
     run.putAll(statements());
+    run.put("population_rows", populationRows(population));
     run.put("matrix_sha256", matrixSha);
     run.put("elastic_net_parameters_sha256", elasticNetSha);
     run.put("predictions_sha256", predictionsSha);
@@ -296,8 +319,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     run.put("final_lambda", "chosen lambda x fit_rows / inner_fit_rows; alpha as chosen");
     run.put("bootstrap_draws", ProjectBootstrap.DRAWS);
     run.put("bootstrap_seed", ProjectBootstrap.SEED);
-    run.put("rerun_tolerance_hours", SimilarityScoring.RERUN_TOLERANCE_HOURS);
-    run.put("rerun_max_difference_hours", rerun);
+    run.put("rerun_tolerance_business_days", SimilarityScoring.RERUN_TOLERANCE);
+    run.put("rerun_max_difference_business_days", rerun);
     run.put("scoring_seconds", scoringSeconds);
     run.put("seconds", (System.nanoTime() - began) / 1e9);
     run.put("java", System.getProperty("java.version"));
@@ -318,7 +341,15 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final Map<String, Object> out = new LinkedHashMap<>();
     out.put("outer_test_examined_before", EXAMINED);
     out.put("selection_effort", EFFORT);
-    out.put("forest_role", IssuesSimilarityElasticNetCommand.FOREST_ROLE);
+    out.putAll(IssuesSimilarityElasticNetCommand.statements());
+    return out;
+  }
+
+  /** The rows of the outer training and the outer test before and after the drop of 0 days. */
+  private static Map<String, Object> populationRows(final BusinessDays.Population p) {
+    final Map<String, Object> out = new LinkedHashMap<>();
+    out.put("outer_training", List.of(p.kept().train(), p.all().train()));
+    out.put("outer_test", List.of(p.kept().test(), p.all().test()));
     return out;
   }
 
@@ -384,13 +415,14 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
 
   /**
    * Per forest, each design column's permutation importance on the outer test: the mean rise in
-   * mean absolute error, in hours, over the repeats, then each repeat's, as Java prints a double.
+   * mean absolute error, in business days, over the repeats, then each repeat's, as Java prints
+   * a double.
    */
   static List<String> importance(final SimilarityScoring.Report r) {
     final List<String> out = new ArrayList<>();
-    final StringBuilder header = new StringBuilder("model\tcolumn\tmean_mae_increase_h");
+    final StringBuilder header = new StringBuilder("model\tcolumn\tmean_mae_increase_bd");
     for (int k = 1; k <= Forest.PERMUTATION_REPEATS; k++) {
-      header.append("\trepeat_").append(k).append("_h");
+      header.append("\trepeat_").append(k).append("_bd");
     }
     out.add(header.toString());
     for (final SimilarityScoring.Scored m : r.models()) {
@@ -429,24 +461,24 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     row.put("family", m.kind());
     final Score s = m.score();
     row.put("n", s.n());
-    row.put("mae_hours", s.maeHours());
-    row.put("mae_days", s.maeDays());
+    row.put("mae_business_days", s.maeHours());
     row.put("gain_over_project_percent", s.gainPercent());
     row.put("gain_over_global_percent", s.gainOverConstantPercent());
     row.put("spearman", s.spearman());
     row.put("pairwise", s.pairwise());
     final Breakdown.Errors e = m.errors();
-    row.put("abs_error_p50_hours", e.p50());
-    row.put("abs_error_p90_hours", e.p90());
-    row.put("mae_without_slowest_tenth_hours", e.trimmedMae());
+    row.put("abs_error_p50_business_days", e.p50());
+    row.put("abs_error_p90_business_days", e.p90());
+    row.put("mae_without_slowest_tenth_business_days", e.trimmedMae());
+    row.put("rows_without_slowest_tenth", e.trimmedN());
     final List<Map<String, Object>> bands = new ArrayList<>();
     for (final Breakdown.Band b : m.bands()) {
       final Map<String, Object> band = new LinkedHashMap<>();
       band.put("band", b.label());
       band.put("n", b.n());
-      band.put("median_truth_hours", b.medianTruth());
-      band.put("mae_hours", b.mae());
-      band.put("median_error_hours", b.medianError());
+      band.put("median_truth_business_days", b.medianTruth());
+      band.put("mae_business_days", b.mae());
+      band.put("median_error_business_days", b.medianError());
       bands.add(band);
     }
     row.put("bands", bands);
@@ -477,7 +509,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     row.put("kind", "comparison");
     row.put("a", g.a());
     row.put("b", g.b());
-    row.put("mae_diff_hours", g.gapHours());
+    row.put("mae_diff_business_days", g.gapHours());
     row.put("ci_projects", List.of(g.low(), g.high()));
     row.put("tie", g.tied());
     return row;

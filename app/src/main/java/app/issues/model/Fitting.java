@@ -133,7 +133,7 @@ public final class Fitting {
     }
     final double[] observed = new double[scoreUnits.size()];
     for (int i = 0; i < observed.length; i++) {
-      observed[i] = scoreUnits.get(i).durationHours();
+      observed[i] = scoreUnits.get(i).duration();
     }
     return new Sides(fitUnits, fitRows, scoreUnits, scoreRows, observed);
   }

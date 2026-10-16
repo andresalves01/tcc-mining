@@ -6,9 +6,11 @@ import app.cli.Context;
 import app.issues.Attribute;
 import app.issues.Attributes;
 import app.issues.Augmentation;
+import app.issues.BusinessDays;
 import app.issues.ElasticNetSelection;
 import app.issues.RegistrationInProgress;
 import app.issues.RowCache;
+import app.issues.Universe.Population;
 import app.issues.model.Cell;
 import app.issues.model.Fitting;
 import app.issues.model.Forest;
@@ -33,8 +35,13 @@ import java.util.Set;
  * each model, as a robustness check, a random forest's column share and leaf, swept on the same
  * rows and columns.
  *
+ * <p>The target is whole business days, on the issues of at least one ({@link BusinessDays}):
+ * the outer training rows are read with each one's day boundary from the matrix, those of 0
+ * business days dropped, and the selection runs on the rest.
+ *
  * <p>Reads MATRIX; refuses, writing and recording nothing, unless the four split sizes are the
- * registered study's and the matrix has every column the models declare at every combination.
+ * registered study's and the matrix has the day boundary and every column the models declare at
+ * every combination.
  * The outer test is counted by its split labels and nothing else. Writes the choices to
  * ELASTIC_NET_PARAMETERS -- never the registered PARAMETERS, and never over a file holding
  * anything but this step's own lines under its own header, a check made before anything is fitted
@@ -92,6 +99,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
           + "split sizes are not the registered study's, " + RegistrationInProgress.SIZES));
     }
     final ElasticNetSelection.Result r;
+    final BusinessDays.Population population;
     try {
       final List<String> missing = missing(
           ElasticNetSelection.everyCell(Augmentation.Variant.INNER), columns);
@@ -99,18 +107,32 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
         throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
             + matrix + " has no column " + missing));
       }
-      r = ElasticNetSelection.run(entries);
+      if (!columns.contains(BusinessDays.BOUNDARY)) {
+        throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
+            + matrix + " has no " + BusinessDays.BOUNDARY + "; it was written before business "
+            + "days, run issues-in-progress-similarity again"));
+      }
+      // the outer test is left behind here, before any outcome is read
+      population = BusinessDays.population(entries.stream()
+          .filter(e -> "TRAIN".equals(e.outer(Population.IN_PROGRESS))).toList());
+      r = ElasticNetSelection.run(population.entries());
     } catch (final IllegalArgumentException e) {
       throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
           + e.getMessage()));
     }
 
+    System.out.printf("  target: %s; %s%n", BusinessDays.TARGET, BusinessDays.HOLIDAYS);
+    System.out.printf("  population: %s%n", BusinessDays.POPULATION);
+    System.out.printf("  issues of at least one business day: inner fitting %,d of %,d, inner "
+        + "validation %,d of %,d, outer training %,d of %,d%n", population.kept().innerFit(),
+        population.all().innerFit(), population.kept().innerSelection(),
+        population.all().innerSelection(), population.kept().train(), population.all().train());
     System.out.printf("  inner fitting %,d rows, inner validation %,d rows; the outer test is not "
         + "read%n", r.fitRows(), r.validationRows());
     System.out.printf("  Elastic Net grid: alpha %s x %d lambdas, anchor 2*max|X'r|/alpha; "
-        + "references on the inner validation: project median %.2f h, fitting median %.2f h%n",
-        java.util.Arrays.toString(Fitting.ALPHAS), Fitting.LAMBDA_STEPS, r.projectMaeHours(),
-        r.constantMaeHours());
+        + "references on the inner validation: project median %.3f bd, fitting median %.3f bd "
+        + "(MAE, business days)%n", java.util.Arrays.toString(Fitting.ALPHAS),
+        Fitting.LAMBDA_STEPS, r.projectMaeHours(), r.constantMaeHours());
     System.out.printf("  the models with the similarity medians sweep each of %d combinations of "
         + "Jaccard n %s, embedding n %s and cluster k %s; exact ties go to the smaller values, "
         + "Jaccard n first, then embedding n, then cluster k%n",
@@ -119,19 +141,19 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     final List<Map<String, Object>> rows = new ArrayList<>();
     for (final ElasticNetSelection.Model m : r.models()) {
       final Fitting.Fitted f = m.fitted();
-      System.out.printf("%n  %-22s alpha %.2f  lambda %-12.6g step %2d of %d%s; MAE %.2f h "
-          + "(%.2f d); %d columns, %d selected%n", m.cell().label(), f.alpha(), f.lambda(),
+      System.out.printf("%n  %-22s alpha %.2f  lambda %-12.6g step %2d of %d%s; MAE %.3f bd; "
+          + "%d columns, %d selected%n", m.cell().label(), f.alpha(), f.lambda(),
           f.step(), Fitting.LAMBDA_STEPS, f.step() == 0 ? " = TOP, ALL ZEROED"
               : f.step() == Fitting.LAMBDA_STEPS - 1 ? " = GRID FLOOR" : "",
-          f.score().maeHours(), f.score().maeHours() / 24, f.columns().size(), f.selected());
+          f.score().maeHours(), f.columns().size(), f.selected());
       if (m.combination() != null) {
         System.out.printf("    chosen: Jaccard n %d, embedding n %d, cluster k %d%n",
             m.combination().jaccardN(), m.combination().embeddingN(),
             m.combination().clusterK());
         System.out.printf("    each combination's best on the inner validation (Jaccard n, "
-            + "embedding n, cluster k: MAE h)%n");
+            + "embedding n, cluster k: MAE bd)%n");
         for (final ElasticNetSelection.Swept x : m.combinations()) {
-          System.out.printf("      %2d %2d %2d: %.2f%s%n", x.combination().jaccardN(),
+          System.out.printf("      %2d %2d %2d: %.3f%s%n", x.combination().jaccardN(),
               x.combination().embeddingN(), x.combination().clusterK(), x.maeHours(),
               x.combination().equals(m.combination()) ? "  chosen" : "");
         }
@@ -145,12 +167,12 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
       }
       final Forest.Fitted forest = m.forest();
       System.out.printf("    random forest (robustness check): mtry %d (share %.3f), leaf %d; MAE "
-          + "%.2f h (%.2f d), Elastic Net minus forest %+.2f h%n", forest.mtry(), forest.share(),
-          forest.nodeSize(), forest.score().maeHours(), forest.score().maeHours() / 24,
+          + "%.3f bd, Elastic Net minus forest %+.3f bd%n", forest.mtry(), forest.share(),
+          forest.nodeSize(), forest.score().maeHours(),
           f.score().maeHours() - forest.score().maeHours());
-      final StringBuilder grid = new StringBuilder("      grid (mtry/leaf: MAE h)");
+      final StringBuilder grid = new StringBuilder("      grid (mtry/leaf: MAE bd)");
       for (final Forest.Trial t : forest.trials()) {
-        grid.append(String.format("  %d/%d %.2f", t.mtry(), t.nodeSize(), t.maeHours()));
+        grid.append(String.format("  %d/%d %.3f", t.mtry(), t.nodeSize(), t.maeHours()));
       }
       System.out.println(grid);
       rows.add(row(m));
@@ -173,6 +195,8 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     run.put("stage", STAGE);
     run.put("mode", "inner");
     run.put("outer_test", "not read");
+    run.putAll(statements());
+    run.put("population_rows", populationRows(population));
     run.put("models", ElasticNetSelection.MODELS);
     run.put("matrix_sha256", matrixSha);
     run.put("parameters_sha256", parametersSha);
@@ -181,14 +205,13 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     run.put("cluster_k", Augmentation.CLUSTER_K);
     run.put("ties", "within a sweep the earlier point; across combinations the smaller Jaccard n, "
         + "then embedding n, then cluster k");
-    run.put("forest_role", FOREST_ROLE);
     run.put("forest_grid", forestGrid());
     run.put("forest_ties", "the first point of the grid in its order: the smaller column share, "
         + "then the smaller leaf");
     run.put("fit_rows", r.fitRows());
     run.put("validation_rows", r.validationRows());
-    run.put("project_mae_hours", r.projectMaeHours());
-    run.put("constant_mae_hours", r.constantMaeHours());
+    run.put("project_mae_business_days", r.projectMaeHours());
+    run.put("constant_mae_business_days", r.constantMaeHours());
     run.put("seconds", (System.nanoTime() - began) / 1e9);
     run.put("java", System.getProperty("java.version"));
     System.out.printf("  run recorded in ISSUES_DB: %s%n",
@@ -229,7 +252,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
         one.put("cluster_k", x.combination().clusterK());
         one.put("alpha", x.alpha());
         one.put("lambda", x.lambda());
-        one.put("mae_hours", x.maeHours());
+        one.put("mae_business_days", x.maeHours());
         each.add(one);
       }
       row.put("combinations", each);
@@ -237,7 +260,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     row.put("alpha", f.alpha());
     row.put("lambda", f.lambda());
     row.put("step", f.step());
-    row.put("mae_hours", f.score().maeHours());
+    row.put("mae_business_days", f.score().maeHours());
     row.put("columns", f.columns());
     row.put("selected", f.selected());
     final List<Map<String, Object>> removed = new ArrayList<>();
@@ -254,7 +277,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     trees.put("mtry_share", forest.share());
     trees.put("mtry", forest.mtry());
     trees.put("node_size", forest.nodeSize());
-    trees.put("mae_hours", forest.score().maeHours());
+    trees.put("mae_business_days", forest.score().maeHours());
     trees.put("columns", forest.columns());
     final List<Map<String, Object>> grid = new ArrayList<>();
     for (final Forest.Trial t : forest.trials()) {
@@ -262,12 +285,34 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
       one.put("mtry_share", t.share());
       one.put("mtry", t.mtry());
       one.put("node_size", t.nodeSize());
-      one.put("mae_hours", t.maeHours());
+      one.put("mae_business_days", t.maeHours());
       grid.add(one);
     }
     trees.put("grid", grid);
     row.put("forest", trees);
     return row;
+  }
+
+  /** What the run record states about the target, the population and the forest. */
+  static Map<String, Object> statements() {
+    final Map<String, Object> out = new LinkedHashMap<>();
+    out.put("target", BusinessDays.TARGET);
+    out.put("population", BusinessDays.POPULATION);
+    out.put("holidays", BusinessDays.HOLIDAYS);
+    out.put("forest_role", FOREST_ROLE);
+    return out;
+  }
+
+  /**
+   * The rows of each split inside the outer training before and after the issues of 0 business
+   * days are dropped, for the run record; the outer test is not counted here.
+   */
+  static Map<String, Object> populationRows(final BusinessDays.Population p) {
+    final Map<String, Object> out = new LinkedHashMap<>();
+    out.put("inner_fitting", List.of(p.kept().innerFit(), p.all().innerFit()));
+    out.put("inner_validation", List.of(p.kept().innerSelection(), p.all().innerSelection()));
+    out.put("outer_training", List.of(p.kept().train(), p.all().train()));
+    return out;
   }
 
   /** The forest's declared grid as a document, for the run records of both steps. */

@@ -229,4 +229,31 @@ class IssuesSimilarityTestCommandTest {
     assertTrue(run.get("selection_effort").toString().contains("differs"));
     assertTrue(run.get("forest_role").toString().contains("robustness check"));
   }
+
+  @Test
+  @DisplayName("a parameters file chosen for the hours, under the header before business days, "
+      + "refuses the run")
+  void refusesAFileForTheHours() throws IOException {
+    final Path matrix = matrix();
+    final Path elasticNet = elasticNet(IssuesReservedCommand.sha256(matrix));
+    final List<String> hours = new java.util.ArrayList<>(Files.readAllLines(elasticNet));
+    hours.set(0, "# Elastic Net alpha and lambda, the similarity medians' n, n and k, and each "
+        + "random forest's column share and leaf, chosen on the inner validation only; the outer "
+        + "test was not read");
+    set(matrix, Files.write(dir.resolve("hours.tsv"), hours));
+    final String why = refusal();
+    assertTrue(why.contains("is not the Elastic Net step's parameters file"), why);
+  }
+
+  @Test
+  @DisplayName("the run records of both steps name the target as business days, the population "
+      + "as the issues of at least one, and holidays as ignored")
+  void businessDayStatements() {
+    for (final Map<String, Object> run : List.of(IssuesSimilarityTestCommand.statements(),
+        IssuesSimilarityElasticNetCommand.statements())) {
+      assertTrue(run.get("target").toString().startsWith("whole business days"), run.toString());
+      assertTrue(run.get("population").toString().contains("at least one business day"));
+      assertTrue(run.get("holidays").toString().contains("holidays ignored"));
+    }
+  }
 }

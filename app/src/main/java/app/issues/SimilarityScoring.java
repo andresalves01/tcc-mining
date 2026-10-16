@@ -46,20 +46,25 @@ import java.util.concurrent.Callable;
  * forest, the permutation importance of each design column on the outer test is kept, a
  * diagnostic.
  *
- * <p><b>Readings.</b> Per model: the error in hours and days, Spearman and pairwise ordering
- * ({@link Score}), the error by band of the true duration with the slowest tenth apart ({@link
- * Breakdown#byTruth}). Paired comparisons, gap in mean absolute error with the interval from
- * resampling whole projects ({@link ProjectBootstrap#compare}), for exactly the pairs of {@link
- * #pairs}.
+ * <p><b>Readings.</b> Per model: the error, Spearman and pairwise ordering ({@link Score}), the
+ * error's distribution with the slowest tenth left out ({@link Breakdown#errors}) and the error by
+ * band of the true business days, 1, 2-3, 4-10 and 11 or more ({@link BusinessDays#bands}).
+ * Paired comparisons, gap in mean absolute error with the interval from resampling whole projects
+ * ({@link ProjectBootstrap#compare}), for exactly the pairs of {@link #pairs}.
+ *
+ * <p><b>Unit</b> (ticket 14). Every duration, prediction and error is in whole business days
+ * ({@link BusinessDays}), the outcome each unit carries ({@link IssueUnit#duration}); the
+ * {@code Hours} in the shared names of the fitting code is that unit here. The entries must be
+ * {@link BusinessDays#population}'s: the issues of at least one business day.
  */
 public final class SimilarityScoring {
 
   /**
-   * Two runs on the same inputs and parameters agree on every prediction to this many hours. The
-   * fit is deterministic, so a rerun on the same machine reproduces it exactly; the tolerance is
-   * what another machine's floating point may move a prediction by.
+   * Two runs on the same inputs and parameters agree on every prediction to this many business
+   * days. The fit is deterministic, so a rerun on the same machine reproduces it exactly; the
+   * tolerance is what another machine's floating point may move a prediction by.
    */
-  public static final double RERUN_TOLERANCE_HOURS = 1e-6;
+  public static final double RERUN_TOLERANCE = 1e-6;
 
   public static final String GLOBAL = "global_median";
   public static final String PROJECT = "project_median";
@@ -164,7 +169,7 @@ public final class SimilarityScoring {
             Fitting.finalLambda(c.lambda(), fitRows, innerFitRows), projectMae, constantMae);
         return new Scored(cell.label(), "elastic-net", f.predictedHours(), f.score(),
             Breakdown.errors(f.predictedHours(), observed),
-            Breakdown.byTruth(f.predictedHours(), observed), f, kept.removed(), null);
+            BusinessDays.bands(f.predictedHours(), observed), f, kept.removed(), null);
       });
     }
     models.addAll(Parallel.map(fitThreads, refits));
@@ -180,7 +185,7 @@ public final class SimilarityScoring {
             kept.cell().attributes()), sides, c, projectMae, constantMae);
         return new Scored(name, "forest", f.predictedHours(), f.score(),
             Breakdown.errors(f.predictedHours(), observed),
-            Breakdown.byTruth(f.predictedHours(), observed), null, kept.removed(), f);
+            BusinessDays.bands(f.predictedHours(), observed), null, kept.removed(), f);
       });
     }
     models.addAll(Parallel.map(fitThreads, trees));
@@ -259,11 +264,12 @@ public final class SimilarityScoring {
 
   /**
    * The predictions file: a header, then one line per scored issue -- its id, key, project and
-   * observed duration in hours, then each model's prediction in hours, as Java prints a double.
+   * observed business days, then each model's prediction in business days, as Java prints a
+   * double.
    */
   public static List<String> predictions(final Report r) {
     final List<String> out = new ArrayList<>(r.scoredRows() + 1);
-    final StringBuilder header = new StringBuilder("id\tkey\tproject\tobserved_h");
+    final StringBuilder header = new StringBuilder("id\tkey\tproject\tobserved_business_days");
     r.models().forEach(m -> header.append('\t').append(m.name()));
     out.add(header.toString());
     for (int i = 0; i < r.scoredRows(); i++) {
@@ -280,7 +286,7 @@ public final class SimilarityScoring {
   }
 
   /**
-   * The largest difference, in hours, between two predictions files of the same issues and
+   * The largest difference, in business days, between two predictions files of the same issues and
    * models, line by line; refuses when the header, the issues or their order differ.
    */
   public static double maxDifference(final List<String> before, final List<String> after) {
@@ -308,7 +314,7 @@ public final class SimilarityScoring {
   private static Scored given(final String name, final String kind, final double[] hours,
       final double[] observed, final double projectMae, final double constantMae) {
     return new Scored(name, kind, hours, Score.of(name, hours, observed, projectMae, constantMae),
-        Breakdown.errors(hours, observed), Breakdown.byTruth(hours, observed), null, List.of(),
+        Breakdown.errors(hours, observed), BusinessDays.bands(hours, observed), null, List.of(),
         null);
   }
 }

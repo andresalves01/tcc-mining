@@ -4,6 +4,8 @@ import app.cli.CommandFailedException;
 import app.cli.CommandRunner;
 import app.cli.Context;
 import app.issues.Augmentation;
+import app.issues.BusinessDays;
+import app.issues.DayBoundaries;
 import app.issues.DescriptionCleaner;
 import app.issues.Embedder;
 import app.issues.Extractor;
@@ -45,8 +47,11 @@ import java.util.function.Function;
  * EMBEDDING_CACHE, which it saves whenever the model computed anything, even when the stage then
  * fails; the descriptions the cache misses are embedded on the threads EMBEDDING_THREADS asks
  * for, every processor when unset, with the same vectors as on one. The clusters are Smile's
- * K-means ({@link SmileKMeans}). Writes the augmented matrix -- the extracted columns, the four
- * team columns, then the similarity columns -- to MATRIX, the diagnostics as tab-separated files
+ * K-means ({@link SmileKMeans}). Each issue's day boundary is read from the tracker activity
+ * before its first In Progress ({@link DayBoundaries}); the similarity medians are of past issues'
+ * business days at their own boundaries ({@link BusinessDays}). Writes the augmented matrix -- the
+ * extracted columns, the four team columns, the similarity columns, then the day boundary -- to
+ * MATRIX, the diagnostics as tab-separated files
  * to REPORT_DIR, and records the run, with the SHA-256 of every file it read or wrote, the model,
  * its revision, the cache's hits and misses, the embedding threads, the clusterer, its seed, runs
  * and the distortion of every fit, and the time spent, in ISSUES_DB.
@@ -97,8 +102,9 @@ public final class IssuesSimilarityCommand implements CommandRunner {
       throw new CommandFailedException(List.of("  could not read TEAM_COLUMNS " + teamFile
           + " (written by issues-in-progress-team): " + e));
     }
-    final List<String> already = java.util.stream.Stream.concat(Extractor.TEAM_REVISED.stream(),
-        Augmentation.columns().stream()).filter(columns::contains).toList();
+    final List<String> already = java.util.stream.Stream.of(Extractor.TEAM_REVISED,
+        Augmentation.columns(), List.of(BusinessDays.BOUNDARY)).flatMap(List::stream)
+        .filter(columns::contains).toList();
     if (!already.isEmpty()) {
       throw new CommandFailedException(List.of("  REFUSED: " + cache + " already has "
           + String.join(", ", already) + "; give the matrix the extraction wrote"));
@@ -197,6 +203,14 @@ public final class IssuesSimilarityCommand implements CommandRunner {
         + "%.1f s; %,d in more than one chunk (at most %d); %,d invalid vectors left missing%n",
         embedded.size(), embeddings.hits(), embeddings.misses(), embeddings.modelSeconds(),
         multiChunk, maxChunks, invalid);
+    System.out.printf("%n  DAY BOUNDARIES: %s; %s%n", BusinessDays.TARGET,
+        BusinessDays.HOLIDAYS);
+    System.out.printf("  %,d bot accounts left out of the activity (at least %d comments, at "
+        + "least %.0f%% opening like a bot's template)%n", r.bots().size(),
+        DayBoundaries.BOT_MIN_COMMENTS, 100 * DayBoundaries.BOT_TEMPLATED_SHARE);
+    final Map<String, Map<String, Integer>> sources = sources(r);
+    sources.forEach((split, by) -> System.out.printf("    %-18s %s%n", split, by));
+
     System.out.printf("%n  COVERAGE BY SPLIT%n");
     final List<Map<String, Object>> rows = new ArrayList<>();
     for (final Augmentation.Coverage c : r.result().coverage()) {
@@ -225,7 +239,7 @@ public final class IssuesSimilarityCommand implements CommandRunner {
           Instant.ofEpochMilli(b.last()), b.history());
     }
     System.out.printf("%n  matrix written to %s (%d new columns)%n", matrix,
-        Augmentation.columns().size());
+        Augmentation.columns().size() + 1);
     System.out.printf("  diagnostics written to %s: %s%n", reports,
         String.join(", ", written.keySet().stream().filter(k -> !k.equals("matrix")).toList()));
 
@@ -265,6 +279,12 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     run.put("embedding_threads", embeddingThreads);
     run.put("augmentation_seconds", augmentationSeconds);
     run.put("blocks", Augmentation.BLOCKS);
+    run.put("target", BusinessDays.TARGET);
+    run.put("population", BusinessDays.POPULATION);
+    run.put("holidays", BusinessDays.HOLIDAYS);
+    run.put("day_boundary", boundaryRule());
+    run.put("day_boundary_sources", sources);
+    run.put("bot_accounts", r.bots().stream().sorted().toList());
     run.put("rows", entries.size());
     run.put("described", r.described());
     run.put("seconds", (System.nanoTime() - began) / 1e9);
@@ -323,7 +343,63 @@ public final class IssuesSimilarityCommand implements CommandRunner {
       final List<String> columns) throws IOException {
     final List<String> all = new ArrayList<>(columns);
     all.addAll(Augmentation.columns());
+    all.add(BusinessDays.BOUNDARY);
     RowCache.write(out, r.entries(), all, List.of(P));
+  }
+
+  /** The day boundary's rule as a document, for the run record. */
+  static Map<String, Object> boundaryRule() {
+    final Map<String, Object> out = new LinkedHashMap<>();
+    out.put("history", "tracker events and comments on any home, unique issue, strictly before "
+        + "the first In Progress; one unit per person per clock hour; ProjectImport events, "
+        + "authorless entries and bot accounts dropped; no commit and no outcome read");
+    out.put("person", "middle of the clicker's quietest " + DayBoundaries.WINDOW_HOURS
+        + "-hour window, with at least " + DayBoundaries.MIN_PERSON_HOURS + " active hours");
+    out.put("project", "start of the project's quietest " + DayBoundaries.WINDOW_HOURS
+        + "-hour window, with at least " + DayBoundaries.MIN_PROJECT_HOURS + " person-hours");
+    out.put("fallback_hour_utc", DayBoundaries.FALLBACK_HOUR);
+    out.put("ties", "the boundary closest to " + DayBoundaries.FALLBACK_HOUR
+        + ":00 UTC, then the earlier hour");
+    out.put("bots", "at least " + DayBoundaries.BOT_MIN_COMMENTS + " comments, at least "
+        + DayBoundaries.BOT_TEMPLATED_SHARE + " of them opening like a bot's template");
+    return out;
+  }
+
+  /**
+   * Per split, how many issues took their boundary from the person, the project or 04:00; the
+   * outer training rows crossing the inner cut are counted apart from the inner fitting and
+   * validation, and the rows crossing the outer cut not at all.
+   */
+  static Map<String, Map<String, Integer>> sources(final IssuesSimilarityTask.Report r) {
+    final Map<String, Map<String, Integer>> out = new LinkedHashMap<>();
+    for (final String split : List.of("inner_fitting", "inner_validation",
+        "outer_training_crossing_inner", "outer_test")) {
+      final Map<String, Integer> by = new LinkedHashMap<>();
+      for (final DayBoundaries.Source s : DayBoundaries.Source.values()) {
+        by.put(s.name().toLowerCase(Locale.ROOT), 0);
+      }
+      out.put(split, by);
+    }
+    for (final RowCache.Entry e : r.entries()) {
+      final String split = split(e);
+      if (split != null) {
+        out.get(split).merge(r.boundaries().get(e.unit().issueId()).source().name()
+            .toLowerCase(Locale.ROOT), 1, Integer::sum);
+      }
+    }
+    return out;
+  }
+
+  /** The issue's split by the outer variant, or by the inner one inside the outer training. */
+  private static String split(final RowCache.Entry e) {
+    if ("TEST".equals(e.outer(P))) {
+      return "outer_test";
+    }
+    if (!"TRAIN".equals(e.outer(P))) {
+      return null;
+    }
+    return "TRAIN".equals(e.inner(P)) ? "inner_fitting"
+        : "TEST".equals(e.inner(P)) ? "inner_validation" : "outer_training_crossing_inner";
   }
 
   /** Each diagnostic file by name, as lines with a header. */
@@ -428,6 +504,16 @@ public final class IssuesSimilarityCommand implements CommandRunner {
         Instant.ofEpochMilli(b.begins()).toString(), Instant.ofEpochMilli(b.last()).toString(),
         Integer.toString(b.history()))));
     out.put("blocks.tsv", blocks);
+
+    final List<String> days = new ArrayList<>(List.of("id\touter\tinner\tsource\tperson_hours"
+        + "\tproject_hours\tboundary_hour_utc"));
+    for (final RowCache.Entry e : r.entries()) {
+      final DayBoundaries.Boundary b = r.boundaries().get(e.unit().issueId());
+      days.add(String.join("\t", e.unit().issueId(), e.outer(P), e.inner(P),
+          b.source().name().toLowerCase(Locale.ROOT), Integer.toString(b.personHours()),
+          Integer.toString(b.projectHours()), Integer.toString(b.hour())));
+    }
+    out.put("day-boundaries.tsv", days);
     return out;
   }
 

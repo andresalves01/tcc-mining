@@ -1,9 +1,12 @@
 package app.pipeline;
 
 import app.issues.Augmentation;
+import app.issues.BusinessDays;
 import app.issues.Clusterer;
 import app.issues.Corpus;
+import app.issues.DayBoundaries;
 import app.issues.DescriptionCleaner;
+import app.issues.ElasticNetSelection;
 import app.issues.Embedder;
 import app.issues.Initial;
 import app.issues.RegistrationInProgress;
@@ -31,6 +34,11 @@ import java.util.TreeSet;
  * since its description could not be read. Each description is the one {@link Initial#at}
  * recovers at the issue's first In Progress, as the language report reads it, cleaned by
  * {@link DescriptionCleaner}. Every row of the matrix stays, a missing value missing.
+ *
+ * <p>Each issue's day boundary ({@link DayBoundaries}) is read from the corpus's tracker activity
+ * before its first In Progress, by the person who made that move, and written to the matrix as
+ * {@link BusinessDays#BOUNDARY}; the issue's business days at it are what the medians of the
+ * {@link Augmentation} read, and what the later steps take as the target.
  */
 public final class IssuesSimilarityTask {
 
@@ -39,9 +47,12 @@ public final class IssuesSimilarityTask {
    *     corpus does not hold; when not empty nothing else was done and the other fields are empty
    * @param entries the matrix's rows with the new columns, in its order
    * @param described rows with a description at their first In Progress
+   * @param boundaries per issue id, its day boundary
+   * @param bots the raw accounts recognised as bots and left out of every boundary's history
    */
   public record Report(List<String> refused, RegistrationInProgress.Sizes sizes,
-      List<RowCache.Entry> entries, Augmentation.Result result, int described) {}
+      List<RowCache.Entry> entries, Augmentation.Result result, int described,
+      Map<String, DayBoundaries.Boundary> boundaries, Set<String> bots) {}
 
   private static final Population P = Population.IN_PROGRESS;
 
@@ -75,34 +86,50 @@ public final class IssuesSimilarityTask {
   }
 
   public Report run(final List<RowCache.Entry> entries) {
-    final RegistrationInProgress.Sizes found = Augmentation.sizes(issues(entries, Map.of()));
+    final RegistrationInProgress.Sizes found = ElasticNetSelection.sizes(entries);
     final List<String> refused = differences(found, expected);
     if (!refused.isEmpty()) {
-      return new Report(refused, found, List.of(), null, 0);
+      return new Report(refused, found, List.of(), null, 0, Map.of(), Set.of());
     }
 
-    progress.phase(1, 3, "reading the corpus: %s", source.describe());
+    progress.phase(1, 4, "reading the corpus: %s", source.describe());
     final Corpus corpus = source.load();
     final Universe universe = Universe.of(corpus);
     final List<String> unknown = entries.stream().map(e -> e.unit().issueId())
         .filter(id -> universe.issue(id) == null).toList();
     if (!unknown.isEmpty()) {
       return new Report(List.of(String.format("%,d issues of the matrix are not in the corpus, "
-          + "the first %s", unknown.size(), unknown.get(0))), found, List.of(), null, 0);
+          + "the first %s", unknown.size(), unknown.get(0))), found, List.of(), null, 0,
+          Map.of(), Set.of());
     }
     final Map<String, String> descriptions = descriptions(entries, universe);
 
-    progress.phase(2, 3, "Jaccard and embedding neighbours, K-means clusters and reporter medians "
+    progress.phase(2, 4, "day boundaries from the tracker activity before each first In "
+        + "Progress");
+    final DayBoundaries days = DayBoundaries.of(corpus, universe);
+    final Map<String, DayBoundaries.Boundary> boundaries = new HashMap<>(entries.size() * 2);
+    for (final RowCache.Entry e : entries) {
+      final String id = e.unit().issueId();
+      final Universe.Unit started = universe.unit(P, id);
+      final String clicker = started == null ? null
+          : DayBoundaries.person(started.startedBy(), corpus.people());
+      boundaries.put(id, days.at(clicker, e.unit().project(),
+          e.unit().startedAt().toEpochMilli()));
+    }
+
+    progress.phase(3, 4, "Jaccard and embedding neighbours, K-means clusters and reporter medians "
         + "of %,d issues, %,d with a description", entries.size(), descriptions.size());
     final Augmentation.Result result =
-        Augmentation.run(issues(entries, descriptions), embedder, dimension, clusterer);
+        Augmentation.run(issues(entries, descriptions, boundaries), embedder, dimension,
+            clusterer);
 
-    progress.phase(3, 3, "adding %d columns", Augmentation.columns().size());
+    progress.phase(4, 4, "adding %d columns", Augmentation.columns().size() + 1);
     final List<RowCache.Entry> out = new ArrayList<>(entries.size());
     for (final RowCache.Entry e : entries) {
       final Map<String, Double> values = new HashMap<>(e.row().values());
       final Set<String> absent = new HashSet<>(e.row().absent());
       final Map<String, Double> added = result.columns().get(e.unit().issueId());
+      values.put(BusinessDays.BOUNDARY, (double) boundaries.get(e.unit().issueId()).hour());
       for (final String column : Augmentation.columns()) {
         final Double v = added.get(column);
         if (v == null) {
@@ -113,7 +140,8 @@ public final class IssuesSimilarityTask {
       }
       out.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values, absent), e.parts()));
     }
-    return new Report(refused, found, out, result, descriptions.size());
+    return new Report(refused, found, out, result, descriptions.size(), boundaries,
+        days.bots());
   }
 
   static List<String> differences(final RegistrationInProgress.Sizes found,
@@ -133,13 +161,17 @@ public final class IssuesSimilarityTask {
     }
   }
 
+  /** The rows as the augmentation reads them, each with its business days at its boundary. */
   private static List<Augmentation.Issue> issues(final List<RowCache.Entry> entries,
-      final Map<String, String> descriptions) {
+      final Map<String, String> descriptions,
+      final Map<String, DayBoundaries.Boundary> boundaries) {
     final List<Augmentation.Issue> out = new ArrayList<>(entries.size());
     for (final RowCache.Entry e : entries) {
       final String id = e.unit().issueId();
-      out.add(new Augmentation.Issue(id, e.unit().project(), e.unit().reporter(),
-          e.unit().startedAt().toEpochMilli(), e.unit().resolvedAt().toEpochMilli(), e.outer(P),
+      final long start = e.unit().startedAt().toEpochMilli();
+      final long resolved = e.unit().resolvedAt().toEpochMilli();
+      out.add(new Augmentation.Issue(id, e.unit().project(), e.unit().reporter(), start,
+          resolved, BusinessDays.count(start, resolved, boundaries.get(id).hour()), e.outer(P),
           e.inner(P), descriptions.get(id)));
     }
     return out;

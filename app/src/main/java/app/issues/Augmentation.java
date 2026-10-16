@@ -15,7 +15,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.function.Predicate;
 import java.util.stream.IntStream;
 
 /**
@@ -23,6 +22,14 @@ import java.util.stream.IntStream;
  * after extraction: the median duration of the issues whose descriptions are closest by Jaccard,
  * and of those closest by embedding, for each candidate number of neighbours, and the reporter's
  * historical median, once against the inner split and once against the outer.
+ *
+ * <p><b>Duration</b> (ticket 14). Every median is of past issues' whole business days ({@link
+ * BusinessDays}), each past issue counted at its own day boundary, as the target is. A past issue
+ * of 0 business days enters no history -- no neighbour search, no cluster fit or cluster, no
+ * reporter median -- so a history holds only the kind of issue the model predicts. The rows that read the
+ * histories, the blocks they are cut in and their reference instants are those of every issue of
+ * the split, as before: an issue of 0 business days is left out of the study after this stage, and
+ * the columns it gets here are never read.
  *
  * <p><b>History.</b> The rows of a fitting set (inner fitting; outer training) are built in five
  * consecutive time blocks of that set, ordered by first In Progress with equal instants kept in the
@@ -34,7 +41,7 @@ import java.util.stream.IntStream;
  * own start. Validation and test outcomes never enter any history.
  *
  * <p><b>Neighbours.</b> The candidates are the history issues sharing at least one token with the
- * query; the closest n by Jaccard distance give the unweighted median of their durations in hours,
+ * query; the closest n by Jaccard distance give the unweighted median of their business days,
  * all of them when fewer than n exist. Ties in distance go by issue id, never by duration: the
  * ids are 24-digit hexadecimal Mongo object ids, so their order as strings is their numeric order. The
  * value is missing when the query has no tokens or no candidate; nothing is dropped.
@@ -50,7 +57,7 @@ import java.util.stream.IntStream;
  * search is a scan of every history vector; the dot product is summed in a fixed order, so a rerun
  * over the same vectors gives the same neighbours, bit for bit.
  *
- * <p><b>Reporter.</b> The unweighted median duration, in hours, of the same canonical reporter's
+ * <p><b>Reporter.</b> The unweighted median business days of the same canonical reporter's
  * other issues in the same project, from the matching fitting set, resolved strictly before this
  * issue's first In Progress; missing when there is none. Every row is Fixed, the population the
  * extraction reads. It corrects the extractor's {@code D05_reporter_project_median_h}, which
@@ -137,15 +144,23 @@ public final class Augmentation {
    * @param reporter the canonical person who opened it
    * @param start the first In Progress, epoch milliseconds
    * @param resolved the first resolution, epoch milliseconds
+   * @param businessDays its whole business days from {@code start} to {@code resolved}, at its own
+   *     day boundary: what a median of it reads; 0 keeps it out of every history
    * @param outer the outer verdict: TRAIN, TEST or CROSSES
    * @param inner the inner verdict inside the outer training, empty outside it
    * @param description the cleaned description at the first In Progress, null when there is none
    */
   public record Issue(String id, String project, String reporter, long start, long resolved,
-      String outer, String inner, String description) {
+      int businessDays, String outer, String inner, String description) {
 
-    public double hours() {
-      return (resolved - start) / 3_600_000.0;
+    /** Whether it may be history: it lasted at least one business day. */
+    boolean counted() {
+      return businessDays >= 1;
+    }
+
+    /** What a median reads of it. */
+    double days() {
+      return businessDays;
     }
   }
 
@@ -290,17 +305,6 @@ public final class Augmentation {
     return out;
   }
 
-  /** Outer training, outer test, inner fitting and inner validation rows. */
-  public static RegistrationInProgress.Sizes sizes(final List<Issue> issues) {
-    return new RegistrationInProgress.Sizes(count(issues, Variant.OUTER::fitting),
-        count(issues, Variant.OUTER::scored), count(issues, Variant.INNER::fitting),
-        count(issues, Variant.INNER::scored));
-  }
-
-  private static int count(final List<Issue> issues, final Predicate<Issue> p) {
-    return (int) issues.stream().filter(p).count();
-  }
-
   /**
    * Every column and diagnostic, each described issue embedded once by {@code embedder} into
    * vectors of {@code dimension} components, the clusters fitted by {@code clusterer}.
@@ -326,8 +330,8 @@ public final class Augmentation {
       for (int b = 0; b < split.size(); b++) {
         final List<Issue> block = split.get(b);
         final long begins = block.get(0).start();
-        final List<Issue> history =
-            fitting.stream().filter(h -> h.start() < begins && h.resolved() < begins).toList();
+        final List<Issue> history = fitting.stream()
+            .filter(h -> h.counted() && h.start() < begins && h.resolved() < begins).toList();
         final Index index = new Index(history, tokens);
         final Space space = new Space(history, vectors);
         blocks.add(new Block(v, b + 1, block.size(), begins, block.get(block.size() - 1).start(),
@@ -342,8 +346,9 @@ public final class Augmentation {
               columns));
         }
       }
-      final Index whole = new Index(fitting, tokens);
-      final Space wholeSpace = new Space(fitting, vectors);
+      final List<Issue> counted = fitting.stream().filter(Issue::counted).toList();
+      final Index whole = new Index(counted, tokens);
+      final Space wholeSpace = new Space(counted, vectors);
       final Issue latest =
           fitting.stream().max(Comparator.comparingLong(Issue::resolved)).orElse(null);
       final List<Issue> scored = issues.stream().filter(v::scored).toList();
@@ -353,7 +358,7 @@ public final class Augmentation {
               + "or after " + q.id() + " in the scored set started: the split is inconsistent");
         }
       }
-      frozen.add(new Frozen(v, WHOLE, Long.MIN_VALUE, fitting, scored));
+      frozen.add(new Frozen(v, WHOLE, Long.MIN_VALUE, counted, scored));
       final List<Space.Found> found = wholeSpace.search(scored, mostVectors);
       for (int k = 0; k < scored.size(); k++) {
         final Issue q = scored.get(k);
@@ -361,7 +366,7 @@ public final class Augmentation {
         queries.add(answer(q, v, WHOLE, q.start(), whole, tokens, most, columns));
         embeddingQueries.add(nearest(q, v, WHOLE, q.start(), found.get(k), columns));
       }
-      reporters(issues, fitting, v, columns);
+      reporters(issues, counted, v, columns);
     }
     final List<ClusterFit> clusterFits = new ArrayList<>();
     final List<ClusterQuery> clusterQueries = new ArrayList<>();
@@ -473,13 +478,13 @@ public final class Augmentation {
       return new ClusterQuery(q.id(), v, v.split(q), f.block(), reference, k, -1, Double.NaN, 0);
     }
     final Clusterer.Assignment a = fit.assign(vectors.vector(row));
-    final List<Double> hours = groups.get(a.cluster()).stream()
-        .filter(m -> !m.id().equals(q.id())).map(Issue::hours).toList();
-    if (!hours.isEmpty()) {
-      columns.get(q.id()).put(cluster(k, v), median(hours));
+    final List<Double> days = groups.get(a.cluster()).stream()
+        .filter(m -> !m.id().equals(q.id())).map(Issue::days).toList();
+    if (!days.isEmpty()) {
+      columns.get(q.id()).put(cluster(k, v), median(days));
     }
     return new ClusterQuery(q.id(), v, v.split(q), f.block(), reference, k, a.cluster(),
-        a.distance(), hours.size());
+        a.distance(), days.size());
   }
 
   /**
@@ -508,14 +513,14 @@ public final class Augmentation {
     final int[] mine = tokens.of(q.id());
     final List<Index.Hit> hits = index.search(q.id(), mine);
     final List<Neighbour> nearest = new ArrayList<>();
-    final List<Double> hours = new ArrayList<>();
+    final List<Double> days = new ArrayList<>();
     for (final Index.Hit h : hits.subList(0, Math.min(most, hits.size()))) {
       nearest.add(new Neighbour(h.issue().id(), 1.0 - h.shared() / (double) h.union()));
-      hours.add(h.issue().hours());
+      days.add(h.issue().days());
     }
-    if (!hours.isEmpty()) {
+    if (!days.isEmpty()) {
       for (final int n : JACCARD_N) {
-        columns.get(q.id()).put(jaccard(n, v), median(hours.subList(0, Math.min(n, hours.size()))));
+        columns.get(q.id()).put(jaccard(n, v), median(days.subList(0, Math.min(n, days.size()))));
       }
     }
     return new Query(q.id(), v, v.split(q), block, reference, mine.length, hits.size(), nearest);
@@ -525,22 +530,22 @@ public final class Augmentation {
       final long reference, final Space.Found found,
       final Map<String, Map<String, Double>> columns) {
     final List<Neighbour> nearest = new ArrayList<>();
-    final List<Double> hours = new ArrayList<>();
+    final List<Double> days = new ArrayList<>();
     for (final Space.Hit h : found.nearest()) {
       nearest.add(new Neighbour(h.issue().id(), 1.0 - h.similarity()));
-      hours.add(h.issue().hours());
+      days.add(h.issue().days());
     }
-    if (!hours.isEmpty()) {
+    if (!days.isEmpty()) {
       for (final int n : EMBEDDING_N) {
         columns.get(q.id()).put(embedding(n, v),
-            median(hours.subList(0, Math.min(n, hours.size()))));
+            median(days.subList(0, Math.min(n, days.size()))));
       }
     }
     return new EmbeddingQuery(q.id(), v, v.split(q), block, reference, found.candidates(),
         nearest);
   }
 
-  /** Each row's reporter median against the fitting set, issue by issue. */
+  /** Each row's reporter median against the fitting set's counted issues, issue by issue. */
   private static void reporters(final List<Issue> issues, final List<Issue> fitting,
       final Variant v, final Map<String, Map<String, Double>> columns) {
     final Map<Who, List<Issue>> by = new HashMap<>();
@@ -553,11 +558,11 @@ public final class Augmentation {
       if (q.reporter() == null || !(v.fitting(q) || v.scored(q))) {
         continue;
       }
-      final List<Double> hours = by.getOrDefault(new Who(q.project(), q.reporter()), List.of())
+      final List<Double> days = by.getOrDefault(new Who(q.project(), q.reporter()), List.of())
           .stream().filter(h -> !h.id().equals(q.id()) && h.resolved() < q.start())
-          .map(Issue::hours).toList();
-      if (!hours.isEmpty()) {
-        columns.get(q.id()).put(reporter(v), median(hours));
+          .map(Issue::days).toList();
+      if (!days.isEmpty()) {
+        columns.get(q.id()).put(reporter(v), median(days));
       }
     }
   }
