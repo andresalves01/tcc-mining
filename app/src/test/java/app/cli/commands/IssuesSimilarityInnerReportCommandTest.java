@@ -107,6 +107,8 @@ class IssuesSimilarityInnerReportCommandTest {
           }
         }
         values.put(BusinessDays.BOUNDARY, 4.0);
+        // never sent back to Open or Reopened: active, the whole interval's business days
+        values.put(BusinessDays.ACTIVE, (double) days);
         final String id = "i" + n++;
         final Instant start = created.plusSeconds(3600L * 7 * n);
         final Map<Population, String[]> parts = new EnumMap<>(Population.class);
@@ -232,6 +234,31 @@ class IssuesSimilarityInnerReportCommandTest {
     Files.writeString(matrix, "\n", java.nio.file.StandardOpenOption.APPEND);
     e = assertThrows(CommandFailedException.class, () -> command().run(context()));
     assertTrue(String.join("\n", e.lines()).contains("chosen on another matrix"),
+        e.lines().toString());
+    assertFalse(Files.exists(reports));
+
+    // the same matrix as written before ticket 18, without the active business days, its
+    // parameters made on it: refused, the stage to run again named
+    final Path old = dir.resolve("old.tsv");
+    write(old, elasticNet);
+    final List<String> lines = Files.readAllLines(old);
+    final int active = List.of(lines.get(0).split("\t", -1)).indexOf(BusinessDays.ACTIVE);
+    final List<String> without = new ArrayList<>();
+    for (final String line : lines) {
+      final List<String> fields = new ArrayList<>(List.of(line.split("\t", -1)));
+      if (fields.size() > active) {
+        fields.remove(active);
+      }
+      without.add(String.join("\t", fields));
+    }
+    final String before = IssuesReservedCommand.sha256(old);
+    Files.write(old, without);
+    Files.writeString(elasticNet, Files.readString(elasticNet)
+        .replace(before, IssuesReservedCommand.sha256(old)));
+    set(old, elasticNet, reports);
+    e = assertThrows(CommandFailedException.class, () -> command().run(context()));
+    assertTrue(String.join("\n", e.lines()).contains(BusinessDays.ACTIVE)
+        && String.join("\n", e.lines()).contains("issues-in-progress-similarity"),
         e.lines().toString());
     assertFalse(Files.exists(reports));
 

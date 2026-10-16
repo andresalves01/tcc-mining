@@ -38,8 +38,10 @@ import java.util.TreeSet;
  *
  * <p>Each issue's day boundary ({@link DayBoundaries}) is read from the corpus's tracker activity
  * before its first In Progress, by the person who made that move, and written to the matrix as
- * {@link BusinessDays#BOUNDARY}; the issue's business days at it are what the medians of the
- * {@link Augmentation} read, and what the later steps take as the target.
+ * {@link BusinessDays#BOUNDARY}. The issue's active business days at it, without the time its
+ * changelog shows it back in Open or Reopened ({@link BusinessDays#active}), are written as {@link
+ * BusinessDays#ACTIVE}: they are what the medians of the {@link Augmentation} read, and what the
+ * later steps take as the target.
  */
 public final class IssuesSimilarityTask {
 
@@ -109,28 +111,32 @@ public final class IssuesSimilarityTask {
         + "Progress");
     final DayBoundaries days = DayBoundaries.of(corpus, universe);
     final Map<String, DayBoundaries.Boundary> boundaries = new HashMap<>(entries.size() * 2);
+    final Map<String, Integer> active = new HashMap<>(entries.size() * 2);
     for (final RowCache.Entry e : entries) {
       final String id = e.unit().issueId();
       final Universe.Unit started = universe.unit(P, id);
       final String clicker = started == null ? null
           : World.person(started.startedBy(), corpus.people());
-      boundaries.put(id, days.at(clicker, e.unit().project(),
-          e.unit().startedAt().toEpochMilli()));
+      final DayBoundaries.Boundary boundary = days.at(clicker, e.unit().project(),
+          e.unit().startedAt().toEpochMilli());
+      boundaries.put(id, boundary);
+      active.put(id, BusinessDays.active(universe.events(id), e.unit().startedAt().toEpochMilli(),
+          e.unit().resolvedAt().toEpochMilli(), boundary.hour()));
     }
 
     progress.phase(3, 4, "Jaccard and embedding neighbours, K-means clusters and reporter medians "
         + "of %,d issues, %,d with a description", entries.size(), descriptions.size());
     final Augmentation.Result result =
-        Augmentation.run(issues(entries, descriptions, boundaries), embedder, dimension,
-            clusterer);
+        Augmentation.run(issues(entries, descriptions, active), embedder, dimension, clusterer);
 
-    progress.phase(4, 4, "adding %d columns", Augmentation.columns().size() + 1);
+    progress.phase(4, 4, "adding %d columns", Augmentation.columns().size() + BusinessDays.COLUMNS.size());
     final List<RowCache.Entry> out = new ArrayList<>(entries.size());
     for (final RowCache.Entry e : entries) {
       final Map<String, Double> values = new HashMap<>(e.row().values());
       final Set<String> absent = new HashSet<>(e.row().absent());
       final Map<String, Double> added = result.columns().get(e.unit().issueId());
       values.put(BusinessDays.BOUNDARY, (double) boundaries.get(e.unit().issueId()).hour());
+      values.put(BusinessDays.ACTIVE, (double) active.get(e.unit().issueId()));
       for (final String column : Augmentation.columns()) {
         final Double v = added.get(column);
         if (v == null) {
@@ -162,18 +168,16 @@ public final class IssuesSimilarityTask {
     }
   }
 
-  /** The rows as the augmentation reads them, each with its business days at its boundary. */
+  /** The rows as the augmentation reads them, each with its active business days. */
   private static List<Augmentation.Issue> issues(final List<RowCache.Entry> entries,
-      final Map<String, String> descriptions,
-      final Map<String, DayBoundaries.Boundary> boundaries) {
+      final Map<String, String> descriptions, final Map<String, Integer> active) {
     final List<Augmentation.Issue> out = new ArrayList<>(entries.size());
     for (final RowCache.Entry e : entries) {
       final String id = e.unit().issueId();
       final long start = e.unit().startedAt().toEpochMilli();
       final long resolved = e.unit().resolvedAt().toEpochMilli();
       out.add(new Augmentation.Issue(id, e.unit().project(), e.unit().reporter(), start,
-          resolved, BusinessDays.count(start, resolved, boundaries.get(id).hour()), e.outer(P),
-          e.inner(P), descriptions.get(id)));
+          resolved, active.get(id), e.outer(P), e.inner(P), descriptions.get(id)));
     }
     return out;
   }

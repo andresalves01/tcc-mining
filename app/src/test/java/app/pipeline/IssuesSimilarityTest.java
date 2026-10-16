@@ -252,6 +252,56 @@ class IssuesSimilarityTest {
     assertEquals(DayBoundaries.Source.FALLBACK, r.boundaries().get("b").source());
   }
 
+  /** A status change of {@code id} to {@code status}, by d, at {@code at}. */
+  private void status(final String id, final long at, final String status) {
+    events.add(new Corpus.Event(id, at, "status", "d", null, status, (ext++) + "%%0"));
+  }
+
+  @Test
+  @DisplayName("the time back in Open or Reopened is taken out of each issue's business days, "
+      + "written to the matrix, and of every past issue the medians read; a past issue brought "
+      + "under one business day by it enters no history")
+  void activeTime() {
+    // T0 is a Wednesday at 00:00 UTC; every boundary falls back to 04:00. a: Thursday 10:00 to
+    // the next Wednesday 10:00, 4 business days, back in Open from Friday 10:00 to Tuesday 10:00:
+    // 2 active
+    issue("a", T0 + D + 10 * H, T0 + 7 * D + 10 * H, "TRAIN", "TRAIN");
+    status("a", T0 + 2 * D + 10 * H, "Open");
+    status("a", T0 + 6 * D + 10 * H, "In Progress");
+    edited("a", "alpha", "alpha", T0);
+    // b: Thursday 10:00 to Tuesday 12:00, 3 business days, in Reopened from Thursday 12:00 to
+    // Tuesday 10:00: none active, so in no history
+    issue("b", T0 + D + 10 * H, T0 + 6 * D + 12 * H, "TRAIN", "TRAIN");
+    status("b", T0 + D + 12 * H, "Reopened");
+    status("b", T0 + 6 * D + 10 * H, "In Progress");
+    edited("b", "alpha", "alpha", T0);
+    // c: in Patch Available from Thursday to Tuesday, which stays: 4
+    issue("c", T0 + D + 10 * H, T0 + 7 * D + 10 * H, "TRAIN", "TRAIN");
+    status("c", T0 + 2 * D + 10 * H, "Patch Available");
+    edited("c", "beta", "beta", T0);
+    issue("v", T0 + 20 * D, T0 + 21 * D, "TRAIN", "TEST");
+    edited("v", "alpha", "alpha", T0);
+    issue("t", T0 + 30 * D, T0 + 31 * D, "TEST", "");
+
+    final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
+        Progress.silent(), new RegistrationInProgress.Sizes(4, 1, 3, 1), SAME, 2, KMEANS)
+        .run(entries);
+    assertEquals(List.of(), r.refused());
+    final Map<String, Row> rows = new HashMap<>();
+    r.entries().forEach(e -> rows.put(e.unit().issueId(), e.row()));
+    assertEquals(2.0, rows.get("a").values().get(BusinessDays.ACTIVE));
+    assertEquals(0.0, rows.get("b").values().get(BusinessDays.ACTIVE));
+    assertEquals(4.0, rows.get("c").values().get(BusinessDays.ACTIVE));
+    assertEquals(1.0, rows.get("v").values().get(BusinessDays.ACTIVE));
+    final Map<String, Double> v = rows.get("v").values();
+    assertEquals(3.0, v.get(Augmentation.reporter(Variant.INNER)),
+        "a's two and c's four; b, of none, left out (whole intervals: 4, 3 and 4)");
+    assertEquals(3.0, v.get(Augmentation.reporter(Variant.OUTER)));
+    assertEquals(3.0, v.get(Augmentation.embedding(5, Variant.INNER)));
+    assertEquals(2.0, v.get(Augmentation.jaccard(5, Variant.INNER)),
+        "a, the only one sharing a word with it left in the history");
+  }
+
   @Test
   @DisplayName("a corpus missing an issue of the matrix refuses the run rather than reading it as "
       + "having no description")

@@ -65,7 +65,8 @@ class IssuesRetrospectiveTest {
     entries.add(new RowCache.Entry(new IssueUnit(id, "P-" + id, "p", "r", "d",
         Instant.ofEpochMilli(T0), Instant.ofEpochMilli(resolved), "Fixed", false,
         Instant.ofEpochMilli(started)),
-        new Row(id, Map.of("A01_desc_length", 1.0, BusinessDays.BOUNDARY, 4.0), Set.of()),
+        new Row(id, Map.of("A01_desc_length", 1.0, BusinessDays.BOUNDARY, 4.0,
+            BusinessDays.ACTIVE, (double) BusinessDays.count(started, resolved, 4)), Set.of()),
         parts));
   }
 
@@ -210,11 +211,20 @@ class IssuesRetrospectiveTest {
     assertEquals(1, task().run(moved).refused().size());
 
     final List<RowCache.Entry> unbounded = new ArrayList<>(entries);
-    unbounded.set(0, new RowCache.Entry(first.unit(), new Row("a", Map.of(), Set.of()),
-        first.parts()));
+    unbounded.set(0, new RowCache.Entry(first.unit(),
+        new Row("a", Map.of(BusinessDays.ACTIVE, 1.0), Set.of()), first.parts()));
     final IssuesRetrospectiveTask.Report boundary = task().run(unbounded);
     assertTrue(boundary.refused().get(0).contains(BusinessDays.BOUNDARY),
         boundary.refused().toString());
+    assertFalse(boundary.refused().get(0).contains(BusinessDays.ACTIVE),
+        "only the missing column is named: " + boundary.refused());
+    final List<RowCache.Entry> inactive = new ArrayList<>(entries);
+    inactive.set(0, new RowCache.Entry(first.unit(),
+        new Row("a", Map.of(BusinessDays.BOUNDARY, 4.0), Set.of()), first.parts()));
+    final IssuesRetrospectiveTask.Report active = task().run(inactive);
+    assertTrue(active.refused().get(0).contains(BusinessDays.ACTIVE), active.refused().toString());
+    assertFalse(active.refused().get(0).contains(BusinessDays.BOUNDARY),
+        "only the missing column is named: " + active.refused());
     assertTrue(asked.isEmpty(), "no method was read");
 
     final IssuesRetrospectiveTask.Report sizes = new IssuesRetrospectiveTask(source(), changed(),
