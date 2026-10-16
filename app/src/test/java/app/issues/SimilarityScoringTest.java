@@ -400,15 +400,15 @@ class SimilarityScoringTest {
   }
 
   @Test
-  @DisplayName("every model is read in days, Spearman and pairwise ordering, and by duration "
-      + "band with the longest tenth apart")
+  @DisplayName("every model is read by its error, Spearman and pairwise ordering, and by band "
+      + "of the true business days: 1, 2-3, 4-10, 11+")
   void readings() {
     final SimilarityScoring.Report r = SimilarityScoring.run(corpus(), choices(0.2), forests());
     assertEquals(MODELS, r.models().stream().map(SimilarityScoring.Scored::name).toList());
     for (final SimilarityScoring.Scored m : r.models()) {
       assertEquals(m.score().maeHours() / 24, m.score().maeDays(), 1e-12);
-      assertEquals(5, m.bands().size());
-      assertEquals("slowest 10%", m.bands().get(4).label());
+      assertEquals(List.of("1", "2-3", "4-10", "11+"),
+          m.bands().stream().map(b -> b.label()).toList());
       assertEquals(60, m.bands().stream().mapToInt(b -> b.n()).sum());
     }
     assertNull(model(r, "global_median").fitted());
@@ -420,7 +420,8 @@ class SimilarityScoringTest {
     final SimilarityScoring.Report r = SimilarityScoring.run(corpus(), choices(0.2), forests());
     final List<String> lines = SimilarityScoring.predictions(r);
     final List<String> header = List.of(lines.get(0).split("\t"));
-    final List<String> expected = new ArrayList<>(List.of("id", "key", "project", "observed_h"));
+    final List<String> expected = new ArrayList<>(List.of("id", "key", "project",
+        "observed_business_days"));
     expected.addAll(MODELS);
     assertEquals(expected, header);
     assertEquals(1 + 60, lines.size());
@@ -467,7 +468,7 @@ class SimilarityScoringTest {
     final List<String> second =
         SimilarityScoring.predictions(SimilarityScoring.run(corpus(), choices(0.2), forests()));
     assertTrue(SimilarityScoring.maxDifference(first, second)
-        <= SimilarityScoring.RERUN_TOLERANCE_HOURS);
+        <= SimilarityScoring.RERUN_TOLERANCE);
     // on the same machine, the forests' per-tree seeds reproduce every prediction exactly
     assertTrue(List.of(first.get(0).split("\t")).containsAll(FORESTS));
     assertEquals(first, second);
@@ -478,5 +479,37 @@ class SimilarityScoringTest {
     assertEquals(0.5, SimilarityScoring.maxDifference(first, off), 1e-9);
     assertThrows(IllegalArgumentException.class,
         () -> SimilarityScoring.maxDifference(first, off.subList(0, 10)));
+  }
+
+  /** The entries with every day boundary at {@code hour}. */
+  private static List<RowCache.Entry> boundary(final List<RowCache.Entry> entries,
+      final double hour) {
+    final List<RowCache.Entry> out = new ArrayList<>();
+    for (final RowCache.Entry e : entries) {
+      final Map<String, Double> values = new HashMap<>(e.row().values());
+      values.put(BusinessDays.BOUNDARY, hour);
+      out.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values, e.row().absent()),
+          e.parts()));
+    }
+    return out;
+  }
+
+  @Test
+  @DisplayName("on the business-day population, the issues of 0 business days are in neither the "
+      + "outer training nor the outer test, the inner fitting the lambda scales by included; "
+      + "every truth and reference is a whole number of business days")
+  void businessDayPopulation() {
+    final BusinessDays.Population p = BusinessDays.population(boundary(corpus(), 4));
+    assertTrue(p.kept().train() < p.all().train(), "some training issues lasted no business day");
+    assertTrue(p.kept().test() < p.all().test(), "some test issues lasted no business day");
+    final SimilarityScoring.Report r = SimilarityScoring.run(p.entries(), choices(0.2), forests());
+    assertEquals(p.kept().train(), r.fitRows());
+    assertEquals(p.kept().test(), r.scoredRows());
+    assertEquals(p.kept().innerFit(), r.innerFitRows());
+    for (final double o : r.observed()) {
+      assertTrue(o >= 1 && o == Math.rint(o), "observed " + o);
+    }
+    final double global = model(r, "global_median").predictedHours()[0];
+    assertEquals(global * 2, Math.rint(global * 2), "a median of whole numbers");
   }
 }

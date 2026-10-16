@@ -52,7 +52,17 @@ public record Corpus(
   public record Event(String issue, Long at, String field, String author, String oldValue,
       String newValue, String external) {}
 
-  public record Comment(String issue, String author, Long at, int words) {}
+  /**
+   * @param templated whether its text opens like a bot's template ({@link
+   *     DayBoundaries#templated}); read only to recognise bot accounts
+   */
+  public record Comment(String issue, String author, Long at, int words, boolean templated) {
+
+    /** A comment whose text was not read for a template. */
+    public Comment(final String issue, final String author, final Long at, final int words) {
+      this(issue, author, at, words, false);
+    }
+  }
 
   /** A Jira key named in the text of a comment on another issue. */
   public record Mention(String sourceIssue, Long at, String key) {}

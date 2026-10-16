@@ -105,11 +105,14 @@ class AugmentationTest {
     }
   }
 
-  /** An issue started at hour {@code start} that took {@code hours}. */
+  /**
+   * An issue started at hour {@code start} that took {@code hours}, and as many business days: a
+   * median reads the business days, the history the instants.
+   */
   private void issue(final String id, final String outer, final String inner, final long start,
       final long hours, final String description) {
-    issues.add(new Augmentation.Issue(id, "p", "r", start * H, (start + hours) * H, outer, inner,
-        description));
+    issues.add(new Augmentation.Issue(id, "p", "r", start * H, (start + hours) * H, (int) hours,
+        outer, inner, description));
   }
 
   private void fit(final String id, final long start, final long hours, final String text) {
@@ -316,8 +319,8 @@ class AugmentationTest {
   /** An issue of {@code reporter} in {@code project} with no description. */
   private void by(final String id, final String project, final String reporter,
       final String outer, final String inner, final long start, final long hours) {
-    issues.add(new Augmentation.Issue(id, project, reporter, start * H, (start + hours) * H, outer,
-        inner, null));
+    issues.add(new Augmentation.Issue(id, project, reporter, start * H, (start + hours) * H,
+        (int) hours, outer, inner, null));
   }
 
   private static Double reporter(final Augmentation.Result r, final String id, final Variant v) {
@@ -514,7 +517,8 @@ class AugmentationTest {
     // both fitting sets are the same ten rows; eleven split into blocks at the same places as ten: 2, 4, 6, 8
     fit("late", 95, 1, "x");
     final Map<String, Map<String, Double>> added = run(issues).columns();
-    issues.set(9, new Augmentation.Issue("f9", "p", "r", 90 * H, 91 * H, "TRAIN", "TRAIN", "x y"));
+    issues.set(9, new Augmentation.Issue("f9", "p", "r", 90 * H, 91 * H, 1, "TRAIN", "TRAIN",
+        "x y"));
     final Map<String, Map<String, Double>> changed = run(issues).columns();
     for (int i = 0; i < 10; i++) {
       assertEquals(before.get("f" + i), added.get("f" + i), "f" + i);
@@ -529,7 +533,8 @@ class AugmentationTest {
   private List<Augmentation.Issue> later(final String part, final long hours) {
     return issues.stream().map(i -> (part.equals("TEST") ? i.outer() : i.inner()).equals("TEST")
         ? new Augmentation.Issue(i.id(), i.project(), i.reporter(), i.start(),
-            i.resolved() + hours * H, i.outer(), i.inner(), i.description()) : i).toList();
+            i.resolved() + hours * H, i.businessDays() + (int) hours, i.outer(), i.inner(),
+            i.description()) : i).toList();
   }
 
   @Test
@@ -802,8 +807,8 @@ class AugmentationTest {
     unit("late", 1, 1, 1);
     fit("late", 395, 1, "late");
     final Map<String, Map<String, Double>> added = run(issues).columns();
-    issues.set(39, new Augmentation.Issue("f39", "p", "r", 390 * H, 391 * H, "TRAIN", "TRAIN",
-        "d39"));
+    issues.set(39, new Augmentation.Issue("f39", "p", "r", 390 * H, 391 * H, 1, "TRAIN",
+        "TRAIN", "d39"));
     final Map<String, Map<String, Double>> changed = run(issues).columns();
     for (int i = 0; i < 40; i++) {
       assertEquals(before.get("f" + i), added.get("f" + i), "f" + i);
@@ -832,5 +837,47 @@ class AugmentationTest {
     }
     assertTrue(observed > 50, "the inner cluster columns were exercised: " + observed);
     assertEquals(before, run(later("TEST", 5_000)).columns());
+  }
+
+  @Test
+  @DisplayName("business days: every median reads past issues' business days, and a past issue of "
+      + "0 business days enters no history -- no neighbour, no cluster fit or member, no reporter "
+      + "median -- though it still gets columns of its own")
+  void zeroBusinessDays() {
+    for (int i = 0; i < 40; i++) {
+      unit("d" + i + " shared", Math.cos(i), Math.sin(i), Math.cos(3 * i));
+      // every fifth issue lasted no business day
+      fit("f" + i, 10L * i, i % 5 == 0 ? 0 : 1 + i % 7, "d" + i + " shared");
+    }
+    unit("q shared", 1, 0, 0);
+    validation("v", 1_000, "q shared");
+    issue("t", "TEST", "", 2_000, 1, "q shared");
+    final Augmentation.Result r = run(issues);
+    final java.util.Set<String> zero = new java.util.HashSet<>();
+    for (int i = 0; i < 40; i += 5) {
+      zero.add("f" + i);
+    }
+    for (final Augmentation.Query q : r.queries()) {
+      assertTrue(q.nearest().stream().noneMatch(n -> zero.contains(n.id())), q.toString());
+    }
+    for (final Augmentation.EmbeddingQuery q : r.embeddingQueries()) {
+      assertTrue(q.nearest().stream().noneMatch(n -> zero.contains(n.id())), q.toString());
+    }
+    int fitted = 0;
+    for (final Augmentation.ClusterFit f : r.clusterFits()) {
+      assertTrue(f.members().stream().flatMap(List::stream).noneMatch(zero::contains),
+          f.toString());
+      fitted += f.fitted() ? 1 : 0;
+    }
+    assertTrue(fitted > 0, "the clusters were exercised");
+    final Augmentation.ClusterFit whole = r.clusterFits().stream()
+        .filter(f -> f.variant() == Variant.INNER && f.block().equals(Augmentation.WHOLE))
+        .findFirst().orElseThrow();
+    assertEquals(32, whole.vectors(), "the forty fitting issues but the eight of 0");
+    // the reporter's every fitting issue but the zeros: 1 + i % 7 over the 32, median 4
+    assertEquals(4.0, reporter(r, "v", Variant.INNER));
+    assertEquals(4.0, reporter(r, "t", Variant.OUTER));
+    assertTrue(r.columns().get("f35").containsKey(Augmentation.jaccard(5, Variant.INNER)),
+        "an issue of 0 business days is still a row with columns of its own");
   }
 }

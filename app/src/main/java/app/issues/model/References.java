@@ -37,7 +37,7 @@ public final class References {
       if (unit.executor() == null) {
         continue;
       }
-      hours.computeIfAbsent(key(unit), k -> new ArrayList<>()).add(unit.durationHours());
+      hours.computeIfAbsent(key(unit), k -> new ArrayList<>()).add(unit.duration());
     }
     final Map<String, Double> medians = new HashMap<>(hours.size() * 2);
     hours.forEach((k, v) -> medians.put(k, median(v)));

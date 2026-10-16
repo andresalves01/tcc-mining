@@ -1,6 +1,7 @@
 package app.pipeline.mongo;
 
 import app.issues.Corpus;
+import app.issues.DayBoundaries;
 import app.issues.port.StudySource;
 import app.pipeline.port.Progress;
 import com.mongodb.client.MongoClient;
@@ -191,7 +192,8 @@ public final class MongoStudySource implements StudySource {
       final String issue = id(c.get("issue_id"));
       final String body = c.getString("comment") == null ? "" : c.getString("comment");
       final Long at = ms(c.getDate("created_at"));
-      comments.add(new Corpus.Comment(issue, id(c.get("author_id")), at, jsWords(body)));
+      comments.add(new Corpus.Comment(issue, id(c.get("author_id")), at, jsWords(body),
+          DayBoundaries.templated(body)));
       if (issue != null && !body.isEmpty()) {
         final Set<String> seen = new LinkedHashSet<>();
         final Matcher m = KEY.matcher(body);

@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import app.cli.CommandFailedException;
 import app.issues.Augmentation;
+import app.issues.BusinessDays;
+import app.issues.DayBoundaries;
 import app.issues.Augmentation.Variant;
 import app.issues.Embedder;
 import app.issues.IssueUnit;
@@ -64,7 +66,8 @@ class IssuesSimilarityCommandTest {
     for (final RowCache.Entry e : base) {
       issues.add(new Augmentation.Issue(e.unit().issueId(), "p", e.unit().reporter(),
           e.unit().startedAt().toEpochMilli(), e.unit().resolvedAt().toEpochMilli(),
-          e.outer(Population.IN_PROGRESS), e.inner(Population.IN_PROGRESS),
+          (int) e.unit().durationHours(), e.outer(Population.IN_PROGRESS),
+          e.inner(Population.IN_PROGRESS),
           text.get(e.unit().issueId())));
     }
     final Augmentation.Result result = Augmentation.run(issues,
@@ -73,16 +76,23 @@ class IssuesSimilarityCommandTest {
     for (final RowCache.Entry e : base) {
       final Map<String, Double> values = new HashMap<>(e.row().values());
       values.putAll(result.columns().get(e.unit().issueId()));
+      values.put(BusinessDays.BOUNDARY, e.unit().issueId().equals("a") ? 21.0 : 4.0);
       augmented.add(new RowCache.Entry(e.unit(),
           new Row(e.row().unitId(), values, new HashSet<>(e.row().absent())), e.parts()));
     }
+    final Map<String, DayBoundaries.Boundary> boundaries = Map.of(
+        "a", new DayBoundaries.Boundary(21, DayBoundaries.Source.PERSON, 12, 30),
+        "b", new DayBoundaries.Boundary(4, DayBoundaries.Source.FALLBACK, 0, 1),
+        "v", new DayBoundaries.Boundary(4, DayBoundaries.Source.FALLBACK, 0, 2),
+        "t", new DayBoundaries.Boundary(4, DayBoundaries.Source.FALLBACK, 0, 3));
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask.Report(List.of(),
-        new RegistrationInProgress.Sizes(3, 1, 2, 1), augmented, result, 3);
+        new RegistrationInProgress.Sizes(3, 1, 2, 1), augmented, result, 3, boundaries, Set.of());
 
     final Path out = dir.resolve("matrix.tsv");
     IssuesSimilarityCommand.writeMatrix(out, r, RowCache.columns(cache));
     final String written = Files.readAllLines(out).get(0);
-    assertEquals(header + "\t" + String.join("\t", Augmentation.columns()), written);
+    assertEquals(header + "\t" + String.join("\t", Augmentation.columns()) + "\t"
+        + BusinessDays.BOUNDARY, written);
     assertTrue(written.contains("\tjaccard_median_5_inner\tjaccard_median_5_outer\t"));
 
     final Map<String, RowCache.Entry> back = new HashMap<>();
@@ -91,12 +101,21 @@ class IssuesSimilarityCommandTest {
     assertNull(back.get("t").row().values().get(Augmentation.jaccard(5, Variant.OUTER)));
     assertEquals(2.0, back.get("t").row().values().get("A01_desc_length"));
     assertTrue(back.get("t").row().absent().contains("TXT_desc_fog"));
+    assertEquals(21.0, back.get("a").row().values().get(BusinessDays.BOUNDARY));
 
     final Map<String, List<String>> files = IssuesSimilarityCommand.diagnostics(r);
     assertEquals(Set.of("jaccard-queries.tsv", "jaccard-neighbours.tsv", "coverage.tsv",
         "blocks.tsv", "embedding-queries.tsv", "embedding-neighbours.tsv",
         "embedding-chunks.tsv", "cluster-fits.tsv", "cluster-sizes.tsv", "cluster-projects.tsv",
-        "cluster-queries.tsv"), files.keySet());
+        "cluster-queries.tsv", "day-boundaries.tsv"), files.keySet());
+    assertEquals(List.of("id\touter\tinner\tsource\tperson_hours\tproject_hours"
+        + "\tboundary_hour_utc", "a\tTRAIN\tTRAIN\tperson\t12\t30\t21",
+        "b\tTRAIN\tTRAIN\tfallback\t0\t1\t4", "v\tTRAIN\tTEST\tfallback\t0\t2\t4",
+        "t\tTEST\t\tfallback\t0\t3\t4"), files.get("day-boundaries.tsv"));
+    assertEquals(Map.of("person", 1, "project", 0, "fallback", 1),
+        IssuesSimilarityCommand.sources(r).get("inner_fitting"));
+    assertEquals(Map.of("person", 0, "project", 0, "fallback", 1),
+        IssuesSimilarityCommand.sources(r).get("outer_test"));
     assertTrue(files.get("jaccard-neighbours.tsv").contains("v\tinner\t1\ta\tp\t0.0"),
         files.get("jaccard-neighbours.tsv").toString());
     assertTrue(files.get("embedding-neighbours.tsv").contains("v\tinner\t1\ta\tp\t0.0"),
@@ -155,10 +174,10 @@ class IssuesSimilarityCommandTest {
       final double a = Math.PI * i / 4;
       vectors.put("d" + i, new float[] {(float) Math.cos(a), (float) Math.sin(a)});
       issues.add(new Augmentation.Issue("f" + i, i < 2 ? "q" : "p", "r", 0, (10 + i) * 3_600_000L,
-          "TRAIN", "TRAIN", "d" + i));
+          10 + i, "TRAIN", "TRAIN", "d" + i));
     }
-    issues.add(new Augmentation.Issue("v", "p", "r", 100 * 3_600_000L, 101 * 3_600_000L, "TRAIN",
-        "TEST", "d0"));
+    issues.add(new Augmentation.Issue("v", "p", "r", 100 * 3_600_000L, 101 * 3_600_000L, 1,
+        "TRAIN", "TEST", "d0"));
     final Augmentation.Result result = Augmentation.run(issues,
         s -> new Embedder.Embedding(vectors.get(s), 1), 2, new SmileKMeans());
     final List<RowCache.Entry> entries = new ArrayList<>();
@@ -167,8 +186,11 @@ class IssuesSimilarityCommandTest {
       entries.add(new RowCache.Entry(new IssueUnit(i.id(), "P-" + i.id(), i.project(), "r", "d",
           T, T, "Fixed", false, T), e.row(), e.parts()));
     }
+    final Map<String, DayBoundaries.Boundary> boundaries = new HashMap<>();
+    issues.forEach(i -> boundaries.put(i.id(),
+        new DayBoundaries.Boundary(4, DayBoundaries.Source.FALLBACK, 0, 0)));
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask.Report(List.of(),
-        new RegistrationInProgress.Sizes(9, 0, 8, 1), entries, result, 9);
+        new RegistrationInProgress.Sizes(9, 0, 8, 1), entries, result, 9, boundaries, Set.of());
     final Map<String, List<String>> files = IssuesSimilarityCommand.diagnostics(r);
 
     assertEquals("variant\tblock\tk\tvectors\tdistinct\tfitted\tdistortion",

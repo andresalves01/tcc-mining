@@ -37,7 +37,7 @@ public final class Baseline {
     final Map<String, List<Double>> hours = new HashMap<>();
     final List<Double> all = new ArrayList<>(fit.size());
     for (final Outcome unit : fit) {
-      final double value = unit.durationHours();
+      final double value = unit.duration();
       hours.computeIfAbsent(unit.project(), key -> new ArrayList<>()).add(value);
       all.add(value);
     }

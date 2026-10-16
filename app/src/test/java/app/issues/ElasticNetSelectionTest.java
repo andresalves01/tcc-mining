@@ -691,4 +691,26 @@ class ElasticNetSelectionTest {
     assertEquals(new RegistrationInProgress.Sizes(4, 2, 3, 1),
         ElasticNetSelection.sizes(entries));
   }
+
+  @Test
+  @DisplayName("on the business-day population the issues of 0 business days are in neither the "
+      + "inner fitting nor the inner validation; the target and references are business days")
+  void businessDayPopulation() {
+    full();
+    final List<RowCache.Entry> bounded = new ArrayList<>();
+    for (final RowCache.Entry e : entries) {
+      final Map<String, Double> values = new HashMap<>(e.row().values());
+      values.put(BusinessDays.BOUNDARY, 4.0);
+      bounded.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values,
+          e.row().absent()), e.parts()));
+    }
+    final BusinessDays.Population p = BusinessDays.population(bounded);
+    assertTrue(p.kept().innerFit() < p.all().innerFit());
+    assertTrue(p.kept().innerSelection() < p.all().innerSelection());
+    final ElasticNetSelection.Result r = ElasticNetSelection.run(p.entries(), 1);
+    assertEquals(p.kept().innerFit(), r.fitRows());
+    assertEquals(p.kept().innerSelection(), r.validationRows());
+    final double error = model(r, "own_with_similarity").fitted().score().maeHours();
+    assertTrue(error < 50, "an error in business days, not in hours: " + error);
+  }
 }

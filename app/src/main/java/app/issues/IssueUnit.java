@@ -14,10 +14,22 @@ import java.time.Instant;
  * @param moved whether the issue changed Jira project at some point (the sensitivity without them)
  * @param startedAt where the duration starts: the creation in the main study; the first In
  *     Progress in the secondary one, where {@code executor} is the person known at that instant
+ * @param businessDays the whole business days from the start to the first resolution ({@link
+ *     BusinessDays}), set only in the in-progress similarity chain, whose target they are; null
+ *     everywhere else, where the target is the hours
  */
 public record IssueUnit(String issueId, String key, String project, String reporter,
     String executor, Instant createdAt, Instant resolvedAt, String reason, boolean moved,
-    Instant startedAt) implements Outcome {
+    Instant startedAt, Integer businessDays) implements Outcome {
+
+  /** An issue whose target is its hours from {@code startedAt}. */
+  public IssueUnit(final String issueId, final String key, final String project,
+      final String reporter, final String executor, final Instant createdAt,
+      final Instant resolvedAt, final String reason, final boolean moved,
+      final Instant startedAt) {
+    this(issueId, key, project, reporter, executor, createdAt, resolvedAt, reason, moved,
+        startedAt, null);
+  }
 
   /** An issue whose duration starts at its creation. */
   public IssueUnit(final String issueId, final String key, final String project,
@@ -27,9 +39,21 @@ public record IssueUnit(String issueId, String key, String project, String repor
         createdAt);
   }
 
+  /** The same issue with its target in {@code days} business days. */
+  public IssueUnit withBusinessDays(final int days) {
+    return new IssueUnit(issueId, key, project, reporter, executor, createdAt, resolvedAt, reason,
+        moved, startedAt, days);
+  }
+
   /** Hours from the start to the first resolution. */
   @Override
   public double durationHours() {
     return Duration.between(startedAt, resolvedAt).toMillis() / 3_600_000.0;
+  }
+
+  /** The business days when set, the hours otherwise. */
+  @Override
+  public double duration() {
+    return businessDays == null ? durationHours() : businessDays;
   }
 }

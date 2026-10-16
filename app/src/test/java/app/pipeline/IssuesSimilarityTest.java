@@ -6,7 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import app.issues.Augmentation;
 import app.issues.Augmentation.Variant;
+import app.issues.BusinessDays;
 import app.issues.Corpus;
+import app.issues.DayBoundaries;
 import app.issues.Embedder;
 import app.issues.IssueUnit;
 import app.issues.RegistrationInProgress;
@@ -31,6 +33,7 @@ import org.junit.jupiter.api.Test;
 class IssuesSimilarityTest {
 
   private static final long D = 86_400_000L;
+  private static final long H = 3_600_000L;
   private static final long T0 = 1_000 * D;
 
   private final List<Corpus.Issue> issues = new ArrayList<>();
@@ -53,9 +56,15 @@ class IssuesSimilarityTest {
   /** The same, opened by {@code reporter}. */
   private void issue(final String id, final String reporter, final long started,
       final long resolved, final String outer, final String inner) {
+    issue(id, reporter, "d", started, resolved, outer, inner);
+  }
+
+  /** The same, moved to In Progress by {@code clicker}. */
+  private void issue(final String id, final String reporter, final String clicker,
+      final long started, final long resolved, final String outer, final String inner) {
     issues.add(new Corpus.Issue(id, "P-" + id, "p", T0, "r", "r", null, "Bug", "Major", null,
         List.of(), List.of()));
-    events.add(new Corpus.Event(id, started, "status", "d", "Open", "In Progress",
+    events.add(new Corpus.Event(id, started, "status", clicker, "Open", "In Progress",
         (ext++) + "%%0"));
     events.add(new Corpus.Event(id, resolved, "status", "d", "In Progress", "Resolved",
         (ext++) + "%%0"));
@@ -138,8 +147,9 @@ class IssuesSimilarityTest {
     assertEquals(5, r.entries().size());
     final Map<String, Row> rows = new HashMap<>();
     r.entries().forEach(e -> rows.put(e.unit().issueId(), e.row()));
-    assertEquals(216.0, rows.get("v").values().get(Augmentation.jaccard(5, Variant.INNER)),
-        "a, by the text before the later edit");
+    assertEquals(7.0, rows.get("v").values().get(Augmentation.jaccard(5, Variant.INNER)),
+        "a, by the text before the later edit: Thursday 00:00, a Wednesday date at 04:00, to "
+            + "the next Saturday 00:00, a Friday date");
     assertEquals(1.0, rows.get("v").values().get("A01_desc_length"));
     assertFalse(rows.get("t").values().containsKey(Augmentation.jaccard(5, Variant.OUTER)));
     assertTrue(rows.get("t").absent().contains(Augmentation.jaccard(5, Variant.OUTER)));
@@ -169,7 +179,7 @@ class IssuesSimilarityTest {
         .run(entries);
     final Map<String, Row> rows = new HashMap<>();
     r.entries().forEach(e -> rows.put(e.unit().issueId(), e.row()));
-    assertEquals(216.0, rows.get("v").values().get(Augmentation.embedding(5, Variant.INNER)),
+    assertEquals(7.0, rows.get("v").values().get(Augmentation.embedding(5, Variant.INNER)),
         "a, by the text before the later edit; b is orthogonal");
     assertTrue(rows.get("t").absent().contains(Augmentation.embedding(5, Variant.OUTER)),
         "no description");
@@ -192,10 +202,54 @@ class IssuesSimilarityTest {
         .run(entries);
     final Map<String, Row> rows = new HashMap<>();
     r.entries().forEach(e -> rows.put(e.unit().issueId(), e.row()));
-    assertEquals(72.0, rows.get("v").values().get(Augmentation.reporter(Variant.INNER)), "b");
-    assertEquals(72.0, rows.get("v").values().get(Augmentation.reporter(Variant.OUTER)), "b");
+    assertEquals(2.0, rows.get("v").values().get(Augmentation.reporter(Variant.INNER)),
+        "b, Wednesday's date to Saturday's: Thursday and Friday");
+    assertEquals(2.0, rows.get("v").values().get(Augmentation.reporter(Variant.OUTER)), "b");
     assertTrue(rows.get("t").absent().contains(Augmentation.reporter(Variant.OUTER)));
     assertEquals(4, r.entries().size());
+  }
+
+  @Test
+  @DisplayName("the medians read past business days, each past issue at its own day boundary; a "
+      + "past issue of 0 business days enters no history; the boundary goes to the matrix")
+  void businessDays() {
+    // T0 is a Wednesday at 00:00 UTC. Ana was active from 00:00 to 15:59 on an earlier day, on
+    // another issue: her quietest eight hours are 16:00 to 23:59, her dates turn at 20:00.
+    issues.add(new Corpus.Issue("w", "P-w", "p", T0 - 10 * D, "r", "r", null, "Bug", "Major",
+        null, List.of(), List.of()));
+    for (int h = 0; h < 16; h++) {
+      events.add(new Corpus.Event("w", T0 - 5 * D + h * H, "labels", "ana", null, "x",
+          (ext++) + "%%0"));
+    }
+    // Thursday 19:00 is Wednesday's date at 20:00, Friday 21:00 is Friday's: two business days,
+    // where 04:00 would give one
+    issue("a", "r", "ana", T0 + D + 19 * H, T0 + 2 * D + 21 * H, "TRAIN", "TRAIN");
+    edited("a", "alpha", "alpha", T0);
+    // the clicker d has no history to speak of: 04:00; Thursday 10:00 to Tuesday 10:00, three
+    issue("b", "r", "d", T0 + D + 10 * H, T0 + 6 * D + 10 * H, "TRAIN", "TRAIN");
+    edited("b", "alpha", "alpha", T0);
+    // the same date: 0, and in no history
+    issue("z", "r", "d", T0 + D + 11 * H, T0 + D + 18 * H, "TRAIN", "TRAIN");
+    edited("z", "alpha", "alpha", T0);
+    issue("v", "r", "d", T0 + 20 * D, T0 + 21 * D, "TRAIN", "TEST");
+    edited("v", "alpha", "alpha", T0);
+    issue("t", "r", "d", T0 + 30 * D, T0 + 31 * D, "TEST", "");
+
+    final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
+        Progress.silent(), new RegistrationInProgress.Sizes(4, 1, 3, 1), SAME, 2, KMEANS)
+        .run(entries);
+    assertEquals(List.of(), r.refused());
+    final Map<String, Row> rows = new HashMap<>();
+    r.entries().forEach(e -> rows.put(e.unit().issueId(), e.row()));
+    final Map<String, Double> v = rows.get("v").values();
+    assertEquals(2.5, v.get(Augmentation.reporter(Variant.INNER)), "a's two and b's three");
+    assertEquals(2.5, v.get(Augmentation.jaccard(5, Variant.INNER)));
+    assertEquals(2.5, v.get(Augmentation.embedding(5, Variant.INNER)));
+    assertEquals(2.5, v.get(Augmentation.reporter(Variant.OUTER)));
+    assertEquals(20.0, rows.get("a").values().get(BusinessDays.BOUNDARY));
+    assertEquals(4.0, rows.get("b").values().get(BusinessDays.BOUNDARY));
+    assertEquals(DayBoundaries.Source.PERSON, r.boundaries().get("a").source());
+    assertEquals(DayBoundaries.Source.FALLBACK, r.boundaries().get("b").source());
   }
 
   @Test

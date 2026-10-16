@@ -210,11 +210,20 @@ public enum Command {
   ISSUES_SIMILARITY("issues-in-progress-similarity", new IssuesSimilarityCommand(), """
       Issue duration from the first In Progress, description-similarity
       chain: adds to the extracted matrix the revised team columns from
-      TEAM_COLUMNS and the median duration of the 5, 10 and 20 issues whose
-      descriptions at their first In Progress share the most words
-      (Jaccard) and of the 5, 10 and 20 closest by sentence embedding,
-      once against the inner split and once against the outer, history
-      built in five time blocks per fitting set. Refuses unless the four
+      TEAM_COLUMNS, each issue's day boundary (the UTC hour its working
+      dates turn at: the middle of the quietest eight hours of the person
+      who moved it to In Progress, read from their tracker activity before
+      that move, with at least 10 active hours; else the start of the
+      project's quietest eight hours, with at least 30 person-hours; else
+      04:00 UTC; bot accounts and ProjectImport events left out), and the
+      median business days of the 5, 10 and 20 issues whose descriptions
+      at their first In Progress share the most words (Jaccard), of the 5,
+      10 and 20 closest by sentence embedding, of the K-means cluster and
+      of the reporter's earlier issues, once against the inner split and
+      once against the outer, history built in five time blocks per
+      fitting set. A business day is a Monday-to-Friday date reached after
+      the start's date, holidays ignored; a past issue of 0 business days
+      enters no history. Refuses unless the four
       split sizes are the registered study's and TEAM_COLUMNS holds
       exactly the matrix's issues, and unless the model in MODEL_DIR
       reproduces the sentence-transformers reference on six sentences.
@@ -226,7 +235,10 @@ public enum Command {
   ISSUES_SIMILARITY_ELASTIC_NET("issues-in-progress-similarity-elastic-net",
       new IssuesSimilarityElasticNetCommand(), """
       Issue duration from the first In Progress, description-similarity
-      chain: chooses alpha and lambda on the inner validation, by the
+      chain, in whole business days (Monday-to-Friday dates reached from
+      the first In Progress to the first resolution, at each issue's day
+      boundary, holidays ignored), on the issues of at least one business
+      day: chooses alpha and lambda on the inner validation, by the
       registered grid's sweep, for six Elastic Net models: the own
       specification without similarity (description length, team size, the
       team's median and spread of lines of code and complexity, the
@@ -250,17 +262,21 @@ public enum Command {
       read in their inner variant; a column missing on every inner fitting row is
       removed from its models and reported. Refuses unless the four split
       sizes are the registered study's and the matrix has every declared
-      column. Reads MATRIX; writes ELASTIC_NET_PARAMETERS, the forests'
-      column share and leaf among them, never over a file holding more than
-      its own choices, one naming other models, as one written before the
-      own specification took the team size back and left the previous one
-      out, or one written before the forests; records the run in ISSUES_DB. The
+      column and the day boundary. Reads MATRIX; writes
+      ELASTIC_NET_PARAMETERS, the forests' column share and leaf among them,
+      never over a file holding more than its own choices, one naming other
+      models, as one written before the own specification took the team
+      size back and left the previous one out, or one written before the
+      forests or for the hours; records the run in ISSUES_DB. The
       outer test rows are not read."""),
 
   ISSUES_SIMILARITY_TEST("issues-in-progress-similarity-test",
       new IssuesSimilarityTestCommand(), """
       Issue duration from the first In Progress, description-similarity
-      chain, outer mode only: SCORES THE OUTER TEST. Reads MATRIX and
+      chain, outer mode only: SCORES THE OUTER TEST, in whole business days
+      (Monday-to-Friday dates reached, at each issue's day boundary,
+      holidays ignored) on the issues of at least one business day, those
+      of 0 dropped from the outer training and test. Reads MATRIX and
       ELASTIC_NET_PARAMETERS and chooses nothing: refits every Elastic Net
       model on the outer training set with its chosen alpha and the chosen
       lambda times the ratio of rows, as the registered reserved run does,
@@ -268,8 +284,9 @@ public enum Command {
       chosen for each model; refits beside each, as a robustness check, its
       random forest with the chosen count of columns per split and leaf; and with the
       global, project and executor-project medians scores the outer test:
-      error in days, Spearman, pairwise ordering, error by duration band
-      with the slowest 10% apart, and the agreed paired comparisons with
+      error in business days, with the slowest 10% left out too, Spearman,
+      pairwise ordering, error by band of the true business days (1, 2-3,
+      4-10, 11+; nothing clipped), and the agreed paired comparisons with
       intervals resampling whole projects: the own specification with
       similarity against the same without, every model against the global
       median and every model but the global median against the project
