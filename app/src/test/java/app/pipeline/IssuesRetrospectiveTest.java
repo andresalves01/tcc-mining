@@ -65,7 +65,8 @@ class IssuesRetrospectiveTest {
     entries.add(new RowCache.Entry(new IssueUnit(id, "P-" + id, "p", "r", "d",
         Instant.ofEpochMilli(T0), Instant.ofEpochMilli(resolved), "Fixed", false,
         Instant.ofEpochMilli(started)),
-        new Row(id, Map.of("A01_desc_length", 1.0, BusinessDays.BOUNDARY, 4.0), Set.of()),
+        new Row(id, Map.of("A01_desc_length", 1.0, BusinessDays.BOUNDARY, 4.0,
+            BusinessDays.ACTIVE, (double) BusinessDays.count(started, resolved, 4)), Set.of()),
         parts));
   }
 
@@ -215,6 +216,11 @@ class IssuesRetrospectiveTest {
     final IssuesRetrospectiveTask.Report boundary = task().run(unbounded);
     assertTrue(boundary.refused().get(0).contains(BusinessDays.BOUNDARY),
         boundary.refused().toString());
+    final List<RowCache.Entry> inactive = new ArrayList<>(entries);
+    inactive.set(0, new RowCache.Entry(first.unit(),
+        new Row("a", Map.of(BusinessDays.BOUNDARY, 4.0), Set.of()), first.parts()));
+    final IssuesRetrospectiveTask.Report active = task().run(inactive);
+    assertTrue(active.refused().get(0).contains(BusinessDays.ACTIVE), active.refused().toString());
     assertTrue(asked.isEmpty(), "no method was read");
 
     final IssuesRetrospectiveTask.Report sizes = new IssuesRetrospectiveTask(source(), changed(),

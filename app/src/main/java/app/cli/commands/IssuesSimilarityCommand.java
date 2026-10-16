@@ -49,9 +49,10 @@ import java.util.function.Function;
  * for, every processor when unset, with the same vectors as on one. The clusters are Smile's
  * K-means ({@link SmileKMeans}). Each issue's day boundary is read from the tracker activity
  * before its first In Progress ({@link DayBoundaries}); the similarity medians are of past issues'
- * business days at their own boundaries ({@link BusinessDays}). Writes the augmented matrix -- the
- * extracted columns, the four team columns, the similarity columns, then the day boundary -- to
- * MATRIX, the diagnostics as tab-separated files
+ * business days at their own boundaries ({@link BusinessDays}), each without the time its changelog
+ * shows it back in Open or Reopened. Writes the augmented matrix -- the extracted columns, the four
+ * team columns, the similarity columns, then the day boundary and the active business days, the
+ * target -- to MATRIX, the diagnostics as tab-separated files
  * to REPORT_DIR, and records the run, with the SHA-256 of every file it read or wrote, the model,
  * its revision, the cache's hits and misses, the embedding threads, the clusterer, its seed, runs
  * and the distortion of every fit, and the time spent, in ISSUES_DB.
@@ -103,7 +104,7 @@ public final class IssuesSimilarityCommand implements CommandRunner {
           + " (written by issues-in-progress-team): " + e));
     }
     final List<String> already = java.util.stream.Stream.of(Extractor.TEAM_REVISED,
-        Augmentation.columns(), List.of(BusinessDays.BOUNDARY)).flatMap(List::stream)
+        Augmentation.columns(), BusinessDays.COLUMNS).flatMap(List::stream)
         .filter(columns::contains).toList();
     if (!already.isEmpty()) {
       throw new CommandFailedException(List.of("  REFUSED: " + cache + " already has "
@@ -210,6 +211,9 @@ public final class IssuesSimilarityCommand implements CommandRunner {
         DayBoundaries.BOT_MIN_COMMENTS, 100 * DayBoundaries.BOT_TEMPLATED_SHARE);
     final Map<String, Map<String, Integer>> sources = sources(r);
     sources.forEach((split, by) -> System.out.printf("    %-18s %s%n", split, by));
+    final Map<String, Integer> changed = changedByActiveTime(r);
+    System.out.printf("  issues whose business days the time back in Open or Reopened changed: "
+        + "%s%n", changed);
 
     System.out.printf("%n  COVERAGE BY SPLIT%n");
     final List<Map<String, Object>> rows = new ArrayList<>();
@@ -239,7 +243,7 @@ public final class IssuesSimilarityCommand implements CommandRunner {
           Instant.ofEpochMilli(b.last()), b.history());
     }
     System.out.printf("%n  matrix written to %s (%d new columns)%n", matrix,
-        Augmentation.columns().size() + 1);
+        Augmentation.columns().size() + 2);
     System.out.printf("  diagnostics written to %s: %s%n", reports,
         String.join(", ", written.keySet().stream().filter(k -> !k.equals("matrix")).toList()));
 
@@ -282,6 +286,8 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     run.put("target", BusinessDays.TARGET);
     run.put("population", BusinessDays.POPULATION);
     run.put("holidays", BusinessDays.HOLIDAYS);
+    run.put("stopped_statuses", BusinessDays.STOPPED.stream().sorted().toList());
+    run.put("changed_by_active_time", changed);
     run.put("day_boundary", boundaryRule());
     run.put("day_boundary_sources", sources);
     run.put("bot_accounts", r.bots().stream().sorted().toList());
@@ -343,7 +349,7 @@ public final class IssuesSimilarityCommand implements CommandRunner {
       final List<String> columns) throws IOException {
     final List<String> all = new ArrayList<>(columns);
     all.addAll(Augmentation.columns());
-    all.add(BusinessDays.BOUNDARY);
+    all.addAll(BusinessDays.COLUMNS);
     RowCache.write(out, r.entries(), all, List.of(P));
   }
 
@@ -365,14 +371,41 @@ public final class IssuesSimilarityCommand implements CommandRunner {
   }
 
   /**
+   * Per side of the outer training, how many issues have active business days other than the
+   * whole interval's: those the time back in Open or Reopened changed. The outer test is not
+   * counted: its outcomes are not summarised before it is opened.
+   */
+  static Map<String, Integer> changedByActiveTime(final IssuesSimilarityTask.Report r) {
+    final Map<String, Integer> out = new LinkedHashMap<>();
+    for (final String split : SPLITS.subList(0, 3)) {
+      out.put(split, 0);
+    }
+    for (final RowCache.Entry e : r.entries()) {
+      final String split = split(e);
+      if (split == null || !out.containsKey(split)) {
+        continue;
+      }
+      final int whole = BusinessDays.count(e.unit().startedAt().toEpochMilli(),
+          e.unit().resolvedAt().toEpochMilli(), r.boundaries().get(e.unit().issueId()).hour());
+      if (e.row().values().get(BusinessDays.ACTIVE).intValue() != whole) {
+        out.merge(split, 1, Integer::sum);
+      }
+    }
+    return out;
+  }
+
+  /** The splits the boundaries are reported by, the outer test last. */
+  private static final List<String> SPLITS = List.of("inner_fitting", "inner_validation",
+      "outer_training_crossing_inner", "outer_test");
+
+  /**
    * Per split, how many issues took their boundary from the person, the project or 04:00; the
    * outer training rows crossing the inner cut are counted apart from the inner fitting and
    * validation, and the rows crossing the outer cut not at all.
    */
   static Map<String, Map<String, Integer>> sources(final IssuesSimilarityTask.Report r) {
     final Map<String, Map<String, Integer>> out = new LinkedHashMap<>();
-    for (final String split : List.of("inner_fitting", "inner_validation",
-        "outer_training_crossing_inner", "outer_test")) {
+    for (final String split : SPLITS) {
       final Map<String, Integer> by = new LinkedHashMap<>();
       for (final DayBoundaries.Source s : DayBoundaries.Source.values()) {
         by.put(s.name().toLowerCase(Locale.ROOT), 0);
@@ -504,13 +537,20 @@ public final class IssuesSimilarityCommand implements CommandRunner {
         Integer.toString(b.history()))));
     out.put("blocks.tsv", blocks);
 
+    // the business days of the whole interval beside the active ones the matrix holds, so the
+    // issues whose count the time back in Open or Reopened changed can be found; left blank on
+    // the outer test, whose outcomes are not laid out before it is opened
     final List<String> days = new ArrayList<>(List.of("id\touter\tinner\tsource\tperson_hours"
-        + "\tproject_hours\tboundary_hour_utc"));
+        + "\tproject_hours\tboundary_hour_utc\tbusiness_days_whole\t" + BusinessDays.ACTIVE));
     for (final RowCache.Entry e : r.entries()) {
       final DayBoundaries.Boundary b = r.boundaries().get(e.unit().issueId());
+      final boolean sealed = "TEST".equals(e.outer(P));
       days.add(String.join("\t", e.unit().issueId(), e.outer(P), e.inner(P),
           b.source().name().toLowerCase(Locale.ROOT), Integer.toString(b.personHours()),
-          Integer.toString(b.projectHours()), Integer.toString(b.hour())));
+          Integer.toString(b.projectHours()), Integer.toString(b.hour()),
+          sealed ? "" : Integer.toString(BusinessDays.count(e.unit().startedAt().toEpochMilli(),
+              e.unit().resolvedAt().toEpochMilli(), b.hour())),
+          sealed ? "" : Integer.toString(e.row().values().get(BusinessDays.ACTIVE).intValue())));
     }
     out.put("day-boundaries.tsv", days);
     return out;

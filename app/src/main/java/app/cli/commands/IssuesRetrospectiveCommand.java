@@ -86,10 +86,10 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
       refuseForeign(out);
       columns = new ArrayList<>(RowCache.columns(matrix));
       final List<String> needed = new ArrayList<>(Augmentation.columns());
-      needed.add(BusinessDays.BOUNDARY);
+      needed.addAll(BusinessDays.COLUMNS);
       if (!columns.containsAll(needed)) {
-        throw refused(matrix + " has not the similarity stage's columns and the day boundary; "
-            + "give the matrix issues-in-progress-similarity wrote");
+        throw refused(matrix + " has not the similarity stage's columns, the day boundary and "
+            + "the active business days; give the matrix issues-in-progress-similarity wrote");
       }
       final List<String> already =
           Retrospective.COLUMNS.stream().filter(columns::contains).toList();

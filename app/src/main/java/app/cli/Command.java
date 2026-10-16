@@ -224,7 +224,12 @@ public enum Command {
       of the reporter's earlier issues, once against the inner split and
       once against the outer, history built in five time blocks per
       fitting set. A business day is a Monday-to-Friday date reached after
-      the start's date, holidays ignored; a past issue of 0 business days
+      the start's date, holidays ignored. An issue's business days leave
+      out the time it was back in Open or Reopened between its first In
+      Progress and its first resolution (from a status change to either
+      until the next status change; Patch Available kept): time nobody was
+      working on it is not counted. They go to the matrix beside the day
+      boundary as the target the later steps read; a past issue of 0
       enters no history. Refuses unless the four
       split sizes are the registered study's and TEAM_COLUMNS holds
       exactly the matrix's issues, and unless the model in MODEL_DIR
@@ -254,7 +259,8 @@ public enum Command {
       accounts left out: the comments, the distinct people who commented or
       changed a field (the reporter only if active) and the effective
       changes of assignee. Refuses unless MATRIX is the similarity stage's,
-      without these columns, the four split sizes are the registered
+      with its day boundary and active business days and without these
+      columns, the four split sizes are the registered
       study's and the corpus holds every issue of the matrix as it is.
       Reads MATRIX, the corpus and the changed methods of the implementation
       commits (the expensive part); writes RETROSPECTIVE_MATRIX, never over
@@ -267,8 +273,9 @@ public enum Command {
       Issue duration from the first In Progress, description-similarity
       chain, in whole business days (Monday-to-Friday dates reached from
       the first In Progress to the first resolution, at each issue's day
-      boundary, holidays ignored), on the issues of at least one business
-      day: chooses alpha and lambda on the inner validation, by the
+      boundary, holidays ignored, the time back in Open or Reopened left
+      out), on the issues of at least one business day: chooses alpha and
+      lambda on the inner validation, by the
       registered grid's sweep, for seven Elastic Net models: the own
       specification without similarity (description length, team size, the
       team's median and spread of lines of code and complexity, the
@@ -295,8 +302,8 @@ public enum Command {
       read in their inner variant; a column missing on every inner fitting row is
       removed from its models and reported. Refuses unless the four split
       sizes are the registered study's and the matrix has every declared
-      column and the day boundary. Reads MATRIX; writes
-      ELASTIC_NET_PARAMETERS, the forests' column share and leaf among them,
+      column, the day boundary and the active business days. Reads
+      MATRIX; writes ELASTIC_NET_PARAMETERS, the forests' column share and leaf among them,
       never over a file holding more than its own choices, one naming other
       models, as one written before the own specification took the team
       size back and left the previous one out, or one written before the
@@ -308,7 +315,8 @@ public enum Command {
       Issue duration from the first In Progress, description-similarity
       chain, outer mode only: SCORES THE OUTER TEST, in whole business days
       (Monday-to-Friday dates reached, at each issue's day boundary,
-      holidays ignored) on the issues of at least one business day, those
+      holidays ignored, the time back in Open or Reopened left out) on the
+      issues of at least one business day, those
       of 0 dropped from the outer training and test. Reads MATRIX and
       ELASTIC_NET_PARAMETERS and chooses nothing: refits every Elastic Net
       model on the outer training set with its chosen alpha and the chosen
@@ -349,7 +357,9 @@ public enum Command {
       settings having been chosen on this same inner validation. Reads
       MATRIX (the retrospective matrix) and ELASTIC_NET_PARAMETERS; keeps
       only the outer training rows, the others left behind on their split
-      field, never parsed beyond it; drops the issues of 0 business days;
+      field, never parsed beyond it; drops the issues of 0 business days
+      (the time back in Open or Reopened left out, as the similarity stage
+      wrote them);
       refits the seventeen models of the test (the global, project and
       executor-project medians, the seven Elastic Nets at their chosen
       alpha and lambda, unscaled, and n and k, and their seven forests at

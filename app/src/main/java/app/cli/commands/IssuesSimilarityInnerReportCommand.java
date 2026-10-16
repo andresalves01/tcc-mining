@@ -154,9 +154,9 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
       throw refused(matrix + " has no column " + missing
           + IssuesSimilarityElasticNetCommand.retrospectiveHint(missing));
     }
-    if (!columns.contains(BusinessDays.BOUNDARY)) {
-      throw refused(matrix + " has no " + BusinessDays.BOUNDARY + "; it was written before "
-          + "business days");
+    final String unwritten = BusinessDays.unwritten(columns);
+    if (unwritten != null) {
+      throw refused(matrix + ": " + unwritten);
     }
     final BusinessDays.Population population;
     final SimilarityScoring.Report r;

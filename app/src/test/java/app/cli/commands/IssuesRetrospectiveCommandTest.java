@@ -66,11 +66,14 @@ class IssuesRetrospectiveCommandTest {
     return path;
   }
 
-  /** The similarity stage's columns: the extracted one, the medians and the day boundary. */
+  /**
+   * The similarity stage's columns: the extracted one, the medians, the day boundary and the
+   * active business days.
+   */
   private static List<String> similarity() {
     final List<String> out = new ArrayList<>(List.of("A01_desc_length"));
     out.addAll(Augmentation.columns());
-    out.add(BusinessDays.BOUNDARY);
+    out.addAll(BusinessDays.COLUMNS);
     return out;
   }
 

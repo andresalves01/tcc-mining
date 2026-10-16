@@ -77,6 +77,8 @@ class IssuesSimilarityCommandTest {
       final Map<String, Double> values = new HashMap<>(e.row().values());
       values.putAll(result.columns().get(e.unit().issueId()));
       values.put(BusinessDays.BOUNDARY, e.unit().issueId().equals("a") ? 21.0 : 4.0);
+      // b's one business day taken out as time back in Open
+      values.put(BusinessDays.ACTIVE, 0.0);
       augmented.add(new RowCache.Entry(e.unit(),
           new Row(e.row().unitId(), values, new HashSet<>(e.row().absent())), e.parts()));
     }
@@ -92,7 +94,7 @@ class IssuesSimilarityCommandTest {
     IssuesSimilarityCommand.writeMatrix(out, r, RowCache.columns(cache));
     final String written = Files.readAllLines(out).get(0);
     assertEquals(header + "\t" + String.join("\t", Augmentation.columns()) + "\t"
-        + BusinessDays.BOUNDARY, written);
+        + BusinessDays.BOUNDARY + "\t" + BusinessDays.ACTIVE, written);
     assertTrue(written.contains("\tjaccard_median_5_inner\tjaccard_median_5_outer\t"));
 
     final Map<String, RowCache.Entry> back = new HashMap<>();
@@ -102,6 +104,7 @@ class IssuesSimilarityCommandTest {
     assertEquals(2.0, back.get("t").row().values().get("A01_desc_length"));
     assertTrue(back.get("t").row().absent().contains("TXT_desc_fog"));
     assertEquals(21.0, back.get("a").row().values().get(BusinessDays.BOUNDARY));
+    assertEquals(0.0, back.get("b").row().values().get(BusinessDays.ACTIVE));
 
     final Map<String, List<String>> files = IssuesSimilarityCommand.diagnostics(r);
     assertEquals(Set.of("jaccard-queries.tsv", "jaccard-neighbours.tsv", "coverage.tsv",
@@ -109,13 +112,19 @@ class IssuesSimilarityCommandTest {
         "embedding-chunks.tsv", "cluster-fits.tsv", "cluster-sizes.tsv", "cluster-projects.tsv",
         "cluster-queries.tsv", "day-boundaries.tsv"), files.keySet());
     assertEquals(List.of("id\touter\tinner\tsource\tperson_hours\tproject_hours"
-        + "\tboundary_hour_utc", "a\tTRAIN\tTRAIN\tperson\t12\t30\t21",
-        "b\tTRAIN\tTRAIN\tfallback\t0\t1\t4", "v\tTRAIN\tTEST\tfallback\t0\t2\t4",
-        "t\tTEST\t\tfallback\t0\t3\t4"), files.get("day-boundaries.tsv"));
+        + "\tboundary_hour_utc\tbusiness_days_whole\tactive_business_days",
+        "a\tTRAIN\tTRAIN\tperson\t12\t30\t21\t0\t0",
+        "b\tTRAIN\tTRAIN\tfallback\t0\t1\t4\t1\t0",
+        "v\tTRAIN\tTEST\tfallback\t0\t2\t4\t0\t0",
+        "t\tTEST\t\tfallback\t0\t3\t4\t\t"), files.get("day-boundaries.tsv"),
+        "the outer test's business days left blank");
     assertEquals(Map.of("person", 1, "project", 0, "fallback", 1),
         IssuesSimilarityCommand.sources(r).get("inner_fitting"));
     assertEquals(Map.of("person", 0, "project", 0, "fallback", 1),
         IssuesSimilarityCommand.sources(r).get("outer_test"));
+    assertEquals(Map.of("inner_fitting", 1, "inner_validation", 0,
+        "outer_training_crossing_inner", 0), IssuesSimilarityCommand.changedByActiveTime(r),
+        "b's count changed, no other; the outer test not summarised");
     assertTrue(files.get("jaccard-neighbours.tsv").contains("v\tinner\t1\ta\tp\t0.0"),
         files.get("jaccard-neighbours.tsv").toString());
     assertTrue(files.get("embedding-neighbours.tsv").contains("v\tinner\t1\ta\tp\t0.0"),
@@ -183,8 +192,10 @@ class IssuesSimilarityCommandTest {
     final List<RowCache.Entry> entries = new ArrayList<>();
     for (final Augmentation.Issue i : issues) {
       final RowCache.Entry e = entry(i.id(), 0, 1, i.outer(), i.inner());
+      final Map<String, Double> values = new HashMap<>(e.row().values());
+      values.put(BusinessDays.ACTIVE, 0.0);
       entries.add(new RowCache.Entry(new IssueUnit(i.id(), "P-" + i.id(), i.project(), "r", "d",
-          T, T, "Fixed", false, T), e.row(), e.parts()));
+          T, T, "Fixed", false, T), new Row(i.id(), values, e.row().absent()), e.parts()));
     }
     final Map<String, DayBoundaries.Boundary> boundaries = new HashMap<>();
     issues.forEach(i -> boundaries.put(i.id(),

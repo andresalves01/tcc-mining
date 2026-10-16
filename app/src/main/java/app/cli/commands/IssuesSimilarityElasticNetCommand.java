@@ -110,10 +110,10 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
         throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
             + matrix + " has no column " + missing + retrospectiveHint(missing)));
       }
-      if (!columns.contains(BusinessDays.BOUNDARY)) {
+      final String unwritten = BusinessDays.unwritten(columns);
+      if (unwritten != null) {
         throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
-            + matrix + " has no " + BusinessDays.BOUNDARY + "; it was written before business "
-            + "days, run issues-in-progress-similarity again"));
+            + matrix + ": " + unwritten));
       }
       // the outer test is left behind here, before any outcome is read
       population = BusinessDays.population(entries.stream()

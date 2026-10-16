@@ -14,9 +14,9 @@ import java.time.Instant;
  * @param moved whether the issue changed Jira project at some point (the sensitivity without them)
  * @param startedAt where the duration starts: the creation in the main study; the first In
  *     Progress in the secondary one, where {@code executor} is the person known at that instant
- * @param businessDays the whole business days from the start to the first resolution ({@link
- *     BusinessDays}), set only in the in-progress similarity chain, whose target they are; null
- *     everywhere else, where the target is the hours
+ * @param businessDays the whole business days from the start to the first resolution, the time
+ *     back in Open or Reopened left out ({@link BusinessDays}), set only in the in-progress
+ *     similarity chain, whose target they are; null everywhere else, where the target is the hours
  */
 public record IssueUnit(String issueId, String key, String project, String reporter,
     String executor, Instant createdAt, Instant resolvedAt, String reason, boolean moved,

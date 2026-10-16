@@ -85,15 +85,15 @@ public final class IssuesRetrospectiveTask {
     if (!refused.isEmpty()) {
       return refused(refused);
     }
-    // the coverage reads each row's business days: a row without its boundary refuses now, before
-    // the long read of the methods rather than after it
+    // the coverage reads each row's business days: a row without its boundary or its active
+    // count refuses now, before the long read of the methods rather than after it
     final List<String> unbounded = entries.stream()
-        .filter(e -> !e.row().values().containsKey(BusinessDays.BOUNDARY))
+        .filter(e -> !e.row().values().keySet().containsAll(BusinessDays.COLUMNS))
         .map(e -> e.unit().issueId()).toList();
     if (!unbounded.isEmpty()) {
-      return refused(List.of(String.format("%,d rows have no day boundary in %s, the first %s; "
-          + "the matrix was written before business days", unbounded.size(),
-          BusinessDays.BOUNDARY, unbounded.get(0))));
+      return refused(List.of(String.format("%,d rows have no day boundary or no active business "
+          + "days in %s, the first %s; the matrix was written before them", unbounded.size(),
+          BusinessDays.COLUMNS, unbounded.get(0))));
     }
 
     progress.phase(1, 4, "reading the corpus: %s", source.describe());

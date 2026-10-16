@@ -23,8 +23,9 @@ import java.util.stream.IntStream;
  * and of those closest by embedding, for each candidate number of neighbours, and the reporter's
  * historical median, once against the inner split and once against the outer.
  *
- * <p><b>Duration</b> (ticket 14). Every median is of past issues' whole business days ({@link
- * BusinessDays}), each past issue counted at its own day boundary, as the target is. A past issue
+ * <p><b>Duration</b> (tickets 14 and 18). Every median is of past issues' active business days
+ * ({@link BusinessDays}: the time back in Open or Reopened left out), each past issue counted at
+ * its own day boundary, as the target is. A past issue
  * of 0 business days enters no history -- no neighbour search, no cluster fit or cluster, no
  * reporter median -- so a history holds only the kind of issue the model predicts. The rows that read the
  * histories, the blocks they are cut in and their reference instants are those of every issue of
@@ -144,8 +145,9 @@ public final class Augmentation {
    * @param reporter the canonical person who opened it
    * @param start the first In Progress, epoch milliseconds
    * @param resolved the first resolution, epoch milliseconds
-   * @param businessDays its whole business days from {@code start} to {@code resolved}, at its own
-   *     day boundary: what a median of it reads; 0 keeps it out of every history
+   * @param businessDays its active business days from {@code start} to {@code resolved}, at its
+   *     own day boundary, the time back in Open or Reopened left out ({@link
+   *     BusinessDays#active}): what a median of it reads; 0 keeps it out of every history
    * @param outer the outer verdict: TRAIN, TEST or CROSSES
    * @param inner the inner verdict inside the outer training, empty outside it
    * @param description the cleaned description at the first In Progress, null when there is none

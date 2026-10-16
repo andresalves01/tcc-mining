@@ -37,12 +37,18 @@ final class BusinessDayFixtures {
     return (int) Math.ceil(hours / 24);
   }
 
-  /** The entries with every day boundary at {@value #HOUR}:00 UTC, the matrix's column. */
+  /**
+   * The entries with every day boundary at {@value #HOUR}:00 UTC and, no fixture issue ever sent
+   * back to Open or Reopened, active business days those of the whole interval: the matrix's two
+   * columns.
+   */
   static List<RowCache.Entry> bounded(final List<RowCache.Entry> entries) {
     final List<RowCache.Entry> out = new ArrayList<>(entries.size());
     for (final RowCache.Entry e : entries) {
       final Map<String, Double> values = new HashMap<>(e.row().values());
       values.put(BusinessDays.BOUNDARY, (double) HOUR);
+      values.put(BusinessDays.ACTIVE, (double) BusinessDays.count(
+          e.unit().startedAt().toEpochMilli(), e.unit().resolvedAt().toEpochMilli(), HOUR));
       out.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values, e.row().absent()),
           e.parts()));
     }

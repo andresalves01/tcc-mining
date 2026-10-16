@@ -9,6 +9,7 @@ import app.study.Row;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -60,18 +61,124 @@ class BusinessDaysTest {
     assertEquals(0, BusinessDays.count(start, at("2024-01-02T04:00:00Z") - 1, 4));
   }
 
+  /** One status change of issue "i" to {@code status}, at {@code instant}. */
+  private static Corpus.Event status(final String instant, final String status) {
+    return new Corpus.Event("i", at(instant), "status", "u", null, status, null);
+  }
+
+  @Test
+  @DisplayName("an issue never sent back to Open or Reopened keeps the whole interval's count")
+  void activeWithoutStoppedPeriod() {
+    final List<Corpus.Event> events = List.of(status("2024-01-04T10:00:00Z", "In Progress"),
+        new Corpus.Event("i", at("2024-01-05T10:00:00Z"), "assignee", "u", "a", "b", null),
+        status("2024-01-10T10:00:00Z", "Resolved"));
+    assertEquals(4, BusinessDays.active(events, at("2024-01-04T10:00:00Z"),
+        at("2024-01-10T10:00:00Z"), 4));
+    assertEquals(4, BusinessDays.active(List.of(), at("2024-01-04T10:00:00Z"),
+        at("2024-01-10T10:00:00Z"), 4), "no event at all");
+  }
+
+  @Test
+  @DisplayName("a stopped period crossing a weekend: its dates, the weekend's and the Monday's, "
+      + "are not counted; each active stretch is counted at the issue's boundary and summed")
+  void activeAcrossWeekend() {
+    // Thursday 10:00 In Progress, Friday 10:00 back to Open, Tuesday 10:00 In Progress again,
+    // Wednesday 10:00 resolved: the whole interval reaches Friday, Monday, Tuesday and Wednesday,
+    // 4; active, Thursday to Friday (1) and Tuesday to Wednesday (1), 2
+    final List<Corpus.Event> events = List.of(status("2024-01-04T10:00:00Z", "In Progress"),
+        status("2024-01-05T10:00:00Z", "Open"), status("2024-01-09T10:00:00Z", "In Progress"),
+        status("2024-01-10T10:00:00Z", "Resolved"));
+    final long t0 = at("2024-01-04T10:00:00Z");
+    final long t1 = at("2024-01-10T10:00:00Z");
+    assertEquals(4, BusinessDays.count(t0, t1, 4));
+    assertEquals(2, BusinessDays.active(events, t0, t1, 4));
+    // at a boundary of 12:00 every instant is on the previous date: Wednesday's to Thursday's,
+    // then Monday's to Tuesday's, 2 again
+    assertEquals(2, BusinessDays.active(events, t0, t1, 12));
+  }
+
+  @Test
+  @DisplayName("a stopped period is clipped to [first In Progress, first resolution): what lies "
+      + "before the start or after the end takes nothing away")
+  void activeClipped() {
+    // sent back to Reopened on Monday, before the start on Tuesday, until Thursday 10:00: only
+    // Tuesday 10:00 to Thursday 10:00 is stopped; Thursday to the next Monday counts 2
+    final List<Corpus.Event> before = List.of(status("2024-01-01T10:00:00Z", "Reopened"),
+        status("2024-01-04T10:00:00Z", "In Progress"),
+        status("2024-01-08T10:00:00Z", "Resolved"));
+    assertEquals(2, BusinessDays.active(before, at("2024-01-02T10:00:00Z"),
+        at("2024-01-08T10:00:00Z"), 4));
+    // sent back to Open on Friday 10:00, the next status change long after the end on Monday
+    // 10:00: Tuesday 10:00 to Friday 10:00 counts 3, the rest is stopped
+    final List<Corpus.Event> after = List.of(status("2024-01-02T10:00:00Z", "In Progress"),
+        status("2024-01-05T10:00:00Z", "Open"), status("2024-01-20T10:00:00Z", "Resolved"));
+    assertEquals(3, BusinessDays.active(after, at("2024-01-02T10:00:00Z"),
+        at("2024-01-08T10:00:00Z"), 4));
+    // a last change to Open with no status change after it: stopped up to the end
+    assertEquals(3, BusinessDays.active(after.subList(0, 2), at("2024-01-02T10:00:00Z"),
+        at("2024-01-08T10:00:00Z"), 4));
+    // stopped periods wholly before the start or after the end change nothing
+    final List<Corpus.Event> outside = List.of(status("2023-12-01T10:00:00Z", "Open"),
+        status("2023-12-02T10:00:00Z", "In Progress"), status("2024-02-01T10:00:00Z", "Open"),
+        status("2024-02-02T10:00:00Z", "Closed"));
+    assertEquals(5, BusinessDays.active(outside, at("2024-01-01T10:00:00Z"),
+        at("2024-01-08T10:00:00Z"), 4));
+  }
+
+  @Test
+  @DisplayName("back-to-back stopped periods, Open then Reopened, stop the issue from the first "
+      + "until the next change to another status")
+  void activeBackToBack() {
+    // Monday 10:00 In Progress, Tuesday 10:00 Open, Wednesday 10:00 Reopened, Friday 10:00 In
+    // Progress, next Monday 10:00 resolved: Monday to Tuesday (1) and Friday to Monday (1)
+    final List<Corpus.Event> events = List.of(status("2024-01-01T10:00:00Z", "In Progress"),
+        status("2024-01-02T10:00:00Z", "Open"), status("2024-01-03T10:00:00Z", "Reopened"),
+        status("2024-01-05T10:00:00Z", "In Progress"),
+        status("2024-01-08T10:00:00Z", "Resolved"));
+    assertEquals(2, BusinessDays.active(events, at("2024-01-01T10:00:00Z"),
+        at("2024-01-08T10:00:00Z"), 4));
+  }
+
+  @Test
+  @DisplayName("Patch Available, waiting for review, is not removed; nor is another field's change "
+      + "to a value named Open")
+  void activeKeepsPatchAvailable() {
+    final List<Corpus.Event> events = List.of(status("2024-01-01T10:00:00Z", "In Progress"),
+        status("2024-01-02T10:00:00Z", "Patch Available"),
+        new Corpus.Event("i", at("2024-01-03T10:00:00Z"), "resolution", "u", null, "Open", null),
+        status("2024-01-05T10:00:00Z", "In Progress"),
+        status("2024-01-08T10:00:00Z", "Resolved"));
+    assertEquals(5, BusinessDays.active(events, at("2024-01-01T10:00:00Z"),
+        at("2024-01-08T10:00:00Z"), 4));
+  }
+
   private final List<RowCache.Entry> entries = new ArrayList<>();
 
-  /** An issue clicked at {@code start}, resolved at {@code end}, its boundary at {@code hour}. */
+  /**
+   * An issue clicked at {@code start}, resolved at {@code end}, its boundary at {@code hour}, never
+   * sent back: its active business days, in the matrix's column, those of the whole interval.
+   */
   private void entry(final String id, final String outer, final String inner, final String start,
       final String end, final Double hour) {
+    entry(id, outer, inner, start, end, hour, hour == null ? null
+        : (double) BusinessDays.count(at(start), at(end), hour.intValue()));
+  }
+
+  /** The same with {@code active} business days in the matrix's column, none when null. */
+  private void entry(final String id, final String outer, final String inner, final String start,
+      final String end, final Double hour, final Double active) {
     final Map<Population, String[]> parts = new EnumMap<>(Population.class);
     parts.put(Population.IN_PROGRESS, new String[] {outer, inner});
     final Instant s = Instant.parse(start);
+    final Map<String, Double> values = new HashMap<>();
+    if (hour != null) {
+      values.put(BusinessDays.BOUNDARY, hour);
+    }
+    if (active != null) {
+      values.put(BusinessDays.ACTIVE, active);
+    }
     entries.add(new RowCache.Entry(new IssueUnit(id, "K-" + id, "p", "r", "e", s,
-        Instant.parse(end), "Fixed", false, s),
-        new Row(id, hour == null ? Map.of() : Map.of(BusinessDays.BOUNDARY, hour), Set.of()),
-        parts));
+        Instant.parse(end), "Fixed", false, s), new Row(id, values, Set.of()), parts));
   }
 
   @Test
@@ -98,6 +205,55 @@ class BusinessDaysTest {
     assertEquals(new RegistrationInProgress.Sizes(3, 1, 1, 1), p.kept());
     assertEquals(entries.get(0).row(), p.entries().get(0).row());
     assertEquals(entries.get(0).parts(), p.entries().get(0).parts());
+  }
+
+  @Test
+  @DisplayName("the population reads the active business days: time back in Open or Reopened "
+      + "taken out can bring an issue under one business day, and out of every set")
+  void populationReadsActive() {
+    // Monday 10:00 to the next Monday 10:00, five business days over the whole interval
+    entry("fit-two", "TRAIN", "TRAIN", "2024-01-01T10:00:00Z", "2024-01-08T10:00:00Z", 4.0, 2.0);
+    entry("fit-none", "TRAIN", "TRAIN", "2024-01-01T10:00:00Z", "2024-01-08T10:00:00Z", 4.0,
+        0.0);
+    entry("val-five", "TRAIN", "TEST", "2024-01-01T10:00:00Z", "2024-01-08T10:00:00Z", 4.0);
+    entry("val-none", "TRAIN", "TEST", "2024-01-01T10:00:00Z", "2024-01-08T10:00:00Z", 4.0, 0.0);
+    entry("test-none", "TEST", "", "2024-01-01T10:00:00Z", "2024-01-08T10:00:00Z", 4.0, 0.0);
+    final BusinessDays.Population p = BusinessDays.population(entries);
+    assertEquals(List.of("fit-two", "val-five"),
+        p.entries().stream().map(e -> e.unit().issueId()).toList());
+    assertEquals(List.of(2, 5), p.entries().stream().map(e -> e.unit().businessDays()).toList());
+    assertEquals(new RegistrationInProgress.Sizes(4, 1, 2, 2), p.all());
+    assertEquals(new RegistrationInProgress.Sizes(2, 0, 1, 1), p.kept());
+  }
+
+  @Test
+  @DisplayName("a matrix without the active business days, written before ticket 18, is refused; "
+      + "so is a count that is not a whole number from 0 to the whole interval's")
+  void noActive() {
+    entry("old", "TRAIN", "TRAIN", "2024-01-01T10:00:00Z", "2024-01-08T10:00:00Z", 4.0, null);
+    final IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+        () -> BusinessDays.population(entries));
+    assertTrue(e.getMessage().contains(BusinessDays.ACTIVE), e.getMessage());
+    for (final double wrong : new double[] {6, -1, 2.5}) {
+      entries.clear();
+      entry("x", "TRAIN", "TRAIN", "2024-01-01T10:00:00Z", "2024-01-08T10:00:00Z", 4.0, wrong);
+      assertThrows(IllegalArgumentException.class, () -> BusinessDays.population(entries),
+          Double.toString(wrong));
+    }
+  }
+
+  @Test
+  @DisplayName("a matrix's columns: refused without the day boundary or the active business "
+      + "days, each named, with the stage to run again")
+  void unwritten() {
+    assertEquals(null, BusinessDays.unwritten(List.of("x", BusinessDays.BOUNDARY,
+        BusinessDays.ACTIVE)));
+    final String old = BusinessDays.unwritten(List.of("x", BusinessDays.BOUNDARY));
+    assertTrue(old.contains(BusinessDays.ACTIVE) && !old.contains(BusinessDays.BOUNDARY)
+        && old.contains("issues-in-progress-similarity"), old);
+    final String older = BusinessDays.unwritten(List.of("x"));
+    assertTrue(older.contains(BusinessDays.ACTIVE) && older.contains(BusinessDays.BOUNDARY),
+        older);
   }
 
   @Test
