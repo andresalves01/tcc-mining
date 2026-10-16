@@ -63,8 +63,13 @@ public final class Help {
                                                 issues-in-progress-similarity-test: where their
                                                 files go
           MATRIX            (unset)             issues-in-progress-similarity: the augmented matrix
-                                                written; issues-in-progress-similarity-elastic-net
-                                                and -test: the one they read
+                                                written; issues-in-progress-retrospective,
+                                                issues-in-progress-similarity-elastic-net and
+                                                -test: the one they read (for the last two, the
+                                                retrospective matrix, which has every model's
+                                                columns)
+          RETROSPECTIVE_MATRIX (unset)          issues-in-progress-retrospective: the matrix with
+                                                the eight retrospective columns written
           TEAM_COLUMNS      (unset)             issues-in-progress-team writes it,
                                                 issues-in-progress-similarity reads it
           MODEL_DIR         (unset)             issues-download-model: where the embedding model goes;
@@ -88,7 +93,7 @@ public final class Help {
                                                 intervals, bit for bit, on any number of threads
           ELASTIC_NET_PARAMETERS (unset)        issues-in-progress-similarity-elastic-net: where
                                                 each model's alpha and lambda go, and the Jaccard
-                                                n, embedding n and cluster k of the three models
+                                                n, embedding n and cluster k of the four models
                                                 with the similarity medians; never PARAMETERS;
                                                 issues-in-progress-similarity-test reads it
         """);

@@ -8,6 +8,7 @@ import app.issues.BusinessDays;
 import app.issues.DescriptionCleaner;
 import app.issues.ElasticNetSelection;
 import app.issues.RegistrationInProgress;
+import app.issues.Retrospective;
 import app.issues.RowCache;
 import app.issues.SimilarityScoring;
 import app.issues.model.Fitting;
@@ -30,10 +31,11 @@ import java.util.function.Function;
 
 /**
  * The test step of the description-similarity chain, outer mode only (see {@link
- * SimilarityScoring}): fifteen models -- the global, project and executor-project medians, the
- * six Elastic Nets and, as a robustness check, the random forest beside each -- refitted on the
- * outer training set with the parameters the selection step wrote, the outer test scored once,
- * every agreed comparison. The target is whole business days, on the issues of at least one
+ * SimilarityScoring}): seventeen models -- the global, project and executor-project medians, the
+ * seven Elastic Nets, the retrospective scenario's last ({@link Retrospective}), and, as a
+ * robustness check, the random forest beside each -- refitted on the outer training set with the
+ * parameters the selection step wrote, the outer test scored once, every agreed comparison, and
+ * the side reading of the retrospective comparison on the issues with an implementation commit. The target is whole business days, on the issues of at least one
  * ({@link BusinessDays}): every row is read with its day boundary from the matrix and those of 0
  * business days are dropped from the outer training and the outer test before anything is fitted;
  * every error, band and comparison is in business days.
@@ -77,7 +79,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
 
   private static final String EFFORT = "selection effort differs between families: the two "
       + "registered cells (Al-Zubaidi, Kikas) chose only alpha and lambda on the 3 x 12 grid; the "
-      + "own specification without similarity chose the same; the three models reading the "
+      + "own specification without similarity chose the same; the four models reading the "
       + "similarity medians chose also their Jaccard n, embedding n and cluster k among "
       + ElasticNetSelection.Combination.all().size() + " "
       + "combinations, each swept on the same grid; each forest chose its column share and leaf "
@@ -190,7 +192,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       throw refused(e.getMessage());
     }
     if (!missing.isEmpty()) {
-      throw refused(matrix + " has no column " + missing);
+      throw refused(matrix + " has no column " + missing
+          + IssuesSimilarityElasticNetCommand.retrospectiveHint(missing));
     }
     if (!columns.contains(BusinessDays.BOUNDARY)) {
       throw refused(matrix + " has no " + BusinessDays.BOUNDARY + "; it was written before "
@@ -261,6 +264,17 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
           g.gapHours(), g.low(), g.high(), g.tied() ? "  tie" : "");
       rows.add(comparisonRow(g));
     }
+    System.out.printf("%n  side reading, the retrospective scenario on the %,d of %,d scored issues "
+        + "with at least one implementation commit, intervals resampling their projects%n",
+        r.withCommitRows(), r.scoredRows());
+    for (final ProjectBootstrap.Gap g : r.withCommits()) {
+      System.out.printf("  %-24s vs %-24s %10.3f [%10.3f, %10.3f]%s%n", g.a(), g.b(),
+          g.gapHours(), g.low(), g.high(), g.tied() ? "  tie" : "");
+      final Map<String, Object> row = comparisonRow(g);
+      row.put("kind", "side_reading_with_commits");
+      row.put("n", r.withCommitRows());
+      rows.add(row);
+    }
 
     final List<String> predictions = SimilarityScoring.predictions(r);
     final Double rerun;
@@ -315,6 +329,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     run.put("candidates", candidates);
     run.put("fit_rows", r.fitRows());
     run.put("scored_rows", r.scoredRows());
+    run.put("scored_rows_with_implementation_commit", r.withCommitRows());
     run.put("inner_fit_rows", r.innerFitRows());
     run.put("final_lambda", "chosen lambda x fit_rows / inner_fit_rows; alpha as chosen");
     run.put("bootstrap_draws", ProjectBootstrap.DRAWS);

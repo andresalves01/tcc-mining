@@ -74,7 +74,11 @@ class IssuesSimilarityElasticNetCommandTest {
     columns.addAll(app.issues.Extractor.TEAM_REVISED);
     columns.addAll(Augmentation.columns());
     final List<Cell> every = ElasticNetSelection.everyCell(Augmentation.Variant.INNER);
-    assertEquals(27 * 6, every.size());
+    assertEquals(27 * 7, every.size());
+    // the similarity stage's matrix lacks the retrospective columns, named in their order
+    assertEquals(app.issues.Retrospective.COLUMNS,
+        IssuesSimilarityElasticNetCommand.missing(every, columns));
+    columns.addAll(app.issues.Retrospective.COLUMNS);
     assertEquals(List.of(), IssuesSimilarityElasticNetCommand.missing(every, columns));
     columns.remove("cluster_median_16_inner");
     columns.remove("jaccard_median_20_inner");

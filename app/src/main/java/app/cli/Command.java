@@ -22,6 +22,7 @@ import app.cli.commands.IssuesInProgressGridCommand;
 import app.cli.commands.IssuesInProgressReservedCommand;
 import app.cli.commands.IssuesInProgressTeamCommand;
 import app.cli.commands.IssuesReservedCommand;
+import app.cli.commands.IssuesRetrospectiveCommand;
 import app.cli.commands.IssuesSimilarityCommand;
 import app.cli.commands.IssuesSimilarityElasticNetCommand;
 import app.cli.commands.IssuesSimilarityTestCommand;
@@ -232,6 +233,34 @@ public enum Command {
       writes MATRIX and the diagnostics to REPORT_DIR; records the run in
       ISSUES_DB. Leaves the registered in-progress chain untouched."""),
 
+  ISSUES_RETROSPECTIVE("issues-in-progress-retrospective", new IssuesRetrospectiveCommand(), """
+      Issue duration from the first In Progress, description-similarity
+      chain, RETROSPECTIVE SCENARIO: adds to the similarity stage's matrix
+      eight attributes observed between the first In Progress and the
+      first resolution. They describe the work as it was done, and the
+      counts grow with the duration itself: a gain from them is association
+      with the duration observed up to the resolution, not a prediction
+      available during the work, nor causation. From the implementation
+      commits (the issue's linked human commits visible before the first
+      resolution, those before the first In Progress included): the Java
+      lines added and removed, each commit's split among the issues it
+      cites; the mean cyclomatic complexity and the mean nesting of the
+      methods they changed, each method once at its latest state; the
+      distinct files changed; and the share of those files one of their
+      authors had touched in the project before the first In Progress, the
+      issue's own commits left out -- all five missing without an
+      implementation commit. In [first In Progress, first resolution), bot
+      accounts left out: the comments, the distinct people who commented or
+      changed a field (the reporter only if active) and the effective
+      changes of assignee. Refuses unless MATRIX is the similarity stage's,
+      without these columns, the four split sizes are the registered
+      study's and the corpus holds every issue of the matrix as it is.
+      Reads MATRIX, the corpus and the changed methods of the implementation
+      commits (the expensive part); writes RETROSPECTIVE_MATRIX, never over
+      MATRIX or a file that is not a retrospective matrix; records the run,
+      with the coverage of each of the eight on the inner fitting and inner
+      validation, in ISSUES_DB. The other matrices are left untouched."""),
+
   ISSUES_SIMILARITY_ELASTIC_NET("issues-in-progress-similarity-elastic-net",
       new IssuesSimilarityElasticNetCommand(), """
       Issue duration from the first In Progress, description-similarity
@@ -239,15 +268,18 @@ public enum Command {
       the first In Progress to the first resolution, at each issue's day
       boundary, holidays ignored), on the issues of at least one business
       day: chooses alpha and lambda on the inner validation, by the
-      registered grid's sweep, for six Elastic Net models: the own
+      registered grid's sweep, for seven Elastic Net models: the own
       specification without similarity (description length, team size, the
       team's median and spread of lines of code and complexity, the
       corrected reporter median, the executor's lines of code, complexity
       and open workload), the similarity medians alone, the own
       specification with similarity (those ten and the three medians),
       Al-Zubaidi and Kikas at the start (the registered cells), and the
-      literature families with the own specification with similarity. The
-      three models with the similarity medians are swept once for each of
+      literature families with the own specification with similarity, and
+      the retrospective scenario: the own specification with similarity and
+      the eight attributes issues-in-progress-retrospective adds, observed up
+      to the resolution, whose counts grow with the duration itself. The
+      four models with the similarity medians are swept once for each of
       the 27 combinations of Jaccard n (5, 10, 20), embedding n (5, 10, 20)
       and cluster k (8, 16, 32), and keep the combination whose sweep errs
       least; exact ties go to the smaller Jaccard n, then embedding n, then
@@ -257,7 +289,7 @@ public enum Command {
       chosen n and k (300 trees, depth 20, column share 1/6, 1/3 or 2/3,
       leaf 5, 25 or 100, seed 20260927); the lowest inner validation error
       is kept, exact ties going to the first point of the grid. Prints each
-      model's choice and, for those three, the best error of every
+      model's choice and, for those four, the best error of every
       combination, and each forest's grid. The split-dependent columns are
       read in their inner variant; a column missing on every inner fitting row is
       removed from its models and reported. Refuses unless the four split
@@ -290,9 +322,13 @@ public enum Command {
       intervals resampling whole projects: the own specification with
       similarity against the same without, every model against the global
       median and every model but the global median against the project
-      median; each forest against its Elastic Net, the forest with
-      similarity against the forest without, and every forest against the
-      global and the project median. Refuses unless the parameters file
+      median, and the retrospective scenario against the own specification
+      with similarity; each forest against its Elastic Net, the forest with
+      similarity against the forest without, the retrospective forest
+      against the forest with similarity, and every forest against the
+      global and the project median. As a side reading, the two
+      retrospective comparisons again on the issues with an implementation
+      commit only. Refuses unless the parameters file
       exists and is for these models with a forest for each, its choices
       were made on that matrix, the four split sizes are the registered
       study's and every column is present. Writes the per-issue

@@ -34,18 +34,37 @@ class SimilarityScoringTest {
   private static final Map<String, ElasticNetSelection.Combination> COMBINATIONS = Map.of(
       "similarity_alone", new ElasticNetSelection.Combination(5, 20, 8),
       "own_with_similarity", new ElasticNetSelection.Combination(10, 5, 32),
-      "union_own", new ElasticNetSelection.Combination(20, 10, 16));
+      "union_own", new ElasticNetSelection.Combination(20, 10, 16),
+      "own_retrospective", new ElasticNetSelection.Combination(5, 10, 32));
 
   private static final List<String> ELASTIC_NET = List.of("own_without_similarity",
-      "similarity_alone", "own_with_similarity", "alzubaidi_start", "kikas_start", "union_own");
+      "similarity_alone", "own_with_similarity", "alzubaidi_start", "kikas_start", "union_own",
+      "own_retrospective");
 
   private static final List<String> LINEAR = List.of("global_median", "project_median",
       "executor_project_median", "own_without_similarity", "similarity_alone",
-      "own_with_similarity", "alzubaidi_start", "kikas_start", "union_own");
+      "own_with_similarity", "alzubaidi_start", "kikas_start", "union_own", "own_retrospective");
 
   private static final List<String> FORESTS = List.of("own_without_similarity_forest",
       "similarity_alone_forest", "own_with_similarity_forest", "alzubaidi_start_forest",
-      "kikas_start_forest", "union_own_forest");
+      "kikas_start_forest", "union_own_forest", "own_retrospective_forest");
+
+  /** The references and Elastic Nets before the retrospective model (ticket 15). */
+  private static final List<String> LINEAR_BEFORE = LINEAR.subList(0, 9);
+
+  /** The sixteen comparisons before the forests, in their order then. */
+  private static final List<String> SIXTEEN = sixteen();
+
+  private static List<String> sixteen() {
+    final List<String> out = new ArrayList<>(List.of("own_with_similarity | own_without_similarity"));
+    for (final String m : LINEAR_BEFORE.subList(1, 9)) {
+      out.add(m + " | global_median");
+    }
+    for (final String m : LINEAR_BEFORE.subList(2, 9)) {
+      out.add(m + " | project_median");
+    }
+    return List.copyOf(out);
+  }
 
   /** The references, the Elastic Nets, then the forests. */
   private static final List<String> MODELS = concat(LINEAR, FORESTS);
@@ -118,7 +137,9 @@ class SimilarityScoringTest {
   /**
    * Six projects; per project 20 inner fitting, 10 inner validation, 10 outer test and 2 crossing
    * rows. Every column any combination declares, of both variants, has a value; the similarity
-   * medians follow the duration; the cluster medians are missing on every fourth row.
+   * medians follow the duration; the cluster medians are missing on every fourth row, and the
+   * five retrospective attributes of the content on every fifth, as without an implementation
+   * commit.
    */
   private static List<RowCache.Entry> corpus() {
     final Random random = new Random(11);
@@ -144,6 +165,9 @@ class SimilarityScoringTest {
           final boolean similarity = a.name().startsWith("jaccard_")
               || a.name().startsWith("embedding_") || a.name().startsWith("cluster_");
           if (a.name().startsWith("cluster_") && n % 4 == 0) {
+            continue;
+          }
+          if (Retrospective.CONTENT.contains(a.name()) && n % 5 == 2) {
             continue;
           }
           // its own draw per row and column, so no value moves when another model's columns do
@@ -291,8 +315,9 @@ class SimilarityScoringTest {
       + "similarity vs the forest without, and every forest vs the global and the project median")
   void exactlyTheAgreedPairs() {
     final SimilarityScoring.Report r = SimilarityScoring.run(corpus(), choices(0.2), forests());
-    final List<String> expected =
-        new ArrayList<>(List.of("own_with_similarity | own_without_similarity"));
+    final List<String> expected = new ArrayList<>(List.of(
+        "own_with_similarity | own_without_similarity",
+        "own_retrospective | own_with_similarity"));
     for (final String m : LINEAR) {
       if (!m.equals("global_median")) {
         expected.add(m + " | global_median");
@@ -303,11 +328,13 @@ class SimilarityScoringTest {
         expected.add(m + " | project_median");
       }
     }
-    assertEquals(16, expected.size());
+    assertEquals(16 + 1 + 2, expected.size());
+    assertTrue(expected.containsAll(SIXTEEN));
     for (final String m : ELASTIC_NET) {
       expected.add(m + "_forest | " + m);
     }
     expected.add("own_with_similarity_forest | own_without_similarity_forest");
+    expected.add("own_retrospective_forest | own_with_similarity_forest");
     for (final String f : FORESTS) {
       expected.add(f + " | global_median");
     }
@@ -316,8 +343,8 @@ class SimilarityScoringTest {
     }
     assertEquals(expected,
         r.comparisons().stream().map(g -> g.a() + " | " + g.b()).toList());
-    assertEquals(16 + 6 + 1 + 6 + 6, new HashSet<>(expected).size());
-    assertEquals(15, MODELS.size());
+    assertEquals(19 + 7 + 2 + 7 + 7, new HashSet<>(expected).size());
+    assertEquals(17, MODELS.size());
     for (final var g : r.comparisons()) {
       assertTrue(g.low() <= g.gapHours() && g.gapHours() <= g.high(), g.toString());
     }
@@ -325,21 +352,87 @@ class SimilarityScoringTest {
 
   @Test
   @DisplayName("every model and comparison that existed before the forests scores, bit for bit, "
-      + "what it scored before ticket 13: error, predictions, gap and interval")
+      + "what it scored before ticket 13, the retrospective model and columns beside them: error, "
+      + "predictions, gap and interval")
   void unchangedModelsAsBefore() {
     final SimilarityScoring.Report r =
         SimilarityScoring.run(corpus(), choices(0.2), forests(), 1, 1);
     final List<String> now = new ArrayList<>();
-    for (final String name : LINEAR) {
+    for (final String name : LINEAR_BEFORE) {
       final SimilarityScoring.Scored m = model(r, name);
       now.add(m.name() + " " + hex(m.score().maeHours()) + " "
           + Integer.toHexString(java.util.Arrays.hashCode(m.predictedHours())));
     }
-    for (final var g : r.comparisons().subList(0, 16)) {
+    for (final String pair : SIXTEEN) {
+      final var g = r.comparisons().stream().filter(x -> (x.a() + " | " + x.b()).equals(pair))
+          .findFirst().orElseThrow();
       now.add(g.a() + " | " + g.b() + " " + hex(g.gapHours()) + " " + hex(g.low()) + " "
           + hex(g.high()));
     }
     assertEquals(BEFORE_FORESTS, now);
+  }
+
+  @Test
+  @DisplayName("every model and comparison of the forests scores, bit for bit, what it scores "
+      + "without the retrospective model's columns in the matrix")
+  void forestsUnchangedByTheRetrospectiveColumns() {
+    final List<RowCache.Entry> entries = corpus();
+    final SimilarityScoring.Report r = SimilarityScoring.run(entries, choices(0.2), forests(), 1, 1);
+    final List<RowCache.Entry> without = new ArrayList<>();
+    for (final RowCache.Entry e : entries) {
+      final Map<String, Double> values = new HashMap<>(e.row().values());
+      values.keySet().removeAll(Retrospective.COLUMNS);
+      without.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values, e.row().absent()),
+          e.parts()));
+    }
+    final SimilarityScoring.Report before =
+        SimilarityScoring.run(without, choices(0.2), forests(), 1, 1);
+    for (final String name : MODELS) {
+      if (name.startsWith("own_retrospective")) {
+        continue;
+      }
+      assertEquals(java.util.Arrays.toString(model(before, name).predictedHours()),
+          java.util.Arrays.toString(model(r, name).predictedHours()), name);
+      assertEquals(model(before, name).score(), model(r, name).score(), name);
+    }
+    for (final var g : r.comparisons()) {
+      if (!g.a().startsWith("own_retrospective") && !g.b().startsWith("own_retrospective")) {
+        assertTrue(before.comparisons().contains(g), g.toString());
+      }
+    }
+    assertEquals(before.comparisons().size(), r.comparisons().size());
+  }
+
+  @Test
+  @DisplayName("the side reading compares the retrospective model with the own specification with "
+      + "similarity, Elastic Net and forest, on the scored issues with an implementation commit "
+      + "only, resampling their projects")
+  void sideReadingOnIssuesWithCommits() {
+    final List<RowCache.Entry> entries = corpus();
+    final SimilarityScoring.Report r = SimilarityScoring.run(entries, choices(0.2), forests(), 1, 1);
+    final List<Integer> rows = new ArrayList<>();
+    for (int i = 0; i < r.scoredRows(); i++) {
+      final String id = r.scoredUnits().get(i).issueId();
+      final int n = Integer.parseInt(id.substring(1));
+      if (n % 5 != 2) {
+        rows.add(i);
+      }
+    }
+    assertTrue(rows.size() < r.scoredRows() && !rows.isEmpty());
+    assertEquals(rows.size(), r.withCommitRows());
+    assertEquals(List.of("own_retrospective | own_with_similarity",
+        "own_retrospective_forest | own_with_similarity_forest"),
+        r.withCommits().stream().map(g -> g.a() + " | " + g.b()).toList());
+    for (final var g : r.withCommits()) {
+      final double[] a = model(r, g.a()).predictedHours();
+      final double[] b = model(r, g.b()).predictedHours();
+      double gap = 0;
+      for (final int i : rows) {
+        gap += Math.abs(a[i] - r.observed()[i]) - Math.abs(b[i] - r.observed()[i]);
+      }
+      assertEquals(gap / rows.size(), g.gapHours(), 1e-9, g.toString());
+      assertTrue(g.low() <= g.gapHours() && g.gapHours() <= g.high(), g.toString());
+    }
   }
 
   @Test

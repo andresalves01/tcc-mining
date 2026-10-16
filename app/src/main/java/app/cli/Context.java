@@ -49,4 +49,5 @@ public record Context(
     Corpus corpus,
     Progress progress,
     app.issues.port.StudySource study,
-    app.issues.port.ResultStore issuesResults) {}
+    app.issues.port.ResultStore issuesResults,
+    app.issues.port.ChangedMethodSource changedMethods) {}

@@ -9,6 +9,7 @@ import app.issues.Augmentation;
 import app.issues.BusinessDays;
 import app.issues.ElasticNetSelection;
 import app.issues.RegistrationInProgress;
+import app.issues.Retrospective;
 import app.issues.RowCache;
 import app.issues.Universe.Population;
 import app.issues.model.Cell;
@@ -30,16 +31,18 @@ import java.util.Set;
 /**
  * The selection step of the description-similarity chain, inner mode only: each Elastic Net
  * model's alpha and lambda, by the registered chain's sweep on the inner validation, and, for the
- * three models reading the similarity medians, the Jaccard n, embedding n and cluster k they read,
+ * four models reading the similarity medians, the Jaccard n, embedding n and cluster k they read,
  * the combination of the 27 whose sweep errs least (see {@link ElasticNetSelection}); and beside
  * each model, as a robustness check, a random forest's column share and leaf, swept on the same
- * rows and columns.
+ * rows and columns. The seventh model is the retrospective scenario ({@link Retrospective}), whose
+ * eight columns {@code issues-in-progress-retrospective} adds to the matrix.
  *
  * <p>The target is whole business days, on the issues of at least one ({@link BusinessDays}):
  * the outer training rows are read with each one's day boundary from the matrix, those of 0
  * business days dropped, and the selection runs on the rest.
  *
- * <p>Reads MATRIX; refuses, writing and recording nothing, unless the four split sizes are the
+ * <p>Reads MATRIX, the one {@code issues-in-progress-retrospective} wrote, which has every
+ * model's columns; refuses, writing and recording nothing, unless the four split sizes are the
  * registered study's and the matrix has the day boundary and every column the models declare at
  * every combination.
  * The outer test is counted by its split labels and nothing else. Writes the choices to
@@ -105,7 +108,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
           ElasticNetSelection.everyCell(Augmentation.Variant.INNER), columns);
       if (!missing.isEmpty()) {
         throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
-            + matrix + " has no column " + missing));
+            + matrix + " has no column " + missing + retrospectiveHint(missing)));
       }
       if (!columns.contains(BusinessDays.BOUNDARY)) {
         throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
@@ -123,6 +126,8 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
 
     System.out.printf("  target: %s; %s%n", BusinessDays.TARGET, BusinessDays.HOLIDAYS);
     System.out.printf("  population: %s%n", BusinessDays.POPULATION);
+    System.out.printf("  %s: %s%n", ElasticNetSelection.RETROSPECTIVE,
+        Retrospective.SCENARIO);
     System.out.printf("  issues of at least one business day: inner fitting %,d of %,d, inner "
         + "validation %,d of %,d, outer training %,d of %,d%n", population.kept().innerFit(),
         population.all().innerFit(), population.kept().innerSelection(),
@@ -293,13 +298,17 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     return row;
   }
 
-  /** What the run record states about the target, the population and the forest. */
+  /**
+   * What the run record states about the target, the population, the forest and the
+   * retrospective scenario.
+   */
   static Map<String, Object> statements() {
     final Map<String, Object> out = new LinkedHashMap<>();
     out.put("target", BusinessDays.TARGET);
     out.put("population", BusinessDays.POPULATION);
     out.put("holidays", BusinessDays.HOLIDAYS);
     out.put("forest_role", FOREST_ROLE);
+    out.put("retrospective_scenario", Retrospective.SCENARIO);
     return out;
   }
 
@@ -324,6 +333,13 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     out.put("node_sizes", Arrays.stream(Forest.NODE_SIZES).boxed().toList());
     out.put("seed", Forest.SEED);
     return out;
+  }
+
+  /** Where the retrospective columns come from, when some of {@code missing} are theirs. */
+  static String retrospectiveHint(final List<String> missing) {
+    return missing.stream().anyMatch(Retrospective.COLUMNS::contains) ? "; the retrospective "
+        + "columns are added by issues-in-progress-retrospective, whose RETROSPECTIVE_MATRIX is "
+        + "the matrix to give" : "";
   }
 
   /** The columns the models declare that the matrix does not have, in the models' order. */
