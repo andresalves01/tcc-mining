@@ -137,7 +137,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     System.out.printf("  Elastic Net grid: alpha %s x %d lambdas, anchor 2*max|X'r|/alpha; "
         + "references on the inner validation: project median %.3f bd, fitting median %.3f bd "
         + "(MAE, business days)%n", java.util.Arrays.toString(Fitting.ALPHAS),
-        Fitting.LAMBDA_STEPS, r.projectMaeHours(), r.constantMaeHours());
+        Fitting.LAMBDA_STEPS, r.projectMae(), r.constantMae());
     System.out.printf("  the models with the similarity medians sweep each of %d combinations of "
         + "Jaccard n %s, embedding n %s and cluster k %s; exact ties go to the smaller values, "
         + "Jaccard n first, then embedding n, then cluster k%n",
@@ -150,7 +150,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
           + "%d columns, %d selected%n", m.cell().label(), f.alpha(), f.lambda(),
           f.step(), Fitting.LAMBDA_STEPS, f.step() == 0 ? " = TOP, ALL ZEROED"
               : f.step() == Fitting.LAMBDA_STEPS - 1 ? " = GRID FLOOR" : "",
-          f.score().maeHours(), f.columns().size(), f.selected());
+          f.score().mae(), f.columns().size(), f.selected());
       if (m.combination() != null) {
         System.out.printf("    chosen: Jaccard n %d, embedding n %d, cluster k %d%n",
             m.combination().jaccardN(), m.combination().embeddingN(),
@@ -159,7 +159,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
             + "embedding n, cluster k: MAE bd)%n");
         for (final ElasticNetSelection.Swept x : m.combinations()) {
           System.out.printf("      %2d %2d %2d: %.3f%s%n", x.combination().jaccardN(),
-              x.combination().embeddingN(), x.combination().clusterK(), x.maeHours(),
+              x.combination().embeddingN(), x.combination().clusterK(), x.mae(),
               x.combination().equals(m.combination()) ? "  chosen" : "");
         }
       }
@@ -173,11 +173,11 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
       final Forest.Fitted forest = m.forest();
       System.out.printf("    random forest (robustness check): mtry %d (share %.3f), leaf %d; MAE "
           + "%.3f bd, Elastic Net minus forest %+.3f bd%n", forest.mtry(), forest.share(),
-          forest.nodeSize(), forest.score().maeHours(),
-          f.score().maeHours() - forest.score().maeHours());
+          forest.nodeSize(), forest.score().mae(),
+          f.score().mae() - forest.score().mae());
       final StringBuilder grid = new StringBuilder("      grid (mtry/leaf: MAE bd)");
       for (final Forest.Trial t : forest.trials()) {
-        grid.append(String.format("  %d/%d %.3f", t.mtry(), t.nodeSize(), t.maeHours()));
+        grid.append(String.format("  %d/%d %.3f", t.mtry(), t.nodeSize(), t.mae()));
       }
       System.out.println(grid);
       rows.add(row(m));
@@ -215,8 +215,8 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
         + "then the smaller leaf");
     run.put("fit_rows", r.fitRows());
     run.put("validation_rows", r.validationRows());
-    run.put("project_mae_business_days", r.projectMaeHours());
-    run.put("constant_mae_business_days", r.constantMaeHours());
+    run.put("project_mae_business_days", r.projectMae());
+    run.put("constant_mae_business_days", r.constantMae());
     run.put("seconds", (System.nanoTime() - began) / 1e9);
     run.put("java", System.getProperty("java.version"));
     System.out.printf("  run recorded in ISSUES_DB: %s%n",
@@ -257,7 +257,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
         one.put("cluster_k", x.combination().clusterK());
         one.put("alpha", x.alpha());
         one.put("lambda", x.lambda());
-        one.put("mae_business_days", x.maeHours());
+        one.put("mae_business_days", x.mae());
         each.add(one);
       }
       row.put("combinations", each);
@@ -265,7 +265,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     row.put("alpha", f.alpha());
     row.put("lambda", f.lambda());
     row.put("step", f.step());
-    row.put("mae_business_days", f.score().maeHours());
+    row.put("mae_business_days", f.score().mae());
     row.put("columns", f.columns());
     row.put("selected", f.selected());
     final List<Map<String, Object>> removed = new ArrayList<>();
@@ -282,7 +282,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     trees.put("mtry_share", forest.share());
     trees.put("mtry", forest.mtry());
     trees.put("node_size", forest.nodeSize());
-    trees.put("mae_business_days", forest.score().maeHours());
+    trees.put("mae_business_days", forest.score().mae());
     trees.put("columns", forest.columns());
     final List<Map<String, Object>> grid = new ArrayList<>();
     for (final Forest.Trial t : forest.trials()) {
@@ -290,7 +290,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
       one.put("mtry_share", t.share());
       one.put("mtry", t.mtry());
       one.put("node_size", t.nodeSize());
-      one.put("mae_business_days", t.maeHours());
+      one.put("mae_business_days", t.mae());
       grid.add(one);
     }
     trees.put("grid", grid);

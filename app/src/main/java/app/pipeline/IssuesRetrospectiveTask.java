@@ -85,12 +85,15 @@ public final class IssuesRetrospectiveTask {
     if (!refused.isEmpty()) {
       return refused(refused);
     }
-    try {
-      // the coverage reads each row's business days: a row without its boundary refuses now,
-      // before the long read of the methods rather than after it
-      BusinessDays.population(entries);
-    } catch (final IllegalArgumentException e) {
-      return refused(List.of(e.getMessage()));
+    // the coverage reads each row's business days: a row without its boundary refuses now, before
+    // the long read of the methods rather than after it
+    final List<String> unbounded = entries.stream()
+        .filter(e -> !e.row().values().containsKey(BusinessDays.BOUNDARY))
+        .map(e -> e.unit().issueId()).toList();
+    if (!unbounded.isEmpty()) {
+      return refused(List.of(String.format("%,d rows have no day boundary in %s, the first %s; "
+          + "the matrix was written before business days", unbounded.size(),
+          BusinessDays.BOUNDARY, unbounded.get(0))));
     }
 
     progress.phase(1, 4, "reading the corpus: %s", source.describe());
@@ -118,7 +121,7 @@ public final class IssuesRetrospectiveTask {
     final Set<String> commits = new TreeSet<>();
     for (final RowCache.Entry e : entries) {
       final Universe.Unit u = universe.unit(P, e.unit().issueId());
-      retrospective.implementation(u.id(), u.resolved()).forEach(c -> commits.add(c.id()));
+      world.implementation(u.id(), u.resolved()).forEach(c -> commits.add(c.id()));
     }
 
     progress.phase(3, 4, "changed methods of %,d implementation commits", commits.size());

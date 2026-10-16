@@ -36,9 +36,9 @@ public final class IssuesGridTask {
     final double[] observed = sides.observed();
     final double constantMae = Fitting.mae(refs.constant(observed.length), observed);
     final Score project = Score.reference("reference: project median",
-        refs.projectHours(sides.scoreUnits()), observed, constantMae);
+        refs.projectMedian(sides.scoreUnits()), observed, constantMae);
     final Score constant = Score.reference(String.format("reference: constant = fit "
-        + "median (%.1f h)", refs.constantHours()), refs.constant(observed.length), observed,
+        + "median (%.1f h)", refs.constantMedian()), refs.constant(observed.length), observed,
         constantMae);
     final List<Cell> cells = Cell.grid(population);
     final List<Timed> fits = new ArrayList<>();
@@ -46,10 +46,10 @@ public final class IssuesGridTask {
     for (final Cell cell : cells) {
       progress.item(++done, cells.size(), population + " " + cell.label(), "sweeping");
       final long start = System.currentTimeMillis();
-      final Fitting.Fitted fitted = Fitting.sweep(cell, sides, project.maeHours(), constantMae);
+      final Fitting.Fitted fitted = Fitting.sweep(cell, sides, project.mae(), constantMae);
       fits.add(new Timed(fitted, System.currentTimeMillis() - start));
       progress.detail("%s: MAE %.2f h, alpha %.2f, lambda %.4g, step %d, %.0f s", cell.label(),
-          fitted.score().maeHours(), fitted.alpha(), fitted.lambda(), fitted.step(),
+          fitted.score().mae(), fitted.alpha(), fitted.lambda(), fitted.step(),
           (System.currentTimeMillis() - start) / 1000.0);
     }
     return new Report(population, project, constant, List.copyOf(fits), sides.fitUnits().size(),

@@ -82,18 +82,18 @@ public final class IssuesGridCommand implements CommandRunner {
       for (final IssuesGridTask.Timed t : report.fits()) {
         final Fitting.Fitted f = t.fitted();
         System.out.printf("    %s (chosen: alpha %.2f, step %d, MAE %.2f h)%n",
-            f.cell().label(), f.alpha(), f.step(), f.score().maeHours());
+            f.cell().label(), f.alpha(), f.step(), f.score().mae());
         for (final double alpha : Fitting.ALPHAS) {
           final StringBuilder line = new StringBuilder(String.format("      alpha %.2f:", alpha));
           double best = Double.POSITIVE_INFINITY;
           for (final Fitting.Trial trial : f.trials()) {
             if (trial.alpha() == alpha) {
-              line.append(String.format(" %7.1f", trial.maeHours()));
-              best = Math.min(best, trial.maeHours());
+              line.append(String.format(" %7.1f", trial.mae()));
+              best = Math.min(best, trial.mae());
             }
           }
           line.append(String.format("   best %+6.2f h from the chosen",
-              best - f.score().maeHours()));
+              best - f.score().mae()));
           System.out.println(line);
         }
       }

@@ -94,7 +94,7 @@ public class ParallelSweepTest {
       assertEquals(bits(x.alpha()), bits(y.alpha()), "trial " + t);
       assertEquals(x.step(), y.step(), "trial " + t);
       assertEquals(bits(x.lambda()), bits(y.lambda()), "trial " + t);
-      assertEquals(bits(x.maeHours()), bits(y.maeHours()), "trial " + t + " MAE");
+      assertEquals(bits(x.mae()), bits(y.mae()), "trial " + t + " MAE");
     }
     assertEquals(a.contributions().size(), b.contributions().size());
     for (int c = 0; c < a.contributions().size(); c++) {
@@ -105,12 +105,12 @@ public class ParallelSweepTest {
       assertEquals(bits(x.ownSpearman()), bits(y.ownSpearman()), x.column());
       assertEquals(x.selected(), y.selected(), x.column());
     }
-    assertArrayEquals(bits(a.predictedHours()), bits(b.predictedHours()), "predictions");
-    assertEquals(bits(a.score().maeHours()), bits(b.score().maeHours()), "MAE");
+    assertArrayEquals(bits(a.predicted()), bits(b.predicted()), "predictions");
+    assertEquals(bits(a.score().mae()), bits(b.score().mae()), "MAE");
     assertEquals(bits(a.recalibration().a()), bits(b.recalibration().a()));
     assertEquals(bits(a.recalibration().b()), bits(b.recalibration().b()));
-    assertArrayEquals(bits(a.recalibration().predictedHours()),
-        bits(b.recalibration().predictedHours()), "recalibrated predictions");
+    assertArrayEquals(bits(a.recalibration().predicted()),
+        bits(b.recalibration().predicted()), "recalibrated predictions");
   }
 
   /**
@@ -148,7 +148,7 @@ public class ParallelSweepTest {
     }
     assertEquals(trials, now.trials(), "every trial, its error compared as a double record field");
     for (int t = 0; t < trials.size(); t++) {
-      assertEquals(bits(trials.get(t).maeHours()), bits(now.trials().get(t).maeHours()));
+      assertEquals(bits(trials.get(t).mae()), bits(now.trials().get(t).mae()));
     }
     assertEquals(bestStep, now.step());
     assertEquals(bits(best.alpha()), bits(now.alpha()));

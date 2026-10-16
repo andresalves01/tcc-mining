@@ -53,7 +53,7 @@ class RetrospectiveTest {
     }
 
     void comment(final String issue, final String author, final long at) {
-      comments.add(new Corpus.Comment(issue, author, at, 3));
+      comments.add(new Corpus.Comment(issue, author, at, 3, false));
     }
 
     /** A commit authored and committed at {@code at}, its Java lines and files. */

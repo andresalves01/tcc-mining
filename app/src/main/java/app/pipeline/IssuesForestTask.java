@@ -42,7 +42,7 @@ public final class IssuesForestTask {
     final double[] observed = sides.observed();
     final List<String> projects = sides.projects();
     final References refs = References.learnedOn(sides.fitUnits());
-    final double[] projectHours = refs.projectHours(sides.scoreUnits());
+    final double[] projectHours = refs.projectMedian(sides.scoreUnits());
     final double[] constantHours = refs.constant(observed.length);
     final double projectMae = Fitting.mae(projectHours, observed);
     final double constantMae = Fitting.mae(constantHours, observed);
@@ -58,17 +58,17 @@ public final class IssuesForestTask {
           projectMae, constantMae);
       final Forest.Fitted forest = Forest.sweep(cell, sides, projectMae, constantMae);
       cells.add(new Pair(linear, forest,
-          ProjectBootstrap.gain(projects, forest.predictedHours(), projectHours, observed),
-          ProjectBootstrap.gain(projects, forest.predictedHours(), constantHours, observed),
-          ProjectBootstrap.gain(projects, linear.predictedHours(), constantHours, observed),
+          ProjectBootstrap.gain(projects, forest.predicted(), projectHours, observed),
+          ProjectBootstrap.gain(projects, forest.predicted(), constantHours, observed),
+          ProjectBootstrap.gain(projects, linear.predicted(), constantHours, observed),
           ProjectBootstrap.compare(projects, forest.score().label(),
-              errors(forest.predictedHours(), observed), cell.label(),
-              errors(linear.predictedHours(), observed))));
+              errors(forest.predicted(), observed), cell.label(),
+              errors(linear.predicted(), observed))));
     }
     return new Report(population, sides.fitUnits().size(), sides.scoreUnits().size(),
         Score.reference("reference: project median", projectHours, observed, constantMae),
         Score.reference(String.format("reference: constant = fit median (%.1f h)",
-            refs.constantHours()), constantHours, observed, constantMae),
+            refs.constantMedian()), constantHours, observed, constantMae),
         List.copyOf(cells));
   }
 

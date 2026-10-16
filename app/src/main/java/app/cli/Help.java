@@ -59,15 +59,15 @@ public final class Help {
           TEAM_WINDOW_DAYS  90                  features: how far back the active team is read
           PILOT             (unset)             ledger and funnel: restrict to matching projects
           REPORT_DIR        (unset)             issues-description-language,
-                                                issues-in-progress-similarity and
-                                                issues-in-progress-similarity-test: where their
-                                                files go
+                                                issues-in-progress-similarity,
+                                                issues-in-progress-similarity-test and
+                                                -inner-report: where their files go
           MATRIX            (unset)             issues-in-progress-similarity: the augmented matrix
                                                 written; issues-in-progress-retrospective,
-                                                issues-in-progress-similarity-elastic-net and
-                                                -test: the one they read (for the last two, the
-                                                retrospective matrix, which has every model's
-                                                columns)
+                                                issues-in-progress-similarity-elastic-net, -test
+                                                and -inner-report: the one they read (for the
+                                                last three, the retrospective matrix, which has
+                                                every model's columns)
           RETROSPECTIVE_MATRIX (unset)          issues-in-progress-retrospective: the matrix with
                                                 the eight retrospective columns written
           TEAM_COLUMNS      (unset)             issues-in-progress-team writes it,
@@ -95,7 +95,8 @@ public final class Help {
                                                 each model's alpha and lambda go, and the Jaccard
                                                 n, embedding n and cluster k of the four models
                                                 with the similarity medians; never PARAMETERS;
-                                                issues-in-progress-similarity-test reads it
+                                                issues-in-progress-similarity-test and
+                                                -inner-report read it
         """);
   }
 

@@ -65,13 +65,13 @@ class ForestTest {
   void sweep() {
     final Fitting.Sides sides = Fitting.sides(corpus(), Fitting.Mode.INNER, Population.FIXED);
     final Forest.Fitted f = Forest.sweep(Cell.byLabel(CELL), sides, 1, 1);
-    assertEquals(6 * 10, f.predictedHours().length, "only the inner selection is scored");
+    assertEquals(6 * 10, f.predicted().length, "only the inner selection is scored");
     assertEquals(Forest.MTRY_SHARES.length * Forest.NODE_SIZES.length, f.trials().size());
-    final double least = f.trials().stream().mapToDouble(Forest.Trial::maeHours).min()
+    final double least = f.trials().stream().mapToDouble(Forest.Trial::mae).min()
         .orElseThrow();
-    assertEquals(least, f.score().maeHours(), 1e-9);
+    assertEquals(least, f.score().mae(), 1e-9);
     assertTrue(f.trials().stream().anyMatch(t -> t.mtry() == f.mtry()
-        && t.nodeSize() == f.nodeSize() && t.maeHours() == least));
+        && t.nodeSize() == f.nodeSize() && t.mae() == least));
   }
 
   @Test
@@ -119,13 +119,13 @@ class ForestTest {
     assertArrayEquals(fitted, Forest.hours(model.predict(x)), 0.0);
     assertEquals(names, one.stream().map(Forest.Importance::column).toList());
     assertEquals(Forest.PERMUTATION_REPEATS, one.get(0).increases().length);
-    assertTrue(one.get(0).meanIncreaseHours() > 5 * Math.abs(one.get(1).meanIncreaseHours()),
+    assertTrue(one.get(0).meanIncrease() > 5 * Math.abs(one.get(1).meanIncrease()),
         one.toString());
     double sum = 0;
     for (final double v : one.get(0).increases()) {
       sum += v;
     }
-    assertEquals(sum / Forest.PERMUTATION_REPEATS, one.get(0).meanIncreaseHours(), 1e-12);
+    assertEquals(sum / Forest.PERMUTATION_REPEATS, one.get(0).meanIncrease(), 1e-12);
     final List<Forest.Importance> two =
         Forest.permutationImportance(model, names, x, fitted, hours);
     for (int c = 0; c < names.size(); c++) {

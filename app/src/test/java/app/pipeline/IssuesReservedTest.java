@@ -116,11 +116,11 @@ class IssuesReservedTest {
       c[i] = a[i] + (i % 2 == 0 ? 1 : -1);
     }
     final ProjectBootstrap.Gap better = ProjectBootstrap.compare(projects, "a", a, "b", b);
-    assertEquals(-2.0, better.gapHours(), 1e-12);
+    assertEquals(-2.0, better.gap(), 1e-12);
     assertEquals(-2.0, better.low(), 1e-12, "every draw keeps the same gap");
     assertFalse(better.tied());
     final ProjectBootstrap.Gap even = ProjectBootstrap.compare(projects, "a", a, "c", c);
-    assertEquals(0.0, even.gapHours(), 1e-12);
+    assertEquals(0.0, even.gap(), 1e-12);
     assertTrue(even.tied());
   }
 

@@ -67,7 +67,7 @@ class ParallelBootstrapTest {
     final ProjectBootstrap.Gap old = oldCompare(projects, a, b);
     for (final int threads : List.of(1, 3, 12)) {
       final ProjectBootstrap.Gap now = ProjectBootstrap.compare(projects, "a", a, "b", b, threads);
-      assertEquals(bits(old.gapHours()), bits(now.gapHours()), threads + " threads");
+      assertEquals(bits(old.gap()), bits(now.gap()), threads + " threads");
       assertEquals(bits(old.low()), bits(now.low()), threads + " threads");
       assertEquals(bits(old.high()), bits(now.high()), threads + " threads");
     }

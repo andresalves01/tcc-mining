@@ -41,12 +41,14 @@ import java.util.function.Function;
  * every error, band and comparison is in business days.
  *
  * <p>Reads MATRIX and ELASTIC_NET_PARAMETERS, which gives per model its alpha and lambda, for
- * the three with the similarity medians the Jaccard n, embedding n and cluster k they read, and
+ * the four with the similarity medians the Jaccard n, embedding n and cluster k they read, and
  * its forest's column share and leaf; it chooses nothing. A parameters file without a forest for
  * every model is refused. Refuses, scoring, writing and recording nothing, unless the parameters file
  * exists and is the step's own, its choices were made on this very matrix (by SHA-256), the four
  * split sizes are the registered study's, and the matrix has every column the models read.
- * Writes the per-issue predictions, the models' diagnostics and the forests' permutation
+ * Beside the error comparisons, the ordering intervals, a declared measure stated before the
+ * outer test was opened ({@link #ORDERING}, {@link ProjectBootstrap#ordering}), printed and
+ * recorded. Writes the per-issue predictions, the models' diagnostics and the forests' permutation
  * importance to REPORT_DIR; records the run,
  * with the SHA-256 of every input and output, the time taken, the hardware and the versions, in
  * ISSUES_DB under its own stage name.
@@ -85,6 +87,17 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       + "combinations, each swept on the same grid; each forest chose its column share and leaf "
       + "on its own grid with every column its Elastic Net kept; the references chose nothing";
 
+  /**
+   * The ordering intervals (ticket 16): a declared measure, stated before the outer test was
+   * opened, in this step's run record and in the inner report.
+   */
+  static final String ORDERING = "ordering intervals, a declared measure stated before the outer "
+      + "test was opened: for every agreed pair and every model against the project median (the "
+      + "global median orders nothing), the paired difference a - b in Spearman and in pairwise "
+      + "ordering accuracy, as every score defines them, with its 95% interval from the same "
+      + ProjectBootstrap.DRAWS + " draws of whole projects as the error comparisons (seed "
+      + ProjectBootstrap.SEED + "); an interval containing zero is a tie";
+
   /** Where each setting is read from: the environment, then the system properties. */
   private final Function<String, String> settings;
 
@@ -105,9 +118,9 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
 
   @Override
   public void run(final Context context) throws CommandFailedException {
-    final Path matrix = path("MATRIX");
-    final Path elasticNet = path("ELASTIC_NET_PARAMETERS");
-    final Path reports = path("REPORT_DIR");
+    final Path matrix = path(settings, "MATRIX");
+    final Path elasticNet = path(settings, "ELASTIC_NET_PARAMETERS");
+    final Path reports = path(settings, "REPORT_DIR");
     final Path predictionsFile = reports.resolve(PREDICTIONS);
     final Path diagnosticsFile = reports.resolve(DIAGNOSTICS);
     final Path inputsFile = reports.resolve(INPUTS);
@@ -129,43 +142,16 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final List<RowCache.Entry> entries;
     final List<String> columns;
     try {
-      if (!Files.exists(elasticNet)) {
-        throw refused(elasticNet + " does not exist; run "
-            + "issues-in-progress-similarity-elastic-net first");
-      }
-      // parsed and hashed from the same bytes, so the hash recorded is of what was read
-      final byte[] elasticNetBytes = Files.readAllBytes(elasticNet);
-      final List<String> elasticNetLines =
-          new String(elasticNetBytes, StandardCharsets.UTF_8).lines().toList();
-      if (!IssuesSimilarityElasticNetCommand.onlyThisStep(elasticNetLines)) {
-        throw refused(elasticNet + " is not the Elastic Net step's parameters file for the "
-            + "models " + ElasticNetSelection.MODELS + "; it may be another step's, or one "
-            + "written in an earlier format or for the models before ticket 12");
-      }
-      final List<ElasticNetSelection.Parameter> enParameters;
+      final Chosen chosen;
       try {
-        enParameters = ElasticNetSelection.read(elasticNetLines);
-        choices = ElasticNetSelection.choices(enParameters);
-        forests = ElasticNetSelection.forests(enParameters);
+        chosen = chosen(elasticNet, matrix);
       } catch (final IllegalArgumentException e) {
         throw refused(e.getMessage());
       }
-      if (!Set.copyOf(ElasticNetSelection.MODELS).equals(choices.keySet())) {
-        throw refused(elasticNet + " holds alpha and lambda for " + choices.keySet()
-            + "; the models are " + ElasticNetSelection.MODELS);
-      }
-      if (!Set.copyOf(ElasticNetSelection.MODELS).equals(forests.keySet())) {
-        throw refused(elasticNet + " holds the forest parameters for " + forests.keySet()
-            + "; every model has a forest, " + ElasticNetSelection.MODELS + "; run "
-            + "issues-in-progress-similarity-elastic-net again");
-      }
-      elasticNetSha = sha256(elasticNetBytes);
-      matrixSha = IssuesReservedCommand.sha256(matrix);
-      if (!matrixSha.equals(ElasticNetSelection.matrixSha(enParameters))) {
-        throw refused("the choices in " + elasticNet + " were chosen on another matrix (sha256 "
-            + ElasticNetSelection.matrixSha(enParameters) + "), not " + matrix + " (sha256 "
-            + matrixSha + ")");
-      }
+      elasticNetSha = chosen.elasticNetSha();
+      matrixSha = chosen.matrixSha();
+      choices = chosen.choices();
+      forests = chosen.forests();
       entries = RowCache.read(matrix);
       columns = RowCache.columns(matrix);
     } catch (final IOException e) {
@@ -216,7 +202,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final long fitting = System.nanoTime();
     final SimilarityScoring.Report r;
     try {
-      r = SimilarityScoring.run(population.entries(), choices, forests);
+      r = SimilarityScoring.run(population.entries(), choices, forests,
+          SimilarityScoring.Scope.RESERVED);
     } catch (final IllegalArgumentException e) {
       throw refused(e.getMessage());
     }
@@ -239,7 +226,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         r.scoredRows());
     for (final SimilarityScoring.Scored m : r.models()) {
       final Score sc = m.score();
-      System.out.printf("  %-24s %9.3f %12.3f %9.3f %9.3f%n", m.name(), sc.maeHours(),
+      System.out.printf("  %-24s %9.3f %12.3f %9.3f %9.3f%n", m.name(), sc.mae(),
           m.errors().trimmedMae(), sc.spearman(), sc.pairwise());
       rows.add(modelRow(m, choices.get(m.name())));
       if (m.forest() != null) {
@@ -261,15 +248,21 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         ProjectBootstrap.DRAWS);
     for (final ProjectBootstrap.Gap g : r.comparisons()) {
       System.out.printf("  %-24s vs %-24s %10.3f [%10.3f, %10.3f]%s%n", g.a(), g.b(),
-          g.gapHours(), g.low(), g.high(), g.tied() ? "  tie" : "");
+          g.gap(), g.low(), g.high(), g.tied() ? "  tie" : "");
       rows.add(comparisonRow(g));
     }
+    System.out.printf("%n  ordering intervals (a declared measure): a - b in Spearman and in "
+        + "pairwise ordering, 95%% interval from the same %d draws of whole projects; an "
+        + "interval containing zero is a tie; the global median orders nothing%n",
+        ProjectBootstrap.DRAWS);
+    printOrderings(r.orderings());
+    r.orderings().forEach(o -> rows.add(orderingRow(o)));
     System.out.printf("%n  side reading, the retrospective scenario on the %,d of %,d scored issues "
         + "with at least one implementation commit, intervals resampling their projects%n",
         r.withCommitRows(), r.scoredRows());
     for (final ProjectBootstrap.Gap g : r.withCommits()) {
       System.out.printf("  %-24s vs %-24s %10.3f [%10.3f, %10.3f]%s%n", g.a(), g.b(),
-          g.gapHours(), g.low(), g.high(), g.tied() ? "  tie" : "");
+          g.gap(), g.low(), g.high(), g.tied() ? "  tie" : "");
       final Map<String, Object> row = comparisonRow(g);
       row.put("kind", "side_reading_with_commits");
       row.put("n", r.withCommitRows());
@@ -334,6 +327,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     run.put("final_lambda", "chosen lambda x fit_rows / inner_fit_rows; alpha as chosen");
     run.put("bootstrap_draws", ProjectBootstrap.DRAWS);
     run.put("bootstrap_seed", ProjectBootstrap.SEED);
+    run.put("ordering_pairs", r.orderings().stream().map(o -> o.a() + " vs " + o.b()).toList());
     run.put("rerun_tolerance_business_days", SimilarityScoring.RERUN_TOLERANCE);
     run.put("rerun_max_difference_business_days", rerun);
     run.put("scoring_seconds", scoringSeconds);
@@ -351,11 +345,64 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         context.issuesResults().record(run, rows));
   }
 
+  /**
+   * A parameters file's choices, as the test and the inner report read them.
+   *
+   * @param elasticNetSha the SHA-256 of the bytes parsed
+   * @param matrixSha the SHA-256 of the matrix, the one the choices were made on
+   */
+  record Chosen(String elasticNetSha, String matrixSha,
+      Map<String, ElasticNetSelection.Choice> choices, Map<String, Forest.Choice> forests) {}
+
+  /**
+   * The choices of {@code elasticNet}, refused -- an {@link IllegalArgumentException} with the
+   * reason -- unless the file exists and is the Elastic Net step's own for these models, with a
+   * forest for each, and its choices were made on {@code matrix}, by SHA-256. Nothing of the
+   * matrix but its bytes' hash is read.
+   */
+  static Chosen chosen(final Path elasticNet, final Path matrix) throws IOException {
+    if (!Files.exists(elasticNet)) {
+      throw new IllegalArgumentException(elasticNet + " does not exist; run "
+          + "issues-in-progress-similarity-elastic-net first");
+    }
+    // parsed and hashed from the same bytes, so the hash recorded is of what was read
+    final byte[] elasticNetBytes = Files.readAllBytes(elasticNet);
+    final List<String> elasticNetLines =
+        new String(elasticNetBytes, StandardCharsets.UTF_8).lines().toList();
+    if (!IssuesSimilarityElasticNetCommand.onlyThisStep(elasticNetLines)) {
+      throw new IllegalArgumentException(elasticNet + " is not the Elastic Net step's parameters "
+          + "file for the models " + ElasticNetSelection.MODELS + "; it may be another step's, "
+          + "or one written in an earlier format or for the models before ticket 12");
+    }
+    final List<ElasticNetSelection.Parameter> enParameters = ElasticNetSelection.read(
+        elasticNetLines);
+    final Map<String, ElasticNetSelection.Choice> choices =
+        ElasticNetSelection.choices(enParameters);
+    final Map<String, Forest.Choice> forests = ElasticNetSelection.forests(enParameters);
+    if (!Set.copyOf(ElasticNetSelection.MODELS).equals(choices.keySet())) {
+      throw new IllegalArgumentException(elasticNet + " holds alpha and lambda for "
+          + choices.keySet() + "; the models are " + ElasticNetSelection.MODELS);
+    }
+    if (!Set.copyOf(ElasticNetSelection.MODELS).equals(forests.keySet())) {
+      throw new IllegalArgumentException(elasticNet + " holds the forest parameters for "
+          + forests.keySet() + "; every model has a forest, " + ElasticNetSelection.MODELS
+          + "; run issues-in-progress-similarity-elastic-net again");
+    }
+    final String matrixSha = IssuesReservedCommand.sha256(matrix);
+    if (!matrixSha.equals(ElasticNetSelection.matrixSha(enParameters))) {
+      throw new IllegalArgumentException("the choices in " + elasticNet + " were chosen on "
+          + "another matrix (sha256 " + ElasticNetSelection.matrixSha(enParameters) + "), not "
+          + matrix + " (sha256 " + matrixSha + ")");
+    }
+    return new Chosen(sha256(elasticNetBytes), matrixSha, choices, forests);
+  }
+
   /** What the run record states about the test it scores. */
   static Map<String, Object> statements() {
     final Map<String, Object> out = new LinkedHashMap<>();
     out.put("outer_test_examined_before", EXAMINED);
     out.put("selection_effort", EFFORT);
+    out.put("ordering_intervals", ORDERING);
     out.putAll(IssuesSimilarityElasticNetCommand.statements());
     return out;
   }
@@ -406,7 +453,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         }
         for (final String d : m.forest().dropped()) {
           out.add(String.join("\t", m.name(), d, "dropped", "", "",
-              "constant on the outer training rows"));
+              "constant on the " + r.scope().fittingSet() + " rows"));
         }
         continue;
       }
@@ -418,7 +465,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       }
       for (final String d : m.fitted().dropped()) {
         out.add(String.join("\t", m.name(), d, "dropped", "", "",
-            "constant on the outer training rows"));
+            "constant on the " + r.scope().fittingSet() + " rows"));
       }
       for (final Fitting.Contribution c : m.fitted().contributions()) {
         out.add(String.join("\t", m.name(), c.column(), "fitted",
@@ -446,7 +493,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       }
       for (final Forest.Importance i : m.forest().importance()) {
         final StringBuilder line = new StringBuilder(m.name()).append('\t').append(i.column())
-            .append('\t').append(i.meanIncreaseHours());
+            .append('\t').append(i.meanIncrease());
         for (final double v : i.increases()) {
           line.append('\t').append(v);
         }
@@ -476,7 +523,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     row.put("family", m.kind());
     final Score s = m.score();
     row.put("n", s.n());
-    row.put("mae_business_days", s.maeHours());
+    row.put("mae_business_days", s.mae());
     row.put("gain_over_project_percent", s.gainPercent());
     row.put("gain_over_global_percent", s.gainOverConstantPercent());
     row.put("spearman", s.spearman());
@@ -519,18 +566,44 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     return row;
   }
 
+  /** Each ordering comparison: the two differences, each with its interval. */
+  static void printOrderings(final List<ProjectBootstrap.Ordering> orderings) {
+    System.out.printf("  %-24s    %-24s %27s   %27s%n", "a", "b", "Spearman a - b [95%]",
+        "pairwise a - b [95%]");
+    for (final ProjectBootstrap.Ordering o : orderings) {
+      System.out.printf("  %-24s vs %-24s %+7.3f [%+7.3f, %+7.3f]%s %+7.3f [%+7.3f, %+7.3f]%s%n",
+          o.a(), o.b(), o.spearman().gap(), o.spearman().low(), o.spearman().high(),
+          o.spearman().tied() ? " tie" : "    ", o.pairwise().gap(), o.pairwise().low(),
+          o.pairwise().high(), o.pairwise().tied() ? " tie" : "");
+    }
+  }
+
+  private static Map<String, Object> orderingRow(final ProjectBootstrap.Ordering o) {
+    final Map<String, Object> row = new LinkedHashMap<>();
+    row.put("kind", "ordering_comparison");
+    row.put("a", o.a());
+    row.put("b", o.b());
+    row.put("spearman_diff", o.spearman().gap());
+    row.put("spearman_ci_projects", List.of(o.spearman().low(), o.spearman().high()));
+    row.put("spearman_tie", o.spearman().tied());
+    row.put("pairwise_diff", o.pairwise().gap());
+    row.put("pairwise_ci_projects", List.of(o.pairwise().low(), o.pairwise().high()));
+    row.put("pairwise_tie", o.pairwise().tied());
+    return row;
+  }
+
   private static Map<String, Object> comparisonRow(final ProjectBootstrap.Gap g) {
     final Map<String, Object> row = new LinkedHashMap<>();
     row.put("kind", "comparison");
     row.put("a", g.a());
     row.put("b", g.b());
-    row.put("mae_diff_business_days", g.gapHours());
+    row.put("mae_diff_business_days", g.gap());
     row.put("ci_projects", List.of(g.low(), g.high()));
     row.put("tie", g.tied());
     return row;
   }
 
-  private static void write(final Path file, final List<String> lines) throws IOException {
+  static void write(final Path file, final List<String> lines) throws IOException {
     final Path partial = file.resolveSibling(file.getFileName() + ".partial");
     Files.write(partial, lines);
     Files.move(partial, file, StandardCopyOption.REPLACE_EXISTING,
@@ -551,11 +624,13 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     }
   }
 
-  private static boolean same(final Path a, final Path b) {
+  static boolean same(final Path a, final Path b) {
     return a.toAbsolutePath().normalize().equals(b.toAbsolutePath().normalize());
   }
 
-  private Path path(final String name) throws CommandFailedException {
+  /** A required path setting, by name; a missing one refuses the run. */
+  static Path path(final Function<String, String> settings, final String name)
+      throws CommandFailedException {
     final String value = settings.apply(name);
     if (value == null || value.isBlank()) {
       throw new CommandFailedException(List.of("  MATRIX, ELASTIC_NET_PARAMETERS and "

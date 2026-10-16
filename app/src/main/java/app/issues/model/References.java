@@ -44,11 +44,11 @@ public final class References {
     return new References(Baseline.learnedOn(fit), medians);
   }
 
-  public double constantHours() {
+  public double constantMedian() {
     return project.constantHours();
   }
 
-  public double[] projectHours(final List<IssueUnit> scored) {
+  public double[] projectMedian(final List<IssueUnit> scored) {
     final double[] out = new double[scored.size()];
     for (int i = 0; i < out.length; i++) {
       out[i] = project.predictHours(scored.get(i));
@@ -62,7 +62,7 @@ public final class References {
     return out;
   }
 
-  public double[] pairHours(final List<IssueUnit> scored) {
+  public double[] pairMedian(final List<IssueUnit> scored) {
     final double[] out = new double[scored.size()];
     for (int i = 0; i < out.length; i++) {
       final IssueUnit unit = scored.get(i);

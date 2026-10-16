@@ -101,7 +101,7 @@ public final class IssuesReservedCommand implements CommandRunner {
           + "of the outer test%n", r.fitRows(), r.scoredRows());
       System.out.printf("  main reference by the rule of decision 17 (lowest MAE on the inner "
           + "selection): %s (constant %.2f h, project median %.2f h); the other is secondary%n",
-          r.main().name().toUpperCase(), r.main().constantMaeHours(), r.main().projectMaeHours());
+          r.main().name().toUpperCase(), r.main().constantMae(), r.main().projectMae());
       System.out.printf("  test projects with no issue in training (there the project median is the "
           + "constant): %,d issues, %s%n", r.unseenRows(), r.unseenProjects());
 
@@ -162,7 +162,7 @@ public final class IssuesReservedCommand implements CommandRunner {
       m.put("kind", "comparison");
       m.put("a", g.a());
       m.put("b", g.b());
-      m.put("mae_diff_hours", g.gapHours());
+      m.put("mae_diff_hours", g.gap());
       m.put("ci_projects", List.of(g.low(), g.high()));
       m.put("tie", g.tied());
       m.put("ci_rows", List.of(c.lowGap(), c.highGap()));
@@ -177,11 +177,11 @@ public final class IssuesReservedCommand implements CommandRunner {
     final List<double[]> hours = new ArrayList<>();
     for (final var e : r.references()) {
       labels.add(e.fitted().score().label());
-      hours.add(e.fitted().predictedHours());
+      hours.add(e.fitted().predicted());
     }
     for (final var e : r.evaluated()) {
       labels.add(e.fitted().cell().label());
-      hours.add(e.fitted().predictedHours());
+      hours.add(e.fitted().predicted());
     }
     if (out.isEmpty()) {
       out.append("population\tid\tkey\tproject\tobserved_h");

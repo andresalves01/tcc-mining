@@ -158,8 +158,8 @@ class ModelTest {
     final Fitting.Recalibration r = Fitting.recalibrate(shrunk, x, y, xs);
     assertTrue(shrunk.predict(xs[0]) < 4.0, "the penalty shrank the slope");
     assertTrue(r.b() > 1.0, "b > 1 stretches it back: " + r.b());
-    assertEquals(Math.expm1(4.0), r.predictedHours()[0], 1e-6);
-    assertEquals(Math.expm1(2.0), r.predictedHours()[1], 1e-6);
+    assertEquals(Math.expm1(4.0), r.predicted()[0], 1e-6);
+    assertEquals(Math.expm1(2.0), r.predicted()[1], 1e-6);
 
     final app.model.ElasticNetModel flat =
         app.model.ElasticNetModel.fit(x, y, List.of("x"), 0.95, 1e9);

@@ -89,9 +89,9 @@ import java.util.concurrent.Callable;
  *
  * <p><b>Business days</b> (ticket 14). The target is whole business days ({@link BusinessDays}),
  * the outcome each unit carries, and the rows are the issues of at least one: the entries are
- * {@link BusinessDays#population}'s. Every error the selection reads and keeps -- the {@code Hours}
- * of the shared names included -- is in business days. The procedures, grids and tie rules are
- * those chosen for the hours, unchanged. A parameters file written for the hours has another
+ * {@link BusinessDays#population}'s. Every error the selection reads and keeps is in business
+ * days; the shared names of the fitting code are unit-neutral (ticket 17). The procedures, grids
+ * and tie rules are those chosen for the hours, unchanged. A parameters file written for the hours has another
  * {@link #HEADER} and is never read or overwritten.
  */
 public final class ElasticNetSelection {
@@ -167,9 +167,9 @@ public final class ElasticNetSelection {
   /**
    * One combination of a model with the similarity medians, swept: its chosen point.
    *
-   * @param maeHours the chosen point's error on the inner validation, in hours
+   * @param mae the chosen point's error on the inner validation, in business days
    */
-  public record Swept(Combination combination, double alpha, double lambda, double maeHours) {}
+  public record Swept(Combination combination, double alpha, double lambda, double mae) {}
 
   /**
    * One model's choice.
@@ -187,12 +187,12 @@ public final class ElasticNetSelection {
       List<Removed> removed, List<Swept> combinations, Forest.Fitted forest) {}
 
   /**
-   * @param projectMaeHours the project median's error on the inner validation, the sweep's
+   * @param projectMae the project median's error on the inner validation, the sweep's
    *     baseline as in the registered grid
-   * @param constantMaeHours the inner fitting median's error there
+   * @param constantMae the inner fitting median's error there
    */
-  public record Result(int fitRows, int validationRows, double projectMaeHours,
-      double constantMaeHours, List<Model> models) {}
+  public record Result(int fitRows, int validationRows, double projectMae,
+      double constantMae, List<Model> models) {}
 
   /**
    * A model's chosen mixture and penalty, and the values it reads the similarity medians at, as
@@ -425,7 +425,9 @@ public final class ElasticNetSelection {
    * so the result is the same bits whatever the number of threads.
    *
    * <p>A combination at which a model has no column observed on the inner fitting rows refuses
-   * the whole run, as a model with no column did before, rather than being skipped.
+   * the whole run, as a model with no column did before, rather than being skipped. So does an
+   * outer training entry whose business days are not set, one that did not go through {@link
+   * BusinessDays#population}: the target here is never the hours.
    *
    * <p>Then each model's forest is swept on the columns its Elastic Net kept at its chosen
    * combination, one job per model on the same threads, read back in the models' order. The
@@ -436,13 +438,13 @@ public final class ElasticNetSelection {
     final List<Combination> combinations = Combination.all();
     final List<Cell> every = everyCell(Augmentation.Variant.INNER);
     final List<RowCache.Entry> training =
-        entries.stream().filter(e -> TRAIN.equals(e.outer(P))).toList();
+        BusinessDays.counted(entries.stream().filter(e -> TRAIN.equals(e.outer(P))).toList());
     final Fitting.Sides sides = flagged(Fitting.sides(training, Fitting.Mode.INNER, P), every);
 
     final References refs = References.learnedOn(sides.fitUnits());
     final double[] observed = sides.observed();
     final double constantMae = Fitting.mae(refs.constant(observed.length), observed);
-    final double projectMae = Fitting.mae(refs.projectHours(sides.scoreUnits()), observed);
+    final double projectMae = Fitting.mae(refs.projectMedian(sides.scoreUnits()), observed);
 
     // per model, one job, or one per combination; flattened in the declared order
     final List<Callable<Model>> jobs = new ArrayList<>();
@@ -473,9 +475,9 @@ public final class ElasticNetSelection {
       for (int c = 0; c < combinations.size(); c++) {
         final Model m = swept.get(next++);
         final Fitting.Fitted f = m.fitted();
-        each.add(new Swept(m.combination(), f.alpha(), f.lambda(), f.score().maeHours()));
+        each.add(new Swept(m.combination(), f.alpha(), f.lambda(), f.score().mae()));
         // strictly lower, as the sweep keeps its points: a tie stays with the earlier combination
-        if (best == null || f.score().maeHours() < best.fitted().score().maeHours()) {
+        if (best == null || f.score().mae() < best.fitted().score().mae()) {
           best = m;
         }
       }
@@ -663,7 +665,7 @@ public final class ElasticNetSelection {
           Construct.Kind.NUMERIC,
           Retrospective.COUNTS.contains(name) ? Construct.Transform.LOG1P
               : Construct.Transform.NONE,
-          Retrospective.CAN_BE_MISSING.contains(name), true));
+          Retrospective.CONTENT.contains(name), true));
     }
     return List.copyOf(out);
   }

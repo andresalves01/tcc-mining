@@ -11,12 +11,16 @@ import java.util.List;
  * already has a paper whose headline is an R², and mixing the two rulers in one table invites
  * reading a worse MAE as a better result because some other column moved.
  *
- * <p>So this type carries the mean absolute error in hours, the same number in days because that is
- * how a reader thinks about a unit, the gap against the baseline in both absolute and
+ * <p>The names are unit-neutral: every figure is in the unit of the study's target, the hours, or
+ * the business days of the in-progress similarity chain, where {@code maeDays} means nothing and
+ * is never read.
+ *
+ * <p>So this type carries the mean absolute error in the target's unit, the same number divided by
+ * 24 ({@code maeDays}, meaningful only when the unit is hours), the gap against the baseline in both absolute and
  * relative terms, and Spearman as the secondary question of whether the ordering is right.
  *
- * @param maeHours the formal metric
- * @param gainHours baseline minus this, so a positive number is an improvement
+ * @param mae the formal metric
+ * @param gain baseline minus this, so a positive number is an improvement
  * @param gainPercent the same as a share of the baseline
  * @param gainOverConstantPercent the gain over predicting one number for every row -- the global
  *     median of the fit side. Reported beside the mandatory gain because on this data the mandatory
@@ -31,34 +35,34 @@ import java.util.List;
  *     number a reader can act on and this one is. Half is the coin; it is the same quantity the
  *     previous paper reported for ordering people, where the answer was 49,6%
  */
-public record Score(String label, int n, double maeHours, double maeDays,
-    double gainHours, double gainPercent, double gainOverConstantPercent, double spearman,
+public record Score(String label, int n, double mae, double maeDays,
+    double gain, double gainPercent, double gainOverConstantPercent, double spearman,
     double pairwise) {
 
   /**
-   * @param predictedHours one prediction per row, in hours, on the original scale
-   * @param observedHours the truth, same order
-   * @param baselineMaeHours what the mandatory reference scored on the same rows
+   * @param predicted one prediction per row, in the target's unit, on the original scale
+   * @param observed the truth, same order
+   * @param baselineMae what the mandatory reference scored on the same rows
    */
-  public static Score of(final String label, final double[] predictedHours,
-      final double[] observedHours, final double baselineMaeHours, final double constantMaeHours) {
+  public static Score of(final String label, final double[] predicted,
+      final double[] observed, final double baselineMae, final double constantMae) {
 
-    if (predictedHours.length != observedHours.length) {
+    if (predicted.length != observed.length) {
       throw new IllegalArgumentException("predictions and truths must line up row for row");
     }
     double sum = 0;
-    for (int i = 0; i < predictedHours.length; i++) {
-      sum += Math.abs(predictedHours[i] - observedHours[i]);
+    for (int i = 0; i < predicted.length; i++) {
+      sum += Math.abs(predicted[i] - observed[i]);
     }
-    final double maeHours = sum / predictedHours.length;
-    return new Score(label, predictedHours.length, maeHours, maeHours / 24.0,
-        baselineMaeHours - maeHours,
-        baselineMaeHours == 0 ? 0 : 100.0 * (baselineMaeHours - maeHours) / baselineMaeHours,
-        constantMaeHours == 0 ? 0 : 100.0 * (constantMaeHours - maeHours) / constantMaeHours,
+    final double mae = sum / predicted.length;
+    return new Score(label, predicted.length, mae, mae / 24.0,
+        baselineMae - mae,
+        baselineMae == 0 ? 0 : 100.0 * (baselineMae - mae) / baselineMae,
+        constantMae == 0 ? 0 : 100.0 * (constantMae - mae) / constantMae,
         // Reused rather than reimplemented: the same ranking correlation the previous paper used,
         // so that a difference between the two studies is never an artefact of two tie rules.
-        Metrics.spearman(predictedHours, observedHours),
-        pairwiseAccuracy(predictedHours, observedHours));
+        Metrics.spearman(predicted, observed),
+        pairwiseAccuracy(predicted, observed));
   }
 
   /**
@@ -98,14 +102,14 @@ public record Score(String label, int n, double maeHours, double maeDays,
   }
 
   /** A reference scores itself, so its row of the table comes out of the same code path. */
-  public static Score reference(final String label, final double[] predictedHours,
-      final double[] observedHours, final double constantMaeHours) {
+  public static Score reference(final String label, final double[] predicted,
+      final double[] observed, final double constantMae) {
 
     double sum = 0;
-    for (int i = 0; i < predictedHours.length; i++) {
-      sum += Math.abs(predictedHours[i] - observedHours[i]);
+    for (int i = 0; i < predicted.length; i++) {
+      sum += Math.abs(predicted[i] - observed[i]);
     }
-    return of(label, predictedHours, observedHours, sum / predictedHours.length, constantMaeHours);
+    return of(label, predicted, observed, sum / predicted.length, constantMae);
   }
 
   /**

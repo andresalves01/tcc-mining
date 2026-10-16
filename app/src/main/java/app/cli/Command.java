@@ -25,6 +25,7 @@ import app.cli.commands.IssuesReservedCommand;
 import app.cli.commands.IssuesRetrospectiveCommand;
 import app.cli.commands.IssuesSimilarityCommand;
 import app.cli.commands.IssuesSimilarityElasticNetCommand;
+import app.cli.commands.IssuesSimilarityInnerReportCommand;
 import app.cli.commands.IssuesSimilarityTestCommand;
 import app.cli.commands.ReconstructPeopleCommand;
 import app.cli.commands.SeniorityCommand;
@@ -334,7 +335,40 @@ public enum Command {
       study's and every column is present. Writes the per-issue
       predictions, the diagnostics and each forest's permutation
       importance to REPORT_DIR; records the run in ISSUES_DB. States that
-      the earlier study already examined this test."""),
+      the earlier study already examined this test. Ordering intervals, a
+      declared measure stated before the outer test was opened: for every
+      agreed pair and every model against the project median (the global
+      median orders nothing), the paired difference in Spearman and in
+      pairwise ordering, each with its interval from the same draws of
+      whole projects as the error comparisons; printed and recorded."""),
+
+  ISSUES_SIMILARITY_INNER_REPORT("issues-in-progress-similarity-inner-report",
+      new IssuesSimilarityInnerReportCommand(), """
+      Issue duration from the first In Progress, description-similarity
+      chain, INNER REPORT, read-only: every figure is optimistic, the
+      settings having been chosen on this same inner validation. Reads
+      MATRIX (the retrospective matrix) and ELASTIC_NET_PARAMETERS; keeps
+      only the outer training rows, the others left behind on their split
+      field, never parsed beyond it; drops the issues of 0 business days;
+      refits the seventeen models of the test (the global, project and
+      executor-project medians, the seven Elastic Nets at their chosen
+      alpha and lambda, unscaled, and n and k, and their seven forests at
+      their chosen column share and leaf) on the inner fitting rows and
+      scores the inner validation, in whole business days, by the test's
+      own scoring. Writes to REPORT_DIR: the report; the per-issue
+      predictions with whether the issue has an implementation commit;
+      per model the error, the gains over the global and the project
+      median, Spearman, pairwise ordering and the error's quantiles; the
+      error by band of the true business days (1, 2-3, 4-10, 11+); the
+      paired comparisons of the test, every model against the global and
+      the project median among them, with intervals resampling whole
+      projects; the retrospective pairs on the issues with and without an
+      implementation commit; the ordering intervals; the Elastic Nets'
+      coefficients and the forests' permutation importance. Refuses unless
+      the parameters file is the selection step's own for these models,
+      its choices were made on that matrix, the outer training and inner
+      sizes are the registered study's and every column is present.
+      Writes nothing to the database and records no run."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both

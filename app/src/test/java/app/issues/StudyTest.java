@@ -277,8 +277,8 @@ class StudyTest {
     f.events.add(new Corpus.Event("b", T0 + 2 * D, "assignee_id", "r", null, "dev", "3%%0"));
     f.assigned("c", "P-3", T0, "r", "dev");          // assigned to dev only after t0: not load
     f.events.add(new Corpus.Event("c", t0 + D, "assignee_id", "r", null, "dev", "4%%0"));
-    f.comments.add(new Corpus.Comment("a", "s", T0 + 3 * D, 5));      // before t0: participant
-    f.comments.add(new Corpus.Comment("a", "z", t0 + D, 5));          // after t0: not
+    f.comments.add(new Corpus.Comment("a", "s", T0 + 3 * D, 5, false)); // before t0: participant
+    f.comments.add(new Corpus.Comment("a", "z", t0 + D, 5, false));     // after t0: not
     f.commit("c1", "dev", T0 - 20 * D, T0 - 20 * D);
     f.commit("c2", "s", t0 - 3 * D, t0 - 3 * D);
     f.commit("c3", "z", t0 - 2 * D, t0 - 2 * D);

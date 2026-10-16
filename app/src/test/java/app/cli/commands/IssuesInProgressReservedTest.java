@@ -78,7 +78,7 @@ class IssuesInProgressReservedTest {
     assertEquals(60, r.scoredRows());
     assertEquals(10.0 * 180 / 120, r.evaluated().get(0).fitted().lambda(), 1e-12);
     assertTrue(r.recalibrated().isEmpty());
-    assertFalse(Double.isNaN(r.main().pairMaeHours()), "P12: the pair is a candidate");
+    assertFalse(Double.isNaN(r.main().pairMae()), "P12: the pair is a candidate");
     assertTrue(r.sensitivities().stream()
         .anyMatch(x -> x.what().startsWith("without the issues that go back")), "P16");
 
