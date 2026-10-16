@@ -21,9 +21,13 @@ import java.util.TreeSet;
 import java.util.concurrent.Callable;
 
 /**
- * The test of the description-similarity chain, outer mode only: every model refitted on the
- * outer training set with the parameters the selection step wrote, and the outer test scored
- * once. Chooses nothing.
+ * The scoring of the description-similarity chain, in one of two {@link Scope}s. The test, {@link
+ * Scope#RESERVED}: every model refitted on the outer training set with the parameters the
+ * selection step wrote, and the outer test scored once. The inner report, {@link Scope#INNER}
+ * (ticket 16): the same models refitted on the inner fitting rows at those parameters and the
+ * inner validation scored, the very validation they were chosen on. Chooses nothing. Below, the
+ * outer training and the outer test are the inner fitting and the inner validation in the inner
+ * scope.
  *
  * <p><b>Models</b>, seventeen, in this order: the three references learned on the outer training
  * set -- the global median, the project median and the executor-project median, as the registered
@@ -54,7 +58,10 @@ import java.util.concurrent.Callable;
  * ({@link ProjectBootstrap#compare}), for exactly the pairs of {@link #pairs}. Beside them, a side
  * reading (ticket 15): the pairs of {@link #WITH_COMMITS} again on the scored issues with at least
  * one implementation commit only, those with the retrospective Java lines ({@link
- * Retrospective#LINES}) observed.
+ * Retrospective#LINES}) observed, and, for contrast, on those without one. The ordering
+ * intervals (ticket 16, a declared measure, stated before the outer test was opened): for every
+ * pair of {@link #orderingPairs}, the paired difference in Spearman and in pairwise ordering with
+ * its interval from the same draws of whole projects ({@link ProjectBootstrap#ordering}).
  *
  * <p><b>Unit</b> (ticket 14). Every duration, prediction and error is in whole business days
  * ({@link BusinessDays}), the outcome each unit carries ({@link IssueUnit#duration}); the shared
@@ -89,7 +96,47 @@ public final class SimilarityScoring {
 
   private static final Population P = Population.IN_PROGRESS;
 
-  private static final String FITTING_SET = "outer training";
+  /**
+   * Where the models are refitted and what is scored: the mode of the sides and the variant of
+   * the split-dependent columns, always together.
+   */
+  public enum Scope {
+    /**
+     * The inner report (ticket 16): fitted on the inner fitting rows at the alpha and lambda the
+     * selection chose there, the lambda as it is (the rows it was chosen on are the rows fitted,
+     * so no ratio scales it), the inner variant read, the inner validation scored. The settings
+     * were chosen on that same validation: every figure is optimistic.
+     */
+    INNER(Fitting.Mode.INNER, Augmentation.Variant.INNER, "inner fitting"),
+    /**
+     * The test: fitted on the outer training rows, the lambda times the ratio of rows ({@link
+     * Fitting#finalLambda}), the outer variant read, the outer test scored once.
+     */
+    RESERVED(Fitting.Mode.RESERVED, Augmentation.Variant.OUTER, "outer training");
+
+    private final Fitting.Mode mode;
+    private final Augmentation.Variant variant;
+    private final String fittingSet;
+
+    Scope(final Fitting.Mode mode, final Augmentation.Variant variant, final String fittingSet) {
+      this.mode = mode;
+      this.variant = variant;
+      this.fittingSet = fittingSet;
+    }
+
+    public Fitting.Mode mode() {
+      return mode;
+    }
+
+    public Augmentation.Variant variant() {
+      return variant;
+    }
+
+    /** The rows fitted on, in words, as a removal's reason and the diagnostics name them. */
+    public String fittingSet() {
+      return fittingSet;
+    }
+  }
 
   /**
    * One model scored on the outer test.
@@ -106,16 +153,21 @@ public final class SimilarityScoring {
 
   /**
    * @param innerFitRows the rows the given lambdas were chosen on, which the final lambda scales
-   *     by
-   * @param unseenProjects outer test projects with no outer training row, where the project
-   *     median is the global one
+   *     by in the reserved scope
+   * @param unseenProjects scored projects with no fitting row, where the project median is the
+   *     global one
    * @param withCommitRows the scored issues with at least one implementation commit
    * @param withCommits the side reading: the pairs of {@link #WITH_COMMITS} on those issues only
+   * @param implementationCommit per scored issue, whether it has an implementation commit
+   * @param withoutCommits the same pairs on the scored issues without one, for contrast
+   * @param orderings the ordering intervals (ticket 16, a declared measure) of {@link
+   *     #orderingPairs}
    */
-  public record Report(int fitRows, int scoredRows, int innerFitRows,
+  public record Report(Scope scope, int fitRows, int scoredRows, int innerFitRows,
       List<IssueUnit> scoredUnits, double[] observed, List<Scored> models,
       List<ProjectBootstrap.Gap> comparisons, Set<String> unseenProjects, int unseenRows,
-      int withCommitRows, List<ProjectBootstrap.Gap> withCommits) {}
+      int withCommitRows, List<ProjectBootstrap.Gap> withCommits, boolean[] implementationCommit,
+      List<ProjectBootstrap.Gap> withoutCommits, List<ProjectBootstrap.Ordering> orderings) {}
 
   private SimilarityScoring() {}
 
@@ -136,8 +188,8 @@ public final class SimilarityScoring {
    */
   public static Report run(final List<RowCache.Entry> entries,
       final Map<String, ElasticNetSelection.Choice> choices,
-      final Map<String, Forest.Choice> forests) {
-    return run(entries, choices, forests, Parallel.threads(Parallel.ELASTIC_NET_THREADS),
+      final Map<String, Forest.Choice> forests, final Scope scope) {
+    return run(entries, choices, forests, scope, Parallel.threads(Parallel.ELASTIC_NET_THREADS),
         Parallel.threads(Parallel.BOOTSTRAP_THREADS));
   }
 
@@ -145,10 +197,14 @@ public final class SimilarityScoring {
    * Refits and scores, the models refitted each alone on up to {@code fitThreads} threads and the
    * draws of every interval evaluated each alone on up to {@code drawThreads}, all read back in
    * their order, so the report is the same bits whatever the numbers.
+   *
+   * @param scope where the models are refitted and what is scored: {@link Scope#RESERVED} for
+   *     the test, {@link Scope#INNER} for the inner report; nothing else of the scoring differs
    */
   public static Report run(final List<RowCache.Entry> entries,
       final Map<String, ElasticNetSelection.Choice> choices,
-      final Map<String, Forest.Choice> forests, final int fitThreads, final int drawThreads) {
+      final Map<String, Forest.Choice> forests, final Scope scope, final int fitThreads,
+      final int drawThreads) {
     if (!new LinkedHashSet<>(ElasticNetSelection.MODELS).equals(choices.keySet())) {
       throw new IllegalArgumentException("the parameters hold alpha and lambda for "
           + choices.keySet() + "; the models are " + ElasticNetSelection.MODELS);
@@ -159,10 +215,9 @@ public final class SimilarityScoring {
     }
     BusinessDays.counted(entries);
     final List<Cell> cells =
-        ElasticNetSelection.cells(ElasticNetSelection.combinations(choices),
-            Augmentation.Variant.OUTER);
+        ElasticNetSelection.cells(ElasticNetSelection.combinations(choices), scope.variant());
     final Fitting.Sides sides = ElasticNetSelection.flagged(
-        Fitting.sides(entries, Fitting.Mode.RESERVED, P), cells);
+        Fitting.sides(entries, scope.mode(), P), cells);
     final int innerFitRows = Fitting.sides(entries, Fitting.Mode.INNER, P).fitUnits().size();
     final int fitRows = sides.fitUnits().size();
     final double[] observed = sides.observed();
@@ -185,9 +240,11 @@ public final class SimilarityScoring {
       refits.add(() -> {
         final ElasticNetSelection.Choice c = choices.get(cell.label());
         final ElasticNetSelection.Kept kept =
-            ElasticNetSelection.kept(cell, sides.fitRows(), FITTING_SET);
-        final Fitting.Fitted f = Fitting.frozen(kept.cell(), sides, c.alpha(),
-            Fitting.finalLambda(c.lambda(), fitRows, innerFitRows), projectMae, constantMae);
+            ElasticNetSelection.kept(cell, sides.fitRows(), scope.fittingSet());
+        final double lambda = scope == Scope.INNER ? c.lambda()
+            : Fitting.finalLambda(c.lambda(), fitRows, innerFitRows);
+        final Fitting.Fitted f = Fitting.frozen(kept.cell(), sides, c.alpha(), lambda, projectMae,
+            constantMae);
         return new Scored(cell.label(), "elastic-net", f.predicted(), f.score(),
             Breakdown.errors(f.predicted(), observed),
             BusinessDays.bands(f.predicted(), observed), f, kept.removed(), null);
@@ -200,7 +257,7 @@ public final class SimilarityScoring {
       trees.add(() -> {
         final Forest.Choice c = forests.get(cell.label());
         final ElasticNetSelection.Kept kept =
-            ElasticNetSelection.kept(cell, sides.fitRows(), FITTING_SET);
+            ElasticNetSelection.kept(cell, sides.fitRows(), scope.fittingSet());
         final String name = forest(cell.label());
         final Forest.Frozen f = Forest.frozen(new Cell(name, cell.family(), cell.scenario(),
             kept.cell().attributes()), sides, c, projectMae, constantMae);
@@ -215,26 +272,29 @@ public final class SimilarityScoring {
     for (final Scored m : models) {
       errors.put(m.name(), Bootstrap.errors(m.predicted(), observed));
     }
+    final List<String> names = models.stream().map(Scored::name).toList();
     final List<ProjectBootstrap.Gap> comparisons = new ArrayList<>();
-    for (final String[] pair : pairs(models.stream().map(Scored::name).toList())) {
+    for (final String[] pair : pairs(names)) {
       comparisons.add(ProjectBootstrap.compare(projects, pair[0], errors.get(pair[0]), pair[1],
           errors.get(pair[1]), drawThreads));
     }
+    final Map<String, double[]> predicted = new HashMap<>();
+    models.forEach(m -> predicted.put(m.name(), m.predicted()));
+    final List<ProjectBootstrap.Ordering> orderings = new ArrayList<>();
+    for (final String[] pair : orderingPairs(names)) {
+      orderings.add(ProjectBootstrap.ordering(projects, pair[0], predicted.get(pair[0]), pair[1],
+          predicted.get(pair[1]), observed, drawThreads));
+    }
+    final boolean[] commit = new boolean[observed.length];
     final List<Integer> withCommit = new ArrayList<>();
+    final List<Integer> withoutCommit = new ArrayList<>();
     for (int i = 0; i < sides.scoreRows().size(); i++) {
-      if (sides.scoreRows().get(i).values().containsKey(Retrospective.LINES)) {
-        withCommit.add(i);
-      }
+      commit[i] = sides.scoreRows().get(i).values().containsKey(Retrospective.LINES);
+      (commit[i] ? withCommit : withoutCommit).add(i);
     }
-    final List<ProjectBootstrap.Gap> side = new ArrayList<>();
-    if (!withCommit.isEmpty()) {
-      final List<String> sideProjects = withCommit.stream().map(projects::get).toList();
-      for (final String[] pair : WITH_COMMITS) {
-        side.add(ProjectBootstrap.compare(sideProjects, pair[0],
-            rows(errors.get(pair[0]), withCommit), pair[1], rows(errors.get(pair[1]), withCommit),
-            drawThreads));
-      }
-    }
+    final List<ProjectBootstrap.Gap> side = side(withCommit, projects, errors, drawThreads);
+    final List<ProjectBootstrap.Gap> contrast =
+        side(withoutCommit, projects, errors, drawThreads);
 
     final Set<String> seen = new HashSet<>();
     sides.fitUnits().forEach(u -> seen.add(u.project()));
@@ -246,9 +306,31 @@ public final class SimilarityScoring {
         unseenRows++;
       }
     }
-    return new Report(fitRows, observed.length, innerFitRows, List.copyOf(sides.scoreUnits()),
-        observed, List.copyOf(models), List.copyOf(comparisons), unseen, unseenRows,
-        withCommit.size(), List.copyOf(side));
+    return new Report(scope, fitRows, observed.length, innerFitRows,
+        List.copyOf(sides.scoreUnits()), observed, List.copyOf(models), List.copyOf(comparisons),
+        unseen, unseenRows, withCommit.size(), side, commit, contrast, List.copyOf(orderings));
+  }
+
+  /** The pairs of {@link #WITH_COMMITS} on the given scored rows only, resampling their projects. */
+  private static List<ProjectBootstrap.Gap> side(final List<Integer> rows,
+      final List<String> projects, final Map<String, double[]> errors, final int drawThreads) {
+    final List<ProjectBootstrap.Gap> out = new ArrayList<>();
+    if (!rows.isEmpty()) {
+      final List<String> sideProjects = rows.stream().map(projects::get).toList();
+      for (final String[] pair : WITH_COMMITS) {
+        out.add(ProjectBootstrap.compare(sideProjects, pair[0], rows(errors.get(pair[0]), rows),
+            pair[1], rows(errors.get(pair[1]), rows), drawThreads));
+      }
+    }
+    return List.copyOf(out);
+  }
+
+  /**
+   * The pairs whose ordering is compared (ticket 16): every pair of {@link #pairs} but those
+   * against the global median, which predicts one number for every issue and orders nothing.
+   */
+  public static List<String[]> orderingPairs(final List<String> models) {
+    return pairs(models).stream().filter(p -> !p[1].equals(GLOBAL)).toList();
   }
 
   private static double[] rows(final double[] values, final List<Integer> rows) {

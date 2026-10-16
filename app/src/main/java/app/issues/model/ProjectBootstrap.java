@@ -1,6 +1,8 @@
 package app.issues.model;
 
+import app.model.Metrics;
 import app.model.Parallel;
+import app.study.model.Score;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -41,10 +43,13 @@ public final class ProjectBootstrap {
   }
 
   /**
-   * Two specifications scored on the same rows, their gap in mean absolute error with its 95%
-   * interval from resampling whole projects, both errors recomputed on the same draw.
+   * Two specifications scored on the same rows, their gap in mean absolute error -- or, inside an
+   * {@link Ordering}, in an ordering measure -- with its 95% interval from resampling whole
+   * projects, both recomputed on the same draw.
    *
-   * @param gap {@code MAE(a) - MAE(b)} on every row: negative when {@code a} errs less
+   * @param gap {@code MAE(a) - MAE(b)} on every row: negative when {@code a} errs less; in an
+   *     {@link Ordering}, the measure of {@code a} minus that of {@code b}: positive when {@code a}
+   *     orders better
    */
   public record Gap(String a, String b, double gap, double low, double high) {
 
@@ -81,12 +86,70 @@ public final class ProjectBootstrap {
     if (errorsA.length != errorsB.length || errorsA.length != projectOfRow.size()) {
       throw new IllegalArgumentException("the two errors must be of the same rows");
     }
-    final List<List<Integer>> projects = clusters(projectOfRow);
-    final double point = gapOf(allRows(errorsA.length), errorsA, errorsB);
-    final double[] draws = draws(projects, errorsA.length, threads,
+    return gap(a, b, clusters(projectOfRow), errorsA.length, threads,
         sample -> gapOf(sample, errorsA, errorsB));
+  }
+
+  /**
+   * A paired difference between {@code a} and {@code b}: its value on every row, and its 95%
+   * interval from the {@link #DRAWS} draws of whole projects every comparison here resamples.
+   */
+  private static Gap gap(final String a, final String b, final List<List<Integer>> projects,
+      final int rows, final int threads, final ToDoubleFunction<List<Integer>> statistic) {
+    final double point = statistic.applyAsDouble(allRows(rows));
+    final double[] draws = draws(projects, rows, threads, statistic);
     Arrays.sort(draws);
     return new Gap(a, b, point, draws[(int) (0.025 * DRAWS)], draws[(int) (0.975 * DRAWS) - 1]);
+  }
+
+  /**
+   * Two models' difference in ordering on the same rows, {@code a} minus {@code b}, each measure
+   * as a {@link Gap}: Spearman ({@link Metrics#spearman}, predicted against observed, as {@link
+   * Score#of} reads it) and pairwise ordering accuracy ({@link Score#pairwiseAccuracy}), their
+   * definitions unchanged.
+   *
+   * <p>A declared measure (ticket 16), stated before the outer test was opened: each interval is
+   * read from the very draws of whole projects the error comparisons resample ({@link #compare}:
+   * {@link #DRAWS} draws, seed {@link #SEED}), both models' measure recomputed on each draw's
+   * rows, a project drawn twice counted twice. A model compared with itself differs by exactly
+   * zero on every draw.
+   */
+  public record Ordering(String a, String b, Gap spearman, Gap pairwise) {}
+
+  /**
+   * The ordering comparison of {@code a} and {@code b}, its draws evaluated on up to {@code
+   * threads} threads, the same bits on any number.
+   *
+   * @param predictedA one prediction per row of {@code a}, {@code predictedB} of {@code b}, and
+   *     {@code observed} the truth, same rows as {@code projectOfRow}
+   */
+  public static Ordering ordering(final List<String> projectOfRow, final String a,
+      final double[] predictedA, final String b, final double[] predictedB,
+      final double[] observed, final int threads) {
+    if (predictedA.length != observed.length || predictedB.length != observed.length
+        || observed.length != projectOfRow.size()) {
+      throw new IllegalArgumentException("the two predictions must be of the same rows");
+    }
+    final List<List<Integer>> projects = clusters(projectOfRow);
+    return new Ordering(a, b,
+        gap(a, b, projects, observed.length, threads, sample -> {
+          final double[] o = rows(observed, sample);
+          return Metrics.spearman(rows(predictedA, sample), o)
+              - Metrics.spearman(rows(predictedB, sample), o);
+        }),
+        gap(a, b, projects, observed.length, threads, sample -> {
+          final double[] o = rows(observed, sample);
+          return Score.pairwiseAccuracy(rows(predictedA, sample), o)
+              - Score.pairwiseAccuracy(rows(predictedB, sample), o);
+        }));
+  }
+
+  private static double[] rows(final double[] values, final List<Integer> sample) {
+    final double[] out = new double[sample.size()];
+    for (int k = 0; k < out.length; k++) {
+      out[k] = values[sample.get(k)];
+    }
+    return out;
   }
 
   /**

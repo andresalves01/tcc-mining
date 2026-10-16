@@ -269,4 +269,17 @@ class IssuesSimilarityTestCommandTest {
       assertTrue(scenario.contains("not a prediction"), scenario);
     }
   }
+
+  @Test
+  @DisplayName("the run record names the ordering intervals as a declared measure, for the agreed "
+      + "pairs and every model against the project median, on the error comparisons' draws")
+  void orderingStatement() {
+    final String ordering =
+        IssuesSimilarityTestCommand.statements().get("ordering_intervals").toString();
+    assertTrue(ordering.contains("declared measure"), ordering);
+    assertTrue(ordering.contains("Spearman") && ordering.contains("pairwise"), ordering);
+    assertTrue(ordering.contains("project median"), ordering);
+    assertTrue(ordering.contains("global median orders nothing"), ordering);
+    assertTrue(ordering.contains("same 600 draws"), ordering);
+  }
 }

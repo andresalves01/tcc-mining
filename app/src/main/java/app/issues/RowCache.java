@@ -110,6 +110,17 @@ public final class RowCache {
 
   /** Reads either study's cache: the partitions and the start are found by column name. */
   public static List<Entry> read(final Path path) throws IOException {
+    return read(path, null, null);
+  }
+
+  /**
+   * Only the rows whose outer verdict under {@code population} is {@code outer}, in the cache's
+   * order. Of every other row nothing but that one field is read: it is cut out by its position
+   * before the line is split or any value, date or verdict of it parsed, so the rows on the other
+   * side of the outer cut are never read. Refuses a cache without the population's split columns.
+   */
+  public static List<Entry> read(final Path path, final Population population,
+      final String outer) throws IOException {
     final List<String> lines = Files.readAllLines(path, StandardCharsets.UTF_8);
     if (lines.isEmpty()) {
       throw new IOException(path + " is empty");
@@ -133,9 +144,17 @@ public final class RowCache {
       }
     }
     final int fixed = firstValue(at);
+    final int outerAt;
+    if (population == null) {
+      outerAt = -1;
+    } else if (partAt.containsKey(population)) {
+      outerAt = partAt.get(population);
+    } else {
+      throw new IOException(path + " has no " + prefix(population) + "_externa column");
+    }
     final List<Entry> entries = new ArrayList<>(lines.size());
     for (final String line : lines.subList(1, lines.size())) {
-      if (line.isBlank()) {
+      if (line.isBlank() || outerAt >= 0 && !outer.equals(field(line, outerAt))) {
         continue;
       }
       final String[] f = line.split(SEP, -1);
@@ -158,6 +177,19 @@ public final class RowCache {
           new Row(f[0], values, absent), parts));
     }
     return entries;
+  }
+
+  /** The field at {@code index} of a line, found by counting separators; empty past the end. */
+  private static String field(final String line, final int index) {
+    int start = 0;
+    for (int i = 0; i < index; i++) {
+      start = line.indexOf(SEP, start) + 1;
+      if (start == 0) {
+        return "";
+      }
+    }
+    final int end = line.indexOf(SEP, start);
+    return end < 0 ? line.substring(start) : line.substring(start, end);
   }
 
   /** The value columns of a cache, in the order its header lists them. */

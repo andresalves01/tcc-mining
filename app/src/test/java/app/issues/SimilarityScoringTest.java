@@ -1,5 +1,7 @@
 package app.issues;
 
+import static app.issues.SimilarityScoring.Scope.INNER;
+import static app.issues.SimilarityScoring.Scope.RESERVED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -11,6 +13,7 @@ import app.issues.model.Cell;
 import app.issues.model.Fitting;
 import app.issues.model.Forest;
 import app.issues.model.ParallelSweepTest;
+import app.issues.model.ProjectBootstrap;
 import app.study.Construct;
 import app.study.Row;
 import java.time.Instant;
@@ -221,7 +224,8 @@ class SimilarityScoringTest {
   @DisplayName("every model is refitted with the alpha and lambda it was given, the lambda scaled "
       + "by the ratio of rows as the registered chain does; nothing is swept or chosen")
   void readsParametersAndNeverSelects() {
-    final SimilarityScoring.Report r = SimilarityScoring.run(corpus(), choices(0.2), forests());
+    final SimilarityScoring.Report r =
+        SimilarityScoring.run(corpus(), choices(0.2), forests(), RESERVED);
     assertEquals(6 * 30, r.fitRows());
     assertEquals(6 * 20, r.innerFitRows());
     assertEquals(6 * 10, r.scoredRows());
@@ -234,7 +238,7 @@ class SimilarityScoringTest {
     }
     // the parameters are used, not searched over: another lambda gives other predictions
     final SimilarityScoring.Report other =
-        SimilarityScoring.run(corpus(), choices(0.0001), forests());
+        SimilarityScoring.run(corpus(), choices(0.0001), forests(), RESERVED);
     assertNotEquals(model(r, "own_with_similarity").predicted()[0],
         model(other, "own_with_similarity").predicted()[0]);
   }
@@ -246,21 +250,21 @@ class SimilarityScoringTest {
     final Map<String, ElasticNetSelection.Choice> missing = new LinkedHashMap<>(choices(0.2));
     missing.remove("own_with_similarity");
     assertThrows(IllegalArgumentException.class,
-        () -> SimilarityScoring.run(corpus(), missing, forests()));
+        () -> SimilarityScoring.run(corpus(), missing, forests(), RESERVED));
     final Map<String, ElasticNetSelection.Choice> extra = new LinkedHashMap<>(choices(0.2));
     extra.put("previous_own_start", new ElasticNetSelection.Choice(0.5, 0.2, null));
     assertThrows(IllegalArgumentException.class,
-        () -> SimilarityScoring.run(corpus(), extra, forests()));
+        () -> SimilarityScoring.run(corpus(), extra, forests(), RESERVED));
     final Map<String, ElasticNetSelection.Choice> noCombination =
         new LinkedHashMap<>(choices(0.2));
     noCombination.put("own_with_similarity", new ElasticNetSelection.Choice(0.5, 0.2, null));
     assertThrows(IllegalArgumentException.class,
-        () -> SimilarityScoring.run(corpus(), noCombination, forests()));
+        () -> SimilarityScoring.run(corpus(), noCombination, forests(), RESERVED));
     final Map<String, ElasticNetSelection.Choice> oneTooMany = new LinkedHashMap<>(choices(0.2));
     oneTooMany.put("own_without_similarity", new ElasticNetSelection.Choice(0.5, 0.2,
         new ElasticNetSelection.Combination(5, 5, 8)));
     assertThrows(IllegalArgumentException.class,
-        () -> SimilarityScoring.run(corpus(), oneTooMany, forests()));
+        () -> SimilarityScoring.run(corpus(), oneTooMany, forests(), RESERVED));
   }
 
   @Test
@@ -268,9 +272,10 @@ class SimilarityScoringTest {
       + "column changes no prediction")
   void readsTheOuterVariant() {
     final List<RowCache.Entry> entries = corpus();
-    final SimilarityScoring.Report r = SimilarityScoring.run(entries, choices(0.2), forests());
+    final SimilarityScoring.Report r =
+        SimilarityScoring.run(entries, choices(0.2), forests(), RESERVED);
     final SimilarityScoring.Report inner = SimilarityScoring.run(
-        changed(entries, k -> k.endsWith("_inner")), choices(0.2), forests());
+        changed(entries, k -> k.endsWith("_inner")), choices(0.2), forests(), RESERVED);
     for (final String name : MODELS) {
       assertEquals(java.util.Arrays.toString(model(r, name).predicted()),
           java.util.Arrays.toString(model(inner, name).predicted()), name);
@@ -283,7 +288,8 @@ class SimilarityScoringTest {
   @DisplayName("each model with the similarity medians reads them, outer variant, at the Jaccard "
       + "n, embedding n and cluster k chosen for it; the other models read none")
   void eachModelAtItsOwnCombination() {
-    final SimilarityScoring.Report r = SimilarityScoring.run(corpus(), choices(0.2), forests());
+    final SimilarityScoring.Report r =
+        SimilarityScoring.run(corpus(), choices(0.2), forests(), RESERVED);
     assertEquals(List.of("jaccard_median_5_outer", "embedding_median_20_outer",
         "cluster_median_8_outer"), model(r, "similarity_alone").fitted().columns().stream()
             .filter(c -> !c.endsWith("_ausente")).toList());
@@ -303,7 +309,8 @@ class SimilarityScoringTest {
   @DisplayName("an outer test duration enters no fit: changing them changes no prediction")
   void testDurationsAreNotLearned() {
     final List<RowCache.Entry> entries = corpus();
-    final SimilarityScoring.Report r = SimilarityScoring.run(entries, choices(0.2), forests());
+    final SimilarityScoring.Report r =
+        SimilarityScoring.run(entries, choices(0.2), forests(), RESERVED);
     final List<RowCache.Entry> longer = new ArrayList<>();
     for (final RowCache.Entry e : entries) {
       final IssueUnit u = e.unit();
@@ -311,7 +318,8 @@ class SimilarityScoringTest {
           ? new RowCache.Entry(u.withBusinessDays(u.businessDays() + 500), e.row(), e.parts())
           : e);
     }
-    final SimilarityScoring.Report changed = SimilarityScoring.run(longer, choices(0.2), forests());
+    final SimilarityScoring.Report changed =
+        SimilarityScoring.run(longer, choices(0.2), forests(), RESERVED);
     for (final String name : MODELS) {
       assertEquals(java.util.Arrays.toString(model(r, name).predicted()),
           java.util.Arrays.toString(model(changed, name).predicted()), name);
@@ -323,7 +331,8 @@ class SimilarityScoringTest {
       + "the sixteen before the forests, then each forest vs its Elastic Net, the forest with "
       + "similarity vs the forest without, and every forest vs the global and the project median")
   void exactlyTheAgreedPairs() {
-    final SimilarityScoring.Report r = SimilarityScoring.run(corpus(), choices(0.2), forests());
+    final SimilarityScoring.Report r =
+        SimilarityScoring.run(corpus(), choices(0.2), forests(), RESERVED);
     final List<String> expected = new ArrayList<>(List.of(
         "own_with_similarity | own_without_similarity",
         "own_retrospective | own_with_similarity"));
@@ -365,7 +374,7 @@ class SimilarityScoringTest {
       + "predictions, gap and interval")
   void unchangedModelsAsBefore() {
     final SimilarityScoring.Report r =
-        SimilarityScoring.run(corpus(), choices(0.2), forests(), 1, 1);
+        SimilarityScoring.run(corpus(), choices(0.2), forests(), RESERVED, 1, 1);
     final List<String> now = new ArrayList<>();
     for (final String name : LINEAR_BEFORE) {
       final SimilarityScoring.Scored m = model(r, name);
@@ -386,7 +395,8 @@ class SimilarityScoringTest {
       + "without the retrospective model's columns in the matrix")
   void forestsUnchangedByTheRetrospectiveColumns() {
     final List<RowCache.Entry> entries = corpus();
-    final SimilarityScoring.Report r = SimilarityScoring.run(entries, choices(0.2), forests(), 1, 1);
+    final SimilarityScoring.Report r =
+        SimilarityScoring.run(entries, choices(0.2), forests(), RESERVED, 1, 1);
     final List<RowCache.Entry> without = new ArrayList<>();
     for (final RowCache.Entry e : entries) {
       final Map<String, Double> values = new HashMap<>(e.row().values());
@@ -395,7 +405,7 @@ class SimilarityScoringTest {
           e.parts()));
     }
     final SimilarityScoring.Report before =
-        SimilarityScoring.run(without, choices(0.2), forests(), 1, 1);
+        SimilarityScoring.run(without, choices(0.2), forests(), RESERVED, 1, 1);
     for (final String name : MODELS) {
       if (name.startsWith("own_retrospective")) {
         continue;
@@ -418,7 +428,8 @@ class SimilarityScoringTest {
       + "only, resampling their projects")
   void sideReadingOnIssuesWithCommits() {
     final List<RowCache.Entry> entries = corpus();
-    final SimilarityScoring.Report r = SimilarityScoring.run(entries, choices(0.2), forests(), 1, 1);
+    final SimilarityScoring.Report r =
+        SimilarityScoring.run(entries, choices(0.2), forests(), RESERVED, 1, 1);
     final List<Integer> rows = new ArrayList<>();
     for (int i = 0; i < r.scoredRows(); i++) {
       final String id = r.scoredUnits().get(i).issueId();
@@ -450,7 +461,8 @@ class SimilarityScoringTest {
       + "forest kind of its own")
   void forestBesideItsElasticNet() {
     final Map<String, Forest.Choice> given = forests();
-    final SimilarityScoring.Report r = SimilarityScoring.run(corpus(), choices(0.2), given);
+    final SimilarityScoring.Report r =
+        SimilarityScoring.run(corpus(), choices(0.2), given, RESERVED);
     for (final String name : ELASTIC_NET) {
       final SimilarityScoring.Scored linear = model(r, name);
       final SimilarityScoring.Scored forest = model(r, name + "_forest");
@@ -478,7 +490,8 @@ class SimilarityScoringTest {
         given.get("own_with_similarity").mtry(), 5));
     assertNotEquals(java.util.Arrays.toString(
         model(r, "own_with_similarity_forest").predicted()), java.util.Arrays.toString(
-        model(SimilarityScoring.run(corpus(), choices(0.2), other), "own_with_similarity_forest")
+        model(SimilarityScoring.run(corpus(),
+            choices(0.2), other, RESERVED), "own_with_similarity_forest")
             .predicted()));
   }
 
@@ -489,23 +502,24 @@ class SimilarityScoringTest {
     final Map<String, Forest.Choice> missing = new LinkedHashMap<>(forests());
     missing.remove("union_own");
     assertThrows(IllegalArgumentException.class,
-        () -> SimilarityScoring.run(corpus(), choices(0.2), missing));
+        () -> SimilarityScoring.run(corpus(), choices(0.2), missing, RESERVED));
     final Map<String, Forest.Choice> extra = new LinkedHashMap<>(forests());
     extra.put("previous_own_start", new Forest.Choice(1.0 / 3, 1, 5));
     assertThrows(IllegalArgumentException.class,
-        () -> SimilarityScoring.run(corpus(), choices(0.2), extra));
+        () -> SimilarityScoring.run(corpus(), choices(0.2), extra, RESERVED));
     // more columns per split than the outer design has refuses rather than being cut down
     final Map<String, Forest.Choice> wide = new LinkedHashMap<>(forests());
     wide.put("similarity_alone", new Forest.Choice(2.0 / 3, 40, 5));
     assertThrows(IllegalArgumentException.class,
-        () -> SimilarityScoring.run(corpus(), choices(0.2), wide));
+        () -> SimilarityScoring.run(corpus(), choices(0.2), wide, RESERVED));
   }
 
   @Test
   @DisplayName("every model is read by its error, Spearman and pairwise ordering, and by band "
       + "of the true business days: 1, 2-3, 4-10, 11+")
   void readings() {
-    final SimilarityScoring.Report r = SimilarityScoring.run(corpus(), choices(0.2), forests());
+    final SimilarityScoring.Report r =
+        SimilarityScoring.run(corpus(), choices(0.2), forests(), RESERVED);
     assertEquals(MODELS, r.models().stream().map(SimilarityScoring.Scored::name).toList());
     for (final SimilarityScoring.Scored m : r.models()) {
       assertEquals(List.of("1", "2-3", "4-10", "11+"),
@@ -518,7 +532,8 @@ class SimilarityScoringTest {
   @Test
   @DisplayName("the predictions file has one row per scored issue and one column per model")
   void predictionsFile() {
-    final SimilarityScoring.Report r = SimilarityScoring.run(corpus(), choices(0.2), forests());
+    final SimilarityScoring.Report r =
+        SimilarityScoring.run(corpus(), choices(0.2), forests(), RESERVED);
     final List<String> lines = SimilarityScoring.predictions(r);
     final List<String> header = List.of(lines.get(0).split("\t"));
     final List<String> expected = new ArrayList<>(List.of("id", "key", "project",
@@ -541,9 +556,9 @@ class SimilarityScoringTest {
   void parallelIsSequential() {
     final List<RowCache.Entry> entries = corpus();
     final SimilarityScoring.Report one =
-        SimilarityScoring.run(entries, choices(0.2), forests(), 1, 1);
+        SimilarityScoring.run(entries, choices(0.2), forests(), RESERVED, 1, 1);
     final SimilarityScoring.Report many =
-        SimilarityScoring.run(entries, choices(0.2), forests(), 6, 6);
+        SimilarityScoring.run(entries, choices(0.2), forests(), RESERVED, 6, 6);
     assertEquals(SimilarityScoring.predictions(one), SimilarityScoring.predictions(many));
     assertEquals(one.comparisons(), many.comparisons(), "every interval, as exact doubles");
     assertEquals(one.models().size(), many.models().size());
@@ -565,9 +580,11 @@ class SimilarityScoringTest {
       + "tolerance, and a changed prediction is caught")
   void rerunReproduces() {
     final List<String> first =
-        SimilarityScoring.predictions(SimilarityScoring.run(corpus(), choices(0.2), forests()));
+        SimilarityScoring.predictions(
+            SimilarityScoring.run(corpus(), choices(0.2), forests(), RESERVED));
     final List<String> second =
-        SimilarityScoring.predictions(SimilarityScoring.run(corpus(), choices(0.2), forests()));
+        SimilarityScoring.predictions(
+            SimilarityScoring.run(corpus(), choices(0.2), forests(), RESERVED));
     assertTrue(SimilarityScoring.maxDifference(first, second)
         <= SimilarityScoring.RERUN_TOLERANCE);
     // on the same machine, the forests' per-tree seeds reproduce every prediction exactly
@@ -600,7 +617,8 @@ class SimilarityScoringTest {
     assertTrue(p.kept().train() < p.all().train(), "some training issues lasted no business day");
     assertTrue(p.kept().test() < p.all().test(), "some test issues lasted no business day");
     assertTrue(p.kept().innerFit() < p.all().innerFit());
-    final SimilarityScoring.Report r = SimilarityScoring.run(p.entries(), choices(0.2), forests());
+    final SimilarityScoring.Report r =
+        SimilarityScoring.run(p.entries(), choices(0.2), forests(), RESERVED);
     assertEquals(p.kept().train(), r.fitRows());
     assertEquals(p.kept().test(), r.scoredRows());
     assertEquals(p.kept().innerFit(), r.innerFitRows());
@@ -617,7 +635,122 @@ class SimilarityScoringTest {
   void refusesEntriesWithoutBusinessDays() {
     final IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
         () -> SimilarityScoring.run(BusinessDayFixtures.bounded(rawCorpus()), choices(0.2),
-            forests()));
+            forests(), RESERVED));
     assertTrue(e.getMessage().contains("business days"), e.getMessage());
+  }
+
+  /** The corpus's outer training rows only, as the inner report reads them. */
+  private static List<RowCache.Entry> training() {
+    return corpus().stream().filter(e -> "TRAIN".equals(e.outer(Population.IN_PROGRESS)))
+        .toList();
+  }
+
+  @Test
+  @DisplayName("in the inner scope every model is fitted on the inner fitting rows at the lambda "
+      + "chosen, unscaled, reads the inner variant, and only the inner validation is scored")
+  void innerScope() {
+    final SimilarityScoring.Report r =
+        SimilarityScoring.run(training(), choices(0.2), forests(), INNER, 1, 1);
+    assertEquals(INNER, r.scope());
+    assertEquals(6 * 20, r.fitRows());
+    assertEquals(6 * 20, r.innerFitRows());
+    assertEquals(6 * 10, r.scoredRows());
+    final Set<String> validation = new HashSet<>();
+    for (final RowCache.Entry e : corpus()) {
+      if ("TRAIN".equals(e.outer(Population.IN_PROGRESS))
+          && "TEST".equals(e.inner(Population.IN_PROGRESS))) {
+        validation.add(e.unit().issueId());
+      }
+    }
+    assertEquals(validation,
+        new HashSet<>(r.scoredUnits().stream().map(IssueUnit::issueId).toList()));
+    for (final String name : ELASTIC_NET) {
+      final Fitting.Fitted f = model(r, name).fitted();
+      assertEquals(Double.doubleToRawLongBits(0.2), Double.doubleToRawLongBits(f.lambda()), name);
+      assertTrue(f.columns().stream().noneMatch(c -> c.endsWith("_outer")), name);
+    }
+    assertTrue(model(r, "own_with_similarity").fitted().columns()
+        .contains("jaccard_median_10_inner"));
+    assertTrue(model(r, "own_with_similarity").removed().stream()
+        .allMatch(x -> x.reason().contains("inner fitting")));
+    // the outer test given or not, and the outer variant changed, every prediction is the same
+    final SimilarityScoring.Report all = SimilarityScoring.run(
+        changed(corpus(), k -> k.endsWith("_outer")), choices(0.2), forests(), INNER, 1, 1);
+    assertEquals(SimilarityScoring.predictions(r), SimilarityScoring.predictions(all));
+  }
+
+  @Test
+  @DisplayName("the inner scope's Elastic Net and forest errors are, bit for bit, the selection's "
+      + "inner validation errors at the choices it wrote")
+  void innerErrorsAreTheSelections() {
+    final List<RowCache.Entry> training = training();
+    final ElasticNetSelection.Result chosen = ElasticNetSelection.run(training, 1);
+    final List<ElasticNetSelection.Parameter> parameters =
+        ElasticNetSelection.read(ElasticNetSelection.parameters(chosen, "sha"));
+    final SimilarityScoring.Report r = SimilarityScoring.run(training,
+        ElasticNetSelection.choices(parameters), ElasticNetSelection.forests(parameters), INNER,
+        1, 1);
+    for (final ElasticNetSelection.Model m : chosen.models()) {
+      final String name = m.cell().label();
+      assertEquals(Double.doubleToRawLongBits(m.fitted().score().mae()),
+          Double.doubleToRawLongBits(model(r, name).score().mae()), name);
+      assertEquals(java.util.Arrays.toString(m.fitted().predicted()),
+          java.util.Arrays.toString(model(r, name).predicted()), name);
+      assertEquals(Double.doubleToRawLongBits(m.forest().score().mae()),
+          Double.doubleToRawLongBits(model(r, SimilarityScoring.forest(name)).score().mae()),
+          name);
+    }
+    assertEquals(Double.doubleToRawLongBits(chosen.projectMae()),
+        Double.doubleToRawLongBits(model(r, "project_median").score().mae()));
+    assertEquals(Double.doubleToRawLongBits(chosen.constantMae()),
+        Double.doubleToRawLongBits(model(r, "global_median").score().mae()));
+  }
+
+  @Test
+  @DisplayName("ordering intervals for every agreed pair but those against the global median, "
+      + "which orders nothing, by the project bootstrap on the scored rows")
+  void orderingIntervals() {
+    final SimilarityScoring.Report r =
+        SimilarityScoring.run(corpus(), choices(0.2), forests(), RESERVED, 1, 1);
+    final List<String> expected = r.comparisons().stream()
+        .filter(g -> !g.b().equals("global_median")).map(g -> g.a() + " | " + g.b()).toList();
+    assertEquals(expected, r.orderings().stream().map(o -> o.a() + " | " + o.b()).toList());
+    assertTrue(expected.contains("own_with_similarity | own_without_similarity"));
+    assertTrue(expected.contains("own_retrospective_forest | project_median"));
+    final List<String> projects = r.scoredUnits().stream().map(IssueUnit::project).toList();
+    for (final var o : r.orderings()) {
+      assertEquals(ProjectBootstrap.ordering(projects, o.a(), model(r, o.a()).predicted(), o.b(),
+          model(r, o.b()).predicted(), r.observed(), 1), o, o.a() + " | " + o.b());
+      assertEquals(model(r, o.a()).score().pairwise() - model(r, o.b()).score().pairwise(),
+          o.pairwise().gap());
+    }
+  }
+
+  @Test
+  @DisplayName("the side reading is also given on the scored issues without an implementation "
+      + "commit, and each scored issue says whether it has one")
+  void sideReadingWithoutCommits() {
+    final SimilarityScoring.Report r =
+        SimilarityScoring.run(corpus(), choices(0.2), forests(), RESERVED, 1, 1);
+    final List<Integer> without = new ArrayList<>();
+    for (int i = 0; i < r.scoredRows(); i++) {
+      final int n = Integer.parseInt(r.scoredUnits().get(i).issueId().substring(1));
+      assertEquals(n % 5 != 2, r.implementationCommit()[i], r.scoredUnits().get(i).issueId());
+      if (n % 5 == 2) {
+        without.add(i);
+      }
+    }
+    assertEquals(r.scoredRows() - r.withCommitRows(), without.size());
+    assertEquals(List.of("own_retrospective | own_with_similarity",
+        "own_retrospective_forest | own_with_similarity_forest"),
+        r.withoutCommits().stream().map(g -> g.a() + " | " + g.b()).toList());
+    for (final var g : r.withoutCommits()) {
+      double gap = 0;
+      for (final int i : without) {
+        gap += Math.abs(model(r, g.a()).predicted()[i] - r.observed()[i])
+            - Math.abs(model(r, g.b()).predicted()[i] - r.observed()[i]);
+      }
+      assertEquals(gap / without.size(), g.gap(), 1e-9, g.toString());
+    }
   }
 }
