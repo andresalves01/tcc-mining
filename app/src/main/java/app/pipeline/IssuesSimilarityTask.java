@@ -129,7 +129,7 @@ public final class IssuesSimilarityTask {
     final Augmentation.Result result =
         Augmentation.run(issues(entries, descriptions, active), embedder, dimension, clusterer);
 
-    progress.phase(4, 4, "adding %d columns", Augmentation.columns().size() + 2);
+    progress.phase(4, 4, "adding %d columns", Augmentation.columns().size() + BusinessDays.COLUMNS.size());
     final List<RowCache.Entry> out = new ArrayList<>(entries.size());
     for (final RowCache.Entry e : entries) {
       final Map<String, Double> values = new HashMap<>(e.row().values());

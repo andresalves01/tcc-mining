@@ -91,9 +91,12 @@ public final class IssuesRetrospectiveTask {
         .filter(e -> !e.row().values().keySet().containsAll(BusinessDays.COLUMNS))
         .map(e -> e.unit().issueId()).toList();
     if (!unbounded.isEmpty()) {
-      return refused(List.of(String.format("%,d rows have no day boundary or no active business "
-          + "days in %s, the first %s; the matrix was written before them", unbounded.size(),
-          BusinessDays.COLUMNS, unbounded.get(0))));
+      final RowCache.Entry first = entries.stream()
+          .filter(e -> e.unit().issueId().equals(unbounded.get(0))).findFirst().orElseThrow();
+      final List<String> missing = BusinessDays.COLUMNS.stream()
+          .filter(c -> !first.row().values().containsKey(c)).toList();
+      return refused(List.of(String.format("%,d rows lack %s, the first %s; the matrix was "
+          + "written before them", unbounded.size(), missing, unbounded.get(0))));
     }
 
     progress.phase(1, 4, "reading the corpus: %s", source.describe());

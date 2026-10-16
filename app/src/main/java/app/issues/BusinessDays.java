@@ -53,6 +53,14 @@ public final class BusinessDays {
    * day boundary was written before business days (ticket 14), one without the active business
    * days before the time back in Open or Reopened was taken out (ticket 18).
    */
+  /**
+   * The business days of the whole interval, from the first In Progress to the first resolution,
+   * at {@code boundaryHour}: the bound the active count never exceeds.
+   */
+  public static int whole(final IssueUnit unit, final int boundaryHour) {
+    return count(unit.startedAt().toEpochMilli(), unit.resolvedAt().toEpochMilli(), boundaryHour);
+  }
+
   public static String unwritten(final Collection<String> columns) {
     final List<String> missing = COLUMNS.stream().filter(c -> !columns.contains(c)).toList();
     return missing.isEmpty() ? null : "the matrix has no " + String.join(", ", missing)
@@ -115,8 +123,7 @@ public final class BusinessDays {
             + "in " + ACTIVE + "; the matrix was written before the time back in Open or "
             + "Reopened was taken out, run issues-in-progress-similarity again");
       }
-      final int whole = count(e.unit().startedAt().toEpochMilli(),
-          e.unit().resolvedAt().toEpochMilli(), hour.intValue());
+      final int whole = whole(e.unit(), hour.intValue());
       if (active != Math.rint(active) || active < 0 || active > whole) {
         throw new IllegalArgumentException(e.unit().issueId() + " has " + active + " in "
             + ACTIVE + ", not a whole number from 0 to its " + whole + " business days");

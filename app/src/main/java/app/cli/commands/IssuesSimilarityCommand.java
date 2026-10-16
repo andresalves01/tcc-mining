@@ -243,7 +243,7 @@ public final class IssuesSimilarityCommand implements CommandRunner {
           Instant.ofEpochMilli(b.last()), b.history());
     }
     System.out.printf("%n  matrix written to %s (%d new columns)%n", matrix,
-        Augmentation.columns().size() + 2);
+        Augmentation.columns().size() + BusinessDays.COLUMNS.size());
     System.out.printf("  diagnostics written to %s: %s%n", reports,
         String.join(", ", written.keySet().stream().filter(k -> !k.equals("matrix")).toList()));
 
@@ -385,8 +385,7 @@ public final class IssuesSimilarityCommand implements CommandRunner {
       if (split == null || !out.containsKey(split)) {
         continue;
       }
-      final int whole = BusinessDays.count(e.unit().startedAt().toEpochMilli(),
-          e.unit().resolvedAt().toEpochMilli(), r.boundaries().get(e.unit().issueId()).hour());
+      final int whole = BusinessDays.whole(e.unit(), r.boundaries().get(e.unit().issueId()).hour());
       if (e.row().values().get(BusinessDays.ACTIVE).intValue() != whole) {
         out.merge(split, 1, Integer::sum);
       }
@@ -548,8 +547,7 @@ public final class IssuesSimilarityCommand implements CommandRunner {
       days.add(String.join("\t", e.unit().issueId(), e.outer(P), e.inner(P),
           b.source().name().toLowerCase(Locale.ROOT), Integer.toString(b.personHours()),
           Integer.toString(b.projectHours()), Integer.toString(b.hour()),
-          sealed ? "" : Integer.toString(BusinessDays.count(e.unit().startedAt().toEpochMilli(),
-              e.unit().resolvedAt().toEpochMilli(), b.hour())),
+          sealed ? "" : Integer.toString(BusinessDays.whole(e.unit(), b.hour())),
           sealed ? "" : Integer.toString(e.row().values().get(BusinessDays.ACTIVE).intValue())));
     }
     out.put("day-boundaries.tsv", days);

@@ -98,6 +98,24 @@ class BusinessDaysTest {
   }
 
   @Test
+  @DisplayName("status changes sharing an instant follow the changelog's order: Open then In "
+      + "Progress stops nothing, In Progress then Open stops until the next change")
+  void activeSameInstant() {
+    final long t0 = at("2024-01-04T10:00:00Z");
+    final long t1 = at("2024-01-10T10:00:00Z");
+    final List<Corpus.Event> reopenedAtOnce = List.of(status("2024-01-04T10:00:00Z",
+        "In Progress"), status("2024-01-05T10:00:00Z", "Open"),
+        status("2024-01-05T10:00:00Z", "In Progress"), status("2024-01-10T10:00:00Z",
+        "Resolved"));
+    assertEquals(BusinessDays.count(t0, t1, 4), BusinessDays.active(reopenedAtOnce, t0, t1, 4));
+    final List<Corpus.Event> stoppedAtOnce = List.of(status("2024-01-04T10:00:00Z",
+        "In Progress"), status("2024-01-05T10:00:00Z", "In Progress"),
+        status("2024-01-05T10:00:00Z", "Open"), status("2024-01-09T10:00:00Z", "In Progress"),
+        status("2024-01-10T10:00:00Z", "Resolved"));
+    assertEquals(2, BusinessDays.active(stoppedAtOnce, t0, t1, 4));
+  }
+
+  @Test
   @DisplayName("a stopped period is clipped to [first In Progress, first resolution): what lies "
       + "before the start or after the end takes nothing away")
   void activeClipped() {
