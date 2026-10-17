@@ -79,15 +79,16 @@ class BlockingTest {
 
   @Test
   @DisplayName("only the waiting effects count: is blocked by, depends upon, requires; blocks, "
-      + "relates to and a type without direction do not")
+      + "relates to, a type without direction and a link without an effect do not")
   void waitingEffects() {
     final Fixture f = new Fixture();
     f.started("a", "P-1", List.of(new Corpus.Link("b", "Blocker", "blocks"),
         new Corpus.Link("c", "Reference", "relates to"),
-        new Corpus.Link("d", "Blocked", "Blocked")));
+        new Corpus.Link("d", "Blocked", "Blocked"), new Corpus.Link("e", "Blocker", null)));
     f.other("b", "P-2", "p", T0 + 5 * D);
     f.other("c", "P-3", "p", T0 + 5 * D);
     f.other("d", "P-4", "p", T0 + 5 * D);
+    f.other("e", "P-5", "p", T0 + 5 * D);
     assertNull(f.wait("a"));
 
     for (final String effect : List.of("is blocked by", "depends upon", "requires")) {
