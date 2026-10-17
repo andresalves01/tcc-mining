@@ -226,8 +226,8 @@ public final class ElasticNetSelection {
   public static final String HEADER = "# Elastic Net alpha and lambda, the similarity medians' "
       + "n, n and k, and each random forest's column share and leaf, chosen on the inner "
       + "validation only, the target in whole business days on the issues of at least one, for "
-      + "eight models with the retrospective one and the own one before ticket 19; the outer test was "
-      + "not read";
+      + "eight models with the retrospective one and the own one before ticket 19; the outer "
+      + "test was not read";
 
   /** The step of the Elastic Net choices in the parameters file. */
   public static final String STEP = "elastic-net";
