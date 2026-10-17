@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * The selection step of the description-similarity chain, inner mode only: each Elastic Net
@@ -61,6 +62,24 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
       + "check, not a new contribution: it answers whether the small gains come from relations "
       + "the linear model cannot capture; added after an inner-validation prototype and before "
       + "the outer test was opened";
+
+  /** Where each setting is read from: the environment, then the system properties. */
+  private final Function<String, String> settings;
+
+  public IssuesSimilarityElasticNetCommand() {
+    this(name -> {
+      final String fromEnv = System.getenv(name);
+      return fromEnv == null || fromEnv.isBlank() ? System.getProperty(name) : fromEnv;
+    });
+  }
+
+  /**
+   * @param settings the settings by name; the tests hand their own, so a real MATRIX in the
+   *     environment of whoever runs them is never read
+   */
+  IssuesSimilarityElasticNetCommand(final Function<String, String> settings) {
+    this.settings = settings;
+  }
 
   @Override
   public void run(final Context context) throws CommandFailedException {
@@ -96,14 +115,14 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     System.out.printf("  matrix read %s  sha256 %s (%,d rows)%n", matrix, matrixSha,
         entries.size());
 
-    final RegistrationInProgress.Sizes s = ElasticNetSelection.sizes(entries);
-    System.out.printf("  outer training %,d  outer test %,d  inner fitting %,d  inner validation "
-        + "%,d%n", s.train(), s.test(), s.innerFit(), s.innerSelection());
     final List<String> split = ProjectSplit.differences(entries);
     if (!split.isEmpty()) {
       throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
           + split.get(0)));
     }
+    final RegistrationInProgress.Sizes s = ElasticNetSelection.sizes(entries);
+    System.out.printf("  outer training %,d  outer test %,d  inner fitting %,d  inner validation "
+        + "%,d%n", s.train(), s.test(), s.innerFit(), s.innerSelection());
     final ElasticNetSelection.Result r;
     final BusinessDays.Population population;
     try {
@@ -393,13 +412,12 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     return a.toAbsolutePath().normalize().equals(b.toAbsolutePath().normalize());
   }
 
-  private static String env(final String name) {
-    final String fromEnv = System.getenv(name);
-    final String value = fromEnv == null || fromEnv.isBlank() ? System.getProperty(name) : fromEnv;
+  private String env(final String name) {
+    final String value = settings.apply(name);
     return value == null || value.isBlank() ? null : value;
   }
 
-  private static Path path(final String name) throws CommandFailedException {
+  private Path path(final String name) throws CommandFailedException {
     final String value = env(name);
     if (value == null) {
       throw new CommandFailedException(List.of("  MATRIX and ELASTIC_NET_PARAMETERS "

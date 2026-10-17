@@ -95,8 +95,10 @@ public final class ProjectSplit {
   /**
    * Where the matrix's verdicts are not the rule's, drawn again over the matrix's own issues; empty
    * when every one is. Reads each row's id, project and verdicts, nothing else: no value and no
-   * outcome, the outer test's included. A matrix of the temporal cut, with its crossing rows, or
-   * one missing issues of the population fails here.
+   * outcome, the outer test's included. A matrix of the temporal cut fails here on its crossing
+   * rows. A matrix missing issues of the population is drawn again over the issues it holds, so it
+   * fails only where that draw moves a verdict, which is likely but not certain: this check does
+   * not prove the matrix holds the whole population.
    */
   public static List<String> differences(final List<RowCache.Entry> entries) {
     final Map<String, String> projects = new HashMap<>(entries.size() * 2);

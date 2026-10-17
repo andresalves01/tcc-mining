@@ -163,6 +163,11 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       throw new CommandFailedException(List.of("  could not read the inputs: " + e));
     }
 
+    // the split is checked before anything of the matrix is printed, its sizes included
+    final List<String> split = ProjectSplit.differences(entries);
+    if (!split.isEmpty()) {
+      throw refused(split.get(0));
+    }
     System.out.printf("%n  DURATION FROM IN PROGRESS -- DESCRIPTION SIMILARITY -- OUTER TEST%n");
     System.out.printf("  matrix read %s  sha256 %s (%,d rows)%n", matrix, matrixSha,
         entries.size());
@@ -171,10 +176,6 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final RegistrationInProgress.Sizes s = ElasticNetSelection.sizes(entries);
     System.out.printf("  outer training %,d  outer test %,d  inner fitting %,d  inner validation "
         + "%,d%n", s.train(), s.test(), s.innerFit(), s.innerSelection());
-    final List<String> split = ProjectSplit.differences(entries);
-    if (!split.isEmpty()) {
-      throw refused(split.get(0));
-    }
     final List<String> missing;
     try {
       missing = IssuesSimilarityElasticNetCommand.missing(ElasticNetSelection.cells(

@@ -22,16 +22,18 @@ import java.util.Map;
  *       minus the days since the last of them, negative when overdue; missing with fewer than
  *       three such releases. Raw: it is signed.
  *   <li>{@link #blockerPace}: the median calendar days from creation to first resolution of the
- *       project's other issues of the split's training side that were Blocker priority at their
- *       first resolution, whatever their dates; missing with fewer than three. It reads other
- *       issues' durations, labels, so since ticket 21 (items 45 c and 46 of the retrospective
- *       decisions) it follows the rule of the similarity medians ({@link Augmentation}): the
- *       history is the training side, the inner fitting set or the outer training, never a label
- *       of the other side, never the issue itself, which is left out by id. It depends on the
- *       split, so it is written once per variant, its name ending as the similarity columns' do
- *       ({@link Variant#suffix}); a row outside a variant's rows, an outer test row in the inner
- *       variant, has none. Before ticket 21 it read every issue of the project the universe gives
- *       an outcome of any reason, resolved strictly before t0.
+ *       project's other issues that were Blocker priority at their first resolution, of any
+ *       reason and whatever their dates; missing with fewer than three. Those issues are the ones
+ *       the universe gives an outcome ({@link Universe#unit}), as before ticket 21, but a row of
+ *       the In Progress matrix is read only from the variant's training side (items 45 c and 51
+ *       of the retrospective decisions): the inner fitting set, or the outer training. An issue
+ *       outside the matrix -- never In Progress, or of 0 active business days -- is no one's label
+ *       and is read in both; a matrix row of the other side -- the inner validation in the inner
+ *       variant, the outer test in both -- never; the issue itself never, left out by id. It
+ *       depends on the split, so it is written once per variant, its name ending as the
+ *       similarity columns' do ({@link Variant#suffix}); a row outside a variant's rows, an outer
+ *       test row in the inner variant, has none. Before ticket 21 it read only the references
+ *       resolved strictly before t0.
  * </ol>
  *
  * <p>The flag and the release cycle are known at t0 and stay so: they describe the issue and its
@@ -65,7 +67,10 @@ public final class Pressure {
   /** Fewer reference issues than this, and the pace is missing. */
   static final int MIN_REFERENCES = 3;
 
-  /** One reference issue: its split and in how many calendar days it was resolved. */
+  /**
+   * One reference issue: its split, both null outside the matrix, and in how many calendar days it
+   * was resolved.
+   */
   private record Reference(String id, String outer, String inner, double days) {}
 
   private final Universe universe;
@@ -84,23 +89,26 @@ public final class Pressure {
   /**
    * The references of every project, read once.
    *
-   * @param parts per issue of the matrix, its outer and inner verdicts; the Blocker issues among
-   *     them are the only references, each read in the variants whose training side holds it
+   * @param parts per issue of the matrix, its outer and inner verdicts: a Blocker issue among them
+   *     is read only in the variants whose training side holds it; every other issue the universe
+   *     gives an outcome is outside the matrix, no one's label, and read in both
    */
   public static Pressure of(final Universe universe, final Releases releases,
       final Map<String, String[]> parts) {
     final Map<String, List<Reference>> blockers = new HashMap<>();
-    parts.forEach((id, p) -> {
+    for (final String id : universe.universe()) {
       final Universe.Unit u = universe.unit(id);
       if (u == null) {
-        return;
+        continue;
       }
       final String priority = priorityAt(universe.issue(id), universe.events(id), u.resolved());
       if (BLOCKER.equals(priority)) {
+        final String[] p = parts.get(id);
         blockers.computeIfAbsent(u.project(), k -> new ArrayList<>()).add(new Reference(id,
-            p[0], p[1], (u.resolved() - u.created()) / (double) World.DAY));
+            p == null ? null : p[0], p == null ? null : p[1],
+            (u.resolved() - u.created()) / (double) World.DAY));
       }
-    });
+    }
     blockers.values().forEach(l -> l.sort(Comparator.comparing(Reference::id)));
     return new Pressure(universe, releases, Map.copyOf(parts), blockers);
   }
@@ -128,11 +136,15 @@ public final class Pressure {
     return v;
   }
 
-  /** The median over the project's Blocker issues of the variant's training side, u left out. */
+  /**
+   * The median over the project's Blocker issues outside the matrix or on the variant's training
+   * side, u left out: never a matrix row of the other side.
+   */
   private Double pace(final Universe.Unit u, final Variant variant) {
     final List<Double> days = new ArrayList<>();
     for (final Reference r : blockers.getOrDefault(u.project(), List.of())) {
-      if (!r.id().equals(u.id()) && variant.fitting(r.outer(), r.inner())) {
+      final boolean outside = r.outer() == null;
+      if (!r.id().equals(u.id()) && (outside || variant.fitting(r.outer(), r.inner()))) {
         days.add(r.days());
       }
     }

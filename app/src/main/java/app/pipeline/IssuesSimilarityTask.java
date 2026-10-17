@@ -47,7 +47,8 @@ import java.util.function.Function;
  * changelog shows it back in Open or Reopened ({@link BusinessDays#active}), are written as {@link
  * BusinessDays#ACTIVE}: they are what the medians of the {@link Augmentation} read, and what the
  * later steps take as the target. Both are counted as the extraction counted them to draw the
- * split ({@link BusinessDays#of}).
+ * split ({@link BusinessDays#of}); a row of 0 refuses the run, as a matrix extracted before
+ * ticket 21 holds.
  *
  * <p>The own start model's three attributes of ticket 19 ({@link Pressure}: a fix version set
  * before the start, the days left in the project's release cycle, the pace of its other Blocker
@@ -158,6 +159,14 @@ public final class IssuesSimilarityTask {
     final BusinessDays.Counted counted = BusinessDays.of(corpus, universe, ids);
     final Map<String, DayBoundaries.Boundary> boundaries = counted.boundaries();
     final Map<String, Integer> active = counted.active();
+    // the extraction drew the split over the issues of at least one business day (ticket 21)
+    final List<String> zero = ids.stream().filter(id -> active.get(id) < 1).toList();
+    if (!zero.isEmpty()) {
+      return new Report(List.of(String.format("%,d issues of the matrix have 0 active business "
+          + "days, the first %s; the extraction draws the split over the issues of at least one, "
+          + "so the matrix was extracted before ticket 21", zero.size(), zero.get(0))), found,
+          List.of(), null, 0, Map.of(), Set.of());
+    }
 
     progress.phase(3, 4, "Jaccard and embedding neighbours, K-means clusters and reporter medians "
         + "of %,d issues, %,d with a description", entries.size(), descriptions.size());

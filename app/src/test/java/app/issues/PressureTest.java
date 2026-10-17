@@ -188,43 +188,85 @@ class PressureTest {
   private static final String INNER = Pressure.blockerPace(Augmentation.Variant.INNER);
   private static final String OUTER = Pressure.blockerPace(Augmentation.Variant.OUTER);
 
-  @Test
-  @DisplayName("Blocker pace (ticket 21): the median creation-to-resolution days of the project's "
-      + "issues of the training side Blocker at their first resolution, whatever their dates, the "
-      + "issue itself left out; missing with fewer than three")
-  void blockerPace() {
+  /**
+   * The Blocker pace's corpus: a, the issue itself, inner fitting and a Blocker of 30 days; f1, f2
+   * and was, Blocker references of the inner fitting side, f2 resolved long after a's start; late
+   * and crit, never Blocker at their resolution; outside, a Blocker never In Progress; zero, a
+   * Blocker In Progress issue of 0 active business days, kept out of the matrix; v, an inner
+   * validation Blocker of {@code validation} days; t, an outer test Blocker of {@code test} days.
+   */
+  private static Fixture blockers(final long validation, final long test) {
     final Fixture f = new Fixture();
-    // the issue itself, inner fitting and a Blocker of 30 days: never its own reference
     f.drawn("a", "P-1", CREATED, T1, "Blocker", "TRAIN", "TRAIN");
     f.drawn("f1", "P-10", 0, 2 * D, "Blocker", "TRAIN", "TRAIN");
-    // resolved long after a's start: the history is the whole training side, whatever the dates
     f.drawn("f2", "P-11", 0, T0 + 100 * D, "Blocker", "TRAIN", "TRAIN");
-    assertNull(f.row("a").get(INNER), "two references, a itself left out");
     // Blocker at its resolution, Major now
     f.drawn("was", "P-13", 0, 4 * D, "Major", "TRAIN", "TRAIN");
     f.event("was", 2 * D, "priority", "Major", "Blocker");
     f.event("was", 50 * D, "priority", "Blocker", "Major");
-    // Blocker only after its resolution, a Critical one, and a Blocker outside the matrix
+    // Blocker only after its resolution, and a Critical one: never references
     f.drawn("late", "P-12", 0, 6 * D, "Major", "TRAIN", "TRAIN");
     f.event("late", 200 * D, "priority", "Major", "Blocker");
     f.drawn("crit", "P-17", 0, 3 * D, "Critical", "TRAIN", "TRAIN");
+    // outside the matrix: never In Progress, Won't Fix, 5 days; and In Progress but left out of
+    // the matrix, as an issue of 0 active business days is, 7 days
     f.other("outside", "P-18", 0, 5 * D, "Blocker");
+    f.drawn("zero", "P-19", 0, 7 * D, "Blocker", "TRAIN", "TRAIN");
+    f.parts.remove("zero");
     // the other sides' labels
-    f.drawn("v", "P-20", 0, 1_000 * D, "Blocker", "TRAIN", "TEST");
-    f.drawn("t", "P-21", 0, 2_000 * D, "Blocker", "TEST", "");
+    f.drawn("v", "P-20", 0, validation * D, "Blocker", "TRAIN", "TEST");
+    f.drawn("t", "P-21", 0, test * D, "Blocker", "TEST", "");
+    return f;
+  }
 
-    // inner: f1 2, was 4, f2 1,120 -> 4; never v, the validation, nor t, the test
-    assertEquals(4.0, f.row("a").get(INNER), 1e-9);
-    // outer: f1 2, was 4, v 1,000, f2 1,120 -> 502; never t
-    assertEquals(502.0, f.row("a").get(OUTER), 1e-9);
-    // the inner validation reads the inner fitting side, a among it: 2, 4, 30, 1,120 -> 17
-    assertEquals(17.0, f.row("v").get(INNER), 1e-9);
-    assertEquals(17.0, f.row("v").get(OUTER), 1e-9, "itself left out of the outer training");
-    // the outer test reads the whole outer training: 2, 4, 30, 1,000, 1,120 -> 30; it is no row
-    // of the inner variant
-    assertEquals(30.0, f.row("t").get(OUTER), 1e-9);
+  @Test
+  @DisplayName("Blocker pace (ticket 21, item 51): the median creation-to-resolution days of "
+      + "the project's issues Blocker at their first resolution, whatever their dates, read from "
+      + "the variant's training side and from outside the matrix, never a matrix row of the "
+      + "other side, never the issue itself; missing with fewer than three")
+  void blockerPace() {
+    final Fixture few = new Fixture();
+    few.drawn("a", "P-1", CREATED, T1, "Blocker", "TRAIN", "TRAIN");
+    few.drawn("f1", "P-10", 0, 2 * D, "Blocker", "TRAIN", "TRAIN");
+    few.other("outside", "P-18", 0, 5 * D, "Blocker");
+    assertNull(few.row("a").get(INNER), "two references, a itself left out");
+
+    final Fixture f = blockers(1_000, 2_000);
+    // inner: f1 2, was 4, outside 5, zero 7, f2 1,120 -> 5; never v, the validation, nor t
+    assertEquals(5.0, f.row("a").get(INNER), 1e-9);
+    // outer: the same and v 1,000 -> 6; never t
+    assertEquals(6.0, f.row("a").get(OUTER), 1e-9);
+    // the inner validation reads the inner fitting side and outside, a among it: 2, 4, 5, 7, 30,
+    // 1,120 -> 6
+    assertEquals(6.0, f.row("v").get(INNER), 1e-9);
+    assertEquals(6.0, f.row("v").get(OUTER), 1e-9, "itself left out of the outer training");
+    // the outer test reads the outer training and outside: 2, 4, 5, 7, 30, 1,000, 1,120 -> 7; it
+    // is no row of the inner variant
+    assertEquals(7.0, f.row("t").get(OUTER), 1e-9);
     assertTrue(f.row("t").containsKey(INNER));
     assertNull(f.row("t").get(INNER));
+  }
+
+  @Test
+  @DisplayName("Blocker pace: a validation duration moves no inner column, a test duration no "
+      + "column at all; an outside Blocker counts in both variants")
+  void blockerPaceSides() {
+    final Fixture base = blockers(1_000, 2_000);
+    final Fixture validation = blockers(3, 2_000);
+    final Fixture test = blockers(1_000, 3);
+    boolean outerMoved = false;
+    for (final String id : List.of("a", "f1", "f2", "was", "late", "crit", "v", "t")) {
+      assertEquals(base.row(id).get(INNER), validation.row(id).get(INNER), id);
+      outerMoved |= !java.util.Objects.equals(base.row(id).get(OUTER),
+          validation.row(id).get(OUTER));
+      assertEquals(base.row(id), test.row(id), id);
+    }
+    assertTrue(outerMoved, "the validation rows are outer training: the outer pace may move");
+    // without the two outside the matrix, a's inner references are f1, was and f2 only
+    final Fixture inside = blockers(1_000, 2_000);
+    inside.issues.removeIf(i -> i.id().equals("outside") || i.id().equals("zero"));
+    assertEquals(4.0, inside.row("a").get(INNER), 1e-9, "2, 4 and 1,120");
+    assertEquals(5.0, base.row("a").get(INNER), 1e-9, "with 5 and 7 from outside the matrix");
   }
 
   @Test

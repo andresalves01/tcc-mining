@@ -152,15 +152,17 @@ public enum Command {
 
   ISSUES_IN_PROGRESS_GRID("issues-in-progress-grid", new IssuesInProgressGridCommand(), """
       Issue duration from the first In Progress: sweep the six cells on the
-      inner selection. Writes PARAMETERS; reads CACHE; records the run in
+      inner selection. Writes PARAMETERS; reads CACHE, refused unless it
+      is the registered study's matrix by SHA-256; records the run in
       ISSUES_DB. The outer test rows are refused."""),
 
   ISSUES_IN_PROGRESS_CHECK("issues-in-progress-check", new IssuesInProgressCheckCommand(),
       """
       Issue duration from the first In Progress: every reading on the inner
       selection with the parameters in PARAMETERS, the main reference chosen
-      among three (P12). Optimistic by construction; the outer test is not
-      read."""),
+      among three (P12). CACHE is refused unless it is the registered
+      study's matrix by SHA-256. Optimistic by construction; the outer test
+      is not read."""),
 
   ISSUES_FOREST("issues-forest", new IssuesForestCommand(), """
       Issue duration: a random forest beside the Elastic Net, cell by cell, on

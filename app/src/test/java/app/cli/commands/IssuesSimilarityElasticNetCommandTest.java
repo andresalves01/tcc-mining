@@ -73,6 +73,37 @@ class IssuesSimilarityElasticNetCommandTest {
   }
 
   @Test
+  @DisplayName("a matrix whose split is not its rule's -- one verdict moved -- refuses the run "
+      + "before its sizes are printed or anything is fitted, written or recorded")
+  void refusesAnotherSplit(@org.junit.jupiter.api.io.TempDir final java.nio.file.Path dir)
+      throws java.io.IOException {
+    final java.nio.file.Path matrix = MovedSplitFixture.write(dir.resolve("matrix.tsv"));
+    final java.nio.file.Path parameters = dir.resolve("elastic-net.tsv");
+    final java.util.Map<String, String> settings = java.util.Map.of("MATRIX", matrix.toString(),
+        "ELASTIC_NET_PARAMETERS", parameters.toString());
+    final app.cli.Context context = new app.cli.Context(null, null, null, null, null, null, null,
+        null, null, null, null, null, null, null, app.pipeline.port.Progress.silent(), null,
+        (run, rows) -> {
+          throw new AssertionError("recorded " + run);
+        }, null);
+    final java.io.PrintStream out = System.out;
+    final java.io.ByteArrayOutputStream printed = new java.io.ByteArrayOutputStream();
+    final app.cli.CommandFailedException e;
+    try {
+      System.setOut(new java.io.PrintStream(printed, true,
+          java.nio.charset.StandardCharsets.UTF_8));
+      e = org.junit.jupiter.api.Assertions.assertThrows(app.cli.CommandFailedException.class,
+          () -> new IssuesSimilarityElasticNetCommand(settings::get).run(context));
+    } finally {
+      System.setOut(out);
+    }
+    final String why = String.join("\n", e.lines());
+    assertTrue(why.contains("not at the verdicts of the split's rule"), why);
+    assertFalse(printed.toString(java.nio.charset.StandardCharsets.UTF_8).contains("outer test"));
+    assertFalse(java.nio.file.Files.exists(parameters), "nothing was written");
+  }
+
+  @Test
   @DisplayName("a column a model declares at any of the 27 combinations, or a registered column's "
       + "stored indicator, that the matrix lacks is named, so the run refuses rather than reading "
       + "it as missing")
