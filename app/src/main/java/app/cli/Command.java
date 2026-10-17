@@ -305,7 +305,7 @@ public enum Command {
       to the resolution, whose counts grow with the duration itself, and
       the own specification with similarity as before ticket 19, without
       the three start attributes, to compare the new start model with. The
-      four models with the similarity medians are swept once for each of
+      five models with the similarity medians are swept once for each of
       the 27 combinations of Jaccard n (5, 10, 20), embedding n (5, 10, 20)
       and cluster k (8, 16, 32), and keep the combination whose sweep errs
       least; exact ties go to the smaller Jaccard n, then embedding n, then

@@ -10,6 +10,7 @@ import app.issues.BusinessDays;
 import app.issues.Corpus;
 import app.issues.DayBoundaries;
 import app.issues.Embedder;
+import app.issues.Initial;
 import app.issues.IssueUnit;
 import app.issues.Pressure;
 import app.issues.RegistrationInProgress;
@@ -190,6 +191,9 @@ class IssuesSimilarityTest {
     for (final Row row : rows.values()) {
       assertTrue(row.absent().contains(Pressure.BLOCKER_PACE), "no Blocker issue in the corpus");
     }
+    // the fix versions' fidelity, on the outer training rows a, b and v only: the record lacks
+    // the version a and b got, so neither chain is explained, and t is not counted
+    assertEquals(new Initial.Fidelity("fix_versions", 3, 2, 0, 0), r.fixVersions());
   }
 
   @Test
@@ -362,11 +366,39 @@ class IssuesSimilarityTest {
     issue("v", T0 + 20 * D, T0 + 21 * D, "TRAIN", "TEST");
     issue("t", T0 + 30 * D, T0 + 31 * D, "TEST", "");
     events.removeIf(e -> e.issue().equals("v") && "In Progress".equals(e.newValue()));
+    assertRefusedOn("v");
+  }
+
+  @Test
+  @DisplayName("an issue whose first In Progress in the corpus is not the matrix's refuses the run")
+  void refusesAnotherStart() {
+    issue("a", T0 + D, T0 + 10 * D, "TRAIN", "TRAIN");
+    issue("v", T0 + 20 * D, T0 + 21 * D, "TRAIN", "TEST");
+    issue("t", T0 + 30 * D, T0 + 31 * D, "TEST", "");
+    events.replaceAll(e -> e.issue().equals("a") && "In Progress".equals(e.newValue())
+        ? new Corpus.Event("a", T0 + 2 * D, e.field(), e.author(), e.oldValue(), e.newValue(),
+            e.external()) : e);
+    assertRefusedOn("a");
+  }
+
+  @Test
+  @DisplayName("an issue whose first resolution in the corpus is not the matrix's refuses the run")
+  void refusesAnotherResolution() {
+    issue("a", T0 + D, T0 + 10 * D, "TRAIN", "TRAIN");
+    issue("v", T0 + 20 * D, T0 + 21 * D, "TRAIN", "TEST");
+    issue("t", T0 + 30 * D, T0 + 31 * D, "TEST", "");
+    events.replaceAll(e -> e.issue().equals("t") && "Resolved".equals(e.newValue())
+        ? new Corpus.Event("t", T0 + 32 * D, e.field(), e.author(), e.oldValue(), e.newValue(),
+            e.external()) : e);
+    assertRefusedOn("t");
+  }
+
+  private void assertRefusedOn(final String id) {
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
         Progress.silent(), new RegistrationInProgress.Sizes(2, 1, 1, 1), SAME, 2, KMEANS)
         .run(entries);
     assertEquals(List.of("1 issues of the matrix are not In-Progress issues of the corpus with "
-        + "the same first In Progress and first resolution, the first v"), r.refused());
+        + "the same first In Progress and first resolution, the first " + id), r.refused());
     assertTrue(r.entries().isEmpty());
   }
 }

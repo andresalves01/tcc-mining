@@ -20,7 +20,7 @@ import java.util.Set;
  * leave it there at creation. Counting does not: the number of versions at creation is the number
  * now, less those added, plus those removed.
  */
-final class FixVersions {
+public final class FixVersions {
 
   static final String FIELD = "fix_versions";
 
@@ -106,7 +106,8 @@ final class FixVersions {
    * added version held and agrees with the count at creation; and the issues whose versions at
    * creation differ from the current ones.
    */
-  static Initial.Fidelity fidelity(final Universe universe, final Collection<String> ids) {
+  public static Initial.Fidelity fidelity(final Universe universe,
+      final Collection<String> ids) {
     int changed = 0;
     int consistent = 0;
     int differs = 0;

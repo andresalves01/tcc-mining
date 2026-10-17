@@ -842,6 +842,19 @@ class ElasticNetSelectionTest {
         fingerprint(model(r, ElasticNetSelection.BEFORE_PRESSURE)));
     assertNotEquals(fingerprint(model(r, "own_with_similarity")), old,
         "the new own model reads the start columns");
+    // its forest is the old start model's forest: on the matrix without the start columns the
+    // own model with similarity is the old one, and the two forests agree to the bit
+    final Forest.Fitted before = model(ElasticNetSelection.run(counted(without(entries, START)),
+        1), "own_with_similarity").forest();
+    final Forest.Fitted eighth = model(r, ElasticNetSelection.BEFORE_PRESSURE).forest();
+    assertEquals(before.columns(), eighth.columns());
+    assertEquals(bits(before.share()), bits(eighth.share()));
+    assertEquals(before.mtry(), eighth.mtry());
+    assertEquals(before.nodeSize(), eighth.nodeSize());
+    assertEquals(bits(before.score().mae()), bits(eighth.score().mae()));
+    assertEquals(java.util.Arrays.toString(before.predicted()),
+        java.util.Arrays.toString(eighth.predicted()));
+    assertEquals(before.trials(), eighth.trials());
   }
 
   @Test

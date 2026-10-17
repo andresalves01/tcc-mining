@@ -57,6 +57,14 @@ class PressureTest {
       events.add(new Corpus.Event(issue, at, field, "x", from, to, (ext++) + "%%0"));
     }
 
+    /** The fix versions at creation by name, as the rule before the count read them. */
+    Set<String> creation(final String id) {
+      final Corpus.Issue issue = issues.stream().filter(i -> i.id().equals(id)).findFirst()
+          .orElseThrow();
+      return FixVersions.atCreation(issue, Initial.ordered(events.stream()
+          .filter(e -> e.issue().equals(id)).toList()));
+    }
+
     Map<String, Double> row(final String id) {
       final Corpus corpus = new Corpus(issues, events, List.of(), List.of(), List.of(),
           Map.of("p", Set.of("P")), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
@@ -101,11 +109,22 @@ class PressureTest {
     f.started("a", "P-1", List.of("2.0.0"));
     f.event("a", T0 + D, "fix_versions", null, "2.0");
     assertEquals(0.0, f.row("a").get(Pressure.FIX_VERSION));
-    // the same rename when the version was there at creation and removed after the start
+    assertEquals(Set.of("2.0.0"), f.creation("a"), "by name the renamed version looks there");
+
+    // added after the start as 2.0, renamed 2.0.0, then removed under its new name: the record
+    // is empty, by name 2.0.0 looks there at creation, by count nothing was
     final Fixture g = new Fixture();
     g.started("a", "P-1", List.of());
-    g.event("a", T0 + D, "fix_versions", "1.0-renamed", null);
-    assertEquals(1.0, g.row("a").get(Pressure.FIX_VERSION));
+    g.event("a", T0 + D, "fix_versions", null, "2.0");
+    g.event("a", T0 + 2 * D, "fix_versions", "2.0.0", null);
+    assertEquals(0.0, g.row("a").get(Pressure.FIX_VERSION));
+    assertEquals(Set.of("2.0.0"), g.creation("a"), "by name the old rule would have said 1");
+
+    // a version there at creation and removed after the start still counts
+    final Fixture h = new Fixture();
+    h.started("a", "P-1", List.of());
+    h.event("a", T0 + D, "fix_versions", "1.0", null);
+    assertEquals(1.0, h.row("a").get(Pressure.FIX_VERSION));
   }
 
   @Test

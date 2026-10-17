@@ -7,6 +7,7 @@ import app.issues.Corpus;
 import app.issues.DayBoundaries;
 import app.issues.DescriptionCleaner;
 import app.issues.ElasticNetSelection;
+import app.issues.FixVersions;
 import app.issues.Embedder;
 import app.issues.Initial;
 import app.issues.Pressure;
@@ -58,10 +59,21 @@ public final class IssuesSimilarityTask {
    * @param described rows with a description at their first In Progress
    * @param boundaries per issue id, its day boundary
    * @param bots the raw accounts recognised as bots and left out of every boundary's history
+   * @param fixVersions how far the changelog explains the fix versions the start columns read
+   *     ({@link FixVersions#fidelity}), on the outer training rows only; null when refused
    */
   public record Report(List<String> refused, RegistrationInProgress.Sizes sizes,
       List<RowCache.Entry> entries, Augmentation.Result result, int described,
-      Map<String, DayBoundaries.Boundary> boundaries, Set<String> bots) {}
+      Map<String, DayBoundaries.Boundary> boundaries, Set<String> bots,
+      Initial.Fidelity fixVersions) {
+
+    /** A report without the fix versions' fidelity, as a refusal has. */
+    public Report(final List<String> refused, final RegistrationInProgress.Sizes sizes,
+        final List<RowCache.Entry> entries, final Augmentation.Result result, final int described,
+        final Map<String, DayBoundaries.Boundary> boundaries, final Set<String> bots) {
+      this(refused, sizes, entries, result, described, boundaries, bots, null);
+    }
+  }
 
   private static final Population P = Population.IN_PROGRESS;
 
@@ -137,8 +149,8 @@ public final class IssuesSimilarityTask {
     for (final RowCache.Entry e : entries) {
       final String id = e.unit().issueId();
       final Universe.Unit started = universe.unit(P, id);
-      final String clicker = started == null ? null
-          : World.person(started.startedBy(), corpus.people());
+      // every row is an In-Progress issue of the corpus: the refusal above saw to it
+      final String clicker = World.person(started.startedBy(), corpus.people());
       final DayBoundaries.Boundary boundary = days.at(clicker, e.unit().project(),
           e.unit().startedAt().toEpochMilli());
       boundaries.put(id, boundary);
@@ -172,8 +184,11 @@ public final class IssuesSimilarityTask {
       }
       out.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values, absent), e.parts()));
     }
+    // the outer test is left out of the gate, as of every report this stage prints
+    final List<String> training = entries.stream().filter(e -> "TRAIN".equals(e.outer(P)))
+        .map(e -> e.unit().issueId()).toList();
     return new Report(refused, found, out, result, descriptions.size(), boundaries,
-        days.bots());
+        days.bots(), FixVersions.fidelity(universe, training));
   }
 
   /**

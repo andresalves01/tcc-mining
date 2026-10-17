@@ -204,6 +204,14 @@ public final class IssuesSimilarityCommand implements CommandRunner {
         + "%.1f s; %,d in more than one chunk (at most %d); %,d invalid vectors left missing%n",
         embedded.size(), embeddings.hits(), embeddings.misses(), embeddings.modelSeconds(),
         multiChunk, maxChunks, invalid);
+    final app.issues.Initial.Fidelity fixVersions = r.fixVersions();
+    System.out.printf("%n  CHANGELOG (outer training rows): fix versions, issues changed, chain "
+        + "and count consistent, initial value != current%n");
+    System.out.printf("    %-12s changed %6.2f%%  consistent %6.2f%%  initial!=current %6.2f%%%n",
+        fixVersions.field(), 100.0 * fixVersions.changed() / fixVersions.issues(),
+        fixVersions.changed() == 0 ? 100.0
+            : 100.0 * fixVersions.consistent() / fixVersions.changed(),
+        100.0 * fixVersions.differs() / fixVersions.issues());
     System.out.printf("%n  DAY BOUNDARIES: %s; %s%n", BusinessDays.TARGET,
         BusinessDays.HOLIDAYS);
     System.out.printf("  %,d bot accounts left out of the activity (at least %d comments, at "

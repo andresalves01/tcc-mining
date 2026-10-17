@@ -20,7 +20,7 @@ import java.util.concurrent.Callable;
 /**
  * The Elastic Net models of the description-similarity chain, and the choice on the inner
  * validation only of each one's alpha and lambda, by the registered chain's own sweep, and, for
- * the four models reading the similarity medians, of the Jaccard n, embedding n and cluster k
+ * the five models reading the similarity medians, of the Jaccard n, embedding n and cluster k
  * they read.
  *
  * <p><b>Models.</b> Eight, each a {@link Cell}. Two are the registered in-progress cells read as
@@ -55,7 +55,7 @@ import java.util.concurrent.Callable;
  * chain, its cell and its outputs, are untouched.
  *
  * <p><b>Similarity medians as attributes</b> (ticket 11, reversing ticket 08's choice by each
- * median's error read alone as a prediction). The four models with the medians ({@link
+ * median's error read alone as a prediction). The five models with the medians ({@link
  * #WITH_SIMILARITY}) are swept once per {@link Combination} of a Jaccard n, an embedding n and a
  * cluster k among the values the similarity stage computes, 27 in all, each sweep the registered
  * alpha by lambda grid, and keep the combination whose chosen point errs least on the inner
@@ -623,7 +623,7 @@ public final class ElasticNetSelection {
 
   /**
    * The eight models in their order, reading the split-dependent columns of the given variant,
-   * the four with the similarity medians at {@code c}; the other three do not depend on it.
+   * the five with the similarity medians at {@code c}; the other three do not depend on it.
    */
   public static List<Cell> cells(final Combination c, final Augmentation.Variant variant) {
     final List<Attribute> without = new ArrayList<>();

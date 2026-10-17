@@ -42,7 +42,7 @@ import java.util.function.Function;
  * every error, band and comparison is in business days.
  *
  * <p>Reads MATRIX and ELASTIC_NET_PARAMETERS, which gives per model its alpha and lambda, for
- * the four with the similarity medians the Jaccard n, embedding n and cluster k they read, and
+ * the five with the similarity medians the Jaccard n, embedding n and cluster k they read, and
  * its forest's column share and leaf; it chooses nothing. A parameters file without a forest for
  * every model is refused. Refuses, scoring, writing and recording nothing, unless the parameters file
  * exists and is the step's own, its choices were made on this very matrix (by SHA-256), the four
@@ -82,7 +82,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
 
   private static final String EFFORT = "selection effort differs between families: the two "
       + "registered cells (Al-Zubaidi, Kikas) chose only alpha and lambda on the 3 x 12 grid; the "
-      + "own specification without similarity chose the same; the four models reading the "
+      + "own specification without similarity chose the same; the "
+      + ElasticNetSelection.WITH_SIMILARITY.size() + " models reading the "
       + "similarity medians chose also their Jaccard n, embedding n and cluster k among "
       + ElasticNetSelection.Combination.all().size() + " "
       + "combinations, each swept on the same grid; each forest chose its column share and leaf "

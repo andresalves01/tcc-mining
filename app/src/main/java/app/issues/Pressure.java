@@ -32,8 +32,9 @@ import java.util.Map;
  * <p>Calendar days are elapsed 24-hour days: other issues and releases have no day boundary of
  * their own. No value after t0 enters any of the three. The flag does read the changelog after
  * t0, but only to undo it back to the creation: it counts the versions there were then ({@link
- * FixVersions#setBefore}), never one added later. The references are read up to their own
- * resolution, which is before t0.
+ * FixVersions#setBefore}), never one added later. A version Jira merged into another or deleted
+ * later leaves no changelog entry and only lowers the count at creation, so it can only lower the
+ * flag, never raise it. The references are read up to their own resolution, which is before t0.
  */
 public final class Pressure {
 
