@@ -112,7 +112,9 @@ public final class Blocking {
   }
 
   private static void add(final Set<String> out, final Corpus.Link l, final String self) {
-    if (l.target() != null && !l.target().equals(self) && WAITING.contains(l.effect())) {
+    // a link without a recorded effect has no direction, so it is not a wait
+    if (l.target() != null && l.effect() != null && !l.target().equals(self)
+        && WAITING.contains(l.effect())) {
       out.add(l.target());
     }
   }
