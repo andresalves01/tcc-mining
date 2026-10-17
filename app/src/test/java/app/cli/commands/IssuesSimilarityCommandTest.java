@@ -93,7 +93,7 @@ class IssuesSimilarityCommandTest {
     final Path out = dir.resolve("matrix.tsv");
     IssuesSimilarityCommand.writeMatrix(out, r, RowCache.columns(cache));
     final String written = Files.readAllLines(out).get(0);
-    assertEquals(header + "\t" + String.join("\t", Augmentation.columns()) + "\t"
+    assertEquals(header + "\t" + String.join("\t", IssuesSimilarityTask.columns()) + "\t"
         + BusinessDays.BOUNDARY + "\t" + BusinessDays.ACTIVE, written);
     assertTrue(written.contains("\tjaccard_median_5_inner\tjaccard_median_5_outer\t"));
 

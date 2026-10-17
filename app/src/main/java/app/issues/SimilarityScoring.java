@@ -345,7 +345,7 @@ public final class SimilarityScoring {
    * The paired comparisons, {@code a} against {@code b}, and only these. First, of the references
    * and Elastic Net models: the own specification with similarity against the same without the
    * similarity medians, what similarity adds beside the other attributes; the retrospective model
-   * against the own specification with similarity, what the eight attributes observed up to the
+   * against the own specification with similarity, what the ten attributes observed up to the
    * resolution add (ticket 15); then each of them against the global median, and each but the
    * global median against the project median, so the two references are compared once. Then, of
    * the forests (ticket 13), in the order of {@code models}: each forest against its Elastic Net;

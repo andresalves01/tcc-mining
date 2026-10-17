@@ -33,10 +33,18 @@ class ElasticNetSelectionTest {
 
   private static final Combination TEN_FIVE_32 = new Combination(10, 5, 32);
 
-  /** The own specification without the similarity medians, the ten of ticket 12. */
+  /** The three start attributes of ticket 19, in its order. */
+  private static final List<String> START = List.of("START_fix_version",
+      "START_release_cycle_days", "START_blocker_pace_days");
+
+  /**
+   * The own specification without the similarity medians: the ten of ticket 12, then the three of
+   * ticket 19.
+   */
   private static final List<String> OWN_INNER = List.of("A01_desc_length", "A03_team_size",
       "TEAM_loc_median", "TEAM_loc_sd", "TEAM_mccc_median", "TEAM_mccc_sd",
-      "reporter_median_inner", "A09_exec_loc_tot", "A10_exec_mccc_tot", "A13_exec_open_load");
+      "reporter_median_inner", "A09_exec_loc_tot", "A10_exec_mccc_tot", "A13_exec_open_load",
+      "START_fix_version", "START_release_cycle_days", "START_blocker_pace_days");
 
   private static final List<String> SIMILARITY_INNER = List.of("jaccard_median_10_inner",
       "embedding_median_5_inner", "cluster_median_32_inner");
@@ -51,10 +59,11 @@ class ElasticNetSelectionTest {
   private static final List<String> SIX = List.of("own_without_similarity", "similarity_alone",
       "own_with_similarity", "alzubaidi_start", "kikas_start", "union_own");
 
-  /** The eight attributes of the retrospective scenario, in the ticket's order. */
+  /** The ten attributes of the retrospective scenario: ticket 15's eight, then ticket 19's two. */
   private static final List<String> RETROSPECTIVE = List.of("RETRO_java_lines",
       "RETRO_mean_mccc", "RETRO_mean_nesting", "RETRO_files", "RETRO_familiarity",
-      "RETRO_comments", "RETRO_participants", "RETRO_assignee_changes");
+      "RETRO_comments", "RETRO_participants", "RETRO_assignee_changes", "RETRO_blocker_wait",
+      "RETRO_urgency_days");
 
   /**
    * The three models ticket 12 does not touch, as the code chose them on {@link #full}: the
@@ -158,9 +167,10 @@ class ElasticNetSelectionTest {
   }
 
   /**
-   * The eight retrospective columns, drawn from their own generator so the other columns are the
+   * The ten retrospective columns, drawn from their own generator so the other columns are the
    * draws they were before ticket 15: the duration with noise, the five of the content missing
-   * on every fourth row, as without an implementation commit.
+   * on every fourth row, as without an implementation commit, the blocking-link wait on every
+   * third and urgency on every fifth.
    */
   private static Map<String, Double> retrospective(final Random random, final double hours,
       final int i) {
@@ -173,7 +183,41 @@ class ElasticNetSelectionTest {
         v.put(column, null);
       }
     }
+    if (i % 3 == 2) {
+      v.put("RETRO_blocker_wait", null);
+    }
+    if (i % 5 == 3) {
+      v.put("RETRO_urgency_days", null);
+    }
     return v;
+  }
+
+  /**
+   * The three start columns of ticket 19, drawn from their own generator so no other column moves:
+   * the flag 0 or 1, the cycle signed and missing on every third row, the pace missing on every
+   * seventh.
+   */
+  private static Map<String, Double> start(final Random random, final double hours, final int i) {
+    final Map<String, Double> v = new HashMap<>();
+    v.put("START_fix_version", (double) random.nextInt(2));
+    v.put("START_release_cycle_days", i % 3 == 0 ? null : 100 * random.nextDouble() - 50);
+    v.put("START_blocker_pace_days", i % 7 == 0 ? null : hours * random.nextDouble());
+    return v;
+  }
+
+  /** The same entries without the given columns, as values or as absent. */
+  private static List<RowCache.Entry> without(final List<RowCache.Entry> entries,
+      final List<String> columns) {
+    final List<RowCache.Entry> out = new ArrayList<>();
+    for (final RowCache.Entry e : entries) {
+      final Map<String, Double> values = new HashMap<>(e.row().values());
+      final Set<String> absent = new HashSet<>(e.row().absent());
+      values.keySet().removeAll(columns);
+      absent.removeAll(columns);
+      out.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values, absent),
+          e.parts()));
+    }
+    return out;
   }
 
   /**
@@ -184,10 +228,12 @@ class ElasticNetSelectionTest {
   private void full() {
     final Random random = new Random(13);
     final Random retrospective = new Random(41);
+    final Random start = new Random(53);
     for (int i = 0; i < 60; i++) {
       final double hours = Math.exp(1 + 5 * random.nextDouble());
       final Map<String, Double> v = base(random, hours, i);
       v.putAll(retrospective(retrospective, hours, i));
+      v.putAll(start(start, hours, i));
       for (final Augmentation.Variant variant : Augmentation.Variant.values()) {
         for (final int n : Augmentation.JACCARD_N) {
           v.put(Augmentation.jaccard(n, variant), hours * (1 + n / 10.0 * random.nextDouble()));
@@ -211,10 +257,12 @@ class ElasticNetSelectionTest {
   private void tied() {
     final Random random = new Random(17);
     final Random retrospective = new Random(43);
+    final Random start = new Random(59);
     for (int i = 0; i < 60; i++) {
       final double hours = Math.exp(1 + 5 * random.nextDouble());
       final Map<String, Double> v = base(random, hours, i);
       v.putAll(retrospective(retrospective, hours, i));
+      v.putAll(start(start, hours, i));
       final double jaccard = hours * (1 + random.nextDouble());
       final double embedding = hours * (1 + random.nextDouble());
       final double cluster = hours * (1 + random.nextDouble());
@@ -303,22 +351,50 @@ class ElasticNetSelectionTest {
     assertEquals(ElasticNetSelection.MODELS, cells.stream().map(Cell::label).toList());
     assertEquals(OWN_INNER, names(cell(cells, "own_without_similarity")));
     assertEquals(SIMILARITY_INNER, names(cell(cells, "similarity_alone")));
-    final List<String> thirteen = concat(OWN_INNER, SIMILARITY_INNER);
-    assertEquals(thirteen, names(cell(cells, "own_with_similarity")));
+    final List<String> sixteen = concat(OWN_INNER, SIMILARITY_INNER);
+    assertEquals(sixteen, names(cell(cells, "own_with_similarity")));
     assertEquals(registered("ALZUBAIDI / C1"), names(cell(cells, "alzubaidi_start")));
     assertEquals(registered("KIKAS / C1"), names(cell(cells, "kikas_start")));
     // the literature families as the registered union reads them -- Kikas's body length enters
     // once, as Al-Zubaidi's title and description words -- with the own model with similarity
     final List<String> literature = concat(registered("ALZUBAIDI / C1"),
         registered("KIKAS / C1").stream().filter(n -> !n.equals("K02_body_len")).toList());
-    assertEquals(concat(literature, thirteen), names(cell(cells, "union_own")));
-    assertEquals(concat(thirteen, RETROSPECTIVE), names(cell(cells, "own_retrospective")));
+    assertEquals(concat(literature, sixteen), names(cell(cells, "union_own")));
+    assertEquals(concat(sixteen, RETROSPECTIVE), names(cell(cells, "own_retrospective")));
   }
 
   @Test
-  @DisplayName("the retrospective model has exactly the 21 columns: the own specification with "
-      + "similarity, then the eight, the counts and volumes log1p, the ratio and means raw, a "
-      + "missing indicator beside the five that can be missing; it reads the similarity medians")
+  @DisplayName("the three start columns of ticket 19 in every own model and the union: the fix "
+      + "version flag binary and without indicator, the cycle raw and the pace log1p, both with "
+      + "one; never in the similarity medians alone or the registered cells")
+  void startColumns() {
+    for (final Augmentation.Variant v : Augmentation.Variant.values()) {
+      final List<Cell> cells = ElasticNetSelection.cells(TEN_FIVE_32, v);
+      for (final String name : List.of("own_without_similarity", "own_with_similarity",
+          "union_own", "own_retrospective")) {
+        final List<Attribute> start = cell(cells, name).attributes().stream()
+            .filter(a -> START.contains(a.name())).toList();
+        assertEquals(START, start.stream().map(Attribute::name).toList(), name);
+        assertEquals(app.study.Construct.Kind.BINARY, start.get(0).kind());
+        assertFalse(start.get(0).absenceIndicator());
+        assertEquals(app.study.Construct.Transform.NONE, start.get(1).transform());
+        assertTrue(start.get(1).absenceIndicator());
+        assertEquals(app.study.Construct.Transform.LOG1P, start.get(2).transform());
+        assertTrue(start.get(2).absenceIndicator());
+        start.forEach(a -> assertTrue(a.atCreation(), a.name() + " is known at the start"));
+      }
+      for (final String name : UNTOUCHED) {
+        assertTrue(cell(cells, name).attributes().stream()
+            .noneMatch(a -> START.contains(a.name())), name);
+      }
+    }
+  }
+
+  @Test
+  @DisplayName("the retrospective model has exactly the 26 columns: the own specification with "
+      + "similarity, then the ten, the counts, volumes and blocking-link wait log1p, the ratio, "
+      + "means and urgency raw, a missing indicator beside the seven that can be missing; it "
+      + "reads the similarity medians")
   void retrospectiveModel() {
     assertEquals(SIX, ElasticNetSelection.MODELS.subList(0, 6));
     assertEquals("own_retrospective", ElasticNetSelection.MODELS.get(6));
@@ -326,14 +402,15 @@ class ElasticNetSelectionTest {
     for (final Augmentation.Variant v : Augmentation.Variant.values()) {
       final List<Cell> cells = ElasticNetSelection.cells(TEN_FIVE_32, v);
       final Cell retrospective = cell(cells, "own_retrospective");
-      assertEquals(21, retrospective.attributes().size());
+      assertEquals(26, retrospective.attributes().size());
       assertEquals(cell(cells, "own_with_similarity").attributes(),
-          retrospective.attributes().subList(0, 13));
-      final List<Attribute> eight = retrospective.attributes().subList(13, 21);
+          retrospective.attributes().subList(0, 16));
+      final List<Attribute> eight = retrospective.attributes().subList(16, 26);
       assertEquals(RETROSPECTIVE, eight.stream().map(Attribute::name).toList());
       final List<String> log = List.of("RETRO_java_lines", "RETRO_files", "RETRO_comments",
-          "RETRO_participants", "RETRO_assignee_changes");
-      final List<String> missing = RETROSPECTIVE.subList(0, 5);
+          "RETRO_participants", "RETRO_assignee_changes", "RETRO_blocker_wait");
+      final List<String> missing = concat(RETROSPECTIVE.subList(0, 5),
+          List.of("RETRO_blocker_wait", "RETRO_urgency_days"));
       for (final Attribute a : eight) {
         assertEquals(log.contains(a.name()) ? app.study.Construct.Transform.LOG1P
             : app.study.Construct.Transform.NONE, a.transform(), a.name());
@@ -379,7 +456,8 @@ class ElasticNetSelectionTest {
     final List<Cell> cells = ElasticNetSelection.cells(TEN_FIVE_32, Augmentation.Variant.OUTER);
     assertEquals(List.of("A01_desc_length", "A03_team_size", "TEAM_loc_median", "TEAM_loc_sd",
         "TEAM_mccc_median", "TEAM_mccc_sd", "reporter_median_outer", "A09_exec_loc_tot",
-        "A10_exec_mccc_tot", "A13_exec_open_load", "jaccard_median_10_outer",
+        "A10_exec_mccc_tot", "A13_exec_open_load", "START_fix_version",
+        "START_release_cycle_days", "START_blocker_pace_days", "jaccard_median_10_outer",
         "embedding_median_5_outer", "cluster_median_32_outer"),
         names(cell(cells, "own_with_similarity")));
   }
@@ -393,7 +471,7 @@ class ElasticNetSelectionTest {
         "own_retrospective", new Combination(5, 5, 16));
     final List<Cell> cells = ElasticNetSelection.cells(each, Augmentation.Variant.OUTER);
     assertEquals(List.of("jaccard_median_5_outer", "embedding_median_5_outer",
-        "cluster_median_16_outer"), names(cell(cells, "own_retrospective")).subList(10, 13));
+        "cluster_median_16_outer"), names(cell(cells, "own_retrospective")).subList(13, 16));
     final List<Cell> atTen = ElasticNetSelection.cells(TEN_FIVE_32, Augmentation.Variant.OUTER);
     assertEquals(List.of("jaccard_median_5_outer", "embedding_median_20_outer",
         "cluster_median_8_outer"), names(cell(cells, "similarity_alone")));
@@ -724,25 +802,19 @@ class ElasticNetSelectionTest {
 
   @Test
   @DisplayName("every Elastic Net model before the retrospective one chooses, bit for bit, what it "
-      + "chose before the forests, the eight retrospective columns in the matrix or not: "
-      + "combination, columns, alpha, lambda, error, predictions and every sweep")
+      + "chose before the forests when the matrix lacks ticket 19's start columns, the "
+      + "retrospective columns in the matrix or not: combination, columns, alpha, lambda, error, "
+      + "predictions and every sweep")
   void elasticNetAsBeforeTheForests() {
     full();
-    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries), 1);
+    final List<RowCache.Entry> withoutStart = without(entries, START);
+    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(withoutStart), 1);
     assertEquals(BEFORE_FORESTS, SIX.stream().map(name -> fingerprint(model(r, name))).toList());
     assertEquals(ElasticNetSelection.MODELS, r.models().stream().map(m -> m.cell().label())
         .toList());
 
-    final List<RowCache.Entry> without = new ArrayList<>();
-    for (final RowCache.Entry e : entries) {
-      final Map<String, Double> values = new HashMap<>(e.row().values());
-      final Set<String> absent = new HashSet<>(e.row().absent());
-      values.keySet().removeAll(RETROSPECTIVE);
-      absent.removeAll(RETROSPECTIVE);
-      without.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values, absent),
-          e.parts()));
-    }
-    final ElasticNetSelection.Result before = ElasticNetSelection.run(counted(without), 1);
+    final ElasticNetSelection.Result before =
+        ElasticNetSelection.run(counted(without(withoutStart, RETROSPECTIVE)), 1);
     for (final String name : SIX) {
       assertEquals(fingerprint(model(before, name)), fingerprint(model(r, name)), name);
       assertEquals(java.util.Arrays.toString(model(before, name).forest().predicted()),
@@ -752,8 +824,9 @@ class ElasticNetSelectionTest {
   }
 
   @Test
-  @DisplayName("the retrospective model is swept over the 27 combinations, reads the eight beside "
-      + "the thirteen, missing indicators for the content, and has its forest on the same columns")
+  @DisplayName("the retrospective model is swept over the 27 combinations, reads the ten beside "
+      + "the sixteen, missing indicators for those that can be missing, and has its forest on the "
+      + "same columns")
   void retrospectiveChosen() {
     full();
     final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries), 1);

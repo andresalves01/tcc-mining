@@ -67,12 +67,12 @@ class IssuesRetrospectiveCommandTest {
   }
 
   /**
-   * The similarity stage's columns: the extracted one, the medians, the day boundary and the
-   * active business days.
+   * The similarity stage's columns: the extracted one, the medians, the start columns of ticket 19,
+   * the day boundary and the active business days.
    */
   private static List<String> similarity() {
     final List<String> out = new ArrayList<>(List.of("A01_desc_length"));
-    out.addAll(Augmentation.columns());
+    out.addAll(app.pipeline.IssuesSimilarityTask.columns());
     out.addAll(BusinessDays.COLUMNS);
     return out;
   }

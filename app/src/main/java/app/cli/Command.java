@@ -230,7 +230,14 @@ public enum Command {
       until the next status change; Patch Available kept): time nobody was
       working on it is not counted. They go to the matrix beside the day
       boundary as the target the later steps read; a past issue of 0
-      enters no history. Refuses unless the four
+      enters no history. At each first In Progress it also writes three
+      start attributes: whether a fix version was set before it, the
+      calendar days left in the project's release cycle (the median gap
+      between its release tags dated before the start minus the days
+      since the last one, negative when overdue, missing with fewer than
+      three) and the median calendar days from creation to first
+      resolution of the project's other Blocker-priority issues resolved
+      before the start (missing with fewer than three). Refuses unless the four
       split sizes are the registered study's and TEAM_COLUMNS holds
       exactly the matrix's issues, and unless the model in MODEL_DIR
       reproduces the sentence-transformers reference on six sentences.
@@ -242,7 +249,7 @@ public enum Command {
   ISSUES_RETROSPECTIVE("issues-in-progress-retrospective", new IssuesRetrospectiveCommand(), """
       Issue duration from the first In Progress, description-similarity
       chain, RETROSPECTIVE SCENARIO: adds to the similarity stage's matrix
-      eight attributes observed between the first In Progress and the
+      ten attributes observed between the first In Progress and the
       first resolution. They describe the work as it was done, and the
       counts grow with the duration itself: a gain from them is association
       with the duration observed up to the resolution, not a prediction
@@ -258,14 +265,20 @@ public enum Command {
       implementation commit. In [first In Progress, first resolution), bot
       accounts left out: the comments, the distinct people who commented or
       changed a field (the reporter only if active) and the effective
-      changes of assignee. Refuses unless MATRIX is the similarity stage's,
+      changes of assignee. From the links and the tags: the business days
+      from the first In Progress to the last first resolution of the
+      issues it waited on (is blocked by, depends upon, requires; any
+      project), clipped at its own; and urgency, the calendar days from
+      the first resolution to the release of its fix version, a tag
+      matched to the version's name, measured after the fact -- both
+      missing without their source. Refuses unless MATRIX is the similarity stage's,
       with its day boundary and active business days and without these
       columns, the four split sizes are the registered
       study's and the corpus holds every issue of the matrix as it is.
       Reads MATRIX, the corpus and the changed methods of the implementation
       commits (the expensive part); writes RETROSPECTIVE_MATRIX, never over
       MATRIX or a file that is not a retrospective matrix; records the run,
-      with the coverage of each of the eight on the inner fitting and inner
+      with the coverage of each of the ten on the inner fitting and inner
       validation, in ISSUES_DB. The other matrices are left untouched."""),
 
   ISSUES_SIMILARITY_ELASTIC_NET("issues-in-progress-similarity-elastic-net",
@@ -280,12 +293,14 @@ public enum Command {
       specification without similarity (description length, team size, the
       team's median and spread of lines of code and complexity, the
       corrected reporter median, the executor's lines of code, complexity
-      and open workload), the similarity medians alone, the own
-      specification with similarity (those ten and the three medians),
+      and open workload, the fix version set before the start, the days
+      left in the release cycle and the pace of the other Blocker issues),
+      the similarity medians alone, the own
+      specification with similarity (those thirteen and the three medians),
       Al-Zubaidi and Kikas at the start (the registered cells), and the
       literature families with the own specification with similarity, and
       the retrospective scenario: the own specification with similarity and
-      the eight attributes issues-in-progress-retrospective adds, observed up
+      the ten attributes issues-in-progress-retrospective adds, observed up
       to the resolution, whose counts grow with the duration itself. The
       four models with the similarity medians are swept once for each of
       the 27 combinations of Jaccard n (5, 10, 20), embedding n (5, 10, 20)

@@ -1,8 +1,10 @@
 package app.issues;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import app.labels.ChangedMethod;
 import java.util.ArrayList;
@@ -36,6 +38,7 @@ class RetrospectiveTest {
     final Map<String, Corpus.Contribution> contributions = new HashMap<>();
     final Map<String, int[]> files = new HashMap<>();
     final Map<String, Map<String, ChangedMethod>> methods = new HashMap<>();
+    final List<Corpus.Tag> tags = new ArrayList<>();
     int ext = 1;
 
     /** An issue created at CREATED, moved to In Progress at T0 by dev, resolved Fixed at T1. */
@@ -74,16 +77,18 @@ class RetrospectiveTest {
 
     Corpus build() {
       return new Corpus(issues, events, comments, List.of(), commits,
-          Map.of("p", Set.of("P")), prMerge, people, contributions, Map.of(), Map.of(), files);
+          Map.of("p", Set.of("P")), prMerge, people, contributions, Map.of(), Map.of(), files,
+          tags);
     }
 
     Map<String, Double> row(final String id, final Set<String> bots) {
       final Corpus corpus = build();
       final Universe universe = Universe.of(corpus);
-      final Retrospective r = new Retrospective(new World(universe, corpus), bots);
+      final Retrospective r =
+          new Retrospective(new World(universe, corpus), bots, Releases.of(corpus));
       final Universe.Unit u = universe.unit(Universe.Population.IN_PROGRESS, id);
       assertNotNull(u, id + " is in the In-Progress population");
-      return r.row(u, methods);
+      return r.row(u, methods, 0);
     }
 
     Map<String, Double> row(final String id) {
@@ -157,6 +162,63 @@ class RetrospectiveTest {
     assertEquals(1.0, v.get(Retrospective.PARTICIPANTS), "dev, who moved it to In Progress");
     assertEquals(0.0, v.get(Retrospective.ASSIGNEE_CHANGES));
     assertEquals(Retrospective.COLUMNS.size(), v.size());
+  }
+
+  @Test
+  @DisplayName("urgency: calendar days from the first resolution to the release of the earliest "
+      + "matched fix version in force at it, changes at the resolution included; negative when the "
+      + "release came first; missing without a matched version")
+  void urgency() {
+    final Fixture f = new Fixture();
+    f.started("a", "P-1", "r");
+    // 1.0 removed before the resolution; 2.0 and 3.0 set in the resolving action; 9.9 untagged
+    f.event("a", T0 - D, "fix_versions", "dev", null, "1.0");
+    f.event("a", T0 + D, "fix_versions", "dev", "1.0", null);
+    f.event("a", T1, "fix_versions", "closer", null, "3.0");
+    f.event("a", T1, "fix_versions", "closer", null, "9.9");
+    f.event("a", T1, "fix_versions", "closer", null, "2.0");
+    // set after the resolution: not in force at it
+    f.event("a", T1 + D, "fix_versions", "closer", null, "1.5");
+    f.tags.add(new Corpus.Tag("p", "release-1.0", T1 + D, null));
+    f.tags.add(new Corpus.Tag("p", "release-1.5", T1 + 2 * D, null));
+    f.tags.add(new Corpus.Tag("p", "release-2.0", T1 + 6 * D + 12 * H, null));
+    f.tags.add(new Corpus.Tag("p", "release-3.0", T1 + 30 * D, null));
+    assertEquals(6.5, f.row("a").get(Retrospective.URGENCY), 1e-9);
+
+    final Fixture g = new Fixture();
+    g.started("a", "P-1", "r");
+    g.event("a", T0, "fix_versions", "dev", null, "2.0");
+    g.tags.add(new Corpus.Tag("p", "2.0", T1 - 3 * D, null));
+    assertEquals(-3.0, g.row("a").get(Retrospective.URGENCY), 1e-9);
+
+    final Fixture h = new Fixture();
+    h.started("a", "P-1", "r");
+    h.event("a", T0, "fix_versions", "dev", null, "WISHLIST");
+    h.tags.add(new Corpus.Tag("p", "2.0", T1 + D, null));
+    final Map<String, Double> v = h.row("a");
+    assertTrue(v.containsKey(Retrospective.URGENCY));
+    assertNull(v.get(Retrospective.URGENCY));
+  }
+
+  @Test
+  @DisplayName("no attribute is the release minus the start: with urgency it would give the "
+      + "duration")
+  void noReleaseMinusStart() {
+    final Fixture f = new Fixture();
+    f.started("a", "P-1", "r");
+    f.event("a", T0 - D, "fix_versions", "dev", null, "2.0");
+    f.tags.add(new Corpus.Tag("p", "2.0", T1 + 7 * D, null));
+    final long release = T1 + 7 * D;
+    final Map<String, Double> v = f.row("a");
+    final double calendar = (release - T0) / (double) D;
+    final double business = BusinessDays.count(T0, release, 0);
+    for (final Map.Entry<String, Double> e : v.entrySet()) {
+      if (e.getValue() != null) {
+        assertNotEquals(calendar, e.getValue(), 1e-9, e.getKey());
+        assertNotEquals(business, e.getValue(), 1e-9, e.getKey());
+      }
+    }
+    assertEquals(7.0, v.get(Retrospective.URGENCY), 1e-9);
   }
 
   @Test

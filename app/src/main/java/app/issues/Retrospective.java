@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The retrospective scenario's eight attributes (ticket 15), observed between the first In
+ * The retrospective scenario's ten attributes (tickets 15 and 19), observed between the first In
  * Progress (t0) and the first resolution (t1). They describe the work as it was done; a count
  * grows with the duration itself, so a model reading them shows association with the duration,
  * not a prediction available during the work.
@@ -53,6 +53,16 @@ import java.util.Set;
  *       person to another alike.
  * </ol>
  *
+ * <p><b>Blocking links and the release</b> (ticket 19), each missing with its indicator:
+ *
+ * <ol start="9">
+ *   <li>{@link #BLOCKER_WAIT}: the business days from t0, at the issue's day boundary, to the last
+ *       first resolution of the issues it waited on, clipped at t1 ({@link Blocking}).
+ *   <li>{@link #URGENCY}: calendar days from t1 to the release of the issue's fix version
+ *       ({@link #urgency}), measured after the fact: small when fixed just before the release,
+ *       large when the fix waited for it.
+ * </ol>
+ *
  * <p>Separate from the registered columns of {@link Extractor}: {@code A15}, {@code A16}, {@code
  * A17}, {@code D07}, {@code D08}, {@code K03}, {@code K04} and {@code K05} keep their meaning in the
  * registered matrix, and these are new columns under new names.
@@ -67,6 +77,8 @@ public final class Retrospective {
   public static final String COMMENTS = "RETRO_comments";
   public static final String PARTICIPANTS = "RETRO_participants";
   public static final String ASSIGNEE_CHANGES = "RETRO_assignee_changes";
+  public static final String BLOCKER_WAIT = "RETRO_blocker_wait";
+  public static final String URGENCY = "RETRO_urgency_days";
 
   /**
    * The five read from the implementation commits, missing together without one: the ones that
@@ -74,34 +86,50 @@ public final class Retrospective {
    */
   public static final List<String> CONTENT = List.of(LINES, MCCC, NESTING, FILES, FAMILIARITY);
 
-  /** The eight, in the ticket's order. */
-  public static final List<String> COLUMNS = List.of(LINES, MCCC, NESTING, FILES, FAMILIARITY,
-      COMMENTS, PARTICIPANTS, ASSIGNEE_CHANGES);
+  /**
+   * The blocking-link wait and urgency (ticket 19), each missing on its own, with its missing
+   * indicator.
+   */
+  public static final List<String> LINKS_AND_RELEASES = List.of(BLOCKER_WAIT, URGENCY);
 
-  /** The counts and volumes, which enter as {@code log1p}; the ratio and means enter raw. */
+  /** The ten: the eight of ticket 15 in its order, then the two of ticket 19. */
+  public static final List<String> COLUMNS = List.of(LINES, MCCC, NESTING, FILES, FAMILIARITY,
+      COMMENTS, PARTICIPANTS, ASSIGNEE_CHANGES, BLOCKER_WAIT, URGENCY);
+
+  /**
+   * The counts, the volumes and the blocking-link wait, which enter as {@code log1p}; the ratio,
+   * the means and urgency enter raw, urgency because it is negative when the release came before
+   * the resolution, as step 0 of ticket 19 found on inner rows.
+   */
   public static final Set<String> COUNTS =
-      Set.of(LINES, FILES, COMMENTS, PARTICIPANTS, ASSIGNEE_CHANGES);
+      Set.of(LINES, FILES, COMMENTS, PARTICIPANTS, ASSIGNEE_CHANGES, BLOCKER_WAIT);
 
   /** What the scenario is, for the help text and the run records. */
-  public static final String SCENARIO = "retrospective: eight attributes observed between the "
+  public static final String SCENARIO = "retrospective: ten attributes observed between the "
       + "first In Progress and the first resolution (implementation content, discussion and "
-      + "coordination); the counts grow with the duration itself, so a gain is association with "
+      + "coordination, the wait on blocking issues, and urgency, the days from the first "
+      + "resolution to the release of its fix version, measured after the fact); the counts grow with the duration itself, so a gain is association with "
       + "the duration observed up to the resolution, not a prediction available during the work, "
       + "nor causation";
 
   private final World world;
   private final Universe universe;
   private final Set<String> bots;
+  private final Releases releases;
+  private final Blocking blocking;
   private final Map<String, List<World.Commit>> byAuthor = new HashMap<>();
   private final Map<String, Map<Integer, List<World.Commit>>> touches = new HashMap<>();
 
   /**
    * @param bots the raw accounts left out of the comments, participants and assignee changes
+   * @param releases the projects' release dates, which urgency reads
    */
-  public Retrospective(final World world, final Set<String> bots) {
+  public Retrospective(final World world, final Set<String> bots, final Releases releases) {
     this.world = world;
     this.universe = world.universe;
     this.bots = Set.copyOf(bots);
+    this.releases = releases;
+    this.blocking = Blocking.of(universe);
     for (final World.Commit c : world.commits()) {
       if (c.who() != null) {
         byAuthor.computeIfAbsent(c.who() + "\u0000" + c.project(), k -> new ArrayList<>()).add(c);
@@ -110,19 +138,41 @@ public final class Retrospective {
   }
 
   /**
-   * The eight attributes of one In-Progress unit, a missing one as null.
+   * The ten attributes of one In-Progress unit, a missing one as null.
    *
    * @param methods per commit id, the methods it changed; a commit absent or empty changed none
    *     recovered
+   * @param boundaryHour the issue's day boundary, at which the blocking-link wait is counted
    */
   public Map<String, Double> row(final Universe.Unit u,
-      final Map<String, Map<String, ChangedMethod>> methods) {
+      final Map<String, Map<String, ChangedMethod>> methods, final int boundaryHour) {
     final long t0 = u.start();
     final long t1 = u.resolved();
     final Map<String, Double> v = new LinkedHashMap<>();
     content(u, t0, t1, methods, v);
     discussion(u, t0, t1, v);
+    v.put(BLOCKER_WAIT, blocking.wait(u, boundaryHour));
+    v.put(URGENCY, urgency(u));
     return v;
+  }
+
+  /**
+   * Calendar days from the first resolution to the release of the issue's earliest released fix
+   * version in force at it ({@link FixVersions#at}, changes at the resolution included): the
+   * earliest release date among those versions a tag matches ({@link Releases#date}); negative
+   * when that release came first; null when no version in force matches a tag. The distance from
+   * the start, release minus t0, is never an attribute: with this one it would give the duration.
+   */
+  Double urgency(final Universe.Unit u) {
+    Long release = null;
+    for (final String version : FixVersions.at(universe.issue(u.id()), universe.events(u.id()),
+        u.resolved())) {
+      final Long at = releases.date(u.project(), version);
+      if (at != null && (release == null || at < release)) {
+        release = at;
+      }
+    }
+    return release == null ? null : (release - u.resolved()) / (double) World.DAY;
   }
 
   private void content(final Universe.Unit u, final long t0, final long t1,

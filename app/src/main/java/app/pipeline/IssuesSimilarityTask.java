@@ -9,7 +9,9 @@ import app.issues.DescriptionCleaner;
 import app.issues.ElasticNetSelection;
 import app.issues.Embedder;
 import app.issues.Initial;
+import app.issues.Pressure;
 import app.issues.RegistrationInProgress;
+import app.issues.Releases;
 import app.issues.RowCache;
 import app.issues.Universe;
 import app.issues.Universe.Population;
@@ -42,6 +44,10 @@ import java.util.TreeSet;
  * changelog shows it back in Open or Reopened ({@link BusinessDays#active}), are written as {@link
  * BusinessDays#ACTIVE}: they are what the medians of the {@link Augmentation} read, and what the
  * later steps take as the target.
+ *
+ * <p>The own start model's three attributes of ticket 19 ({@link Pressure}: a fix version set
+ * before the start, the days left in the project's release cycle, the pace of its other Blocker
+ * issues) are read from the corpus at each issue's first In Progress and written beside them.
  */
 public final class IssuesSimilarityTask {
 
@@ -129,15 +135,23 @@ public final class IssuesSimilarityTask {
     final Augmentation.Result result =
         Augmentation.run(issues(entries, descriptions, active), embedder, dimension, clusterer);
 
-    progress.phase(4, 4, "adding %d columns", Augmentation.columns().size() + BusinessDays.COLUMNS.size());
+    progress.phase(4, 4, "adding %d columns", Augmentation.columns().size()
+        + BusinessDays.COLUMNS.size() + Pressure.COLUMNS.size());
+    final Pressure pressure = Pressure.of(universe, Releases.of(corpus));
     final List<RowCache.Entry> out = new ArrayList<>(entries.size());
     for (final RowCache.Entry e : entries) {
       final Map<String, Double> values = new HashMap<>(e.row().values());
       final Set<String> absent = new HashSet<>(e.row().absent());
-      final Map<String, Double> added = result.columns().get(e.unit().issueId());
+      final Map<String, Double> added = new HashMap<>(result.columns().get(e.unit().issueId()));
+      final Universe.Unit started = universe.unit(P, e.unit().issueId());
+      if (started == null) {
+        Pressure.COLUMNS.forEach(c -> added.put(c, null));
+      } else {
+        added.putAll(pressure.row(started));
+      }
       values.put(BusinessDays.BOUNDARY, (double) boundaries.get(e.unit().issueId()).hour());
       values.put(BusinessDays.ACTIVE, (double) active.get(e.unit().issueId()));
-      for (final String column : Augmentation.columns()) {
+      for (final String column : columns()) {
         final Double v = added.get(column);
         if (v == null) {
           absent.add(column);
@@ -149,6 +163,16 @@ public final class IssuesSimilarityTask {
     }
     return new Report(refused, found, out, result, descriptions.size(), boundaries,
         days.bots());
+  }
+
+  /**
+   * The columns this stage adds besides the day boundary and the active business days, a missing
+   * one recorded as absent: the {@link Augmentation} columns, then the {@link Pressure} ones.
+   */
+  public static List<String> columns() {
+    final List<String> out = new ArrayList<>(Augmentation.columns());
+    out.addAll(Pressure.COLUMNS);
+    return List.copyOf(out);
   }
 
   static List<String> differences(final RegistrationInProgress.Sizes found,

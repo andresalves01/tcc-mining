@@ -207,6 +207,19 @@ class SimilarityScoringTest {
     return r.models().stream().filter(m -> m.name().equals(name)).findFirst().orElseThrow();
   }
 
+  /** The same entries without the given columns. */
+  private static List<RowCache.Entry> without(final List<RowCache.Entry> entries,
+      final List<String> columns) {
+    final List<RowCache.Entry> out = new ArrayList<>();
+    for (final RowCache.Entry e : entries) {
+      final Map<String, Double> values = new HashMap<>(e.row().values());
+      values.keySet().removeAll(columns);
+      out.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values, e.row().absent()),
+          e.parts()));
+    }
+    return out;
+  }
+
   /** The same entries with every value of the columns {@code which} selects replaced. */
   private static List<RowCache.Entry> changed(final List<RowCache.Entry> entries,
       final java.util.function.Predicate<String> which) {
@@ -370,11 +383,11 @@ class SimilarityScoringTest {
 
   @Test
   @DisplayName("every model and comparison that existed before the forests scores, bit for bit, "
-      + "what it scored before ticket 13, the retrospective model and columns beside them: error, "
-      + "predictions, gap and interval")
+      + "what it scored before ticket 13, the retrospective model and columns beside them, when "
+      + "the matrix lacks ticket 19's start columns: error, predictions, gap and interval")
   void unchangedModelsAsBefore() {
-    final SimilarityScoring.Report r =
-        SimilarityScoring.run(corpus(), choices(0.2), forests(), RESERVED, 1, 1);
+    final SimilarityScoring.Report r = SimilarityScoring.run(without(corpus(), Pressure.COLUMNS),
+        choices(0.2), forests(), RESERVED, 1, 1);
     final List<String> now = new ArrayList<>();
     for (final String name : LINEAR_BEFORE) {
       final SimilarityScoring.Scored m = model(r, name);
@@ -397,15 +410,8 @@ class SimilarityScoringTest {
     final List<RowCache.Entry> entries = corpus();
     final SimilarityScoring.Report r =
         SimilarityScoring.run(entries, choices(0.2), forests(), RESERVED, 1, 1);
-    final List<RowCache.Entry> without = new ArrayList<>();
-    for (final RowCache.Entry e : entries) {
-      final Map<String, Double> values = new HashMap<>(e.row().values());
-      values.keySet().removeAll(Retrospective.COLUMNS);
-      without.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values, e.row().absent()),
-          e.parts()));
-    }
-    final SimilarityScoring.Report before =
-        SimilarityScoring.run(without, choices(0.2), forests(), RESERVED, 1, 1);
+    final SimilarityScoring.Report before = SimilarityScoring.run(
+        without(entries, Retrospective.COLUMNS), choices(0.2), forests(), RESERVED, 1, 1);
     for (final String name : MODELS) {
       if (name.startsWith("own_retrospective")) {
         continue;

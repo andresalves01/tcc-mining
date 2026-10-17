@@ -29,14 +29,15 @@ import java.util.concurrent.Callable;
  * description length and team size, the registered {@code A01} and {@code A03}; the team's median
  * and spread of lines of code and of cyclomatic complexity; the corrected reporter median; the
  * executor's lines of code, cyclomatic complexity and open workload, the registered {@code A09},
- * {@code A10} and {@code A13}; and the Jaccard, embedding and cluster medians, thirteen in all.
- * The own specification without similarity, its control, is the same ten without the three
- * medians; the similarity block alone is the three medians; the union is the literature families
- * as the registered union reads them, Kikas's body length entering once as Al-Zubaidi's word
- * counts, followed by the own specification with similarity. The seventh, the retrospective
- * scenario, is the own specification with similarity followed by the eight attributes observed
- * between the first In Progress and the first resolution ({@link Retrospective}), twenty-one in
- * all.
+ * {@code A10} and {@code A13}; the fix version set before the start, the days left in the
+ * project's release cycle and the pace of its other Blocker issues ({@link Pressure}, ticket 19);
+ * and the Jaccard, embedding and cluster medians, sixteen in all. The own specification without
+ * similarity, its control, is the same thirteen without the three medians; the similarity block
+ * alone is the three medians; the union is the literature families as the registered union reads
+ * them, Kikas's body length entering once as Al-Zubaidi's word counts, followed by the own
+ * specification with similarity. The seventh, the retrospective scenario, is the own
+ * specification with similarity followed by the ten attributes observed between the first In
+ * Progress and the first resolution ({@link Retrospective}), twenty-six in all.
  *
  * <p><b>Ticket 15.</b> The retrospective model ({@code own_retrospective}) reads what was observed
  * up to the resolution, and its counts grow with the duration itself: a gain over the own
@@ -68,7 +69,7 @@ import java.util.concurrent.Callable;
  * the four team columns take the transform of the registered columns they revise ({@code D05};
  * {@code A04} to {@code A07}), which is also {@code log1p}. Every new column carries a missing
  * indicator: a missing value is handed to the registered preparation as missing, filled there by
- * the fitting set's median. The retrospective model's eight are declared as {@link
+ * the fitting set's median. The retrospective model's ten are declared as {@link
  * #retrospective} says: the three counts of the discussion are never missing and carry none. The
  * registered columns ({@code A01}, {@code A03}, {@code A09}, {@code A10}, {@code A13}) keep their
  * own transform and missing-indicator setting. A declared
@@ -621,6 +622,7 @@ public final class ElasticNetSelection {
         "A13_exec_open_load")) {
       without.add(Attributes.byName(executor));
     }
+    without.addAll(pressure());
     final List<Attribute> similarity = List.of(
         revised(Augmentation.jaccard(c.jaccardN(), variant)),
         revised(Augmentation.embedding(c.embeddingN(), variant)),
@@ -650,11 +652,12 @@ public final class ElasticNetSelection {
   }
 
   /**
-   * The eight attributes of the retrospective scenario ({@link Retrospective}), in its order: the
+   * The ten attributes of the retrospective scenario ({@link Retrospective}), in its order: the
    * counts and volumes {@code log1p}, the ratio and the means raw, as the registered columns they
    * stand beside ({@code A15} to {@code A17}, {@code D07}, {@code D08}, {@code K03} to {@code
-   * K05}); a missing indicator beside the five that can be missing. Split-independent: the same
-   * in both variants.
+   * K05}); a missing indicator beside the five that can be missing. Ticket 19's two follow: the
+   * blocking-link wait {@code log1p} and urgency raw, being signed, each with a missing indicator.
+   * Split-independent: the same in both variants.
    */
   static List<Attribute> retrospective() {
     final List<Attribute> out = new ArrayList<>(Retrospective.COLUMNS.size());
@@ -665,9 +668,24 @@ public final class ElasticNetSelection {
           Construct.Kind.NUMERIC,
           Retrospective.COUNTS.contains(name) ? Construct.Transform.LOG1P
               : Construct.Transform.NONE,
-          Retrospective.CONTENT.contains(name), true));
+          Retrospective.CONTENT.contains(name)
+              || Retrospective.LINKS_AND_RELEASES.contains(name), true));
     }
     return List.copyOf(out);
+  }
+
+  /**
+   * The start model's three attributes of ticket 19 ({@link Pressure}), in its order: the fix
+   * version flag a binary never missing; the release cycle raw, being signed, and the Blocker pace
+   * {@code log1p}, each with a missing indicator. Known at the start: no block. Split-independent.
+   */
+  static List<Attribute> pressure() {
+    return List.of(
+        new Attribute(Pressure.FIX_VERSION, Pressure.FIX_VERSION, Family.OWN, null,
+            Construct.Kind.BINARY, Construct.Transform.NONE, false, true),
+        new Attribute(Pressure.RELEASE_CYCLE, Pressure.RELEASE_CYCLE, Family.OWN, null,
+            Construct.Kind.NUMERIC, Construct.Transform.NONE, true, true),
+        revised(Pressure.BLOCKER_PACE));
   }
 
   private static Cell registered(final String name, final String label) {

@@ -33,6 +33,7 @@ import org.bson.types.ObjectId;
 public final class MongoStudySource implements StudySource {
 
   private static final Set<String> TEXT_FIELDS = Set.of("title", "desc");
+  private static final String LINKS = "issue_links";
   private static final Pattern KEY =
       Pattern.compile("(?<![A-Za-z0-9_])([A-Z][A-Z0-9]+-[0-9]+)(?![A-Za-z0-9_])");
   private static final int BATCH = 2_000;
@@ -55,7 +56,7 @@ public final class MongoStudySource implements StudySource {
   @Override
   public Set<String> reads() {
     return Set.of("issue", "issue_system", "project", "vcs_system", "event", "issue_comment",
-        "commit", "pull_request", "pull_request_commit", "file_action");
+        "commit", "pull_request", "pull_request_commit", "file_action", "tag");
   }
 
   @Override
@@ -133,7 +134,8 @@ public final class MongoStudySource implements StudySource {
     final Map<String, Map<String, Integer>> prefixes = new HashMap<>();
     for (final Document d : source.getCollection("issue").find().projection(Projections.include(
         "external_id", "issue_system_id", "created_at", "reporter_id", "creator_id",
-        "assignee_id", "issue_type", "priority", "parent_issue_id", "labels", "issue_links"))) {
+        "assignee_id", "issue_type", "priority", "parent_issue_id", "labels", "issue_links",
+        "fix_versions"))) {
       final String system = id(d.get("issue_system_id"));
       final String key = d.getString("external_id");
       final int dash = key == null ? -1 : key.indexOf('-');
@@ -145,15 +147,23 @@ public final class MongoStudySource implements StudySource {
         rawLabels.forEach(l -> labels.add(l == null ? null : l.toString()));
       }
       final List<String> links = new ArrayList<>();
+      final List<Corpus.Link> typed = new ArrayList<>();
       final List<?> rawLinks = d.getList("issue_links", Object.class);
       if (rawLinks != null) {
         rawLinks.forEach(l -> links.add(l instanceof Document doc ? id(doc.get("issue_id")) : null));
+        rawLinks.forEach(l -> typed.add(link(l)));
+      }
+      final List<String> fixVersions = new ArrayList<>();
+      final List<?> rawFix = d.getList("fix_versions", Object.class);
+      if (rawFix != null) {
+        rawFix.forEach(v -> fixVersions.add(v == null ? null : v.toString()));
       }
       issues.add(new Corpus.Issue(id(d.get("_id")), key, projectOfSystem.get(system),
           ms(d.getDate("created_at")), id(d.get("reporter_id")), id(d.get("creator_id")),
           id(d.get("assignee_id")), d.getString("issue_type"), d.getString("priority"),
           id(d.get("parent_issue_id")), rawLabels == null ? null : labels,
-          rawLinks == null ? null : links));
+          rawLinks == null ? null : links, List.copyOf(typed.stream()
+              .filter(java.util.Objects::nonNull).toList()), fixVersions));
     }
     final Map<String, Set<String>> homeKeys = new HashMap<>();
     prefixes.forEach((system, counts) -> {
@@ -177,11 +187,23 @@ public final class MongoStudySource implements StudySource {
         "external_id"))) {
       final String field = e.getString("status");
       final boolean text = TEXT_FIELDS.contains(field);
+      final boolean link = LINKS.equals(field);
       events.add(new Corpus.Event(id(e.get("issue_id")), ms(e.getDate("created_at")), field,
           id(e.get("author_id")), text ? null : text(e.get("old_value")),
-          text ? null : text(e.get("new_value")), e.getString("external_id")));
+          text ? null : text(e.get("new_value")), e.getString("external_id"),
+          link ? link(e.get("old_value")) : null, link ? link(e.get("new_value")) : null));
     }
     progress.detail("%,d events", events.size());
+
+    // -- tags: name, own date and tagged commit, for the release dates -------------------------
+    progress.detail("reading %s", "tag");
+    final List<Corpus.Tag> tags = new ArrayList<>();
+    for (final Document t : source.getCollection("tag").find().projection(
+        Projections.include("vcs_system_id", "name", "date", "commit_id"))) {
+      tags.add(new Corpus.Tag(projectOfVcs.get(id(t.get("vcs_system_id"))), t.getString("name"),
+          ms(t.getDate("date")), id(t.get("commit_id"))));
+    }
+    progress.detail("%,d tags", tags.size());
 
     // -- comments: words and the keys they name --------------------------------------------------
     progress.detail("reading %s", "issue_comment");
@@ -286,7 +308,17 @@ public final class MongoStudySource implements StudySource {
           l.getString("split")));
     }
     return new Corpus(issues, events, comments, mentions, commits, homeKeys, prMerge, people,
-        contributions, complexity, labels, files);
+        contributions, complexity, labels, files, tags);
+  }
+
+  /**
+   * A link document ({@code issue_id}, {@code type}, {@code effect}) as a link with its type and
+   * the effect read from the side that stores it; null for anything else.
+   */
+  static Corpus.Link link(final Object value) {
+    return value instanceof Document d
+        ? new Corpus.Link(id(d.get("issue_id")), d.getString("type"), d.getString("effect"))
+        : null;
   }
 
   private static int number(final Object value) {
