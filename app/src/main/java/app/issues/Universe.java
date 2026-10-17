@@ -58,14 +58,17 @@ public final class Universe {
   /** The status that marks the declared start of the work in the secondary study. */
   public static final String IN_PROGRESS_STATUS = "In Progress";
 
-  /** Where one issue landed under one cut. */
+  /**
+   * Where one issue landed under one split; {@link #CROSSES} only under the main study's temporal
+   * cut, never in the in-progress study's random one ({@link ProjectSplit}).
+   */
   public enum Part { TRAIN, TEST, CROSSES }
 
   /**
    * One issue with its outcome, as every later stage sees it.
    *
-   * @param start where the duration starts and what the split cuts on: the creation in the main
-   *     study's populations, the first In Progress in {@link Population#IN_PROGRESS}
+   * @param start where the duration starts: the creation in the main study's populations, which
+   *     their split cuts on, the first In Progress in {@link Population#IN_PROGRESS}
    * @param startedBy the raw author of the change that started it, null when it is the creation
    */
   public record Unit(String id, String key, String project, String reporter, long created,
@@ -349,10 +352,12 @@ public final class Universe {
   public record Split(long cut, long innerCut, Map<String, Part> outer, Map<String, Part> inner) {}
 
   /**
-   * The rule of {@code app.labels.TemporalSplit} with no eligibility: the cut is the start at
-   * position int(0.70 (n − 1)); started before and resolved before is training; started before and
-   * resolved at or after crosses and is set aside; started at or after is test. The same rule again
-   * on the training side gives the inner split. The start is the creation in the main study.
+   * The main study's split: the rule of {@code app.labels.TemporalSplit} with no eligibility: the
+   * cut is the start at position int(0.70 (n − 1)); started before and resolved before is
+   * training; started before and resolved at or after crosses and is set aside; started at or
+   * after is test. The same rule again on the training side gives the inner split. The start is
+   * the creation. {@link Population#IN_PROGRESS} is drawn by {@link ProjectSplit} instead (ticket
+   * 21), and never holds {@link Part#CROSSES}.
    */
   public Split split(final Population population, final double share) {
     final List<Unit> rows = population(population);

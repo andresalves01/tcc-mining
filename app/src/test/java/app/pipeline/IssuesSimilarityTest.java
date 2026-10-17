@@ -2,6 +2,7 @@ package app.pipeline;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import app.issues.Augmentation;
@@ -13,8 +14,9 @@ import app.issues.Embedder;
 import app.issues.Initial;
 import app.issues.IssueUnit;
 import app.issues.Pressure;
-import app.issues.RegistrationInProgress;
+import app.issues.ProjectSplit;
 import app.issues.RowCache;
+import app.issues.Universe;
 import app.issues.Universe.Population;
 import app.issues.port.StudySource;
 import app.pipeline.clustering.SmileKMeans;
@@ -28,6 +30,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -46,6 +49,12 @@ class IssuesSimilarityTest {
   private int ext = 1;
 
   private static final SmileKMeans KMEANS = new SmileKMeans();
+
+  /**
+   * The hand-assigned split taken as it is: each test sets its rows' sides; the rule's check is
+   * {@link #refusesAnotherSplit}'s and {@code ProjectSplitTest}'s.
+   */
+  private static final Function<List<RowCache.Entry>, List<String>> HAND = e -> List.of();
 
   /** Every description at the same unit vector of two components. */
   private static final Embedder SAME = text -> new Embedder.Embedding(new float[] {1, 0}, 1);
@@ -120,15 +129,33 @@ class IssuesSimilarityTest {
   }
 
   @Test
-  @DisplayName("a split size other than the expected one refuses the run before the corpus is read")
-  void refusesOtherSizes() {
-    issue("a", T0 + D, T0 + 10 * D, "TRAIN", "TRAIN");
-    issue("v", T0 + 20 * D, T0 + 21 * D, "TRAIN", "TEST");
+  @DisplayName("a split other than its rule's refuses the run before the corpus is read; the "
+      + "rule's own passes")
+  void refusesAnotherSplit() {
+    for (int k = 0; k < 6; k++) {
+      issue("i" + k, T0 + D, T0 + 10 * D, "TRAIN", "TRAIN");
+    }
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(false),
-        Progress.silent(), new RegistrationInProgress.Sizes(2, 1, 1, 1), SAME, 2, KMEANS)
-        .run(entries);
-    assertEquals(List.of("outer test: 0 rows, expected 1"), r.refused());
+        Progress.silent(), ProjectSplit::differences, SAME, 2, KMEANS).run(entries);
+    assertEquals(1, r.refused().size());
+    assertTrue(r.refused().get(0).contains("not at the verdicts of the split's rule"),
+        r.refused().get(0));
     assertTrue(r.entries().isEmpty());
+
+    // the same issues at the rule's verdicts go on to the corpus
+    final ProjectSplit.Parts parts = ProjectSplit.draw(Map.of("i0", "p", "i1", "p", "i2", "p",
+        "i3", "p", "i4", "p", "i5", "p"));
+    entries.replaceAll(e -> {
+      final String id = e.unit().issueId();
+      final Universe.Part inner = parts.inner().get(id);
+      final Map<Population, String[]> drawn = new EnumMap<>(Population.class);
+      drawn.put(Population.IN_PROGRESS,
+          new String[] {parts.outer().get(id).name(), inner == null ? "" : inner.name()});
+      return new RowCache.Entry(e.unit(), e.row(), drawn);
+    });
+    assertThrows(AssertionError.class, () -> new IssuesSimilarityTask(source(false),
+        Progress.silent(), ProjectSplit::differences, SAME, 2, KMEANS).run(entries),
+        "the split passed, so the corpus was read");
   }
 
   @Test
@@ -142,13 +169,12 @@ class IssuesSimilarityTest {
     issue("v", T0 + 20 * D, T0 + 21 * D, "TRAIN", "TEST");
     edited("v", "alpha", "gamma", T0 + 25 * D);
     issue("t", T0 + 30 * D, T0 + 31 * D, "TEST", "");
-    issue("x", T0 + 3 * D, T0 + 40 * D, "CROSSES", "");
 
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), new RegistrationInProgress.Sizes(3, 1, 2, 1), SAME, 2, KMEANS)
+        Progress.silent(), HAND, SAME, 2, KMEANS)
         .run(entries);
     assertEquals(List.of(), r.refused());
-    assertEquals(5, r.entries().size());
+    assertEquals(4, r.entries().size());
     final Map<String, Row> rows = new HashMap<>();
     r.entries().forEach(e -> rows.put(e.unit().issueId(), e.row()));
     assertEquals(7.0, rows.get("v").values().get(Augmentation.jaccard(5, Variant.INNER)),
@@ -177,7 +203,7 @@ class IssuesSimilarityTest {
     tags.add(new Corpus.Tag("p", "release-1.2", T0 + 50 * D, null));
 
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), new RegistrationInProgress.Sizes(3, 1, 2, 1), SAME, 2, KMEANS)
+        Progress.silent(), HAND, SAME, 2, KMEANS)
         .run(entries);
     assertEquals(List.of(), r.refused());
     final Map<String, Row> rows = new HashMap<>();
@@ -189,7 +215,10 @@ class IssuesSimilarityTest {
     assertFalse(rows.get("a").values().containsKey(Pressure.RELEASE_CYCLE));
     assertEquals(10.0, rows.get("v").values().get(Pressure.RELEASE_CYCLE), 1e-9);
     for (final Row row : rows.values()) {
-      assertTrue(row.absent().contains(Pressure.BLOCKER_PACE), "no Blocker issue in the corpus");
+      for (final Variant variant : Variant.values()) {
+        assertTrue(row.absent().contains(Pressure.blockerPace(variant)),
+            "no Blocker issue in the corpus");
+      }
     }
     // the fix versions' fidelity, on the outer training rows a, b and v only: the record lacks
     // the version a and b got, so neither chain is explained, and t is not counted
@@ -215,7 +244,7 @@ class IssuesSimilarityTest {
       return new Embedder.Embedding(hand.get(text), text.length());
     };
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), new RegistrationInProgress.Sizes(3, 1, 2, 1), embedder, 2, KMEANS)
+        Progress.silent(), HAND, embedder, 2, KMEANS)
         .run(entries);
     final Map<String, Row> rows = new HashMap<>();
     r.entries().forEach(e -> rows.put(e.unit().issueId(), e.row()));
@@ -238,7 +267,7 @@ class IssuesSimilarityTest {
     issue("v", "s", T0 + 20 * D, T0 + 21 * D, "TRAIN", "TEST");
     issue("t", "z", T0 + 30 * D, T0 + 31 * D, "TEST", "");
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), new RegistrationInProgress.Sizes(3, 1, 2, 1), SAME, 2, KMEANS)
+        Progress.silent(), HAND, SAME, 2, KMEANS)
         .run(entries);
     final Map<String, Row> rows = new HashMap<>();
     r.entries().forEach(e -> rows.put(e.unit().issueId(), e.row()));
@@ -276,7 +305,7 @@ class IssuesSimilarityTest {
     issue("t", "r", "d", T0 + 30 * D, T0 + 31 * D, "TEST", "");
 
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), new RegistrationInProgress.Sizes(4, 1, 3, 1), SAME, 2, KMEANS)
+        Progress.silent(), HAND, SAME, 2, KMEANS)
         .run(entries);
     assertEquals(List.of(), r.refused());
     final Map<String, Row> rows = new HashMap<>();
@@ -324,7 +353,7 @@ class IssuesSimilarityTest {
     issue("t", T0 + 30 * D, T0 + 31 * D, "TEST", "");
 
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), new RegistrationInProgress.Sizes(4, 1, 3, 1), SAME, 2, KMEANS)
+        Progress.silent(), HAND, SAME, 2, KMEANS)
         .run(entries);
     assertEquals(List.of(), r.refused());
     final Map<String, Row> rows = new HashMap<>();
@@ -351,7 +380,7 @@ class IssuesSimilarityTest {
     issue("t", T0 + 30 * D, T0 + 31 * D, "TEST", "");
     issues.remove(1);
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), new RegistrationInProgress.Sizes(2, 1, 1, 1), SAME, 2, KMEANS)
+        Progress.silent(), HAND, SAME, 2, KMEANS)
         .run(entries);
     assertEquals(List.of("1 issues of the matrix are not in the corpus, the first v"),
         r.refused());
@@ -395,7 +424,7 @@ class IssuesSimilarityTest {
 
   private void assertRefusedOn(final String id) {
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), new RegistrationInProgress.Sizes(2, 1, 1, 1), SAME, 2, KMEANS)
+        Progress.silent(), HAND, SAME, 2, KMEANS)
         .run(entries);
     assertEquals(List.of("1 issues of the matrix are not In-Progress issues of the corpus with "
         + "the same first In Progress and first resolution, the first " + id), r.refused());

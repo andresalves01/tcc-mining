@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -30,15 +31,32 @@ class PressureTest {
     final List<Corpus.Issue> issues = new ArrayList<>();
     final List<Corpus.Event> events = new ArrayList<>();
     final List<Corpus.Tag> tags = new ArrayList<>();
+    /** Per issue of the matrix, its outer and inner verdicts. */
+    final Map<String, String[]> parts = new HashMap<>();
     int ext = 1;
 
-    /** An issue created at CREATED, In Progress at T0, resolved Fixed at T1. */
+    /** An issue created at CREATED, In Progress at T0, resolved Fixed at T1, inner fitting. */
     void started(final String id, final String key, final List<String> fixVersions) {
       issues.add(new Corpus.Issue(id, key, "p", CREATED, "r", "r", null, "Bug", "Major", null,
           List.of(), List.of(), List.of(), fixVersions));
       event(id, T0, "status", "Open", "In Progress");
       event(id, T1, "status", "In Progress", "Resolved");
       event(id, T1, "resolution", null, "Fixed");
+      parts.put(id, new String[] {"TRAIN", "TRAIN"});
+    }
+
+    /**
+     * An issue of the matrix created at {@code created} with {@code priority}, In Progress a day
+     * later, resolved Fixed at {@code res}, in the given split.
+     */
+    void drawn(final String id, final String key, final long created, final long res,
+        final String priority, final String outer, final String inner) {
+      issues.add(new Corpus.Issue(id, key, "p", created, "r", "r", null, "Bug", priority, null,
+          List.of(), List.of()));
+      event(id, created + D, "status", "Open", "In Progress");
+      event(id, res, "status", "In Progress", "Resolved");
+      event(id, res, "resolution", null, "Fixed");
+      parts.put(id, new String[] {outer, inner});
     }
 
     /** An issue created at {@code created} with {@code priority}, resolved at {@code res}. */
@@ -72,7 +90,7 @@ class PressureTest {
       final Universe universe = Universe.of(corpus);
       final Universe.Unit u = universe.unit(Universe.Population.IN_PROGRESS, id);
       assertNotNull(u, id + " is in the In-Progress population");
-      return Pressure.of(universe, Releases.of(corpus)).row(u);
+      return Pressure.of(universe, Releases.of(corpus), parts).row(u);
     }
   }
 
@@ -167,38 +185,51 @@ class PressureTest {
     assertNull(v.get(Pressure.RELEASE_CYCLE));
   }
 
+  private static final String INNER = Pressure.blockerPace(Augmentation.Variant.INNER);
+  private static final String OUTER = Pressure.blockerPace(Augmentation.Variant.OUTER);
+
   @Test
-  @DisplayName("Blocker pace: the median creation-to-resolution days of the project's other issues "
-      + "Blocker at their first resolution, of any reason, resolved strictly before the start; "
-      + "missing with fewer than three")
+  @DisplayName("Blocker pace (ticket 21): the median creation-to-resolution days of the project's "
+      + "issues of the training side Blocker at their first resolution, whatever their dates, the "
+      + "issue itself left out; missing with fewer than three")
   void blockerPace() {
     final Fixture f = new Fixture();
-    f.started("a", "P-1", List.of());
-    // the issue itself is a Blocker, but resolved after its own start: it can never be among the
-    // references, so this does not test the exclusion by id, which is there only as a guard
-    f.issues.set(0, new Corpus.Issue("a", "P-1", "p", CREATED, "r", "r", null, "Bug", "Blocker",
-        null, List.of(), List.of()));
-    f.other("b1", "P-10", 0, 2 * D, "Blocker");
-    f.other("b2", "P-11", 0, 4 * D, "Blocker");
-    assertNull(f.row("a").get(Pressure.BLOCKER_PACE));
-    // Blocker only after its resolution: not a Blocker at it
-    f.other("late", "P-12", 0, 100 * D, "Blocker");
-    f.event("late", 200 * D, "priority", "Major", "Blocker");
+    // the issue itself, inner fitting and a Blocker of 30 days: never its own reference
+    f.drawn("a", "P-1", CREATED, T1, "Blocker", "TRAIN", "TRAIN");
+    f.drawn("f1", "P-10", 0, 2 * D, "Blocker", "TRAIN", "TRAIN");
+    // resolved long after a's start: the history is the whole training side, whatever the dates
+    f.drawn("f2", "P-11", 0, T0 + 100 * D, "Blocker", "TRAIN", "TRAIN");
+    assertNull(f.row("a").get(INNER), "two references, a itself left out");
     // Blocker at its resolution, Major now
-    f.other("was", "P-13", 0, 9 * D, "Major");
-    f.event("was", 1 * D, "priority", "Major", "Blocker");
+    f.drawn("was", "P-13", 0, 4 * D, "Major", "TRAIN", "TRAIN");
+    f.event("was", 2 * D, "priority", "Major", "Blocker");
     f.event("was", 50 * D, "priority", "Blocker", "Major");
-    // resolved at the start, after it, never, and a Critical one: not counted
-    f.other("at", "P-14", 0, T0, "Blocker");
-    f.other("after", "P-15", 0, T0 + D, "Blocker");
-    f.other("never", "P-16", 0, null, "Blocker");
-    f.other("crit", "P-17", 0, 3 * D, "Critical");
-    // b1 2, b2 4, was 9 -> median 4
-    assertEquals(4.0, f.row("a").get(Pressure.BLOCKER_PACE), 1e-9);
+    // Blocker only after its resolution, a Critical one, and a Blocker outside the matrix
+    f.drawn("late", "P-12", 0, 6 * D, "Major", "TRAIN", "TRAIN");
+    f.event("late", 200 * D, "priority", "Major", "Blocker");
+    f.drawn("crit", "P-17", 0, 3 * D, "Critical", "TRAIN", "TRAIN");
+    f.other("outside", "P-18", 0, 5 * D, "Blocker");
+    // the other sides' labels
+    f.drawn("v", "P-20", 0, 1_000 * D, "Blocker", "TRAIN", "TEST");
+    f.drawn("t", "P-21", 0, 2_000 * D, "Blocker", "TEST", "");
+
+    // inner: f1 2, was 4, f2 1,120 -> 4; never v, the validation, nor t, the test
+    assertEquals(4.0, f.row("a").get(INNER), 1e-9);
+    // outer: f1 2, was 4, v 1,000, f2 1,120 -> 502; never t
+    assertEquals(502.0, f.row("a").get(OUTER), 1e-9);
+    // the inner validation reads the inner fitting side, a among it: 2, 4, 30, 1,120 -> 17
+    assertEquals(17.0, f.row("v").get(INNER), 1e-9);
+    assertEquals(17.0, f.row("v").get(OUTER), 1e-9, "itself left out of the outer training");
+    // the outer test reads the whole outer training: 2, 4, 30, 1,000, 1,120 -> 30; it is no row
+    // of the inner variant
+    assertEquals(30.0, f.row("t").get(OUTER), 1e-9);
+    assertTrue(f.row("t").containsKey(INNER));
+    assertNull(f.row("t").get(INNER));
   }
 
   @Test
-  @DisplayName("the three columns, every one keyed; missing ones as null")
+  @DisplayName("the columns, the Blocker pace once per variant, every one keyed; missing ones as "
+      + "null")
   void columns() {
     final Fixture f = new Fixture();
     f.started("a", "P-1", List.of());

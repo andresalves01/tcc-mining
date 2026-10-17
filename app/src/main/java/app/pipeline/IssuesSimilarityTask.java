@@ -11,12 +11,12 @@ import app.issues.FixVersions;
 import app.issues.Embedder;
 import app.issues.Initial;
 import app.issues.Pressure;
+import app.issues.ProjectSplit;
 import app.issues.RegistrationInProgress;
 import app.issues.Releases;
 import app.issues.RowCache;
 import app.issues.Universe;
 import app.issues.Universe.Population;
-import app.issues.World;
 import app.issues.port.StudySource;
 import app.pipeline.embedding.EmbeddingModel;
 import app.pipeline.port.Progress;
@@ -28,13 +28,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Function;
 
 /**
  * The similarity stage after the in-progress extraction: the extracted matrix in, the same matrix
  * with the {@link Augmentation} columns added out.
  *
- * <p>The four split sizes are checked first, against the registered study's, and a difference
- * refuses the run before the corpus is read; so does a corpus missing any issue of the matrix,
+ * <p>The split is checked first: every row's verdicts must be those its rule draws over the
+ * matrix's issues ({@link ProjectSplit}), and a difference refuses the run before the corpus is
+ * read, as a matrix of the temporal cut does; so does a corpus missing any issue of the matrix,
  * since its description could not be read. Each description is the one {@link Initial#at}
  * recovers at the issue's first In Progress, as the language report reads it, cleaned by
  * {@link DescriptionCleaner}. Every row of the matrix stays, a missing value missing.
@@ -44,17 +46,21 @@ import java.util.TreeSet;
  * {@link BusinessDays#BOUNDARY}. The issue's active business days at it, without the time its
  * changelog shows it back in Open or Reopened ({@link BusinessDays#active}), are written as {@link
  * BusinessDays#ACTIVE}: they are what the medians of the {@link Augmentation} read, and what the
- * later steps take as the target.
+ * later steps take as the target. Both are counted as the extraction counted them to draw the
+ * split ({@link BusinessDays#of}).
  *
  * <p>The own start model's three attributes of ticket 19 ({@link Pressure}: a fix version set
  * before the start, the days left in the project's release cycle, the pace of its other Blocker
- * issues) are read from the corpus at each issue's first In Progress and written beside them.
+ * issues) are written beside them: the first two read from the corpus at each issue's first In
+ * Progress, the Blocker pace from the training side of each variant of the split, as the
+ * similarity medians are (ticket 21).
  */
 public final class IssuesSimilarityTask {
 
   /**
-   * @param refused every split size that differs from the expected, or the matrix's issues the
-   *     corpus does not hold; when not empty nothing else was done and the other fields are empty
+   * @param refused why the matrix's split is not its rule's, or the matrix's issues the corpus
+   *     does not hold; when not empty nothing else was done and the other fields are empty
+   * @param sizes the four sides' rows, as the matrix's verdicts count them
    * @param entries the matrix's rows with the new columns, in its order
    * @param described rows with a description at their first In Progress
    * @param boundaries per issue id, its day boundary
@@ -79,28 +85,32 @@ public final class IssuesSimilarityTask {
 
   private final StudySource source;
   private final Progress progress;
-  private final RegistrationInProgress.Sizes expected;
+  private final Function<List<RowCache.Entry>, List<String>> split;
   private final Embedder embedder;
   private final int dimension;
   private final Clusterer clusterer;
 
   /**
-   * The registered sizes, the descriptions embedded by {@code embedder} into the model's size,
-   * the clusters fitted by {@code clusterer}.
+   * The split checked against its rule ({@link ProjectSplit#differences}), the descriptions
+   * embedded by {@code embedder} into the model's size, the clusters fitted by {@code clusterer}.
    */
   public IssuesSimilarityTask(final StudySource source, final Progress progress,
       final Embedder embedder, final Clusterer clusterer) {
-    this(source, progress, RegistrationInProgress.SIZES, embedder, EmbeddingModel.DIMENSION,
+    this(source, progress, ProjectSplit::differences, embedder, EmbeddingModel.DIMENSION,
         clusterer);
   }
 
-  /** Against other sizes and vectors, for a matrix built in memory. */
+  /**
+   * Against another check of the split and other vectors, for a matrix built in memory.
+   *
+   * @param split why the matrix's verdicts are not the split's, empty when they are
+   */
   IssuesSimilarityTask(final StudySource source, final Progress progress,
-      final RegistrationInProgress.Sizes expected, final Embedder embedder,
+      final Function<List<RowCache.Entry>, List<String>> split, final Embedder embedder,
       final int dimension, final Clusterer clusterer) {
     this.source = source;
     this.progress = progress;
-    this.expected = expected;
+    this.split = split;
     this.embedder = embedder;
     this.dimension = dimension;
     this.clusterer = clusterer;
@@ -108,7 +118,7 @@ public final class IssuesSimilarityTask {
 
   public Report run(final List<RowCache.Entry> entries) {
     final RegistrationInProgress.Sizes found = ElasticNetSelection.sizes(entries);
-    final List<String> refused = differences(found, expected);
+    final List<String> refused = split.apply(entries);
     if (!refused.isEmpty()) {
       return new Report(refused, found, List.of(), null, 0, Map.of(), Set.of());
     }
@@ -143,20 +153,11 @@ public final class IssuesSimilarityTask {
 
     progress.phase(2, 4, "day boundaries from the tracker activity before each first In "
         + "Progress");
-    final DayBoundaries days = DayBoundaries.of(corpus, universe);
-    final Map<String, DayBoundaries.Boundary> boundaries = new HashMap<>(entries.size() * 2);
-    final Map<String, Integer> active = new HashMap<>(entries.size() * 2);
-    for (final RowCache.Entry e : entries) {
-      final String id = e.unit().issueId();
-      final Universe.Unit started = universe.unit(P, id);
-      // every row is an In-Progress issue of the corpus: the refusal above saw to it
-      final String clicker = World.person(started.startedBy(), corpus.people());
-      final DayBoundaries.Boundary boundary = days.at(clicker, e.unit().project(),
-          e.unit().startedAt().toEpochMilli());
-      boundaries.put(id, boundary);
-      active.put(id, BusinessDays.active(universe.events(id), e.unit().startedAt().toEpochMilli(),
-          e.unit().resolvedAt().toEpochMilli(), boundary.hour()));
-    }
+    // every row is an In-Progress issue of the corpus: the refusal above saw to it
+    final List<String> ids = entries.stream().map(e -> e.unit().issueId()).toList();
+    final BusinessDays.Counted counted = BusinessDays.of(corpus, universe, ids);
+    final Map<String, DayBoundaries.Boundary> boundaries = counted.boundaries();
+    final Map<String, Integer> active = counted.active();
 
     progress.phase(3, 4, "Jaccard and embedding neighbours, K-means clusters and reporter medians "
         + "of %,d issues, %,d with a description", entries.size(), descriptions.size());
@@ -165,7 +166,9 @@ public final class IssuesSimilarityTask {
 
     progress.phase(4, 4, "adding %d columns", Augmentation.columns().size()
         + BusinessDays.COLUMNS.size() + Pressure.COLUMNS.size());
-    final Pressure pressure = Pressure.of(universe, Releases.of(corpus));
+    final Map<String, String[]> parts = new HashMap<>(entries.size() * 2);
+    entries.forEach(e -> parts.put(e.unit().issueId(), new String[] {e.outer(P), e.inner(P)}));
+    final Pressure pressure = Pressure.of(universe, Releases.of(corpus), parts);
     final List<RowCache.Entry> out = new ArrayList<>(entries.size());
     for (final RowCache.Entry e : entries) {
       final Map<String, Double> values = new HashMap<>(e.row().values());
@@ -188,7 +191,7 @@ public final class IssuesSimilarityTask {
     final List<String> training = entries.stream().filter(e -> "TRAIN".equals(e.outer(P)))
         .map(e -> e.unit().issueId()).toList();
     return new Report(refused, found, out, result, descriptions.size(), boundaries,
-        days.bots(), FixVersions.fidelity(universe, training));
+        counted.bots(), FixVersions.fidelity(universe, training));
   }
 
   /**
@@ -199,23 +202,6 @@ public final class IssuesSimilarityTask {
     final List<String> out = new ArrayList<>(Augmentation.columns());
     out.addAll(Pressure.COLUMNS);
     return List.copyOf(out);
-  }
-
-  static List<String> differences(final RegistrationInProgress.Sizes found,
-      final RegistrationInProgress.Sizes expected) {
-    final List<String> out = new ArrayList<>();
-    check(out, "outer training", found.train(), expected.train());
-    check(out, "outer test", found.test(), expected.test());
-    check(out, "inner fitting", found.innerFit(), expected.innerFit());
-    check(out, "inner validation", found.innerSelection(), expected.innerSelection());
-    return out;
-  }
-
-  private static void check(final List<String> out, final String side, final int found,
-      final int expected) {
-    if (found != expected) {
-      out.add(String.format("%s: %d rows, expected %d", side, found, expected));
-    }
   }
 
   /** The rows as the augmentation reads them, each with its active business days. */

@@ -108,7 +108,7 @@ class IssuesSimilarityCommandTest {
 
     final Map<String, List<String>> files = IssuesSimilarityCommand.diagnostics(r);
     assertEquals(Set.of("jaccard-queries.tsv", "jaccard-neighbours.tsv", "coverage.tsv",
-        "blocks.tsv", "embedding-queries.tsv", "embedding-neighbours.tsv",
+        "histories.tsv", "embedding-queries.tsv", "embedding-neighbours.tsv",
         "embedding-chunks.tsv", "cluster-fits.tsv", "cluster-sizes.tsv", "cluster-projects.tsv",
         "cluster-queries.tsv", "day-boundaries.tsv"), files.keySet());
     assertEquals(List.of("id\touter\tinner\tsource\tperson_hours\tproject_hours"
@@ -122,8 +122,8 @@ class IssuesSimilarityCommandTest {
         IssuesSimilarityCommand.sources(r).get("inner_fitting"));
     assertEquals(Map.of("person", 0, "project", 0, "fallback", 1),
         IssuesSimilarityCommand.sources(r).get("outer_test"));
-    assertEquals(Map.of("inner_fitting", 1, "inner_validation", 0,
-        "outer_training_crossing_inner", 0), IssuesSimilarityCommand.changedByActiveTime(r),
+    assertEquals(Map.of("inner_fitting", 1, "inner_validation", 0),
+        IssuesSimilarityCommand.changedByActiveTime(r),
         "b's count changed, no other; the outer test not summarised");
     assertTrue(files.get("jaccard-neighbours.tsv").contains("v\tinner\t1\ta\tp\t0.0"),
         files.get("jaccard-neighbours.tsv").toString());
@@ -131,10 +131,10 @@ class IssuesSimilarityCommandTest {
         files.get("embedding-neighbours.tsv").toString());
     assertTrue(files.get("embedding-neighbours.tsv").contains("v\tinner\t2\tb\tp\t0.0"),
         "a tie, by id");
-    assertEquals("id\tvariant\tsplit\tblock\treference\tcandidates\tused_5\tused_10\tused_20",
+    assertEquals("id\tvariant\tsplit\tcandidates\tused_5\tused_10\tused_20",
         files.get("embedding-queries.tsv").get(0));
     assertTrue(files.get("embedding-queries.tsv").contains(
-        "v\tinner\tinner_validation\twhole\t2016-01-05T04:00:00Z\t2\t2\t2\t2"),
+        "v\tinner\tinner_validation\t2\t2\t2\t2"),
         files.get("embedding-queries.tsv").toString());
     assertEquals(List.of("id\tproject\tchunks\tvalid\tproblem", "a\tp\t3\ttrue\t",
         "b\tp\t3\ttrue\t", "v\tp\t3\ttrue\t"), files.get("embedding-chunks.tsv"));
@@ -204,26 +204,26 @@ class IssuesSimilarityCommandTest {
         new RegistrationInProgress.Sizes(9, 0, 8, 1), entries, result, 9, boundaries, Set.of());
     final Map<String, List<String>> files = IssuesSimilarityCommand.diagnostics(r);
 
-    assertEquals("variant\tblock\tk\tvectors\tdistinct\tfitted\tdistortion",
+    assertEquals("variant\tk\tvectors\tdistinct\tfitted\tdistortion",
         files.get("cluster-fits.tsv").get(0));
-    assertTrue(files.get("cluster-fits.tsv").contains("inner\twhole\t16\t8\t8\tfalse\t"),
+    assertTrue(files.get("cluster-fits.tsv").contains("inner\t16\t8\t8\tfalse\t"),
         files.get("cluster-fits.tsv").toString());
     assertTrue(files.get("cluster-fits.tsv").stream()
-        .anyMatch(l -> l.startsWith("inner\twhole\t8\t8\t8\ttrue\t")));
+        .anyMatch(l -> l.startsWith("inner\t8\t8\t8\ttrue\t")));
     final List<String> sizes = files.get("cluster-sizes.tsv");
-    assertEquals(9, sizes.stream().filter(l -> l.startsWith("inner\twhole\t8\t")).count() + 1,
-        "a header and eight clusters of the whole inner fitting set");
-    assertTrue(sizes.stream().filter(l -> l.startsWith("inner\twhole\t8\t"))
+    assertEquals(9, sizes.stream().filter(l -> l.startsWith("inner\t8\t")).count() + 1,
+        "a header and eight clusters of the inner fitting set");
+    assertTrue(sizes.stream().filter(l -> l.startsWith("inner\t8\t"))
         .allMatch(l -> l.endsWith("\t1")), sizes.toString());
     final List<String> projects = files.get("cluster-projects.tsv");
-    assertEquals(2, projects.stream().filter(l -> l.startsWith("inner\twhole\t8\t")
+    assertEquals(2, projects.stream().filter(l -> l.startsWith("inner\t8\t")
         && l.endsWith("\tq\t1")).count(), projects.toString());
     final String v = files.get("cluster-queries.tsv").stream()
-        .filter(l -> l.startsWith("v\tinner\tinner_validation\twhole\t")
-            && l.contains("Z\t8\t")).findFirst().orElseThrow();
+        .filter(l -> l.startsWith("v\tinner\tinner_validation\t8\t")).findFirst()
+        .orElseThrow();
     assertTrue(v.endsWith("\t0.0\t1"), "on f0's vector, its only member: " + v);
     assertTrue(files.get("cluster-queries.tsv").contains(
-        "v\tinner\tinner_validation\twhole\t1970-01-05T04:00:00Z\t16\t\t\t0"),
+        "v\tinner\tinner_validation\t16\t\t\t0"),
         "not fitted: no cluster, no distance");
     assertEquals(10.0, result.columns().get("v").get(Augmentation.cluster(8, Variant.INNER)));
     assertTrue(Augmentation.columns().stream().filter(c -> c.startsWith("cluster"))
@@ -233,7 +233,7 @@ class IssuesSimilarityCommandTest {
     final List<Map<String, Object>> record = IssuesSimilarityCommand.fits(result.clusterFits());
     assertEquals(result.clusterFits().size(), record.size());
     final Map<String, Object> eight = record.stream().filter(m -> m.get("variant").equals("inner")
-        && m.get("block").equals("whole") && m.get("k").equals(8)).findFirst().orElseThrow();
+        && m.get("k").equals(8)).findFirst().orElseThrow();
     assertEquals(true, eight.get("fitted"));
     assertTrue((Double) eight.get("distortion") >= 0);
     assertNull(record.stream().filter(m -> m.get("k").equals(16)).findFirst().orElseThrow()

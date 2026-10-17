@@ -140,9 +140,15 @@ public enum Command {
 
   ISSUES_IN_PROGRESS_EXTRACT("issues-in-progress-extract", new IssuesInProgressExtractCommand(), """
       Issue duration from the first In Progress: the FIXED issues read at
-      that instant, the split on it and time travel. Writes the cache to
-      CACHE only if the gate passed; records a summary in ISSUES_DB;
-      reads everything else."""),
+      that instant, those of at least one active business day kept (the
+      target's own count), the split drawn over them at random and
+      stratified by project (per project in order of name, its issues by
+      id shuffled with one java.util.Random(1738) shared across projects,
+      the first round(0.7 n) training and the rest test; the same rule on
+      the training side, the same Random continuing, for the inner fitting
+      and validation; nothing set aside), and time travel. Writes the cache
+      to CACHE only if the gate passed; records a summary, with the split's
+      rule and seed, in ISSUES_DB; reads everything else."""),
 
   ISSUES_IN_PROGRESS_GRID("issues-in-progress-grid", new IssuesInProgressGridCommand(), """
       Issue duration from the first In Progress: sweep the six cells on the
@@ -221,25 +227,29 @@ public enum Command {
       median business days of the 5, 10 and 20 issues whose descriptions
       at their first In Progress share the most words (Jaccard), of the 5,
       10 and 20 closest by sentence embedding, of the K-means cluster and
-      of the reporter's earlier issues, once against the inner split and
-      once against the outer, history built in five time blocks per
-      fitting set. A business day is a Monday-to-Friday date reached after
+      of the reporter's other issues, once against the inner split and
+      once against the outer, each history the whole training side of its
+      split whatever the dates (the inner fitting set; the outer
+      training), one index and one cluster fit per k read by training and
+      scored rows alike, no label of the other side and never the row's
+      own. A business day is a Monday-to-Friday date reached after
       the start's date, holidays ignored. An issue's business days leave
       out the time it was back in Open or Reopened between its first In
       Progress and its first resolution (from a status change to either
       until the next status change; Patch Available kept): time nobody was
       working on it is not counted. They go to the matrix beside the day
       boundary as the target the later steps read; a past issue of 0
-      enters no history. At each first In Progress it also writes three
-      start attributes: whether a fix version was set before it, the
-      calendar days left in the project's release cycle (the median gap
-      between its release tags dated before the start minus the days
-      since the last one, negative when overdue, missing with fewer than
-      three) and the median calendar days from creation to first
-      resolution of the project's other Blocker-priority issues resolved
-      before the start (missing with fewer than three). Refuses unless the four
-      split sizes are the registered study's and TEAM_COLUMNS holds
-      exactly the matrix's issues, and unless the model in MODEL_DIR
+      enters no history. It also writes three start attributes: whether a
+      fix version was set before the first In Progress, the calendar days
+      left there in the project's release cycle (the median gap between
+      its release tags dated before the start minus the days since the
+      last one, negative when overdue, missing with fewer than three) and,
+      once per split like the medians, the median calendar days from
+      creation to first resolution of the project's other Blocker-priority
+      issues of the training side, whatever the dates (missing with fewer
+      than three). Refuses unless every row's split is the one its rule
+      draws and TEAM_COLUMNS holds exactly the matrix's issues, and unless
+      the model in MODEL_DIR
       reproduces the sentence-transformers reference on six sentences.
       Reads CACHE, TEAM_COLUMNS, the model and the corpus; keeps the
       embeddings in EMBEDDING_CACHE;
@@ -274,8 +284,8 @@ public enum Command {
       matched to the version's name, measured after the fact -- both
       missing without their source. Refuses unless MATRIX is the similarity stage's,
       with its day boundary and active business days and without these
-      columns, the four split sizes are the registered
-      study's and the corpus holds every issue of the matrix as it is.
+      columns, every row's split is the one its rule draws and the
+      corpus holds every issue of the matrix as it is.
       Reads MATRIX, the corpus and the changed methods of the implementation
       commits (the expensive part); writes RETROSPECTIVE_MATRIX, never over
       MATRIX or a file that is not a retrospective matrix; records the run,
@@ -318,8 +328,8 @@ public enum Command {
       model's choice and, for those four, the best error of every
       combination, and each forest's grid. The split-dependent columns are
       read in their inner variant; a column missing on every inner fitting row is
-      removed from its models and reported. Refuses unless the four split
-      sizes are the registered study's and the matrix has every declared
+      removed from its models and reported. Refuses unless every row's
+      split is the one its rule draws and the matrix has every declared
       column, the day boundary and the active business days. Reads
       MATRIX; writes ELASTIC_NET_PARAMETERS, the forests' column share and leaf among them,
       never over a file holding more than its own choices, one naming other
@@ -357,8 +367,8 @@ public enum Command {
       retrospective comparisons again on the issues with an implementation
       commit only. Refuses unless the parameters file
       exists and is for these models with a forest for each, its choices
-      were made on that matrix, the four split sizes are the registered
-      study's and every column is present. Writes the per-issue
+      were made on that matrix, every row's split is the one its rule
+      draws and every column is present. Writes the per-issue
       predictions, the diagnostics and each forest's permutation
       importance to REPORT_DIR; records the run in ISSUES_DB. States that
       the earlier study already examined this test. Ordering intervals, a
@@ -394,8 +404,8 @@ public enum Command {
       implementation commit; the ordering intervals; the Elastic Nets'
       coefficients and the forests' permutation importance. Refuses unless
       the parameters file is the selection step's own for these models,
-      its choices were made on that matrix, the outer training and inner
-      sizes are the registered study's and every column is present.
+      its choices were made on that matrix, every outer training row is
+      inner fitting or inner validation and every column is present.
       Writes nothing to the database and records no run."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """

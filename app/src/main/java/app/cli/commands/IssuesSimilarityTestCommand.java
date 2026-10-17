@@ -7,6 +7,7 @@ import app.issues.Augmentation;
 import app.issues.BusinessDays;
 import app.issues.DescriptionCleaner;
 import app.issues.ElasticNetSelection;
+import app.issues.ProjectSplit;
 import app.issues.RegistrationInProgress;
 import app.issues.Retrospective;
 import app.issues.RowCache;
@@ -37,16 +38,18 @@ import java.util.function.Function;
  * robustness check, the random forest beside each -- refitted on the outer training set with the
  * parameters the selection step wrote, the outer test scored once, every agreed comparison, and
  * the side reading of the retrospective comparison on the issues with an implementation commit. The target is whole business days, on the issues of at least one
- * ({@link BusinessDays}): every row is read with its day boundary from the matrix and those of 0
- * business days are dropped from the outer training and the outer test before anything is fitted;
+ * ({@link BusinessDays}): every row is read with its day boundary from the matrix and any of 0
+ * business days is dropped from the outer training and the outer test before anything is fitted
+ * (none since ticket 21, the split being drawn over the issues of at least one);
  * every error, band and comparison is in business days.
  *
  * <p>Reads MATRIX and ELASTIC_NET_PARAMETERS, which gives per model its alpha and lambda, for
  * the five with the similarity medians the Jaccard n, embedding n and cluster k they read, and
  * its forest's column share and leaf; it chooses nothing. A parameters file without a forest for
  * every model is refused. Refuses, scoring, writing and recording nothing, unless the parameters file
- * exists and is the step's own, its choices were made on this very matrix (by SHA-256), the four
- * split sizes are the registered study's, and the matrix has every column the models read.
+ * exists and is the step's own, its choices were made on this very matrix (by SHA-256), every
+ * row's split is the one its rule draws ({@link ProjectSplit}), and the matrix has every column
+ * the models read.
  * Beside the error comparisons, the ordering intervals, a declared measure stated before the
  * outer test was opened ({@link #ORDERING}, {@link ProjectBootstrap#ordering}), printed and
  * recorded. Writes the per-issue predictions, the models' diagnostics and the forests' permutation
@@ -168,9 +171,9 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final RegistrationInProgress.Sizes s = ElasticNetSelection.sizes(entries);
     System.out.printf("  outer training %,d  outer test %,d  inner fitting %,d  inner validation "
         + "%,d%n", s.train(), s.test(), s.innerFit(), s.innerSelection());
-    if (!RegistrationInProgress.SIZES.equals(s)) {
-      throw refused("the split sizes are not the registered study's, "
-          + RegistrationInProgress.SIZES);
+    final List<String> split = ProjectSplit.differences(entries);
+    if (!split.isEmpty()) {
+      throw refused(split.get(0));
     }
     final List<String> missing;
     try {

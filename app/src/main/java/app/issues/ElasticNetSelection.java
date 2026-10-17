@@ -66,8 +66,9 @@ import java.util.concurrent.Callable;
  * the smaller k. No tolerance: the sweep has none. The three models without the medians are swept
  * once.
  *
- * <p><b>Columns.</b> The reporter median and the three similarity medians depend on the split;
- * each model reads them in the variant of its mode, {@code _inner} here. The three similarity
+ * <p><b>Columns.</b> The reporter median, the Blocker pace and the three similarity medians depend
+ * on the split, each reading the durations of its training side only (ticket 21); each model
+ * reads them in the variant of its mode, {@code _inner} here. The three similarity
  * medians enter as {@code log1p} before standardisation, as the spec says; the reporter median and
  * the four team columns take the transform of the registered columns they revise ({@code D05};
  * {@code A04} to {@code A07}), which is also {@code log1p}. Every new column carries a missing
@@ -644,7 +645,7 @@ public final class ElasticNetSelection {
     // the own specification with similarity as before ticket 19: the ten, then the three medians
     final List<Attribute> beforePressure = new ArrayList<>(without);
     beforePressure.addAll(similarity);
-    without.addAll(pressure());
+    without.addAll(pressure(variant));
     final List<Attribute> with = new ArrayList<>(without);
     with.addAll(similarity);
 
@@ -696,15 +697,17 @@ public final class ElasticNetSelection {
   /**
    * The start model's three attributes of ticket 19 ({@link Pressure}), in its order: the fix
    * version flag a binary never missing; the release cycle raw, being signed, and the Blocker pace
-   * {@code log1p}, each with a missing indicator. Known at the start: no block. Split-independent.
+   * {@code log1p}, each with a missing indicator. No block. The flag and the cycle are known at the
+   * start and split-independent; the Blocker pace reads the training side's durations (ticket 21),
+   * so it is read in the given variant, as the similarity medians are.
    */
-  static List<Attribute> pressure() {
+  static List<Attribute> pressure(final Augmentation.Variant variant) {
     return List.of(
         new Attribute(Pressure.FIX_VERSION, Pressure.FIX_VERSION, Family.OWN, null,
             Construct.Kind.BINARY, Construct.Transform.NONE, false, true),
         new Attribute(Pressure.RELEASE_CYCLE, Pressure.RELEASE_CYCLE, Family.OWN, null,
             Construct.Kind.NUMERIC, Construct.Transform.NONE, true, true),
-        revised(Pressure.BLOCKER_PACE));
+        revised(Pressure.blockerPace(variant)));
   }
 
   private static Cell registered(final String name, final String label) {

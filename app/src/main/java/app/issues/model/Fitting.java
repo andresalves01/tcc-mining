@@ -39,7 +39,7 @@ public final class Fitting {
 
   /** Which rows fit and which are scored. */
   public enum Mode {
-    /** Development: the inner cut of the outer training side. The reserved rows are refused. */
+    /** Development: the inner split of the outer training side. The reserved rows are refused. */
     INNER,
     /** The one reserved run: the whole training side fits, the reserved side is scored. */
     RESERVED
@@ -112,7 +112,7 @@ public final class Fitting {
       final boolean score;
       if (mode == Mode.INNER) {
         // The reserved side is refused here, not filtered by a caller: under INNER nothing on the
-        // far side of the outer cut has any business in the fit or the score.
+        // far side of the outer split has any business in the fit or the score.
         fit = "TRAIN".equals(outer) && "TRAIN".equals(inner);
         score = "TRAIN".equals(outer) && "TEST".equals(inner);
       } else {

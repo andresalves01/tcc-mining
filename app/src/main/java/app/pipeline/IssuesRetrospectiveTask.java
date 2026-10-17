@@ -3,8 +3,7 @@ package app.pipeline;
 import app.issues.BusinessDays;
 import app.issues.Corpus;
 import app.issues.DayBoundaries;
-import app.issues.ElasticNetSelection;
-import app.issues.RegistrationInProgress;
+import app.issues.ProjectSplit;
 import app.issues.Releases;
 import app.issues.Retrospective;
 import app.issues.RowCache;
@@ -24,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Function;
 
 /**
  * The retrospective stage after the similarity stage (ticket 15): the similarity stage's matrix in,
@@ -32,12 +32,12 @@ import java.util.TreeSet;
  * blocking-link wait is counted at the day boundary the matrix holds for each issue; urgency reads
  * the projects' release dates from the tags of the corpus (ticket 19).
  *
- * <p>The four split sizes are checked first, against the registered study's, and a difference
- * refuses the run before the corpus is read; so does an issue of the matrix the corpus does not
- * hold as an In-Progress issue, or one whose first In Progress or first resolution there is not the
- * matrix's. The bots are the accounts {@link DayBoundaries#bots} finds over the comments of the
- * corpus's home, unique issues, as the day boundaries leave out. The methods are read only for the
- * implementation commits of the matrix's issues.
+ * <p>The split is checked first against its rule ({@link ProjectSplit#differences}), and a
+ * difference refuses the run before the corpus is read; so does an issue of the matrix the corpus
+ * does not hold as an In-Progress issue, or one whose first In Progress or first resolution there
+ * is not the matrix's. The bots are the accounts {@link DayBoundaries#bots} finds over the
+ * comments of the corpus's home, unique issues, as the day boundaries leave out. The methods are
+ * read only for the implementation commits of the matrix's issues.
  */
 public final class IssuesRetrospectiveTask {
 
@@ -51,7 +51,7 @@ public final class IssuesRetrospectiveTask {
   public record Coverage(String side, int rows, Map<String, Integer> observed) {}
 
   /**
-   * @param refused every split size that differs from the expected, or the matrix's issues the
+   * @param refused why the matrix's split is not its rule's, or the matrix's issues the
    *     corpus does not hold as they are; when not empty nothing else was done and the other
    *     fields are empty
    * @param entries the matrix's rows with the ten columns, in its order
@@ -66,25 +66,28 @@ public final class IssuesRetrospectiveTask {
   private final StudySource source;
   private final ChangedMethodSource methods;
   private final Progress progress;
-  private final RegistrationInProgress.Sizes expected;
+  private final Function<List<RowCache.Entry>, List<String>> split;
 
   public IssuesRetrospectiveTask(final StudySource source, final ChangedMethodSource methods,
       final Progress progress) {
-    this(source, methods, progress, RegistrationInProgress.SIZES);
+    this(source, methods, progress, ProjectSplit::differences);
   }
 
-  /** Against other sizes, for a matrix built in memory. */
+  /**
+   * Against another check of the split, for a matrix built in memory.
+   *
+   * @param split why the matrix's verdicts are not the split's, empty when they are
+   */
   IssuesRetrospectiveTask(final StudySource source, final ChangedMethodSource methods,
-      final Progress progress, final RegistrationInProgress.Sizes expected) {
+      final Progress progress, final Function<List<RowCache.Entry>, List<String>> split) {
     this.source = source;
     this.methods = methods;
     this.progress = progress;
-    this.expected = expected;
+    this.split = split;
   }
 
   public Report run(final List<RowCache.Entry> entries) {
-    final List<String> refused =
-        IssuesSimilarityTask.differences(ElasticNetSelection.sizes(entries), expected);
+    final List<String> refused = split.apply(entries);
     if (!refused.isEmpty()) {
       return refused(refused);
     }
