@@ -79,9 +79,9 @@ class IssuesSimilarityElasticNetCommandTest {
   void namesTheColumnsTheMatrixLacks() {
     final List<String> columns = new ArrayList<>(app.issues.Attributes.stored());
     columns.addAll(app.issues.Extractor.TEAM_REVISED);
-    columns.addAll(Augmentation.columns());
+    columns.addAll(app.pipeline.IssuesSimilarityTask.columns());
     final List<Cell> every = ElasticNetSelection.everyCell(Augmentation.Variant.INNER);
-    assertEquals(27 * 7, every.size());
+    assertEquals(27 * 8, every.size());
     // the similarity stage's matrix lacks the retrospective columns, named in their order
     assertEquals(app.issues.Retrospective.COLUMNS,
         IssuesSimilarityElasticNetCommand.missing(every, columns));

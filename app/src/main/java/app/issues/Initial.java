@@ -172,31 +172,86 @@ public final class Initial {
 
   private static Reversal<List<String>> links(final List<Corpus.Event> changes,
       final List<String> current) {
-    final Map<String, Integer> state = new HashMap<>();
+    final Undone<String> undone =
+        undo(current, changes, Corpus.Event::newValue, Corpus.Event::oldValue);
+    return new Reversal<>(elements(undone.initial()), elements(undone.stored()),
+        !changes.isEmpty(), undone.consistent());
+  }
+
+  /**
+   * A field holding several elements, at creation: the current ones with every change undone,
+   * last first, as a multiset (one issue can hold the same element twice, as two links of
+   * different types to one target).
+   *
+   * @param initial each element at creation with its count; a count may be 0
+   * @param stored the current elements with their counts
+   * @param consistent whether every addition undone was held when it was undone
+   */
+  record Undone<T>(Map<T, Integer> initial, Map<T, Integer> stored, boolean consistent) {
+
+    /** The elements held at creation. */
+    java.util.Set<T> held() {
+      final java.util.Set<T> out = new java.util.LinkedHashSet<>();
+      initial.forEach((k, n) -> {
+        if (n > 0) {
+          out.add(k);
+        }
+      });
+      return out;
+    }
+  }
+
+  /**
+   * Undoes, last first, every change of a field holding several elements: an element a change
+   * added ({@code added}, null for none) is taken out, one it removed ({@code removed}) put back.
+   * The rule {@link #of} reads the links with.
+   */
+  static <T> Undone<T> undo(final java.util.Collection<T> current,
+      final List<Corpus.Event> changes, final java.util.function.Function<Corpus.Event, T> added,
+      final java.util.function.Function<Corpus.Event, T> removed) {
+    final Map<T, Integer> state = new HashMap<>();
     if (current != null) {
-      for (final String target : current) {
-        if (target != null) {
-          state.merge(target, 1, Integer::sum);
+      for (final T element : current) {
+        if (element != null) {
+          state.merge(element, 1, Integer::sum);
         }
       }
     }
-    final List<String> stored = elements(state);
+    final Map<T, Integer> stored = new HashMap<>(state);
     boolean ok = true;
     for (int k = changes.size() - 1; k >= 0; k--) {
       final Corpus.Event e = changes.get(k);
-      if (e.newValue() != null) {
-        final int held = state.getOrDefault(e.newValue(), 0);
+      final T in = added.apply(e);
+      if (in != null) {
+        final int held = state.getOrDefault(in, 0);
         if (held > 0) {
-          state.put(e.newValue(), held - 1);
+          state.put(in, held - 1);
         } else {
           ok = false;
         }
       }
-      if (e.oldValue() != null) {
-        state.merge(e.oldValue(), 1, Integer::sum);
+      final T out = removed.apply(e);
+      if (out != null) {
+        state.merge(out, 1, Integer::sum);
       }
     }
-    return new Reversal<>(elements(state), stored, !changes.isEmpty(), ok);
+    return new Undone<>(state, stored, ok);
+  }
+
+  /**
+   * A single-valued field's value in force right after {@code t}, changes at {@code t} included:
+   * its value at creation as {@link #of} reads it (the old value of the first change, else the
+   * current one), then every change stamped up to {@code t}. Changes without an instant are not
+   * placed in time and only count for the value at creation.
+   */
+  static String scalarAt(final List<Corpus.Event> changes, final String current, final long t) {
+    String value = scalar(changes, current).initial;
+    for (final Corpus.Event e : changes) {
+      if (e.at() != null && e.at() <= t) {
+        value = norm(e.newValue());
+      }
+    }
+    return value;
   }
 
   private static List<String> elements(final Map<String, Integer> multiset) {

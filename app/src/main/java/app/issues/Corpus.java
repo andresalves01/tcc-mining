@@ -21,6 +21,7 @@ import java.util.Map;
  * @param homeKeys per project, the dominant Jira key of each of its trackers
  * @param prMerge per commit hash, the first instant a merged pull request containing it was merged
  * @param files per commit id, the ids of the files it touched ({@code file_action})
+ * @param tags every tag of every repository, read only for the release dates (ticket 19)
  */
 public record Corpus(
     List<Issue> issues,
@@ -34,12 +35,47 @@ public record Corpus(
     Map<String, Contribution> contributions,
     Map<String, Double> complexity,
     Map<String, Label> labels,
-    Map<String, int[]> files) {
+    Map<String, int[]> files,
+    List<Tag> tags) {
 
-  /** One issue document. The current values are what the changelog is reversed from. */
+  /** A corpus without tags, as every stage before ticket 19 read it. */
+  public Corpus(final List<Issue> issues, final List<Event> events, final List<Comment> comments,
+      final List<Mention> mentions, final List<Commit> commits,
+      final Map<String, java.util.Set<String>> homeKeys, final Map<String, Long> prMerge,
+      final Map<String, Person> people, final Map<String, Contribution> contributions,
+      final Map<String, Double> complexity, final Map<String, Label> labels,
+      final Map<String, int[]> files) {
+    this(issues, events, comments, mentions, commits, homeKeys, prMerge, people, contributions,
+        complexity, labels, files, List.of());
+  }
+
+  /**
+   * One issue document. The current values are what the changelog is reversed from.
+   *
+   * @param links the target of each current link, as every column before ticket 19 counts them
+   * @param typedLinks the same links with their type and effect (ticket 19)
+   * @param fixVersions the current fix versions, by name
+   */
   public record Issue(String id, String key, String project, Long created, String reporter,
       String creator, String assignee, String type, String priority, String parent,
-      List<String> labels, List<String> links) {}
+      List<String> labels, List<String> links, List<Link> typedLinks, List<String> fixVersions) {
+
+    /** An issue without typed links or fix versions, as every stage before ticket 19 read it. */
+    public Issue(final String id, final String key, final String project, final Long created,
+        final String reporter, final String creator, final String assignee, final String type,
+        final String priority, final String parent, final List<String> labels,
+        final List<String> links) {
+      this(id, key, project, created, reporter, creator, assignee, type, priority, parent,
+          labels, links, List.of(), List.of());
+    }
+  }
+
+  /**
+   * One issue link as Jira stores it on one side: the issue at the other end, the link's type
+   * ({@code Blocker}, {@code Dependent}, ...) and its effect read from this side ({@code is blocked
+   * by}, {@code blocks}, ...), which gives the direction.
+   */
+  public record Link(String target, String type, String effect) {}
 
   /**
    * One changelog entry.
@@ -48,9 +84,19 @@ public record Corpus(
    *     that share an instant
    * @param oldValue for {@code issue_links}, the id of the issue the removed link pointed to; for
    *     every other field, the value as text
+   * @param oldLink for {@code issue_links}, the removed link with its type and effect; null for
+   *     every other field
+   * @param newLink for {@code issue_links}, the added link with its type and effect
    */
   public record Event(String issue, Long at, String field, String author, String oldValue,
-      String newValue, String external) {}
+      String newValue, String external, Link oldLink, Link newLink) {
+
+    /** An event without link details, as every field but {@code issue_links} has. */
+    public Event(final String issue, final Long at, final String field, final String author,
+        final String oldValue, final String newValue, final String external) {
+      this(issue, at, field, author, oldValue, newValue, external, null, null);
+    }
+  }
 
   /**
    * @param templated whether its text opens like a bot's template ({@link
@@ -64,6 +110,14 @@ public record Corpus(
   /** A commit and the issues its message links it to. */
   public record Commit(String id, String project, String hash, String author, Long authoredAt,
       Long committedAt, int parents, List<String> linked) {}
+
+  /**
+   * One tag of a project's repository.
+   *
+   * @param taggedAt the tag's own date, null for a lightweight tag
+   * @param commit the id of the tagged commit
+   */
+  public record Tag(String project, String name, Long taggedAt, String commit) {}
 
   /** The thesis's canonical identity of a person record, and whether it is an automated account. */
   public record Person(String canonical, boolean bot) {}

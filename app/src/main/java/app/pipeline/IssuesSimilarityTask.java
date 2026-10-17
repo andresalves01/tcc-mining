@@ -7,9 +7,12 @@ import app.issues.Corpus;
 import app.issues.DayBoundaries;
 import app.issues.DescriptionCleaner;
 import app.issues.ElasticNetSelection;
+import app.issues.FixVersions;
 import app.issues.Embedder;
 import app.issues.Initial;
+import app.issues.Pressure;
 import app.issues.RegistrationInProgress;
+import app.issues.Releases;
 import app.issues.RowCache;
 import app.issues.Universe;
 import app.issues.Universe.Population;
@@ -42,6 +45,10 @@ import java.util.TreeSet;
  * changelog shows it back in Open or Reopened ({@link BusinessDays#active}), are written as {@link
  * BusinessDays#ACTIVE}: they are what the medians of the {@link Augmentation} read, and what the
  * later steps take as the target.
+ *
+ * <p>The own start model's three attributes of ticket 19 ({@link Pressure}: a fix version set
+ * before the start, the days left in the project's release cycle, the pace of its other Blocker
+ * issues) are read from the corpus at each issue's first In Progress and written beside them.
  */
 public final class IssuesSimilarityTask {
 
@@ -52,10 +59,21 @@ public final class IssuesSimilarityTask {
    * @param described rows with a description at their first In Progress
    * @param boundaries per issue id, its day boundary
    * @param bots the raw accounts recognised as bots and left out of every boundary's history
+   * @param fixVersions how far the changelog explains the fix versions the start columns read
+   *     ({@link FixVersions#fidelity}), on the outer training rows only; null when refused
    */
   public record Report(List<String> refused, RegistrationInProgress.Sizes sizes,
       List<RowCache.Entry> entries, Augmentation.Result result, int described,
-      Map<String, DayBoundaries.Boundary> boundaries, Set<String> bots) {}
+      Map<String, DayBoundaries.Boundary> boundaries, Set<String> bots,
+      Initial.Fidelity fixVersions) {
+
+    /** A report without the fix versions' fidelity, as a refusal has. */
+    public Report(final List<String> refused, final RegistrationInProgress.Sizes sizes,
+        final List<RowCache.Entry> entries, final Augmentation.Result result, final int described,
+        final Map<String, DayBoundaries.Boundary> boundaries, final Set<String> bots) {
+      this(refused, sizes, entries, result, described, boundaries, bots, null);
+    }
+  }
 
   private static final Population P = Population.IN_PROGRESS;
 
@@ -105,6 +123,22 @@ public final class IssuesSimilarityTask {
           + "the first %s", unknown.size(), unknown.get(0))), found, List.of(), null, 0,
           Map.of(), Set.of());
     }
+    // the start columns are read at each issue's first In Progress: a row the corpus does not hold
+    // as that In-Progress issue refuses, rather than leaving its fix version flag to be filled
+    final List<String> unstarted = new ArrayList<>();
+    for (final RowCache.Entry e : entries) {
+      final Universe.Unit u = universe.unit(P, e.unit().issueId());
+      if (u == null || u.start() != e.unit().startedAt().toEpochMilli()
+          || u.resolved() != e.unit().resolvedAt().toEpochMilli()) {
+        unstarted.add(e.unit().issueId());
+      }
+    }
+    if (!unstarted.isEmpty()) {
+      return new Report(List.of(String.format("%,d issues of the matrix are not In-Progress "
+          + "issues of the corpus with the same first In Progress and first resolution, the "
+          + "first %s", unstarted.size(), unstarted.get(0))), found, List.of(), null, 0,
+          Map.of(), Set.of());
+    }
     final Map<String, String> descriptions = descriptions(entries, universe);
 
     progress.phase(2, 4, "day boundaries from the tracker activity before each first In "
@@ -115,8 +149,8 @@ public final class IssuesSimilarityTask {
     for (final RowCache.Entry e : entries) {
       final String id = e.unit().issueId();
       final Universe.Unit started = universe.unit(P, id);
-      final String clicker = started == null ? null
-          : World.person(started.startedBy(), corpus.people());
+      // every row is an In-Progress issue of the corpus: the refusal above saw to it
+      final String clicker = World.person(started.startedBy(), corpus.people());
       final DayBoundaries.Boundary boundary = days.at(clicker, e.unit().project(),
           e.unit().startedAt().toEpochMilli());
       boundaries.put(id, boundary);
@@ -129,15 +163,18 @@ public final class IssuesSimilarityTask {
     final Augmentation.Result result =
         Augmentation.run(issues(entries, descriptions, active), embedder, dimension, clusterer);
 
-    progress.phase(4, 4, "adding %d columns", Augmentation.columns().size() + BusinessDays.COLUMNS.size());
+    progress.phase(4, 4, "adding %d columns", Augmentation.columns().size()
+        + BusinessDays.COLUMNS.size() + Pressure.COLUMNS.size());
+    final Pressure pressure = Pressure.of(universe, Releases.of(corpus));
     final List<RowCache.Entry> out = new ArrayList<>(entries.size());
     for (final RowCache.Entry e : entries) {
       final Map<String, Double> values = new HashMap<>(e.row().values());
       final Set<String> absent = new HashSet<>(e.row().absent());
-      final Map<String, Double> added = result.columns().get(e.unit().issueId());
+      final Map<String, Double> added = new HashMap<>(result.columns().get(e.unit().issueId()));
+      added.putAll(pressure.row(universe.unit(P, e.unit().issueId())));
       values.put(BusinessDays.BOUNDARY, (double) boundaries.get(e.unit().issueId()).hour());
       values.put(BusinessDays.ACTIVE, (double) active.get(e.unit().issueId()));
-      for (final String column : Augmentation.columns()) {
+      for (final String column : columns()) {
         final Double v = added.get(column);
         if (v == null) {
           absent.add(column);
@@ -147,8 +184,21 @@ public final class IssuesSimilarityTask {
       }
       out.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values, absent), e.parts()));
     }
+    // the outer test is left out of the gate, as of every report this stage prints
+    final List<String> training = entries.stream().filter(e -> "TRAIN".equals(e.outer(P)))
+        .map(e -> e.unit().issueId()).toList();
     return new Report(refused, found, out, result, descriptions.size(), boundaries,
-        days.bots());
+        days.bots(), FixVersions.fidelity(universe, training));
+  }
+
+  /**
+   * The columns this stage adds besides the day boundary and the active business days, a missing
+   * one recorded as absent: the {@link Augmentation} columns, then the {@link Pressure} ones.
+   */
+  public static List<String> columns() {
+    final List<String> out = new ArrayList<>(Augmentation.columns());
+    out.addAll(Pressure.COLUMNS);
+    return List.copyOf(out);
   }
 
   static List<String> differences(final RegistrationInProgress.Sizes found,

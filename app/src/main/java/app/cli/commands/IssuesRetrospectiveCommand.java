@@ -10,6 +10,7 @@ import app.issues.Retrospective;
 import app.issues.RowCache;
 import app.issues.Universe.Population;
 import app.pipeline.IssuesRetrospectiveTask;
+import app.pipeline.IssuesSimilarityTask;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -21,17 +22,17 @@ import java.util.function.Function;
 
 /**
  * The retrospective stage of the description-similarity chain (ticket 15), after the similarity
- * stage: the eight {@link Retrospective} attributes observed between the first In Progress and
+ * stage: the ten {@link Retrospective} attributes observed between the first In Progress and
  * the first resolution, added to the similarity stage's matrix, every earlier column copied as it
  * is. A separate stage and a separate file, so neither the registered matrix nor the similarity
  * stage's is rewritten, and the similarity stage need not run again.
  *
  * <p>Reads MATRIX (the similarity stage's), the corpus and the methods each implementation commit
  * changed; refuses, writing and recording nothing, unless MATRIX has the similarity stage's columns
- * and the day boundary and none of the eight, the four split sizes are the registered study's, and
- * the corpus holds every issue of the matrix as it is. Writes the matrix with the eight columns to
+ * and the day boundary and none of the ten, the four split sizes are the registered study's, and
+ * the corpus holds every issue of the matrix as it is. Writes the matrix with the ten columns to
  * RETROSPECTIVE_MATRIX, never over MATRIX nor over a file that is not a retrospective matrix, and
- * records the run, with the SHA-256 of both files and the coverage of each of the eight on the
+ * records the run, with the SHA-256 of both files and the coverage of each of the ten on the
  * inner fitting and inner validation, in ISSUES_DB. The outer test's rows get their columns, so
  * the test can later read them; nothing of them is counted or reported here.
  */
@@ -85,7 +86,7 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
     try {
       refuseForeign(out);
       columns = new ArrayList<>(RowCache.columns(matrix));
-      final List<String> needed = new ArrayList<>(Augmentation.columns());
+      final List<String> needed = new ArrayList<>(IssuesSimilarityTask.columns());
       needed.addAll(BusinessDays.COLUMNS);
       if (!columns.containsAll(needed)) {
         throw refused(matrix + " has not the similarity stage's columns, the day boundary and "
@@ -189,7 +190,7 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
     return out;
   }
 
-  /** Refuses when {@code out} exists and is not a matrix with the eight columns. */
+  /** Refuses when {@code out} exists and is not a matrix with the ten columns. */
   private static void refuseForeign(final Path out) throws CommandFailedException {
     if (!Files.exists(out)) {
       return;

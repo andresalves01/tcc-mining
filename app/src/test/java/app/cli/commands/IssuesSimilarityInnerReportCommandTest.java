@@ -179,7 +179,7 @@ class IssuesSimilarityInnerReportCommandTest {
 
     final Map<String, String[]> models =
         byModel(Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.MODELS)));
-    assertEquals(17, models.size());
+    assertEquals(19, models.size());
     for (final ElasticNetSelection.Model m : chosen.models()) {
       final String name = m.cell().label();
       assertEquals(m.fitted().score().mae(), Double.parseDouble(models.get(name)[3]), name);
@@ -210,6 +210,11 @@ class IssuesSimilarityInnerReportCommandTest {
     assertTrue(comparisons.stream().anyMatch(l -> l.startsWith("with implementation commit\t")));
     assertTrue(comparisons.stream().anyMatch(l -> l.contains("\town_retrospective_forest\t"
         + "project_median\t")));
+    // the new start model against the one before ticket 19, read from the same run (item 29 i)
+    assertTrue(comparisons.stream().anyMatch(l -> l.contains("\town_with_similarity\t"
+        + "own_with_similarity_before_pressure\t")));
+    assertTrue(comparisons.stream().anyMatch(l -> l.contains("\town_with_similarity_forest\t"
+        + "own_with_similarity_before_pressure_forest\t")));
     assertTrue(Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.ORDERING))
         .stream().noneMatch(l -> l.contains("\tglobal_median\t")));
   }

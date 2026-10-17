@@ -20,30 +20,34 @@ import java.util.concurrent.Callable;
 /**
  * The Elastic Net models of the description-similarity chain, and the choice on the inner
  * validation only of each one's alpha and lambda, by the registered chain's own sweep, and, for
- * the four models reading the similarity medians, of the Jaccard n, embedding n and cluster k
+ * the five models reading the similarity medians, of the Jaccard n, embedding n and cluster k
  * they read.
  *
- * <p><b>Models.</b> Seven, each a {@link Cell}. Two are the registered in-progress cells read as
+ * <p><b>Models.</b> Eight, each a {@link Cell}. Two are the registered in-progress cells read as
  * they are: Al-Zubaidi at the start ({@code ALZUBAIDI / C1}) and Kikas at the start ({@code
  * KIKAS / C1}). The own specification with similarity, the study's own contribution, is
  * description length and team size, the registered {@code A01} and {@code A03}; the team's median
  * and spread of lines of code and of cyclomatic complexity; the corrected reporter median; the
  * executor's lines of code, cyclomatic complexity and open workload, the registered {@code A09},
- * {@code A10} and {@code A13}; and the Jaccard, embedding and cluster medians, thirteen in all.
- * The own specification without similarity, its control, is the same ten without the three
- * medians; the similarity block alone is the three medians; the union is the literature families
- * as the registered union reads them, Kikas's body length entering once as Al-Zubaidi's word
- * counts, followed by the own specification with similarity. The seventh, the retrospective
- * scenario, is the own specification with similarity followed by the eight attributes observed
- * between the first In Progress and the first resolution ({@link Retrospective}), twenty-one in
- * all.
+ * {@code A10} and {@code A13}; the fix version set before the start, the days left in the
+ * project's release cycle and the pace of its other Blocker issues ({@link Pressure}, ticket 19);
+ * and the Jaccard, embedding and cluster medians, sixteen in all. The own specification without
+ * similarity, its control, is the same thirteen without the three medians; the similarity block
+ * alone is the three medians; the union is the literature families as the registered union reads
+ * them, Kikas's body length entering once as Al-Zubaidi's word counts, followed by the own
+ * specification with similarity. The seventh, the retrospective scenario, is the own
+ * specification with similarity followed by the ten attributes observed between the first In
+ * Progress and the first resolution ({@link Retrospective}), twenty-six in all. The eighth is the
+ * own specification with similarity as it was before ticket 19, the ten and the three medians
+ * without the start columns of {@link Pressure} (item 36), so the new start model is compared
+ * with the old one on the same run.
  *
  * <p><b>Ticket 15.</b> The retrospective model ({@code own_retrospective}) reads what was observed
  * up to the resolution, and its counts grow with the duration itself: a gain over the own
  * specification with similarity is association with the duration, not a prediction available
  * during the work. It reads the similarity medians, so it is swept over the 27 combinations as the
  * other models with them are; its forest follows as for every model. The six models before it are
- * declared, read and chosen as they were; the eight columns are new names, beside the registered
+ * declared, read and chosen as they were; the ten columns are new names, beside the registered
  * columns of the same constructs, which keep their meaning.
  *
  * <p><b>Ticket 12.</b> The previous own specification ({@code OWN / C1}) is no longer a model of
@@ -51,7 +55,7 @@ import java.util.concurrent.Callable;
  * chain, its cell and its outputs, are untouched.
  *
  * <p><b>Similarity medians as attributes</b> (ticket 11, reversing ticket 08's choice by each
- * median's error read alone as a prediction). The four models with the medians ({@link
+ * median's error read alone as a prediction). The five models with the medians ({@link
  * #WITH_SIMILARITY}) are swept once per {@link Combination} of a Jaccard n, an embedding n and a
  * cluster k among the values the similarity stage computes, 27 in all, each sweep the registered
  * alpha by lambda grid, and keep the combination whose chosen point errs least on the inner
@@ -68,7 +72,7 @@ import java.util.concurrent.Callable;
  * the four team columns take the transform of the registered columns they revise ({@code D05};
  * {@code A04} to {@code A07}), which is also {@code log1p}. Every new column carries a missing
  * indicator: a missing value is handed to the registered preparation as missing, filled there by
- * the fitting set's median. The retrospective model's eight are declared as {@link
+ * the fitting set's median. The retrospective model's ten are declared as {@link
  * #retrospective} says: the three counts of the discussion are never missing and carry none. The
  * registered columns ({@code A01}, {@code A03}, {@code A09}, {@code A10}, {@code A13}) keep their
  * own transform and missing-indicator setting. A declared
@@ -96,16 +100,27 @@ import java.util.concurrent.Callable;
  */
 public final class ElasticNetSelection {
 
-  /** The retrospective scenario's model (ticket 15), the last of {@link #MODELS}. */
+  /** The retrospective scenario's model (ticket 15), the seventh of {@link #MODELS}. */
   public static final String RETROSPECTIVE = "own_retrospective";
 
-  /** The seven models, in their order: the six of the start, then the retrospective one. */
+  /**
+   * The own specification with similarity as it was before ticket 19, without the three start
+   * columns of {@link Pressure} (item 36), the last of {@link #MODELS}: the new start model is
+   * compared with it on the same run, and that comparison decides which goes to the outer test.
+   */
+  public static final String BEFORE_PRESSURE = "own_with_similarity_before_pressure";
+
+  /**
+   * The eight models, in their order: the six of the start, the retrospective one, then the own
+   * specification with similarity as before ticket 19.
+   */
   public static final List<String> MODELS = List.of("own_without_similarity", "similarity_alone",
-      "own_with_similarity", "alzubaidi_start", "kikas_start", "union_own", RETROSPECTIVE);
+      "own_with_similarity", "alzubaidi_start", "kikas_start", "union_own", RETROSPECTIVE,
+      BEFORE_PRESSURE);
 
   /** The models that read the similarity medians, whose n, n and k are chosen with them. */
-  public static final List<String> WITH_SIMILARITY =
-      List.of("similarity_alone", "own_with_similarity", "union_own", RETROSPECTIVE);
+  public static final List<String> WITH_SIMILARITY = List.of("similarity_alone",
+      "own_with_similarity", "union_own", RETROSPECTIVE, BEFORE_PRESSURE);
 
   private static final Population P = Population.IN_PROGRESS;
 
@@ -211,7 +226,8 @@ public final class ElasticNetSelection {
   public static final String HEADER = "# Elastic Net alpha and lambda, the similarity medians' "
       + "n, n and k, and each random forest's column share and leaf, chosen on the inner "
       + "validation only, the target in whole business days on the issues of at least one, for "
-      + "seven models with the retrospective one; the outer test was not read";
+      + "eight models with the retrospective one and the own one before ticket 19; the outer "
+      + "test was not read";
 
   /** The step of the Elastic Net choices in the parameters file. */
   public static final String STEP = "elastic-net";
@@ -572,7 +588,7 @@ public final class ElasticNetSelection {
 
   /**
    * Every model at every combination, in the given variant: the combinations in {@link
-   * Combination#all}'s order, the seven models of each in theirs. What the selection may read.
+   * Combination#all}'s order, the eight models of each in theirs. What the selection may read.
    */
   public static List<Cell> everyCell(final Augmentation.Variant variant) {
     final List<Cell> out = new ArrayList<>();
@@ -583,7 +599,7 @@ public final class ElasticNetSelection {
   }
 
   /**
-   * The seven models in their order, reading the split-dependent columns of the given variant,
+   * The eight models in their order, reading the split-dependent columns of the given variant,
    * each with the similarity medians at its own combination.
    *
    * @param combinations per model of {@link #WITH_SIMILARITY}, the values it reads the medians
@@ -606,8 +622,8 @@ public final class ElasticNetSelection {
   }
 
   /**
-   * The seven models in their order, reading the split-dependent columns of the given variant,
-   * the four with the similarity medians at {@code c}; the other three do not depend on it.
+   * The eight models in their order, reading the split-dependent columns of the given variant,
+   * the five with the similarity medians at {@code c}; the other three do not depend on it.
    */
   public static List<Cell> cells(final Combination c, final Augmentation.Variant variant) {
     final List<Attribute> without = new ArrayList<>();
@@ -625,6 +641,10 @@ public final class ElasticNetSelection {
         revised(Augmentation.jaccard(c.jaccardN(), variant)),
         revised(Augmentation.embedding(c.embeddingN(), variant)),
         revised(Augmentation.cluster(c.clusterK(), variant)));
+    // the own specification with similarity as before ticket 19: the ten, then the three medians
+    final List<Attribute> beforePressure = new ArrayList<>(without);
+    beforePressure.addAll(similarity);
+    without.addAll(pressure());
     final List<Attribute> with = new ArrayList<>(without);
     with.addAll(similarity);
 
@@ -646,15 +666,17 @@ public final class ElasticNetSelection {
         registered(MODELS.get(3), "ALZUBAIDI / C1"),
         registered(MODELS.get(4), "KIKAS / C1"),
         new Cell(MODELS.get(5), Family.UNION, Scenario.C1, union),
-        new Cell(RETROSPECTIVE, Family.OWN, Scenario.C2, retrospective));
+        new Cell(RETROSPECTIVE, Family.OWN, Scenario.C2, retrospective),
+        new Cell(BEFORE_PRESSURE, Family.OWN, Scenario.C1, beforePressure));
   }
 
   /**
-   * The eight attributes of the retrospective scenario ({@link Retrospective}), in its order: the
+   * The ten attributes of the retrospective scenario ({@link Retrospective}), in its order: the
    * counts and volumes {@code log1p}, the ratio and the means raw, as the registered columns they
    * stand beside ({@code A15} to {@code A17}, {@code D07}, {@code D08}, {@code K03} to {@code
-   * K05}); a missing indicator beside the five that can be missing. Split-independent: the same
-   * in both variants.
+   * K05}); a missing indicator beside the five that can be missing. Ticket 19's two follow: the
+   * blocking-link wait {@code log1p} and urgency raw, being signed, each with a missing indicator.
+   * Split-independent: the same in both variants.
    */
   static List<Attribute> retrospective() {
     final List<Attribute> out = new ArrayList<>(Retrospective.COLUMNS.size());
@@ -665,9 +687,24 @@ public final class ElasticNetSelection {
           Construct.Kind.NUMERIC,
           Retrospective.COUNTS.contains(name) ? Construct.Transform.LOG1P
               : Construct.Transform.NONE,
-          Retrospective.CONTENT.contains(name), true));
+          Retrospective.CONTENT.contains(name)
+              || Retrospective.LINKS_AND_RELEASES.contains(name), true));
     }
     return List.copyOf(out);
+  }
+
+  /**
+   * The start model's three attributes of ticket 19 ({@link Pressure}), in its order: the fix
+   * version flag a binary never missing; the release cycle raw, being signed, and the Blocker pace
+   * {@code log1p}, each with a missing indicator. Known at the start: no block. Split-independent.
+   */
+  static List<Attribute> pressure() {
+    return List.of(
+        new Attribute(Pressure.FIX_VERSION, Pressure.FIX_VERSION, Family.OWN, null,
+            Construct.Kind.BINARY, Construct.Transform.NONE, false, true),
+        new Attribute(Pressure.RELEASE_CYCLE, Pressure.RELEASE_CYCLE, Family.OWN, null,
+            Construct.Kind.NUMERIC, Construct.Transform.NONE, true, true),
+        revised(Pressure.BLOCKER_PACE));
   }
 
   private static Cell registered(final String name, final String label) {

@@ -29,12 +29,13 @@ import java.util.concurrent.Callable;
  * outer training and the outer test are the inner fitting and the inner validation in the inner
  * scope.
  *
- * <p><b>Models</b>, seventeen, in this order: the three references learned on the outer training
+ * <p><b>Models</b>, nineteen, in this order: the three references learned on the outer training
  * set -- the global median, the project median and the executor-project median, as the registered
- * chain learns them; the seven Elastic Net models of {@link ElasticNetSelection#cells(Map,
+ * chain learns them; the eight Elastic Net models of {@link ElasticNetSelection#cells(Map,
  * Augmentation.Variant)}, in the outer variant, each model with the similarity medians reading
- * them at the Jaccard n, embedding n and cluster k chosen for it, the retrospective one last
- * (ticket 15); and the seven random forests beside them ({@link #forest(String)}), a robustness
+ * them at the Jaccard n, embedding n and cluster k chosen for it, the retrospective one seventh
+ * (ticket 15) and the own specification with similarity before ticket 19 last (item 36); and the
+ * eight random forests beside them ({@link #forest(String)}), a robustness
  * check (ticket 13). A similarity median is an attribute of the models that read it and is never
  * scored alone (ticket 11).
  *
@@ -85,6 +86,8 @@ public final class SimilarityScoring {
   private static final String RETROSPECTIVE = ElasticNetSelection.RETROSPECTIVE;
 
   private static final String WITH_SIMILARITY = "own_with_similarity";
+
+  private static final String BEFORE_PRESSURE = ElasticNetSelection.BEFORE_PRESSURE;
 
   /**
    * The comparisons of the side reading on the scored issues with an implementation commit: the
@@ -345,13 +348,15 @@ public final class SimilarityScoring {
    * The paired comparisons, {@code a} against {@code b}, and only these. First, of the references
    * and Elastic Net models: the own specification with similarity against the same without the
    * similarity medians, what similarity adds beside the other attributes; the retrospective model
-   * against the own specification with similarity, what the eight attributes observed up to the
-   * resolution add (ticket 15); then each of them against the global median, and each but the
-   * global median against the project median, so the two references are compared once. Then, of
-   * the forests (ticket 13), in the order of {@code models}: each forest against its Elastic Net;
-   * the forest of the own specification with similarity against the forest without; the
-   * retrospective forest against the forest with similarity; each forest against the global
-   * median; each forest against the project median.
+   * against the own specification with similarity, what the ten attributes observed up to the
+   * resolution add (ticket 15); the own specification with similarity against the same before
+   * ticket 19, what the three start columns add (items 29 i and 36); then each of them against the
+   * global median, and each but the global median against the project median, so the two
+   * references are compared once. Then, of the forests (ticket 13), in the order of {@code
+   * models}: each forest against its Elastic Net; the forest of the own specification with
+   * similarity against the forest without; the retrospective forest against the forest with
+   * similarity; the forest with similarity against the one before ticket 19; each forest against
+   * the global median; each forest against the project median.
    */
   public static List<String[]> pairs(final List<String> models) {
     final List<String> forests = new ArrayList<>();
@@ -364,6 +369,9 @@ public final class SimilarityScoring {
         new String[] {"own_with_similarity", "own_without_similarity"}));
     if (linear.containsAll(List.of(RETROSPECTIVE, WITH_SIMILARITY))) {
       out.add(WITH_COMMITS.get(0));
+    }
+    if (linear.containsAll(List.of(WITH_SIMILARITY, BEFORE_PRESSURE))) {
+      out.add(new String[] {WITH_SIMILARITY, BEFORE_PRESSURE});
     }
     for (final String m : linear) {
       if (!m.equals(GLOBAL)) {
@@ -387,6 +395,9 @@ public final class SimilarityScoring {
     }
     if (trees.containsAll(List.of(forest(RETROSPECTIVE), forest(WITH_SIMILARITY)))) {
       out.add(WITH_COMMITS.get(1));
+    }
+    if (trees.containsAll(List.of(forest(WITH_SIMILARITY), forest(BEFORE_PRESSURE)))) {
+      out.add(new String[] {forest(WITH_SIMILARITY), forest(BEFORE_PRESSURE)});
     }
     for (final String f : trees) {
       out.add(new String[] {f, GLOBAL});

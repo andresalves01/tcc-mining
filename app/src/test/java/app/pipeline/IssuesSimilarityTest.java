@@ -10,7 +10,9 @@ import app.issues.BusinessDays;
 import app.issues.Corpus;
 import app.issues.DayBoundaries;
 import app.issues.Embedder;
+import app.issues.Initial;
 import app.issues.IssueUnit;
+import app.issues.Pressure;
 import app.issues.RegistrationInProgress;
 import app.issues.RowCache;
 import app.issues.Universe.Population;
@@ -40,6 +42,7 @@ class IssuesSimilarityTest {
   private final List<Corpus.Event> events = new ArrayList<>();
   private final Map<String, Corpus.Text> texts = new HashMap<>();
   private final List<RowCache.Entry> entries = new ArrayList<>();
+  private final List<Corpus.Tag> tags = new ArrayList<>();
   private int ext = 1;
 
   private static final SmileKMeans KMEANS = new SmileKMeans();
@@ -86,7 +89,8 @@ class IssuesSimilarityTest {
 
   private StudySource source(final boolean readable) {
     final Corpus corpus = new Corpus(issues, events, List.of(), List.of(), List.of(),
-        Map.of("p", Set.of("P")), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
+        Map.of("p", Set.of("P")), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
+        tags);
     return new StudySource() {
       @Override
       public Corpus load() {
@@ -154,6 +158,42 @@ class IssuesSimilarityTest {
     assertFalse(rows.get("t").values().containsKey(Augmentation.jaccard(5, Variant.OUTER)));
     assertTrue(rows.get("t").absent().contains(Augmentation.jaccard(5, Variant.OUTER)));
     assertEquals(3, r.described());
+  }
+
+  @Test
+  @DisplayName("the three start columns of ticket 19 join every row, read at each issue's first In "
+      + "Progress; a missing one recorded as absent")
+  void startColumns() {
+    issue("a", T0 + 40 * D, T0 + 50 * D, "TRAIN", "TRAIN");
+    events.add(new Corpus.Event("a", T0 + 39 * D, "fix_versions", "d", null, "1.0",
+        (ext++) + "%%0"));
+    issue("b", T0 + 2 * D, T0 + 11 * D, "TRAIN", "TRAIN");
+    events.add(new Corpus.Event("b", T0 + 2 * D, "fix_versions", "d", null, "1.0",
+        (ext++) + "%%0"));
+    issue("v", T0 + 60 * D, T0 + 61 * D, "TRAIN", "TEST");
+    issue("t", T0 + 70 * D, T0 + 71 * D, "TEST", "");
+    tags.add(new Corpus.Tag("p", "release-1.0", T0 + 10 * D, null));
+    tags.add(new Corpus.Tag("p", "release-1.1", T0 + 20 * D, null));
+    tags.add(new Corpus.Tag("p", "release-1.2", T0 + 50 * D, null));
+
+    final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
+        Progress.silent(), new RegistrationInProgress.Sizes(3, 1, 2, 1), SAME, 2, KMEANS)
+        .run(entries);
+    assertEquals(List.of(), r.refused());
+    final Map<String, Row> rows = new HashMap<>();
+    r.entries().forEach(e -> rows.put(e.unit().issueId(), e.row()));
+    assertEquals(1.0, rows.get("a").values().get(Pressure.FIX_VERSION));
+    assertEquals(0.0, rows.get("b").values().get(Pressure.FIX_VERSION), "set at the start");
+    // a: two releases before its start, missing; v: gaps 10 and 30, median 20, 10 days since
+    assertTrue(rows.get("a").absent().contains(Pressure.RELEASE_CYCLE));
+    assertFalse(rows.get("a").values().containsKey(Pressure.RELEASE_CYCLE));
+    assertEquals(10.0, rows.get("v").values().get(Pressure.RELEASE_CYCLE), 1e-9);
+    for (final Row row : rows.values()) {
+      assertTrue(row.absent().contains(Pressure.BLOCKER_PACE), "no Blocker issue in the corpus");
+    }
+    // the fix versions' fidelity, on the outer training rows a, b and v only: the record lacks
+    // the version a and b got, so neither chain is explained, and t is not counted
+    assertEquals(new Initial.Fidelity("fix_versions", 3, 2, 0, 0), r.fixVersions());
   }
 
   @Test
@@ -315,6 +355,50 @@ class IssuesSimilarityTest {
         .run(entries);
     assertEquals(List.of("1 issues of the matrix are not in the corpus, the first v"),
         r.refused());
+    assertTrue(r.entries().isEmpty());
+  }
+
+  @Test
+  @DisplayName("an issue the corpus holds but not as the matrix's In-Progress issue refuses the "
+      + "run: its start columns could not be read at its first In Progress")
+  void refusesAnIssueNotStartedAsInTheMatrix() {
+    issue("a", T0 + D, T0 + 10 * D, "TRAIN", "TRAIN");
+    issue("v", T0 + 20 * D, T0 + 21 * D, "TRAIN", "TEST");
+    issue("t", T0 + 30 * D, T0 + 31 * D, "TEST", "");
+    events.removeIf(e -> e.issue().equals("v") && "In Progress".equals(e.newValue()));
+    assertRefusedOn("v");
+  }
+
+  @Test
+  @DisplayName("an issue whose first In Progress in the corpus is not the matrix's refuses the run")
+  void refusesAnotherStart() {
+    issue("a", T0 + D, T0 + 10 * D, "TRAIN", "TRAIN");
+    issue("v", T0 + 20 * D, T0 + 21 * D, "TRAIN", "TEST");
+    issue("t", T0 + 30 * D, T0 + 31 * D, "TEST", "");
+    events.replaceAll(e -> e.issue().equals("a") && "In Progress".equals(e.newValue())
+        ? new Corpus.Event("a", T0 + 2 * D, e.field(), e.author(), e.oldValue(), e.newValue(),
+            e.external()) : e);
+    assertRefusedOn("a");
+  }
+
+  @Test
+  @DisplayName("an issue whose first resolution in the corpus is not the matrix's refuses the run")
+  void refusesAnotherResolution() {
+    issue("a", T0 + D, T0 + 10 * D, "TRAIN", "TRAIN");
+    issue("v", T0 + 20 * D, T0 + 21 * D, "TRAIN", "TEST");
+    issue("t", T0 + 30 * D, T0 + 31 * D, "TEST", "");
+    events.replaceAll(e -> e.issue().equals("t") && "Resolved".equals(e.newValue())
+        ? new Corpus.Event("t", T0 + 32 * D, e.field(), e.author(), e.oldValue(), e.newValue(),
+            e.external()) : e);
+    assertRefusedOn("t");
+  }
+
+  private void assertRefusedOn(final String id) {
+    final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
+        Progress.silent(), new RegistrationInProgress.Sizes(2, 1, 1, 1), SAME, 2, KMEANS)
+        .run(entries);
+    assertEquals(List.of("1 issues of the matrix are not In-Progress issues of the corpus with "
+        + "the same first In Progress and first resolution, the first " + id), r.refused());
     assertTrue(r.entries().isEmpty());
   }
 }

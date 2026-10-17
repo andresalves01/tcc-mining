@@ -47,6 +47,7 @@ class IssuesRetrospectiveTest {
   private final Map<String, Map<String, ChangedMethod>> methods = new HashMap<>();
   private final List<RowCache.Entry> entries = new ArrayList<>();
   private final Set<String> asked = new TreeSet<>();
+  private final List<Corpus.Tag> tags = new ArrayList<>();
   private int ext = 1;
 
   /** An issue In Progress at {@code started}, Fixed at {@code resolved}, in the given split. */
@@ -78,7 +79,8 @@ class IssuesRetrospectiveTest {
 
   private StudySource source() {
     final Corpus corpus = new Corpus(issues, events, comments, List.of(), commits,
-        Map.of("p", Set.of("P")), Map.of(), Map.of(), contributions, Map.of(), Map.of(), files);
+        Map.of("p", Set.of("P")), Map.of(), Map.of(), contributions, Map.of(), Map.of(), files,
+        tags);
     return new StudySource() {
       @Override
       public Corpus load() {
@@ -163,6 +165,31 @@ class IssuesRetrospectiveTest {
     assertEquals(0.0, v.row().values().get(Retrospective.LINES));
     assertTrue(v.row().absent().contains(Retrospective.MCCC));
     assertEquals(a.parts(), entries.get(0).parts());
+  }
+
+  @Test
+  @DisplayName("the blocking-link wait is counted at the day boundary the matrix holds; urgency "
+      + "reads the release of the fix version from the tags; each missing without its source")
+  void blockingLinksAndUrgency() {
+    corpus();
+    // a, In Progress at T0 + D, a Thursday 00:00 UTC, before the 04:00 boundary: Wednesday's date;
+    // it waits on x, resolved a day later at 03:00 UTC, on Thursday's date: one business day
+    final Corpus.Link waits = new Corpus.Link("x", "Blocker", "is blocked by");
+    issues.set(0, new Corpus.Issue("a", "P-a", "p", T0, "r", "r", null, "Bug", "Major", null,
+        List.of(), List.of("x"), List.of(waits), List.of("2.0")));
+    issues.add(new Corpus.Issue("x", "P-x", "p", T0, "r", "r", null, "Bug", "Major", null,
+        List.of(), List.of()));
+    events.add(new Corpus.Event("x", T0 + 2 * D + 3 * 3_600_000L, "status", "d", "Open",
+        "Resolved", (ext++) + "%%0"));
+    tags.add(new Corpus.Tag("p", "release-2.0", T0 + 13 * D, null));
+    final IssuesRetrospectiveTask.Report r = task().run(entries);
+    assertEquals(List.of(), r.refused());
+    final RowCache.Entry a = entry(r, "a");
+    assertEquals(1.0, a.row().values().get(Retrospective.BLOCKER_WAIT));
+    assertEquals(3.0, a.row().values().get(Retrospective.URGENCY), 1e-9);
+    final RowCache.Entry b = entry(r, "b");
+    assertTrue(b.row().absent().contains(Retrospective.BLOCKER_WAIT));
+    assertTrue(b.row().absent().contains(Retrospective.URGENCY));
   }
 
   @Test
