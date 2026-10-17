@@ -35,7 +35,7 @@ import java.util.Set;
  * the combination of the 27 whose sweep errs least (see {@link ElasticNetSelection}); and beside
  * each model, as a robustness check, a random forest's column share and leaf, swept on the same
  * rows and columns. The seventh model is the retrospective scenario ({@link Retrospective}), whose
- * eight columns {@code issues-in-progress-retrospective} adds to the matrix.
+ * ten columns {@code issues-in-progress-retrospective} adds to the matrix.
  *
  * <p>The target is whole business days, on the issues of at least one ({@link BusinessDays}):
  * the outer training rows are read with each one's day boundary from the matrix, those of 0

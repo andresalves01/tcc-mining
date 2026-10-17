@@ -44,7 +44,7 @@ import java.util.concurrent.Callable;
  * specification with similarity is association with the duration, not a prediction available
  * during the work. It reads the similarity medians, so it is swept over the 27 combinations as the
  * other models with them are; its forest follows as for every model. The six models before it are
- * declared, read and chosen as they were; the eight columns are new names, beside the registered
+ * declared, read and chosen as they were; the ten columns are new names, beside the registered
  * columns of the same constructs, which keep their meaning.
  *
  * <p><b>Ticket 12.</b> The previous own specification ({@code OWN / C1}) is no longer a model of

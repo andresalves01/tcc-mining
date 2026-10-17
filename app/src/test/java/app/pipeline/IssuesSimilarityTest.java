@@ -353,4 +353,20 @@ class IssuesSimilarityTest {
         r.refused());
     assertTrue(r.entries().isEmpty());
   }
+
+  @Test
+  @DisplayName("an issue the corpus holds but not as the matrix's In-Progress issue refuses the "
+      + "run: its start columns could not be read at its first In Progress")
+  void refusesAnIssueNotStartedAsInTheMatrix() {
+    issue("a", T0 + D, T0 + 10 * D, "TRAIN", "TRAIN");
+    issue("v", T0 + 20 * D, T0 + 21 * D, "TRAIN", "TEST");
+    issue("t", T0 + 30 * D, T0 + 31 * D, "TEST", "");
+    events.removeIf(e -> e.issue().equals("v") && "In Progress".equals(e.newValue()));
+    final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
+        Progress.silent(), new RegistrationInProgress.Sizes(2, 1, 1, 1), SAME, 2, KMEANS)
+        .run(entries);
+    assertEquals(List.of("1 issues of the matrix are not In-Progress issues of the corpus with "
+        + "the same first In Progress and first resolution, the first v"), r.refused());
+    assertTrue(r.entries().isEmpty());
+  }
 }

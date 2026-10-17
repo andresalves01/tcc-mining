@@ -21,14 +21,19 @@ import java.util.Map;
  *       three such releases. Raw: it is signed.
  *   <li>{@link #BLOCKER_PACE}: the median calendar days from creation to first resolution of the
  *       project's other issues that were Blocker priority at their first resolution, of any
- *       reason, resolved strictly before t0; the issue itself never; missing with fewer than
- *       three. Those issues are the universe's units of any reason ({@link Universe#unit}), the
- *       broad population's rule: home, one per key, a reporter, resolved after their creation.
+ *       reason, resolved strictly before t0; missing with fewer than three. The issue itself can
+ *       never be one, being resolved after its own start; it is also left out by id, as a guard.
+ *       Those issues are the ones the universe gives an outcome of any reason ({@link
+ *       Universe#unit}): home, one per key, with a creation instant and a first resolution after
+ *       it; the broad population's issues, which have a reporter, and the previous study's
+ *       inherited labels, which need not.
  * </ol>
  *
  * <p>Calendar days are elapsed 24-hour days: other issues and releases have no day boundary of
- * their own. Nothing here reads anything after t0 but the reference issues' own priority up to
- * their resolution, which is itself before t0.
+ * their own. No value after t0 enters any of the three. The flag does read the changelog after
+ * t0, but only to undo it back to the creation: it counts the versions there were then ({@link
+ * FixVersions#setBefore}), never one added later. The references are read up to their own
+ * resolution, which is before t0.
  */
 public final class Pressure {
 
@@ -78,21 +83,10 @@ public final class Pressure {
     return new Pressure(universe, releases, blockers);
   }
 
-  /**
-   * The priority in force right after {@code t}, changes at {@code t} included: the old value of
-   * the first change before any, as {@link Initial} reads it at creation.
-   */
+  /** The priority in force right after {@code t}, changes at {@code t} included. */
   static String priorityAt(final Corpus.Issue issue, final List<Corpus.Event> events,
       final long t) {
-    final List<Corpus.Event> changes = Initial.field(events, "priority");
-    String value = changes.isEmpty() ? Initial.norm(issue.priority())
-        : Initial.norm(changes.get(0).oldValue());
-    for (final Corpus.Event e : changes) {
-      if (e.at() != null && e.at() <= t) {
-        value = Initial.norm(e.newValue());
-      }
-    }
-    return value;
+    return Initial.scalarAt(Initial.field(events, "priority"), issue.priority(), t);
   }
 
   /** The three attributes of one In-Progress unit, a missing one as null. */

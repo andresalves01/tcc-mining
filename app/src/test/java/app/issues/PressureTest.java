@@ -41,7 +41,7 @@ class PressureTest {
       event(id, T1, "resolution", null, "Fixed");
     }
 
-    /** An issue created at {@code created} with priority {@code priority}, resolved at {@code res}. */
+    /** An issue created at {@code created} with {@code priority}, resolved at {@code res}. */
     void other(final String id, final String key, final long created, final Long res,
         final String priority) {
       issues.add(new Corpus.Issue(id, key, "p", created, "r", "r", null, "Bug", priority, null,
@@ -93,6 +93,39 @@ class PressureTest {
   }
 
   @Test
+  @DisplayName("fix version flag, name-independent: a version added after the start and renamed "
+      + "later in Jira, without a changelog entry, is not taken as present at creation")
+  void renamedVersionIsNotAtCreation() {
+    final Fixture f = new Fixture();
+    // added after the start as 2.0, renamed to 2.0.0 in Jira: the record holds the new name only
+    f.started("a", "P-1", List.of("2.0.0"));
+    f.event("a", T0 + D, "fix_versions", null, "2.0");
+    assertEquals(0.0, f.row("a").get(Pressure.FIX_VERSION));
+    // the same rename when the version was there at creation and removed after the start
+    final Fixture g = new Fixture();
+    g.started("a", "P-1", List.of());
+    g.event("a", T0 + D, "fix_versions", "1.0-renamed", null);
+    assertEquals(1.0, g.row("a").get(Pressure.FIX_VERSION));
+  }
+
+  @Test
+  @DisplayName("the fix versions' fidelity: an issue whose names the changelog does not explain is "
+      + "counted as inconsistent, as a rename leaves it")
+  void fixVersionFidelity() {
+    final Fixture f = new Fixture();
+    f.started("plain", "P-1", List.of("1.0"));
+    f.event("plain", T0 + D, "fix_versions", null, "1.0");
+    f.started("renamed", "P-2", List.of("2.0.0"));
+    f.event("renamed", T0 + D, "fix_versions", null, "2.0");
+    f.started("none", "P-3", List.of("3.0"));
+    final Corpus corpus = new Corpus(f.issues, f.events, List.of(), List.of(), List.of(),
+        Map.of("p", Set.of("P")), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
+    final Initial.Fidelity fidelity =
+        FixVersions.fidelity(Universe.of(corpus), List.of("plain", "renamed", "none"));
+    assertEquals(new Initial.Fidelity("fix_versions", 3, 2, 1, 1), fidelity);
+  }
+
+  @Test
   @DisplayName("the release cycle reads only the tags dated strictly before the start")
   void cycleBeforeTheStart() {
     final Fixture f = new Fixture();
@@ -118,11 +151,12 @@ class PressureTest {
   @Test
   @DisplayName("Blocker pace: the median creation-to-resolution days of the project's other issues "
       + "Blocker at their first resolution, of any reason, resolved strictly before the start; "
-      + "the issue itself never; missing with fewer than three")
+      + "missing with fewer than three")
   void blockerPace() {
     final Fixture f = new Fixture();
     f.started("a", "P-1", List.of());
-    // the issue itself is a Blocker resolved... after its start; and never counts
+    // the issue itself is a Blocker, but resolved after its own start: it can never be among the
+    // references, so this does not test the exclusion by id, which is there only as a guard
     f.issues.set(0, new Corpus.Issue("a", "P-1", "p", CREATED, "r", "r", null, "Bug", "Blocker",
         null, List.of(), List.of()));
     f.other("b1", "P-10", 0, 2 * D, "Blocker");

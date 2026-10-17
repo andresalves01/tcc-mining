@@ -12,8 +12,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * The retrospective blocking-link wait (ticket 19, items 16 and 26): business days from the start to
- * the last first resolution among the issues this one waits on, on corpora built by hand.
+ * The retrospective blocking-link wait (ticket 19, items 16, 26 and 37): active business days from
+ * the start to the last first resolution among the issues this one waits on, on corpora built by
+ * hand.
  */
 class BlockingTest {
 
@@ -110,6 +111,26 @@ class BlockingTest {
     // c resolved on the next Monday: five business days
     f.other("c", "P-3", "p", MONDAY + 7 * D + 5);
     assertEquals(5.0, f.wait("a"));
+  }
+
+  @Test
+  @DisplayName("the time the issue spent back in Open or Reopened is left out, as from the target, "
+      + "so the wait never exceeds the active business days")
+  void leavesOutTheTimeBackInOpen() {
+    final Fixture f = new Fixture();
+    f.started("a", "P-1", List.of(blockedBy("b")));
+    // back in Open from Monday to Wednesday of the first week: two business days out
+    f.event("a", MONDAY + 2_000, "status", "In Progress", "Open");
+    f.event("a", MONDAY + 2 * D + 2_000, "status", "Open", "In Progress");
+    f.other("b", "P-2", "p", MONDAY + 7 * D + 5);
+    assertEquals(3.0, f.wait("a"));
+
+    final Fixture g = new Fixture();
+    g.started("a", "P-1", List.of(blockedBy("b")));
+    g.event("a", MONDAY + 2_000, "status", "In Progress", "Open");
+    g.event("a", MONDAY + 2 * D + 2_000, "status", "Open", "In Progress");
+    g.other("b", "P-2", "p", null);
+    assertEquals(8.0, g.wait("a"), "clipped at the resolution: the target's 8, never its 10");
   }
 
   @Test

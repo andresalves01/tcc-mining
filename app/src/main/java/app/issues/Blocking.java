@@ -25,9 +25,10 @@ import java.util.TreeSet;
  * unknown, not absent.
  *
  * <p><b>Wait.</b> Each blocker's first resolution of any reason ({@link Universe#firstResolution}),
- * never resolved or resolved after t1 taken as t1; the latest of them; whole business days from t0
- * to it at the issue's day boundary ({@link BusinessDays#count}), 0 when it is not after t0.
- * Missing without a blocker.
+ * never resolved or resolved after t1 taken as t1; the latest of them; the active business days
+ * from t0 to it at the issue's day boundary, the time the issue spent back in Open or Reopened left
+ * out by the same function as the target ({@link BusinessDays#active}, item 37), so the wait never
+ * exceeds the duration; 0 when it is not after t0. Missing without a blocker.
  */
 public final class Blocking {
 
@@ -77,7 +78,8 @@ public final class Blocking {
     if (latest == null) {
       return null;
     }
-    return latest <= t0 ? 0.0 : (double) BusinessDays.count(t0, latest, boundaryHour);
+    return latest <= t0 ? 0.0
+        : (double) BusinessDays.active(universe.events(u.id()), t0, latest, boundaryHour);
   }
 
   /**
@@ -86,23 +88,15 @@ public final class Blocking {
    */
   static Set<String> blockers(final Corpus.Issue issue, final List<Corpus.Event> events,
       final long t1) {
-    // the links at creation: the current ones with every link change undone, last first
-    final Map<Corpus.Link, Integer> state = new HashMap<>();
-    if (issue.typedLinks() != null) {
-      issue.typedLinks().forEach(l -> state.merge(key(l), 1, Integer::sum));
-    }
+    // the links at creation: the current ones with every link change undone, last first, by the
+    // rule the link count at creation is read with
     final List<Corpus.Event> changes = Initial.field(events, LINKS);
-    for (int k = changes.size() - 1; k >= 0; k--) {
-      final Corpus.Event e = changes.get(k);
-      if (e.newLink() != null) {
-        state.computeIfPresent(key(e.newLink()), (l, n) -> n > 1 ? n - 1 : null);
-      }
-      if (e.oldLink() != null) {
-        state.merge(key(e.oldLink()), 1, Integer::sum);
-      }
-    }
+    final List<Corpus.Link> current = issue.typedLinks() == null ? List.of()
+        : issue.typedLinks().stream().map(Blocking::key).toList();
     final Set<String> out = new TreeSet<>();
-    state.keySet().forEach(l -> add(out, l, issue.id()));
+    Initial.undo(current, changes, e -> e.newLink() == null ? null : key(e.newLink()),
+        e -> e.oldLink() == null ? null : key(e.oldLink())).held()
+        .forEach(l -> add(out, l, issue.id()));
     for (final Corpus.Event e : changes) {
       if (e.newLink() != null && e.at() != null && e.at() < t1) {
         add(out, key(e.newLink()), issue.id());

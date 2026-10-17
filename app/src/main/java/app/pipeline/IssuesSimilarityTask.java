@@ -111,6 +111,22 @@ public final class IssuesSimilarityTask {
           + "the first %s", unknown.size(), unknown.get(0))), found, List.of(), null, 0,
           Map.of(), Set.of());
     }
+    // the start columns are read at each issue's first In Progress: a row the corpus does not hold
+    // as that In-Progress issue refuses, rather than leaving its fix version flag to be filled
+    final List<String> unstarted = new ArrayList<>();
+    for (final RowCache.Entry e : entries) {
+      final Universe.Unit u = universe.unit(P, e.unit().issueId());
+      if (u == null || u.start() != e.unit().startedAt().toEpochMilli()
+          || u.resolved() != e.unit().resolvedAt().toEpochMilli()) {
+        unstarted.add(e.unit().issueId());
+      }
+    }
+    if (!unstarted.isEmpty()) {
+      return new Report(List.of(String.format("%,d issues of the matrix are not In-Progress "
+          + "issues of the corpus with the same first In Progress and first resolution, the "
+          + "first %s", unstarted.size(), unstarted.get(0))), found, List.of(), null, 0,
+          Map.of(), Set.of());
+    }
     final Map<String, String> descriptions = descriptions(entries, universe);
 
     progress.phase(2, 4, "day boundaries from the tracker activity before each first In "
@@ -143,12 +159,7 @@ public final class IssuesSimilarityTask {
       final Map<String, Double> values = new HashMap<>(e.row().values());
       final Set<String> absent = new HashSet<>(e.row().absent());
       final Map<String, Double> added = new HashMap<>(result.columns().get(e.unit().issueId()));
-      final Universe.Unit started = universe.unit(P, e.unit().issueId());
-      if (started == null) {
-        Pressure.COLUMNS.forEach(c -> added.put(c, null));
-      } else {
-        added.putAll(pressure.row(started));
-      }
+      added.putAll(pressure.row(universe.unit(P, e.unit().issueId())));
       values.put(BusinessDays.BOUNDARY, (double) boundaries.get(e.unit().issueId()).hour());
       values.put(BusinessDays.ACTIVE, (double) active.get(e.unit().issueId()));
       for (final String column : columns()) {

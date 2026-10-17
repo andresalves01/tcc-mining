@@ -265,7 +265,8 @@ public enum Command {
       implementation commit. In [first In Progress, first resolution), bot
       accounts left out: the comments, the distinct people who commented or
       changed a field (the reporter only if active) and the effective
-      changes of assignee. From the links and the tags: the business days
+      changes of assignee. From the links and the tags: the business days,
+      without the time back in Open or Reopened as in the target,
       from the first In Progress to the last first resolution of the
       issues it waited on (is blocked by, depends upon, requires; any
       project), clipped at its own; and urgency, the calendar days from

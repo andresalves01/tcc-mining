@@ -56,8 +56,9 @@ import java.util.Set;
  * <p><b>Blocking links and the release</b> (ticket 19), each missing with its indicator:
  *
  * <ol start="9">
- *   <li>{@link #BLOCKER_WAIT}: the business days from t0, at the issue's day boundary, to the last
- *       first resolution of the issues it waited on, clipped at t1 ({@link Blocking}).
+ *   <li>{@link #BLOCKER_WAIT}: the active business days from t0, at the issue's day boundary, to
+ *       the last first resolution of the issues it waited on, clipped at t1, the time back in Open
+ *       or Reopened left out as from the target ({@link Blocking}).
  *   <li>{@link #URGENCY}: calendar days from t1 to the release of the issue's fix version
  *       ({@link #urgency}), measured after the fact: small when fixed just before the release,
  *       large when the fix waited for it.
@@ -108,9 +109,9 @@ public final class Retrospective {
   public static final String SCENARIO = "retrospective: ten attributes observed between the "
       + "first In Progress and the first resolution (implementation content, discussion and "
       + "coordination, the wait on blocking issues, and urgency, the days from the first "
-      + "resolution to the release of its fix version, measured after the fact); the counts grow with the duration itself, so a gain is association with "
-      + "the duration observed up to the resolution, not a prediction available during the work, "
-      + "nor causation";
+      + "resolution to the release of its fix version, measured after the fact); the counts grow "
+      + "with the duration itself, so a gain is association with the duration observed up to the "
+      + "resolution, not a prediction available during the work, nor causation";
 
   private final World world;
   private final Universe universe;
