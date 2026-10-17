@@ -109,6 +109,26 @@ class ElasticNetSelectionTest {
           + "cluster_median_32_inner] 3fee666666666666 3f720868e0e6ede1 11 3ff51fe8cd20a5a5 "
           + "8ce9d2ac d67cd950");
 
+  /** The eight models before ticket 22, in their order. */
+  private static final List<String> EIGHT_MODELS = List.of("own_without_similarity",
+      "similarity_alone", "own_with_similarity", "alzubaidi_start", "kikas_start", "union_own",
+      "own_retrospective", "own_with_similarity_before_pressure");
+
+  /**
+   * The eight models before ticket 22 as the code chose them on {@link #full}: per model a hash of
+   * its {@link #fingerprint} and of its forest's ({@link #forestFingerprint}). Captured from
+   * 8edd07b (main after ticket 21).
+   */
+  private static final List<String> EIGHT = List.of(
+      "own_without_similarity 6ab5bff6 d9f3c526",
+      "similarity_alone 770ef34c b17efd7e",
+      "own_with_similarity c3552547 40d1fdb",
+      "alzubaidi_start d4695408 84ec1528",
+      "kikas_start bdd33a7 b49f588a",
+      "union_own 86fed577 1129d2e8",
+      "own_retrospective 6c6a7086 db8e5bd",
+      "own_with_similarity_before_pressure b8c08335 17b86ec4");
+
   private static final List<String> UNTOUCHED =
       List.of("similarity_alone", "alzubaidi_start", "kikas_start");
 
@@ -860,6 +880,29 @@ class ElasticNetSelectionTest {
     assertEquals(java.util.Arrays.toString(before.predicted()),
         java.util.Arrays.toString(eighth.predicted()));
     assertEquals(before.trials(), eighth.trials());
+  }
+
+  /** A forest as bits: its columns, column share, count, leaf, error, predictions and grid. */
+  private static String forestFingerprint(final Forest.Fitted f) {
+    return f.columns() + " " + hex(f.share()) + " " + f.mtry() + " " + f.nodeSize() + " "
+        + hex(f.score().mae()) + " " + java.util.Arrays.toString(f.predicted()) + " "
+        + f.trials();
+  }
+
+  @Test
+  @DisplayName("the eight models before the ninth choose, bit for bit, what they chose before "
+      + "it: Elastic Net (combination, columns, alpha, lambda, error, predictions, every sweep) "
+      + "and forest (columns, column share, leaf, error, predictions, grid)")
+  void eightAsBeforeTheNinth() {
+    full();
+    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries), 1);
+    final List<String> now = new ArrayList<>();
+    for (final String name : EIGHT_MODELS) {
+      now.add(name + " " + Integer.toHexString(fingerprint(model(r, name)).hashCode()) + " "
+          + Integer.toHexString(forestFingerprint(model(r, name).forest()).hashCode()));
+    }
+    assertEquals(EIGHT, now);
+    assertEquals(EIGHT_MODELS, ElasticNetSelection.MODELS.subList(0, 8));
   }
 
   @Test
