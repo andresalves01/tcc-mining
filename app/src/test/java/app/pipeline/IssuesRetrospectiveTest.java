@@ -6,9 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import app.issues.BusinessDays;
 import app.issues.Corpus;
-import app.issues.ElasticNetSelection;
 import app.issues.IssueUnit;
-import app.issues.RegistrationInProgress;
+import app.issues.ProjectSplit;
 import app.issues.Retrospective;
 import app.issues.RowCache;
 import app.issues.Universe.Population;
@@ -116,9 +115,9 @@ class IssuesRetrospectiveTest {
     };
   }
 
+  /** The hand-assigned split taken as it is; the rule's check is {@link #refuses}' last. */
   private IssuesRetrospectiveTask task() {
-    return new IssuesRetrospectiveTask(source(), changed(), Progress.silent(),
-        ElasticNetSelection.sizes(entries));
+    return new IssuesRetrospectiveTask(source(), changed(), Progress.silent(), e -> List.of());
   }
 
   private static RowCache.Entry entry(final IssuesRetrospectiveTask.Report r, final String id) {
@@ -213,7 +212,7 @@ class IssuesRetrospectiveTest {
 
   @Test
   @DisplayName("an issue of the matrix the corpus does not hold as an In-Progress issue, or one whose "
-      + "start or resolution differs there, refuses the run; so does a split size not expected")
+      + "start or resolution differs there, refuses the run; so does a split not its rule's")
   void refuses() {
     corpus();
     final List<RowCache.Entry> unknown = new ArrayList<>(entries);
@@ -222,8 +221,7 @@ class IssuesRetrospectiveTest {
     unknown.add(new RowCache.Entry(new IssueUnit("x", "P-x", "p", "r", "d",
         Instant.ofEpochMilli(T0), Instant.ofEpochMilli(T0 + 9 * D), "Fixed", false,
         Instant.ofEpochMilli(T0 + D)), new Row("x", Map.of(), Set.of()), parts));
-    final IssuesRetrospectiveTask.Report r = new IssuesRetrospectiveTask(source(), changed(),
-        Progress.silent(), ElasticNetSelection.sizes(unknown)).run(unknown);
+    final IssuesRetrospectiveTask.Report r = task().run(unknown);
     assertEquals(1, r.refused().size(), r.refused().toString());
     assertTrue(r.refused().get(0).contains("x"), r.refused().toString());
     assertTrue(r.entries().isEmpty());
@@ -254,8 +252,18 @@ class IssuesRetrospectiveTest {
         "only the missing column is named: " + active.refused());
     assertTrue(asked.isEmpty(), "no method was read");
 
-    final IssuesRetrospectiveTask.Report sizes = new IssuesRetrospectiveTask(source(), changed(),
-        Progress.silent(), new RegistrationInProgress.Sizes(3, 1, 2, 2)).run(entries);
-    assertEquals(List.of("inner validation: 1 rows, expected 2"), sizes.refused());
+    // the hand split happens to be the rule's for these four issues; with a moved to the outer
+    // test it is not
+    assertEquals(List.of(), ProjectSplit.differences(entries));
+    final List<RowCache.Entry> other = new ArrayList<>(entries);
+    final Map<Population, String[]> test = new EnumMap<>(Population.class);
+    test.put(Population.IN_PROGRESS, new String[] {"TEST", ""});
+    other.set(0, new RowCache.Entry(first.unit(), first.row(), test));
+    final IssuesRetrospectiveTask.Report split = new IssuesRetrospectiveTask(source(), changed(),
+        Progress.silent()).run(other);
+    assertEquals(1, split.refused().size(), split.refused().toString());
+    assertTrue(split.refused().get(0).contains("not at the verdicts of the split's rule"),
+        split.refused().toString());
+    assertTrue(asked.isEmpty(), "no method was read");
   }
 }

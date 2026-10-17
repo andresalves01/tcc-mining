@@ -8,6 +8,7 @@ import app.issues.Attributes;
 import app.issues.Augmentation;
 import app.issues.BusinessDays;
 import app.issues.ElasticNetSelection;
+import app.issues.ProjectSplit;
 import app.issues.RegistrationInProgress;
 import app.issues.Retrospective;
 import app.issues.RowCache;
@@ -27,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.function.Function;
 
 /**
  * The selection step of the description-similarity chain, inner mode only: each Elastic Net
@@ -38,14 +40,15 @@ import java.util.Set;
  * ten columns {@code issues-in-progress-retrospective} adds to the matrix.
  *
  * <p>The target is whole business days, on the issues of at least one ({@link BusinessDays}):
- * the outer training rows are read with each one's day boundary from the matrix, those of 0
- * business days dropped, and the selection runs on the rest.
+ * the outer training rows are read with each one's day boundary from the matrix, any of 0
+ * business days dropped -- none since ticket 21, the split being drawn over the issues of at least
+ * one -- and the selection runs on the rest.
  *
  * <p>Reads MATRIX, the one {@code issues-in-progress-retrospective} wrote, which has every
- * model's columns; refuses, writing and recording nothing, unless the four split sizes are the
- * registered study's and the matrix has the day boundary and every column the models declare at
- * every combination.
- * The outer test is counted by its split labels and nothing else. Writes the choices to
+ * model's columns; refuses, writing and recording nothing, unless every row's split is the one its
+ * rule draws ({@link ProjectSplit}) and the matrix has the day boundary and every column the
+ * models declare at every combination. Of the outer test only the ids, the projects and the split
+ * labels are read, to count it and to check the split. Writes the choices to
  * ELASTIC_NET_PARAMETERS -- never the registered PARAMETERS, and never over a file holding
  * anything but this step's own lines under its own header, a check made before anything is fitted
  * -- and records the run, with the SHA-256 of the matrix and of the parameters file, in ISSUES_DB.
@@ -59,6 +62,24 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
       + "check, not a new contribution: it answers whether the small gains come from relations "
       + "the linear model cannot capture; added after an inner-validation prototype and before "
       + "the outer test was opened";
+
+  /** Where each setting is read from: the environment, then the system properties. */
+  private final Function<String, String> settings;
+
+  public IssuesSimilarityElasticNetCommand() {
+    this(name -> {
+      final String fromEnv = System.getenv(name);
+      return fromEnv == null || fromEnv.isBlank() ? System.getProperty(name) : fromEnv;
+    });
+  }
+
+  /**
+   * @param settings the settings by name; the tests hand their own, so a real MATRIX in the
+   *     environment of whoever runs them is never read
+   */
+  IssuesSimilarityElasticNetCommand(final Function<String, String> settings) {
+    this.settings = settings;
+  }
 
   @Override
   public void run(final Context context) throws CommandFailedException {
@@ -94,13 +115,14 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     System.out.printf("  matrix read %s  sha256 %s (%,d rows)%n", matrix, matrixSha,
         entries.size());
 
+    final List<String> split = ProjectSplit.differences(entries);
+    if (!split.isEmpty()) {
+      throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
+          + split.get(0)));
+    }
     final RegistrationInProgress.Sizes s = ElasticNetSelection.sizes(entries);
     System.out.printf("  outer training %,d  outer test %,d  inner fitting %,d  inner validation "
         + "%,d%n", s.train(), s.test(), s.innerFit(), s.innerSelection());
-    if (!RegistrationInProgress.SIZES.equals(s)) {
-      throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: the "
-          + "split sizes are not the registered study's, " + RegistrationInProgress.SIZES));
-    }
     final ElasticNetSelection.Result r;
     final BusinessDays.Population population;
     try {
@@ -200,6 +222,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     run.put("stage", STAGE);
     run.put("mode", "inner");
     run.put("outer_test", "not read");
+    run.put("split_rule", ProjectSplit.RULE);
     run.putAll(statements());
     run.put("population_rows", populationRows(population));
     run.put("models", ElasticNetSelection.MODELS);
@@ -389,13 +412,12 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     return a.toAbsolutePath().normalize().equals(b.toAbsolutePath().normalize());
   }
 
-  private static String env(final String name) {
-    final String fromEnv = System.getenv(name);
-    final String value = fromEnv == null || fromEnv.isBlank() ? System.getProperty(name) : fromEnv;
+  private String env(final String name) {
+    final String value = settings.apply(name);
     return value == null || value.isBlank() ? null : value;
   }
 
-  private static Path path(final String name) throws CommandFailedException {
+  private Path path(final String name) throws CommandFailedException {
     final String value = env(name);
     if (value == null) {
       throw new CommandFailedException(List.of("  MATRIX and ELASTIC_NET_PARAMETERS "

@@ -34,9 +34,9 @@ class ElasticNetSelectionTest {
 
   private static final Combination TEN_FIVE_32 = new Combination(10, 5, 32);
 
-  /** The three start attributes of ticket 19, in its order. */
+  /** The three start attributes of ticket 19, in its order, the Blocker pace's inner variant. */
   private static final List<String> START = List.of("START_fix_version",
-      "START_release_cycle_days", "START_blocker_pace_days");
+      "START_release_cycle_days", "START_blocker_pace_days_inner");
 
   /**
    * The own specification without the similarity medians: the ten of ticket 12, then the three of
@@ -45,7 +45,7 @@ class ElasticNetSelectionTest {
   private static final List<String> OWN_INNER = List.of("A01_desc_length", "A03_team_size",
       "TEAM_loc_median", "TEAM_loc_sd", "TEAM_mccc_median", "TEAM_mccc_sd",
       "reporter_median_inner", "A09_exec_loc_tot", "A10_exec_mccc_tot", "A13_exec_open_load",
-      "START_fix_version", "START_release_cycle_days", "START_blocker_pace_days");
+      "START_fix_version", "START_release_cycle_days", "START_blocker_pace_days_inner");
 
   private static final List<String> SIMILARITY_INNER = List.of("jaccard_median_10_inner",
       "embedding_median_5_inner", "cluster_median_32_inner");
@@ -196,13 +196,15 @@ class ElasticNetSelectionTest {
   /**
    * The three start columns of ticket 19, drawn from their own generator so no other column moves:
    * the flag 0 or 1, the cycle signed and missing on every third row, the pace missing on every
-   * seventh.
+   * seventh, the same in both variants of the split.
    */
   private static Map<String, Double> start(final Random random, final double hours, final int i) {
     final Map<String, Double> v = new HashMap<>();
     v.put("START_fix_version", (double) random.nextInt(2));
     v.put("START_release_cycle_days", i % 3 == 0 ? null : 100 * random.nextDouble() - 50);
-    v.put("START_blocker_pace_days", i % 7 == 0 ? null : hours * random.nextDouble());
+    final Double pace = i % 7 == 0 ? null : hours * random.nextDouble();
+    v.put("START_blocker_pace_days_inner", pace);
+    v.put("START_blocker_pace_days_outer", pace);
     return v;
   }
 
@@ -374,11 +376,14 @@ class ElasticNetSelectionTest {
   void startColumns() {
     for (final Augmentation.Variant v : Augmentation.Variant.values()) {
       final List<Cell> cells = ElasticNetSelection.cells(TEN_FIVE_32, v);
+      // the Blocker pace reads the training side's durations: in the variant of the cells
+      final List<String> variant = List.of("START_fix_version", "START_release_cycle_days",
+          Pressure.blockerPace(v));
       for (final String name : List.of("own_without_similarity", "own_with_similarity",
           "union_own", "own_retrospective")) {
         final List<Attribute> start = cell(cells, name).attributes().stream()
-            .filter(a -> START.contains(a.name())).toList();
-        assertEquals(START, start.stream().map(Attribute::name).toList(), name);
+            .filter(a -> variant.contains(a.name())).toList();
+        assertEquals(variant, start.stream().map(Attribute::name).toList(), name);
         assertEquals(app.study.Construct.Kind.BINARY, start.get(0).kind());
         assertFalse(start.get(0).absenceIndicator());
         assertEquals(app.study.Construct.Transform.NONE, start.get(1).transform());
@@ -389,7 +394,7 @@ class ElasticNetSelectionTest {
       }
       for (final String name : UNTOUCHED) {
         assertTrue(cell(cells, name).attributes().stream()
-            .noneMatch(a -> START.contains(a.name())), name);
+            .noneMatch(a -> variant.contains(a.name())), name);
       }
     }
   }
@@ -461,7 +466,7 @@ class ElasticNetSelectionTest {
     assertEquals(List.of("A01_desc_length", "A03_team_size", "TEAM_loc_median", "TEAM_loc_sd",
         "TEAM_mccc_median", "TEAM_mccc_sd", "reporter_median_outer", "A09_exec_loc_tot",
         "A10_exec_mccc_tot", "A13_exec_open_load", "START_fix_version",
-        "START_release_cycle_days", "START_blocker_pace_days", "jaccard_median_10_outer",
+        "START_release_cycle_days", "START_blocker_pace_days_outer", "jaccard_median_10_outer",
         "embedding_median_5_outer", "cluster_median_32_outer"),
         names(cell(cells, "own_with_similarity")));
   }

@@ -80,6 +80,28 @@ class IssuesSimilarityTestCommandTest {
   }
 
   @Test
+  @DisplayName("a matrix whose split is not its rule's -- one verdict moved -- refuses the run "
+      + "before anything of it is printed, its sizes included; nothing scored, written or recorded")
+  void refusesAnotherSplit() throws IOException {
+    final Path matrix = MovedSplitFixture.write(dir.resolve("matrix.tsv"));
+    set(matrix, elasticNet(IssuesReservedCommand.sha256(matrix)));
+    final java.io.PrintStream out = System.out;
+    final java.io.ByteArrayOutputStream printed = new java.io.ByteArrayOutputStream();
+    final String why;
+    try {
+      System.setOut(new java.io.PrintStream(printed, true,
+          java.nio.charset.StandardCharsets.UTF_8));
+      why = refusal();
+    } finally {
+      System.setOut(out);
+    }
+    assertTrue(why.contains("not at the verdicts of the split's rule"), why);
+    final String shown = printed.toString(java.nio.charset.StandardCharsets.UTF_8);
+    assertFalse(shown.contains("outer test"), "nothing of the test side printed: " + shown);
+    assertFalse(shown.contains("matrix read"), shown);
+  }
+
+  @Test
   @DisplayName("a missing Elastic Net parameters file refuses the run")
   void refusesWithoutElasticNetParameters() throws IOException {
     set(matrix(), dir.resolve("absent.tsv"));

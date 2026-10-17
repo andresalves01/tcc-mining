@@ -2,6 +2,7 @@ package app.pipeline;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import app.issues.Augmentation;
@@ -13,8 +14,9 @@ import app.issues.Embedder;
 import app.issues.Initial;
 import app.issues.IssueUnit;
 import app.issues.Pressure;
-import app.issues.RegistrationInProgress;
+import app.issues.ProjectSplit;
 import app.issues.RowCache;
+import app.issues.Universe;
 import app.issues.Universe.Population;
 import app.issues.port.StudySource;
 import app.pipeline.clustering.SmileKMeans;
@@ -28,6 +30,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -46,6 +49,12 @@ class IssuesSimilarityTest {
   private int ext = 1;
 
   private static final SmileKMeans KMEANS = new SmileKMeans();
+
+  /**
+   * The hand-assigned split taken as it is: each test sets its rows' sides; the rule's check is
+   * {@link #refusesAnotherSplit}'s and {@code ProjectSplitTest}'s.
+   */
+  private static final Function<List<RowCache.Entry>, List<String>> HAND = e -> List.of();
 
   /** Every description at the same unit vector of two components. */
   private static final Embedder SAME = text -> new Embedder.Embedding(new float[] {1, 0}, 1);
@@ -120,15 +129,33 @@ class IssuesSimilarityTest {
   }
 
   @Test
-  @DisplayName("a split size other than the expected one refuses the run before the corpus is read")
-  void refusesOtherSizes() {
-    issue("a", T0 + D, T0 + 10 * D, "TRAIN", "TRAIN");
-    issue("v", T0 + 20 * D, T0 + 21 * D, "TRAIN", "TEST");
+  @DisplayName("a split other than its rule's refuses the run before the corpus is read; the "
+      + "rule's own passes")
+  void refusesAnotherSplit() {
+    for (int k = 0; k < 6; k++) {
+      issue("i" + k, T0 + D, T0 + 10 * D, "TRAIN", "TRAIN");
+    }
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(false),
-        Progress.silent(), new RegistrationInProgress.Sizes(2, 1, 1, 1), SAME, 2, KMEANS)
-        .run(entries);
-    assertEquals(List.of("outer test: 0 rows, expected 1"), r.refused());
+        Progress.silent(), ProjectSplit::differences, SAME, 2, KMEANS).run(entries);
+    assertEquals(1, r.refused().size());
+    assertTrue(r.refused().get(0).contains("not at the verdicts of the split's rule"),
+        r.refused().get(0));
     assertTrue(r.entries().isEmpty());
+
+    // the same issues at the rule's verdicts go on to the corpus
+    final ProjectSplit.Parts parts = ProjectSplit.draw(Map.of("i0", "p", "i1", "p", "i2", "p",
+        "i3", "p", "i4", "p", "i5", "p"));
+    entries.replaceAll(e -> {
+      final String id = e.unit().issueId();
+      final Universe.Part inner = parts.inner().get(id);
+      final Map<Population, String[]> drawn = new EnumMap<>(Population.class);
+      drawn.put(Population.IN_PROGRESS,
+          new String[] {parts.outer().get(id).name(), inner == null ? "" : inner.name()});
+      return new RowCache.Entry(e.unit(), e.row(), drawn);
+    });
+    assertThrows(AssertionError.class, () -> new IssuesSimilarityTask(source(false),
+        Progress.silent(), ProjectSplit::differences, SAME, 2, KMEANS).run(entries),
+        "the split passed, so the corpus was read");
   }
 
   @Test
@@ -142,13 +169,12 @@ class IssuesSimilarityTest {
     issue("v", T0 + 20 * D, T0 + 21 * D, "TRAIN", "TEST");
     edited("v", "alpha", "gamma", T0 + 25 * D);
     issue("t", T0 + 30 * D, T0 + 31 * D, "TEST", "");
-    issue("x", T0 + 3 * D, T0 + 40 * D, "CROSSES", "");
 
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), new RegistrationInProgress.Sizes(3, 1, 2, 1), SAME, 2, KMEANS)
+        Progress.silent(), HAND, SAME, 2, KMEANS)
         .run(entries);
     assertEquals(List.of(), r.refused());
-    assertEquals(5, r.entries().size());
+    assertEquals(4, r.entries().size());
     final Map<String, Row> rows = new HashMap<>();
     r.entries().forEach(e -> rows.put(e.unit().issueId(), e.row()));
     assertEquals(7.0, rows.get("v").values().get(Augmentation.jaccard(5, Variant.INNER)),
@@ -170,14 +196,14 @@ class IssuesSimilarityTest {
     issue("b", T0 + 2 * D, T0 + 11 * D, "TRAIN", "TRAIN");
     events.add(new Corpus.Event("b", T0 + 2 * D, "fix_versions", "d", null, "1.0",
         (ext++) + "%%0"));
-    issue("v", T0 + 60 * D, T0 + 61 * D, "TRAIN", "TEST");
+    issue("v", T0 + 60 * D, T0 + 62 * D, "TRAIN", "TEST");
     issue("t", T0 + 70 * D, T0 + 71 * D, "TEST", "");
     tags.add(new Corpus.Tag("p", "release-1.0", T0 + 10 * D, null));
     tags.add(new Corpus.Tag("p", "release-1.1", T0 + 20 * D, null));
     tags.add(new Corpus.Tag("p", "release-1.2", T0 + 50 * D, null));
 
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), new RegistrationInProgress.Sizes(3, 1, 2, 1), SAME, 2, KMEANS)
+        Progress.silent(), HAND, SAME, 2, KMEANS)
         .run(entries);
     assertEquals(List.of(), r.refused());
     final Map<String, Row> rows = new HashMap<>();
@@ -189,7 +215,10 @@ class IssuesSimilarityTest {
     assertFalse(rows.get("a").values().containsKey(Pressure.RELEASE_CYCLE));
     assertEquals(10.0, rows.get("v").values().get(Pressure.RELEASE_CYCLE), 1e-9);
     for (final Row row : rows.values()) {
-      assertTrue(row.absent().contains(Pressure.BLOCKER_PACE), "no Blocker issue in the corpus");
+      for (final Variant variant : Variant.values()) {
+        assertTrue(row.absent().contains(Pressure.blockerPace(variant)),
+            "no Blocker issue in the corpus");
+      }
     }
     // the fix versions' fidelity, on the outer training rows a, b and v only: the record lacks
     // the version a and b got, so neither chain is explained, and t is not counted
@@ -215,7 +244,7 @@ class IssuesSimilarityTest {
       return new Embedder.Embedding(hand.get(text), text.length());
     };
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), new RegistrationInProgress.Sizes(3, 1, 2, 1), embedder, 2, KMEANS)
+        Progress.silent(), HAND, embedder, 2, KMEANS)
         .run(entries);
     final Map<String, Row> rows = new HashMap<>();
     r.entries().forEach(e -> rows.put(e.unit().issueId(), e.row()));
@@ -238,7 +267,7 @@ class IssuesSimilarityTest {
     issue("v", "s", T0 + 20 * D, T0 + 21 * D, "TRAIN", "TEST");
     issue("t", "z", T0 + 30 * D, T0 + 31 * D, "TEST", "");
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), new RegistrationInProgress.Sizes(3, 1, 2, 1), SAME, 2, KMEANS)
+        Progress.silent(), HAND, SAME, 2, KMEANS)
         .run(entries);
     final Map<String, Row> rows = new HashMap<>();
     r.entries().forEach(e -> rows.put(e.unit().issueId(), e.row()));
@@ -250,8 +279,8 @@ class IssuesSimilarityTest {
   }
 
   @Test
-  @DisplayName("the medians read past business days, each past issue at its own day boundary; a "
-      + "past issue of 0 business days enters no history; the boundary goes to the matrix")
+  @DisplayName("the medians read past business days, each past issue at its own day boundary; the "
+      + "boundary goes to the matrix")
   void businessDays() {
     // T0 is a Wednesday at 00:00 UTC. Ana was active from 00:00 to 15:59 on an earlier day, on
     // another issue: her quietest eight hours are 16:00 to 23:59, her dates turn at 20:00.
@@ -268,15 +297,12 @@ class IssuesSimilarityTest {
     // the clicker d has no history to speak of: 04:00; Thursday 10:00 to Tuesday 10:00, three
     issue("b", "r", "d", T0 + D + 10 * H, T0 + 6 * D + 10 * H, "TRAIN", "TRAIN");
     edited("b", "alpha", "alpha", T0);
-    // the same date: 0, and in no history
-    issue("z", "r", "d", T0 + D + 11 * H, T0 + D + 18 * H, "TRAIN", "TRAIN");
-    edited("z", "alpha", "alpha", T0);
     issue("v", "r", "d", T0 + 20 * D, T0 + 21 * D, "TRAIN", "TEST");
     edited("v", "alpha", "alpha", T0);
     issue("t", "r", "d", T0 + 30 * D, T0 + 31 * D, "TEST", "");
 
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), new RegistrationInProgress.Sizes(4, 1, 3, 1), SAME, 2, KMEANS)
+        Progress.silent(), HAND, SAME, 2, KMEANS)
         .run(entries);
     assertEquals(List.of(), r.refused());
     final Map<String, Row> rows = new HashMap<>();
@@ -299,8 +325,7 @@ class IssuesSimilarityTest {
 
   @Test
   @DisplayName("the time back in Open or Reopened is taken out of each issue's business days, "
-      + "written to the matrix, and of every past issue the medians read; a past issue brought "
-      + "under one business day by it enters no history")
+      + "written to the matrix, and of every past issue the medians read")
   void activeTime() {
     // T0 is a Wednesday at 00:00 UTC; every boundary falls back to 04:00. a: Thursday 10:00 to
     // the next Wednesday 10:00, 4 business days, back in Open from Friday 10:00 to Tuesday 10:00:
@@ -309,12 +334,6 @@ class IssuesSimilarityTest {
     status("a", T0 + 2 * D + 10 * H, "Open");
     status("a", T0 + 6 * D + 10 * H, "In Progress");
     edited("a", "alpha", "alpha", T0);
-    // b: Thursday 10:00 to Tuesday 12:00, 3 business days, in Reopened from Thursday 12:00 to
-    // Tuesday 10:00: none active, so in no history
-    issue("b", T0 + D + 10 * H, T0 + 6 * D + 12 * H, "TRAIN", "TRAIN");
-    status("b", T0 + D + 12 * H, "Reopened");
-    status("b", T0 + 6 * D + 10 * H, "In Progress");
-    edited("b", "alpha", "alpha", T0);
     // c: in Patch Available from Thursday to Tuesday, which stays: 4
     issue("c", T0 + D + 10 * H, T0 + 7 * D + 10 * H, "TRAIN", "TRAIN");
     status("c", T0 + 2 * D + 10 * H, "Patch Available");
@@ -324,22 +343,42 @@ class IssuesSimilarityTest {
     issue("t", T0 + 30 * D, T0 + 31 * D, "TEST", "");
 
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), new RegistrationInProgress.Sizes(4, 1, 3, 1), SAME, 2, KMEANS)
+        Progress.silent(), HAND, SAME, 2, KMEANS)
         .run(entries);
     assertEquals(List.of(), r.refused());
     final Map<String, Row> rows = new HashMap<>();
     r.entries().forEach(e -> rows.put(e.unit().issueId(), e.row()));
     assertEquals(2.0, rows.get("a").values().get(BusinessDays.ACTIVE));
-    assertEquals(0.0, rows.get("b").values().get(BusinessDays.ACTIVE));
     assertEquals(4.0, rows.get("c").values().get(BusinessDays.ACTIVE));
     assertEquals(1.0, rows.get("v").values().get(BusinessDays.ACTIVE));
     final Map<String, Double> v = rows.get("v").values();
     assertEquals(3.0, v.get(Augmentation.reporter(Variant.INNER)),
-        "a's two and c's four; b, of none, left out (whole intervals: 4, 3 and 4)");
+        "a's two and c's four (whole intervals: 4 and 4)");
     assertEquals(3.0, v.get(Augmentation.reporter(Variant.OUTER)));
     assertEquals(3.0, v.get(Augmentation.embedding(5, Variant.INNER)));
     assertEquals(2.0, v.get(Augmentation.jaccard(5, Variant.INNER)),
-        "a, the only one sharing a word with it left in the history");
+        "a, the only one sharing a word with it");
+  }
+
+  @Test
+  @DisplayName("a row of 0 active business days refuses the run: the extraction draws the split "
+      + "over the issues of at least one, so such a matrix was extracted before ticket 21")
+  void refusesZeroBusinessDays() {
+    issue("a", T0 + D + 10 * H, T0 + 7 * D + 10 * H, "TRAIN", "TRAIN");
+    // b: Thursday 10:00 to Tuesday 12:00, in Reopened from Thursday 12:00 to Tuesday 10:00: none
+    // active
+    issue("b", T0 + D + 10 * H, T0 + 6 * D + 12 * H, "TRAIN", "TRAIN");
+    status("b", T0 + D + 12 * H, "Reopened");
+    status("b", T0 + 6 * D + 10 * H, "In Progress");
+    // z: resolved the same working date it started
+    issue("z", T0 + D + 11 * H, T0 + D + 18 * H, "TRAIN", "TEST");
+    issue("t", T0 + 30 * D, T0 + 31 * D, "TEST", "");
+    final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
+        Progress.silent(), HAND, SAME, 2, KMEANS).run(entries);
+    assertEquals(1, r.refused().size(), r.refused().toString());
+    assertTrue(r.refused().get(0).startsWith("2 issues of the matrix have 0 active business days"),
+        r.refused().get(0));
+    assertTrue(r.entries().isEmpty());
   }
 
   @Test
@@ -351,7 +390,7 @@ class IssuesSimilarityTest {
     issue("t", T0 + 30 * D, T0 + 31 * D, "TEST", "");
     issues.remove(1);
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), new RegistrationInProgress.Sizes(2, 1, 1, 1), SAME, 2, KMEANS)
+        Progress.silent(), HAND, SAME, 2, KMEANS)
         .run(entries);
     assertEquals(List.of("1 issues of the matrix are not in the corpus, the first v"),
         r.refused());
@@ -395,7 +434,7 @@ class IssuesSimilarityTest {
 
   private void assertRefusedOn(final String id) {
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), new RegistrationInProgress.Sizes(2, 1, 1, 1), SAME, 2, KMEANS)
+        Progress.silent(), HAND, SAME, 2, KMEANS)
         .run(entries);
     assertEquals(List.of("1 issues of the matrix are not In-Progress issues of the corpus with "
         + "the same first In Progress and first resolution, the first " + id), r.refused());

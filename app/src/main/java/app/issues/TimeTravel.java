@@ -23,6 +23,12 @@ import java.util.Set;
  * <p>The instant is each unit's start: the creation in the main study, the first In Progress in
  * the secondary one, where {@code at} also brings the executor and the participants known then, and
  * the executor's history and the participants' commits are checked too.
+ *
+ * <p>The in-progress columns that read other issues' durations from the training side of the
+ * split, whatever their dates -- the similarity medians, the clusters, the reporter median and the
+ * Blocker pace ({@link Augmentation}, {@link Pressure}; ticket 21) -- are not known at t0 by
+ * design, so they are outside this gate: what bounds them is that no label of the other side
+ * enters them. Every column the gate checks stays as known at t0.
  */
 public final class TimeTravel {
 

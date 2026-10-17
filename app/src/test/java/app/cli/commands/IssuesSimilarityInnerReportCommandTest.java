@@ -13,7 +13,6 @@ import app.issues.Augmentation;
 import app.issues.BusinessDays;
 import app.issues.ElasticNetSelection;
 import app.issues.IssueUnit;
-import app.issues.RegistrationInProgress;
 import app.issues.RowCache;
 import app.issues.SimilarityScoring;
 import app.issues.Universe.Population;
@@ -69,10 +68,12 @@ class IssuesSimilarityInnerReportCommandTest {
   }
 
   /**
-   * Four projects; per project 20 inner fitting, 10 inner validation, 6 outer test and 2 crossing
-   * rows, every one of at least one business day, with every column any model declares.
+   * Four projects; per project 20 inner fitting, 10 inner validation and 8 outer test rows, every
+   * one of at least one business day, with every column any model declares. With {@code
+   * crossing}, two of the outer test rows of each project are instead outer training rows the
+   * inner cut set aside, as a matrix of the temporal split held them.
    */
-  private static List<RowCache.Entry> entries() {
+  private static List<RowCache.Entry> entries(final boolean crossing) {
     final Set<Attribute> declared = new LinkedHashSet<>();
     for (final Cell cell : ElasticNetSelection.everyCell(Augmentation.Variant.INNER)) {
       declared.addAll(cell.attributes());
@@ -88,7 +89,8 @@ class IssuesSimilarityInnerReportCommandTest {
       for (int k = 0; k < 38; k++) {
         final String[] part = k < 20 ? new String[] {"TRAIN", "TRAIN"}
             : k < 30 ? new String[] {"TRAIN", "TEST"}
-            : k < 36 ? new String[] {"TEST", ""} : new String[] {"CROSSES", ""};
+            : k < 36 || !crossing ? new String[] {"TEST", ""}
+            : new String[] {"TRAIN", "CROSSES"};
         final int days = 1 + (int) Math.floor(Math.exp(3 * random.nextDouble()));
         final Map<String, Double> values = new HashMap<>();
         for (final Attribute a : declared) {
@@ -122,13 +124,19 @@ class IssuesSimilarityInnerReportCommandTest {
   }
 
   /**
-   * The matrix on disk, its outer test and crossing rows corrupted after their split field -- a
-   * value, a date and a field count no read could parse -- and the selection's choices on its
-   * outer training rows, made on that very file.
+   * The matrix on disk, its outer test rows corrupted after their split field -- a value, a date
+   * and a field count no read could parse -- and the selection's choices on its outer training
+   * rows, made on that very file.
    */
   private ElasticNetSelection.Result write(final Path matrix, final Path elasticNet)
       throws IOException {
-    final List<RowCache.Entry> entries = entries();
+    return write(matrix, elasticNet, false);
+  }
+
+  /** The same, with the temporal split's inner crossing rows when {@code crossing}. */
+  private ElasticNetSelection.Result write(final Path matrix, final Path elasticNet,
+      final boolean crossing) throws IOException {
+    final List<RowCache.Entry> entries = entries(crossing);
     final List<String> columns = new ArrayList<>(new LinkedHashSet<>(entries.stream()
         .flatMap(e -> e.row().values().keySet().stream()).sorted().toList()));
     RowCache.write(matrix, entries, columns, List.of(Population.IN_PROGRESS));
@@ -148,8 +156,7 @@ class IssuesSimilarityInnerReportCommandTest {
   }
 
   private IssuesSimilarityInnerReportCommand command() {
-    return new IssuesSimilarityInnerReportCommand(settings::get,
-        new RegistrationInProgress.Sizes(4 * 30, 999, 4 * 20, 4 * 10));
+    return new IssuesSimilarityInnerReportCommand(settings::get);
   }
 
   private void set(final Path matrix, final Path elasticNet, final Path reports) {
@@ -220,21 +227,23 @@ class IssuesSimilarityInnerReportCommandTest {
   }
 
   @Test
-  @DisplayName("parameters chosen on another matrix, or split sizes not the registered study's, "
+  @DisplayName("parameters chosen on another matrix, or outer training rows the split set aside, "
       + "refuse the report before anything is scored or written")
   void refuses() throws IOException {
     final Path matrix = dir.resolve("matrix.tsv");
     final Path elasticNet = dir.resolve("elastic-net.tsv");
-    write(matrix, elasticNet);
     final Path reports = dir.resolve("out");
     set(matrix, elasticNet, reports);
 
-    final IssuesSimilarityInnerReportCommand sizes = new IssuesSimilarityInnerReportCommand(
-        settings::get, RegistrationInProgress.SIZES);
+    // a matrix of the temporal split, its parameters made on it: refused on its crossing rows
+    write(matrix, elasticNet, true);
     CommandFailedException e =
-        assertThrows(CommandFailedException.class, () -> sizes.run(context()));
-    assertTrue(String.join("\n", e.lines()).contains("registered study's"), e.lines().toString());
+        assertThrows(CommandFailedException.class, () -> command().run(context()));
+    assertTrue(String.join("\n", e.lines()).contains("8 of 128 outer training rows are neither"),
+        e.lines().toString());
     assertFalse(Files.exists(reports));
+
+    write(matrix, elasticNet);
 
     Files.writeString(matrix, "\n", java.nio.file.StandardOpenOption.APPEND);
     e = assertThrows(CommandFailedException.class, () -> command().run(context()));

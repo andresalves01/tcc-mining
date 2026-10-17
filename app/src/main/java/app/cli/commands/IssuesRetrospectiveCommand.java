@@ -29,12 +29,13 @@ import java.util.function.Function;
  *
  * <p>Reads MATRIX (the similarity stage's), the corpus and the methods each implementation commit
  * changed; refuses, writing and recording nothing, unless MATRIX has the similarity stage's columns
- * and the day boundary and none of the ten, the four split sizes are the registered study's, and
- * the corpus holds every issue of the matrix as it is. Writes the matrix with the ten columns to
- * RETROSPECTIVE_MATRIX, never over MATRIX nor over a file that is not a retrospective matrix, and
- * records the run, with the SHA-256 of both files and the coverage of each of the ten on the
- * inner fitting and inner validation, in ISSUES_DB. The outer test's rows get their columns, so
- * the test can later read them; nothing of them is counted or reported here.
+ * and the day boundary and none of the ten, every row's split is the one its rule draws ({@link
+ * app.issues.ProjectSplit}), and the corpus holds every issue of the matrix as it is. Writes the
+ * matrix with the ten columns to RETROSPECTIVE_MATRIX, never over MATRIX nor over a file that is
+ * not a retrospective matrix, and records the run, with the SHA-256 of both files and the
+ * coverage of each of the ten on the inner fitting and inner validation, in ISSUES_DB. The outer
+ * test's rows get their columns, so the test can later read them; nothing of them is counted or
+ * reported here.
  */
 public final class IssuesRetrospectiveCommand implements CommandRunner {
 

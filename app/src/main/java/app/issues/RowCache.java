@@ -117,7 +117,8 @@ public final class RowCache {
    * Only the rows whose outer verdict under {@code population} is {@code outer}, in the cache's
    * order. Of every other row nothing but that one field is read: it is cut out by its position
    * before the line is split or any value, date or verdict of it parsed, so the rows on the other
-   * side of the outer cut are never read. Refuses a cache without the population's split columns.
+   * side of the outer split are never read. Refuses a cache without the population's split
+   * columns.
    */
   public static List<Entry> read(final Path path, final Population population,
       final String outer) throws IOException {

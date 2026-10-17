@@ -9,6 +9,7 @@ import app.issues.DayBoundaries;
 import app.issues.DescriptionCleaner;
 import app.issues.Embedder;
 import app.issues.Extractor;
+import app.issues.ProjectSplit;
 import app.issues.RowCache;
 import app.issues.TeamColumns;
 import app.issues.Universe.Population;
@@ -22,7 +23,6 @@ import app.pipeline.embedding.ReferenceCheck;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -41,8 +41,9 @@ import java.util.function.Function;
  * reference ({@link ReferenceCheck}); otherwise the run is refused.
  *
  * <p>Reads CACHE, the revised team columns {@code issues-in-progress-team} wrote to TEAM_COLUMNS,
- * and the corpus; refuses, writing and recording nothing, unless the four split sizes are the
- * registered study's and the team file holds exactly the matrix's issues. Embeds the descriptions
+ * and the corpus; refuses, writing and recording nothing, unless every row's split is the one its
+ * rule draws ({@link ProjectSplit}) and the team file holds exactly the matrix's issues. Embeds
+ * the descriptions
  * with the pinned model in MODEL_DIR, verified on load, through the {@link EmbeddingCache} in
  * EMBEDDING_CACHE, which it saves whenever the model computed anything, even when the stage then
  * fails; the descriptions the cache misses are embedded on the threads EMBEDDING_THREADS asks
@@ -60,6 +61,12 @@ import java.util.function.Function;
 public final class IssuesSimilarityCommand implements CommandRunner {
 
   public static final String STAGE = "issues-in-progress-similarity";
+
+  /** What every split-dependent column reads, in words for the run record (ticket 21). */
+  static final String HISTORY = "the whole training side of the split, whatever the dates: the "
+      + "inner fitting set for the _inner columns, the outer training for the _outer ones; one "
+      + "neighbour index and one cluster fit per k per variant, read by its training rows and its "
+      + "scored rows alike; no label of the other side, and never the row's own";
 
   private static final Population P = Population.IN_PROGRESS;
 
@@ -173,8 +180,8 @@ public final class IssuesSimilarityCommand implements CommandRunner {
         + "%,d%n", s.train(), s.test(), s.innerFit(), s.innerSelection());
     if (!r.refused().isEmpty()) {
       final List<String> lines = new ArrayList<>();
-      lines.add("  REFUSED, nothing was written or recorded: the matrix is not the registered "
-          + "study's population");
+      lines.add("  REFUSED, nothing was written or recorded: the matrix's split is not its "
+          + "rule's, or the corpus does not hold its issues as they are");
       r.refused().forEach(x -> lines.add("    " + x));
       throw new CommandFailedException(lines);
     }
@@ -240,15 +247,14 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     System.out.printf("%n  K-MEANS FITS (%s, seed %d)%n", clusterer.describe(),
         Augmentation.CLUSTER_SEED);
     for (final Augmentation.ClusterFit f : r.result().clusterFits()) {
-      System.out.printf("    %-6s %-6s k %2d  %,6d vectors  %,6d distinct  %s%n",
-          name(f.variant()), f.block(), f.k(), f.vectors(), f.distinct(),
+      System.out.printf("    %-6s k %2d  %,6d vectors  %,6d distinct  %s%n",
+          name(f.variant()), f.k(), f.vectors(), f.distinct(),
           f.fitted() ? String.format("distortion %.6f", f.distortion()) : "not fitted");
     }
-    System.out.printf("%n  BLOCKS%n");
-    for (final Augmentation.Block b : r.result().blocks()) {
-      System.out.printf("    %-6s %d  %,6d rows  %s to %s  history %,6d%n",
-          name(b.variant()), b.index(), b.rows(), Instant.ofEpochMilli(b.begins()),
-          Instant.ofEpochMilli(b.last()), b.history());
+    System.out.printf("%n  HISTORIES: each split's whole training side, whatever the dates%n");
+    for (final Augmentation.History h : r.result().histories()) {
+      System.out.printf("    %-6s %,6d rows read it  history %,6d%n", name(h.variant()),
+          h.rows(), h.history());
     }
     System.out.printf("%n  matrix written to %s (%d new columns)%n", matrix,
         IssuesSimilarityTask.columns().size() + BusinessDays.COLUMNS.size());
@@ -290,7 +296,9 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     run.put("model_seconds", embeddings.modelSeconds());
     run.put("embedding_threads", embeddingThreads);
     run.put("augmentation_seconds", augmentationSeconds);
-    run.put("blocks", Augmentation.BLOCKS);
+    run.put("history", HISTORY);
+    run.put("split_rule", ProjectSplit.RULE);
+    run.put("split_seed", ProjectSplit.SEED);
     run.put("target", BusinessDays.TARGET);
     run.put("population", BusinessDays.POPULATION);
     run.put("holidays", BusinessDays.HOLIDAYS);
@@ -341,7 +349,6 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     for (final Augmentation.ClusterFit f : fits) {
       final Map<String, Object> fit = new LinkedHashMap<>();
       fit.put("variant", name(f.variant()));
-      fit.put("block", f.block());
       fit.put("k", f.k());
       fit.put("vectors", f.vectors());
       fit.put("distinct", f.distinct());
@@ -385,7 +392,7 @@ public final class IssuesSimilarityCommand implements CommandRunner {
    */
   static Map<String, Integer> changedByActiveTime(final IssuesSimilarityTask.Report r) {
     final Map<String, Integer> out = new LinkedHashMap<>();
-    for (final String split : SPLITS.subList(0, 3)) {
+    for (final String split : SPLITS.subList(0, 2)) {
       out.put(split, 0);
     }
     for (final RowCache.Entry e : r.entries()) {
@@ -401,15 +408,14 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     return out;
   }
 
-  /** The splits the boundaries are reported by, the outer test last. */
-  private static final List<String> SPLITS = List.of("inner_fitting", "inner_validation",
-      "outer_training_crossing_inner", "outer_test");
-
   /**
-   * Per split, how many issues took their boundary from the person, the project or 04:00; the
-   * outer training rows crossing the inner cut are counted apart from the inner fitting and
-   * validation, and the rows crossing the outer cut not at all.
+   * The splits the boundaries are reported by, the outer test last; the outer training is the
+   * inner fitting and the inner validation, nothing set aside.
    */
+  private static final List<String> SPLITS = List.of("inner_fitting", "inner_validation",
+      "outer_test");
+
+  /** Per split, how many issues took their boundary from the person, the project or 04:00. */
   static Map<String, Map<String, Integer>> sources(final IssuesSimilarityTask.Report r) {
     final Map<String, Map<String, Integer>> out = new LinkedHashMap<>();
     for (final String split : SPLITS) {
@@ -429,7 +435,10 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     return out;
   }
 
-  /** The issue's split by the outer variant, or by the inner one inside the outer training. */
+  /**
+   * The issue's split by the outer variant, or by the inner one inside the outer training; null
+   * for verdicts the split never gives, which the stage refused before.
+   */
   private static String split(final RowCache.Entry e) {
     if ("TEST".equals(e.outer(P))) {
       return "outer_test";
@@ -438,7 +447,7 @@ public final class IssuesSimilarityCommand implements CommandRunner {
       return null;
     }
     return "TRAIN".equals(e.inner(P)) ? "inner_fitting"
-        : "TEST".equals(e.inner(P)) ? "inner_validation" : "outer_training_crossing_inner";
+        : "TEST".equals(e.inner(P)) ? "inner_validation" : null;
   }
 
   /** Each diagnostic file by name, as lines with a header. */
@@ -449,15 +458,13 @@ public final class IssuesSimilarityCommand implements CommandRunner {
 
     final List<String> queries = new ArrayList<>();
     final List<String> neighbours = new ArrayList<>();
-    final StringBuilder head = new StringBuilder("id\tvariant\tsplit\tblock\treference\ttokens"
-        + "\tcandidates");
+    final StringBuilder head = new StringBuilder("id\tvariant\tsplit\ttokens\tcandidates");
     Augmentation.JACCARD_N.forEach(n -> head.append("\tused_").append(n));
     queries.add(head.toString());
     neighbours.add("id\tvariant\trank\tneighbour\tneighbour_project\tdistance");
     for (final Augmentation.Query q : r.result().queries()) {
       final StringBuilder line = new StringBuilder(String.join("\t", q.id(), name(q.variant()),
-          q.split(), q.block(), Instant.ofEpochMilli(q.reference()).toString(),
-          Integer.toString(q.tokens()), Integer.toString(q.candidates())));
+          q.split(), Integer.toString(q.tokens()), Integer.toString(q.candidates())));
       Augmentation.JACCARD_N.forEach(n -> line.append('\t').append(q.used(n)));
       queries.add(line.toString());
       for (int k = 0; k < q.nearest().size(); k++) {
@@ -471,15 +478,13 @@ public final class IssuesSimilarityCommand implements CommandRunner {
 
     final List<String> searches = new ArrayList<>();
     final List<String> near = new ArrayList<>();
-    final StringBuilder top = new StringBuilder("id\tvariant\tsplit\tblock\treference"
-        + "\tcandidates");
+    final StringBuilder top = new StringBuilder("id\tvariant\tsplit\tcandidates");
     Augmentation.EMBEDDING_N.forEach(n -> top.append("\tused_").append(n));
     searches.add(top.toString());
     near.add("id\tvariant\trank\tneighbour\tneighbour_project\tdistance");
     for (final Augmentation.EmbeddingQuery q : r.result().embeddingQueries()) {
       final StringBuilder line = new StringBuilder(String.join("\t", q.id(), name(q.variant()),
-          q.split(), q.block(), Instant.ofEpochMilli(q.reference()).toString(),
-          Integer.toString(q.candidates())));
+          q.split(), Integer.toString(q.candidates())));
       Augmentation.EMBEDDING_N.forEach(n -> line.append('\t').append(q.used(n)));
       searches.add(line.toString());
       for (int k = 0; k < q.nearest().size(); k++) {
@@ -497,13 +502,12 @@ public final class IssuesSimilarityCommand implements CommandRunner {
         e.problem() == null ? "" : e.problem())));
     out.put("embedding-chunks.tsv", chunks);
 
-    final List<String> fits = new ArrayList<>(List.of("variant\tblock\tk\tvectors\tdistinct"
-        + "\tfitted\tdistortion"));
-    final List<String> sizes = new ArrayList<>(List.of("variant\tblock\tk\tcluster\tmembers"));
-    final List<String> makeup = new ArrayList<>(List.of("variant\tblock\tk\tcluster\tproject"
-        + "\tmembers"));
+    final List<String> fits = new ArrayList<>(List.of("variant\tk\tvectors\tdistinct\tfitted"
+        + "\tdistortion"));
+    final List<String> sizes = new ArrayList<>(List.of("variant\tk\tcluster\tmembers"));
+    final List<String> makeup = new ArrayList<>(List.of("variant\tk\tcluster\tproject\tmembers"));
     for (final Augmentation.ClusterFit f : r.result().clusterFits()) {
-      final String at = String.join("\t", name(f.variant()), f.block(), Integer.toString(f.k()));
+      final String at = String.join("\t", name(f.variant()), Integer.toString(f.k()));
       fits.add(String.join("\t", at, Integer.toString(f.vectors()),
           Integer.toString(f.distinct()), Boolean.toString(f.fitted()),
           f.fitted() ? Double.toString(f.distortion()) : ""));
@@ -520,14 +524,13 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     out.put("cluster-fits.tsv", fits);
     out.put("cluster-sizes.tsv", sizes);
     out.put("cluster-projects.tsv", makeup);
-    final List<String> assigned = new ArrayList<>(List.of("id\tvariant\tsplit\tblock\treference"
-        + "\tk\tcluster\tdistance\tmembers"));
+    final List<String> assigned = new ArrayList<>(List.of("id\tvariant\tsplit\tk\tcluster"
+        + "\tdistance\tmembers"));
     for (final Augmentation.ClusterQuery q : r.result().clusterQueries()) {
       final boolean none = q.cluster() < 0;
-      assigned.add(String.join("\t", q.id(), name(q.variant()), q.split(), q.block(),
-          Instant.ofEpochMilli(q.reference()).toString(), Integer.toString(q.k()),
-          none ? "" : Integer.toString(q.cluster()), none ? "" : Double.toString(q.distance()),
-          Integer.toString(q.members())));
+      assigned.add(String.join("\t", q.id(), name(q.variant()), q.split(),
+          Integer.toString(q.k()), none ? "" : Integer.toString(q.cluster()),
+          none ? "" : Double.toString(q.distance()), Integer.toString(q.members())));
     }
     out.put("cluster-queries.tsv", assigned);
 
@@ -536,13 +539,10 @@ public final class IssuesSimilarityCommand implements CommandRunner {
         c.group(), Integer.toString(c.rows()), Integer.toString(c.observed()))));
     out.put("coverage.tsv", coverage);
 
-    final List<String> blocks = new ArrayList<>(List.of("variant\tblock\trows\tbegins\tlast"
-        + "\thistory"));
-    r.result().blocks().forEach(b -> blocks.add(String.join("\t", name(b.variant()),
-        Integer.toString(b.index()), Integer.toString(b.rows()),
-        Instant.ofEpochMilli(b.begins()).toString(), Instant.ofEpochMilli(b.last()).toString(),
-        Integer.toString(b.history()))));
-    out.put("blocks.tsv", blocks);
+    final List<String> histories = new ArrayList<>(List.of("variant\trows\thistory"));
+    r.result().histories().forEach(h -> histories.add(String.join("\t", name(h.variant()),
+        Integer.toString(h.rows()), Integer.toString(h.history()))));
+    out.put("histories.tsv", histories);
 
     // the business days of the whole interval beside the active ones the matrix holds, so the
     // issues whose count the time back in Open or Reopened changed can be found; left blank on

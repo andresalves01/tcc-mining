@@ -6,6 +6,7 @@ import app.cli.Context;
 import app.issues.Augmentation;
 import app.issues.BusinessDays;
 import app.issues.ElasticNetSelection;
+import app.issues.ProjectSplit;
 import app.issues.RegistrationInProgress;
 import app.issues.RowCache;
 import app.issues.SimilarityScoring;
@@ -39,10 +40,11 @@ import java.util.function.Function;
  * its split field alone ({@link RowCache#read(Path, Population, String)}), so the outer test is
  * never parsed beyond it; the outer test is not counted either. Refuses, writing nothing, unless
  * the parameters file is the selection step's own for these models with a forest for each, its
- * choices were made on this very matrix (by SHA-256), the outer training, inner fitting and inner
- * validation sizes are the registered study's, and the matrix has the day boundary and every
- * column the models read. Writes files to REPORT_DIR only and nothing to the database: no run is
- * recorded, the context's ports are never reached.
+ * choices were made on this very matrix (by SHA-256) -- where the selection step checked the
+ * split's rule over every row --, every outer training row is inner fitting or inner validation,
+ * and the matrix has the day boundary and every column the models read. Writes files to
+ * REPORT_DIR only and nothing to the database: no run is recorded, the context's ports are never
+ * reached.
  *
  * <p><b>Files.</b> The report in words and tables ({@link #REPORT}); per inner validation issue its
  * prediction by every model and whether it has an implementation commit ({@link #PREDICTIONS});
@@ -79,23 +81,17 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
   private static final Population P = Population.IN_PROGRESS;
 
   private final Function<String, String> settings;
-  private final RegistrationInProgress.Sizes expected;
 
   public IssuesSimilarityInnerReportCommand() {
     this(name -> {
       final String fromEnv = System.getenv(name);
       return fromEnv == null || fromEnv.isBlank() ? System.getProperty(name) : fromEnv;
-    }, RegistrationInProgress.SIZES);
+    });
   }
 
-  /**
-   * @param settings the settings by name; the tests hand their own
-   * @param expected the split sizes the matrix must have, the registered study's but in tests
-   */
-  IssuesSimilarityInnerReportCommand(final Function<String, String> settings,
-      final RegistrationInProgress.Sizes expected) {
+  /** @param settings the settings by name; the tests hand their own */
+  IssuesSimilarityInnerReportCommand(final Function<String, String> settings) {
     this.settings = settings;
-    this.expected = expected;
   }
 
   /** Never reaches {@code context}: nothing is read from or written to the database. */
@@ -137,10 +133,12 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     final RegistrationInProgress.Sizes s = ElasticNetSelection.sizes(training);
     System.out.printf("  outer training %,d  inner fitting %,d  inner validation %,d%n", s.train(),
         s.innerFit(), s.innerSelection());
-    if (s.train() != expected.train() || s.innerFit() != expected.innerFit()
-        || s.innerSelection() != expected.innerSelection()) {
-      throw refused("the outer training, inner fitting and inner validation sizes are not the "
-          + "registered study's, " + expected);
+    // the rule is checked whole by the selection step, which read every row of this very matrix;
+    // here, with the outer test left behind, only what the outer training shows of it
+    if (s.train() == 0 || s.innerFit() + s.innerSelection() != s.train()) {
+      throw refused(String.format("%,d of %,d outer training rows are neither inner fitting nor "
+          + "inner validation; the random split sets none aside (a matrix of the temporal cut "
+          + "does)", s.train() - s.innerFit() - s.innerSelection(), s.train()));
     }
     final List<String> missing;
     try {
@@ -278,6 +276,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
         + "only, the others left behind on their split field");
     md.add("- choices: " + elasticNet + " (sha256 " + chosen.elasticNetSha() + ")");
     md.add("- target: " + BusinessDays.TARGET + "; " + BusinessDays.HOLIDAYS);
+    md.add("- split: " + ProjectSplit.RULE);
     md.add("- population: " + BusinessDays.POPULATION + "; inner fitting "
         + population.kept().innerFit() + " of " + population.all().innerFit()
         + ", inner validation " + population.kept().innerSelection() + " of "

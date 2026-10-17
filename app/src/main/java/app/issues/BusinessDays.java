@@ -3,7 +3,9 @@ package app.issues;
 import app.study.model.Breakdown;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -27,9 +29,10 @@ import java.util.Set;
  *
  * <p><b>Population.</b> Only issues of at least one business day are studied: the model is
  * conditional, predicting how long an issue takes given that it lasts past its start's working
- * date. The issues of 0 business days are dropped after the split and crossing-row rules, which
- * stay those of the registered study; they enter no fitting, validation, training or test set and
- * no history.
+ * date. Since ticket 21 the extraction counts them ({@link #of}) and draws the split over them
+ * alone ({@link ProjectSplit}); the issues of 0 business days are never drawn and enter no fitting,
+ * validation, training or test set and no history. {@link #population} still drops any it meets,
+ * a guard that drops nothing from a matrix of ticket 21.
  */
 public final class BusinessDays {
 
@@ -86,7 +89,8 @@ public final class BusinessDays {
   /** Who is studied, in words for the help text and the run records. */
   public static final String POPULATION = "issues of at least one business day: the model "
       + "predicts how long an issue takes given that it lasts past its start's working date; "
-      + "issues of 0 business days are dropped after the split and crossing-row rules";
+      + "the extraction counts them and draws the split over them alone, so the issues of 0 "
+      + "business days are never drawn";
 
   /** What the count leaves out, in words for the help text and the run records. */
   public static final String HOLIDAYS = "holidays ignored: the data hold no country per person";
@@ -101,7 +105,43 @@ public final class BusinessDays {
   public record Population(List<RowCache.Entry> entries, RegistrationInProgress.Sizes all,
       RegistrationInProgress.Sizes kept) {}
 
+  /**
+   * The issues' day boundaries and active business days, as the extraction draws the split over
+   * them and the similarity stage writes them to the matrix.
+   *
+   * @param boundaries per issue id, its day boundary
+   * @param active per issue id, its active business days at that boundary
+   * @param bots the raw accounts recognised as bots and left out of every boundary's history
+   */
+  public record Counted(Map<String, DayBoundaries.Boundary> boundaries,
+      Map<String, Integer> active, Set<String> bots) {}
+
   private BusinessDays() {}
+
+  /**
+   * Each In-Progress issue's day boundary ({@link DayBoundaries}), read from the corpus's tracker
+   * activity before its first In Progress by the person who made that move, and its active
+   * business days at it ({@link #active}); one rule for both stages that count them.
+   *
+   * @param ids issues of {@link Universe.Population#IN_PROGRESS}; another refuses
+   */
+  public static Counted of(final Corpus corpus, final Universe universe,
+      final Collection<String> ids) {
+    final DayBoundaries days = DayBoundaries.of(corpus, universe);
+    final Map<String, DayBoundaries.Boundary> boundaries = new HashMap<>(ids.size() * 2);
+    final Map<String, Integer> active = new HashMap<>(ids.size() * 2);
+    for (final String id : ids) {
+      final Universe.Unit u = universe.unit(Universe.Population.IN_PROGRESS, id);
+      if (u == null) {
+        throw new IllegalArgumentException(id + " is not an In-Progress issue of the corpus");
+      }
+      final String clicker = World.person(u.startedBy(), corpus.people());
+      final DayBoundaries.Boundary boundary = days.at(clicker, u.project(), u.start());
+      boundaries.put(id, boundary);
+      active.put(id, active(universe.events(id), u.start(), u.resolved(), boundary.hour()));
+    }
+    return new Counted(boundaries, active, days.bots());
+  }
 
   /**
    * Every issue's active business days, read from its {@link #ACTIVE} column, and the issues of at

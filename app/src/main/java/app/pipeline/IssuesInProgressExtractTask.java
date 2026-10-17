@@ -1,10 +1,12 @@
 package app.pipeline;
 
 import app.issues.Attributes;
+import app.issues.BusinessDays;
 import app.issues.Corpus;
 import app.issues.Extractor;
 import app.issues.Initial;
 import app.issues.IssueUnit;
+import app.issues.ProjectSplit;
 import app.issues.RowCache;
 import app.issues.TimeTravel;
 import app.issues.Universe;
@@ -24,26 +26,44 @@ import java.util.TreeSet;
 
 /**
  * The in-progress study's population and columns: FIXED issues read at their first In Progress,
- * and the gate before anything is fitted.
+ * the split drawn over those of at least one active business day, and the gate before anything is
+ * fitted.
  *
  * <p>Every column is the main study's, read at t0 = the first In Progress (P11): the changelog is
  * undone from t0 on ({@link Initial#at}), the executor is the assignee at t0 or else whoever made
  * the change (P8), and the participants are the reporter and whoever commented on or changed the
  * issue before t0 (P13). The gate, which must pass for the cache to be written: time travel at t0.
+ *
+ * <p><b>Population and split</b> (ticket 21). Each issue's active business days are counted as
+ * the target counts them ({@link BusinessDays#of}); only the issues of at least one are kept, and
+ * the split is drawn over them alone, at random and stratified by project ({@link ProjectSplit}).
+ * The cache holds those issues only. The extractor still learns its executors' first touches from
+ * every In-Progress issue, as before the drop, so no kept issue's columns depend on it.
  */
 public final class IssuesInProgressExtractTask {
 
-  public static final double SHARE = IssuesExtractTask.SHARE;
-
   /** P16: the issue went back from In Progress to Open before its first resolution. */
   public static final String PAUSED = "PAUSA_volta_open";
+
+  /**
+   * The population and its split, in counts alone: no outcome of either side.
+   *
+   * @param started the In-Progress issues before the drop
+   * @param zeroDays those of 0 active business days, never drawn
+   * @param rows the issues drawn: the cache's rows
+   * @param projects the projects those belong to
+   * @param fit the inner fitting rows, inside the outer training
+   * @param validation the inner validation rows, inside the outer training
+   */
+  public record Split(int started, int zeroDays, int rows, int projects, int train, int test,
+      int fit, int validation) {}
 
   /**
    * @param entries the rows of the cache, its columns only
    * @param team per issue id, the revised team columns ({@link Extractor#TEAM_REVISED}), absent
    *     when missing; never in {@code entries}, so the cache is written as it was registered
    */
-  public record Report(IssuesExtractTask.SplitSummary split, List<TimeTravel.Check> travel,
+  public record Report(Split split, List<TimeTravel.Check> travel,
       Map<String, Integer> executors, List<RowCache.Entry> entries, List<String> columns,
       Map<String, Map<String, Double>> team) {
 
@@ -65,20 +85,29 @@ public final class IssuesInProgressExtractTask {
   }
 
   public Report run() {
-    progress.phase(1, 4, "reading the corpus: %s", source.describe());
+    progress.phase(1, 5, "reading the corpus: %s", source.describe());
     final Corpus corpus = source.load();
 
-    progress.phase(2, 4, "population from In Progress and split at its instant");
+    progress.phase(2, 5, "population from In Progress and its active business days");
     final Universe universe = Universe.of(corpus);
-    final List<Universe.Unit> units = universe.population(Population.IN_PROGRESS);
-    final Universe.Split split = universe.split(Population.IN_PROGRESS, SHARE);
+    final List<Universe.Unit> started = universe.population(Population.IN_PROGRESS);
+    final Set<String> all = new TreeSet<>();
+    started.forEach(u -> all.add(u.id()));
+    final BusinessDays.Counted counted = BusinessDays.of(corpus, universe, all);
+    final List<Universe.Unit> units =
+        started.stream().filter(u -> counted.active().get(u.id()) >= 1).toList();
 
-    progress.phase(3, 4, "columns of %,d issues at the In Progress instant", units.size());
-    final Set<String> ids = new TreeSet<>();
-    units.forEach(u -> ids.add(u.id()));
+    progress.phase(3, 5, "split of the %,d issues of at least one business day", units.size());
+    final Map<String, String> projects = new HashMap<>(units.size() * 2);
+    units.forEach(u -> projects.put(u.id(), u.project()));
+    final ProjectSplit.Parts split = ProjectSplit.draw(projects);
+
+    progress.phase(4, 5, "columns of %,d issues at the In Progress instant", units.size());
+    final Set<String> ids = new TreeSet<>(projects.keySet());
     final Map<String, Corpus.Text> texts = source.texts(ids);
     final World world = new World(universe, corpus);
-    final Extractor extractor = new Extractor(world, ids);
+    // the executors' first touches learnt from every In-Progress issue, as before the drop
+    final Extractor extractor = new Extractor(world, all);
     final Map<String, Map<String, Double>> values = new HashMap<>(ids.size() * 2);
     final Map<String, Extractor.At> at = new HashMap<>(ids.size() * 2);
     final Map<String, Integer> executors = new java.util.LinkedHashMap<>();
@@ -100,7 +129,7 @@ public final class IssuesInProgressExtractTask {
       values.put(u.id(), row);
     }
 
-    progress.phase(4, 4, "gate: time travel");
+    progress.phase(5, 5, "gate: time travel");
     final List<TimeTravel.Check> travel = TimeTravel.run(world, units, values, at);
 
     final List<String> columns = new ArrayList<>(Attributes.stored());
@@ -130,8 +159,20 @@ public final class IssuesInProgressExtractTask {
           u.moved(), Instant.ofEpochMilli(u.start())),
           new app.study.Row(u.id(), withPause, row.absent()), parts));
     }
-    return new Report(IssuesExtractTask.summary(Population.IN_PROGRESS, units.size(), split),
-        travel, executors, entries, columns, team);
+    return new Report(summary(started.size(), projects, split), travel, executors, entries,
+        columns, team);
+  }
+
+  /** The split in counts: how many issues were drawn, from how many projects, and where. */
+  static Split summary(final int started, final Map<String, String> projects,
+      final ProjectSplit.Parts parts) {
+    final int rows = parts.outer().size();
+    final int train = (int) parts.outer().values().stream()
+        .filter(p -> p == Universe.Part.TRAIN).count();
+    final int fit = (int) parts.inner().values().stream()
+        .filter(p -> p == Universe.Part.TRAIN).count();
+    return new Split(started, started - rows, rows, Set.copyOf(projects.values()).size(), train,
+        rows - train, fit, parts.inner().size() - fit);
   }
 
   /** P13: the reporter and whoever commented on or changed the issue in [creation, t0). */
