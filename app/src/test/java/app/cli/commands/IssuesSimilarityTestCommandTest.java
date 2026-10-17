@@ -1,5 +1,6 @@
 package app.cli.commands;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -244,10 +245,12 @@ class IssuesSimilarityTestCommandTest {
   }
 
   @Test
-  @DisplayName("the run record says the test was examined before and selection effort differs")
+  @DisplayName("the run record says what the outer test is, in exactly André's sentence, and that "
+      + "selection effort differs")
   void statements() {
     final Map<String, Object> run = IssuesSimilarityTestCommand.statements();
-    assertTrue(run.get("outer_test_examined_before").toString().contains("earlier"));
+    assertEquals("the outer test is a new draw of 30% per project, seed 1738.",
+        run.get("outer_test_examined_before"));
     assertTrue(run.get("selection_effort").toString().contains("differs"));
     assertTrue(run.get("forest_role").toString().contains("robustness check"));
   }
@@ -303,5 +306,27 @@ class IssuesSimilarityTestCommandTest {
     assertTrue(ordering.contains("project median"), ordering);
     assertTrue(ordering.contains("global median orders nothing"), ordering);
     assertTrue(ordering.contains("same 600 draws"), ordering);
+  }
+
+  @Test
+  @DisplayName("nothing about the ninth model reaches the run record: not its n and k among the "
+      + "candidates, though the parameters file holds them, nor its role in the statements; the "
+      + "selection effort counts the five models with the medians the test scores")
+  void nothingOfTheNinthInTheRecord() {
+    final Map<String, ElasticNetSelection.Choice> choices = new java.util.LinkedHashMap<>();
+    for (final String m : ElasticNetSelection.MODELS) {
+      choices.put(m, new ElasticNetSelection.Choice(0.5, 0.1,
+          ElasticNetSelection.WITH_SIMILARITY.contains(m)
+              ? new ElasticNetSelection.Combination(10, 5, 32) : null));
+    }
+    final Map<String, Object> candidates = IssuesSimilarityTestCommand.candidates(choices);
+    assertEquals(List.of("similarity_alone", "own_with_similarity", "union_own",
+        "own_retrospective", "own_with_similarity_before_pressure"),
+        List.copyOf(candidates.keySet()));
+    final String record = IssuesSimilarityTestCommand.statements() + " " + candidates;
+    assertFalse(record.contains(ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE), record);
+    assertFalse(record.contains("ticket 19's five"), record);
+    assertTrue(IssuesSimilarityTestCommand.statements().get("selection_effort").toString()
+        .contains("the 5 models reading the similarity medians"));
   }
 }

@@ -25,8 +25,10 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * The inner report of the description-similarity chain (ticket 16): the nineteen models of the
- * test -- the three medians, the eight Elastic Nets and their eight forests -- refitted on the
+ * The inner report of the description-similarity chain (ticket 16): twenty-one models -- the
+ * nineteen of the test, the three medians, eight Elastic Nets and their eight forests, and the
+ * ninth Elastic Net, the retrospective model as before ticket 19, with its forest, which the test
+ * does not score (ticket 20) -- refitted on the
  * inner fitting rows at the choices of the parameters file and scored on the inner validation,
  * by the study's own scoring ({@link SimilarityScoring}, {@link SimilarityScoring.Scope#INNER}),
  * in whole business days on the issues of at least one ({@link BusinessDays}).
@@ -51,7 +53,8 @@ import java.util.function.Function;
  * per model the error, the gains over the global and the project median, Spearman, pairwise
  * ordering and the error's quantiles ({@link #MODELS}); the error by band of the true business
  * days, 1, 2-3, 4-10 and 11 or more ({@link #BANDS}); the paired comparisons of the test, which
- * hold every model against the global and the project median, and the side reading of the
+ * hold every model against the global and the project median and the retrospective model
+ * against the one before ticket 19, Elastic Net and forest, and the side reading of the
  * retrospective pairs on the issues with and without an implementation commit ({@link
  * #COMPARISONS}); the ordering intervals, a declared measure ({@link #ORDERING}); the Elastic Nets'
  * coefficients and the forests' permutation importance on the inner validation, as the test writes
@@ -286,6 +289,8 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
         + r.withCommitRows() + " of them with an implementation commit");
     md.add("- validation projects with no fitting issue (the project median is the global one "
         + "there): " + r.unseenRows() + " issues, " + r.unseenProjects());
+    md.add("- " + ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE + ": "
+        + ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE_ROLE);
     md.add("");
     md.add("## Every model (business days)");
     md.add("");

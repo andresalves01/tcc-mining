@@ -39,7 +39,11 @@ class SimilarityScoringTest {
       "own_with_similarity", new ElasticNetSelection.Combination(10, 5, 32),
       "union_own", new ElasticNetSelection.Combination(20, 10, 16),
       "own_retrospective", new ElasticNetSelection.Combination(5, 10, 32),
-      "own_with_similarity_before_pressure", new ElasticNetSelection.Combination(10, 10, 16));
+      "own_with_similarity_before_pressure", new ElasticNetSelection.Combination(10, 10, 16),
+      "own_retrospective_before_pressure", new ElasticNetSelection.Combination(20, 5, 8));
+
+  /** The ninth Elastic Net model, the retrospective one before ticket 19 (ticket 20). */
+  private static final String NINTH = "own_retrospective_before_pressure";
 
   private static final List<String> ELASTIC_NET = List.of("own_without_similarity",
       "similarity_alone", "own_with_similarity", "alzubaidi_start", "kikas_start", "union_own",
@@ -54,6 +58,12 @@ class SimilarityScoringTest {
       "similarity_alone_forest", "own_with_similarity_forest", "alzubaidi_start_forest",
       "kikas_start_forest", "union_own_forest", "own_retrospective_forest",
       "own_with_similarity_before_pressure_forest");
+
+  /**
+   * The nine Elastic Net models the parameters hold: the eight the outer test scores, then the
+   * ninth, which only the inner report scores.
+   */
+  private static final List<String> CHOSEN = concat(ELASTIC_NET, List.of(NINTH));
 
   /** The references and Elastic Nets before the retrospective model (ticket 15). */
   private static final List<String> LINEAR_BEFORE = LINEAR.subList(0, 9);
@@ -157,8 +167,8 @@ class SimilarityScoringTest {
   /** Each model's forest at a point of the declared grid, the leaves differing. */
   private static Map<String, Forest.Choice> forests() {
     final Map<String, Forest.Choice> out = new LinkedHashMap<>();
-    for (int m = 0; m < ELASTIC_NET.size(); m++) {
-      out.put(ELASTIC_NET.get(m), new Forest.Choice(Forest.MTRY_SHARES[m % 3], 1 + m % 3,
+    for (int m = 0; m < CHOSEN.size(); m++) {
+      out.put(CHOSEN.get(m), new Forest.Choice(Forest.MTRY_SHARES[m % 3], 1 + m % 3,
           Forest.NODE_SIZES[m % 3]));
     }
     return out;
@@ -170,7 +180,7 @@ class SimilarityScoringTest {
 
   private static Map<String, ElasticNetSelection.Choice> choices(final double lambda) {
     final Map<String, ElasticNetSelection.Choice> out = new LinkedHashMap<>();
-    for (final String name : ELASTIC_NET) {
+    for (final String name : CHOSEN) {
       out.put(name, new ElasticNetSelection.Choice(0.5, lambda, COMBINATIONS.get(name)));
     }
     return out;
@@ -414,6 +424,8 @@ class SimilarityScoringTest {
         r.comparisons().stream().map(g -> g.a() + " | " + g.b()).toList());
     assertEquals(22 + 8 + 3 + 8 + 8, new HashSet<>(expected).size());
     assertEquals(19, MODELS.size());
+    // the outer test scores the nineteen it scored before the ninth Elastic Net (ticket 20)
+    assertEquals(MODELS, r.models().stream().map(SimilarityScoring.Scored::name).toList());
     for (final var g : r.comparisons()) {
       assertTrue(g.low() <= g.gap() && g.gap() <= g.high(), g.toString());
     }
@@ -787,6 +799,69 @@ class SimilarityScoringTest {
         Double.doubleToRawLongBits(model(r, "project_median").score().mae()));
     assertEquals(Double.doubleToRawLongBits(chosen.constantMae()),
         Double.doubleToRawLongBits(model(r, "global_median").score().mae()));
+  }
+
+  @Test
+  @DisplayName("the inner report scores the ninth Elastic Net and its forest beside the others, "
+      + "each compared with the retrospective model's, and against the global and the project "
+      + "median, in the error comparisons and the ordering intervals")
+  void ninthInTheInnerScope() {
+    final SimilarityScoring.Report r =
+        SimilarityScoring.run(training(), choices(0.2), forests(), INNER, 1, 1);
+    final List<String> linear = new ArrayList<>(LINEAR);
+    linear.add(NINTH);
+    final List<String> trees = new ArrayList<>(FORESTS);
+    trees.add(NINTH + "_forest");
+    assertEquals(concat(linear, trees),
+        r.models().stream().map(SimilarityScoring.Scored::name).toList());
+    final List<String> expected = new ArrayList<>(List.of(
+        "own_with_similarity | own_without_similarity",
+        "own_retrospective | own_with_similarity",
+        "own_with_similarity | own_with_similarity_before_pressure",
+        "own_retrospective | own_retrospective_before_pressure"));
+    for (final String m : linear) {
+      if (!m.equals("global_median")) {
+        expected.add(m + " | global_median");
+      }
+    }
+    for (final String m : linear) {
+      if (!m.equals("global_median") && !m.equals("project_median")) {
+        expected.add(m + " | project_median");
+      }
+    }
+    for (final String m : CHOSEN) {
+      expected.add(m + "_forest | " + m);
+    }
+    expected.add("own_with_similarity_forest | own_without_similarity_forest");
+    expected.add("own_retrospective_forest | own_with_similarity_forest");
+    expected.add("own_with_similarity_forest | own_with_similarity_before_pressure_forest");
+    expected.add("own_retrospective_forest | own_retrospective_before_pressure_forest");
+    for (final String f : trees) {
+      expected.add(f + " | global_median");
+    }
+    for (final String f : trees) {
+      expected.add(f + " | project_median");
+    }
+    assertEquals(expected, r.comparisons().stream().map(g -> g.a() + " | " + g.b()).toList());
+    assertEquals(expected.stream().filter(p -> !p.endsWith(" | global_median")).toList(),
+        r.orderings().stream().map(o -> o.a() + " | " + o.b()).toList());
+    assertTrue(r.orderings().stream().anyMatch(o -> o.a().equals("own_retrospective_forest")
+        && o.b().equals(NINTH + "_forest")));
+    // the ninth reads none of ticket 19's five columns, of either variant, nor their indicators;
+    // the retrospective model all of them, the Blocker pace in the inner variant
+    final List<String> five = List.of("START_fix_version", "START_release_cycle_days",
+        "START_blocker_pace_days", "RETRO_blocker_wait", "RETRO_urgency_days");
+    assertTrue(model(r, NINTH).fitted().columns().stream().noneMatch(c -> five.stream()
+        .anyMatch(c::startsWith)), model(r, NINTH).fitted().columns().toString());
+    assertTrue(model(r, "own_retrospective").fitted().columns().containsAll(List.of(
+        "START_fix_version", "START_release_cycle_days", "START_blocker_pace_days_inner",
+        "RETRO_blocker_wait", "RETRO_urgency_days")));
+    assertEquals(model(r, NINTH).fitted().columns(), model(r, NINTH + "_forest").forest()
+        .columns());
+    // the test scores every model but the ninth, the inner report every one
+    assertEquals(ELASTIC_NET,
+        CHOSEN.stream().filter(SimilarityScoring.Scope.RESERVED::scores).toList());
+    assertEquals(CHOSEN, CHOSEN.stream().filter(INNER::scores).toList());
   }
 
   @Test

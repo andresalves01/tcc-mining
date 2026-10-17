@@ -186,7 +186,7 @@ class IssuesSimilarityInnerReportCommandTest {
 
     final Map<String, String[]> models =
         byModel(Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.MODELS)));
-    assertEquals(19, models.size());
+    assertEquals(21, models.size());
     for (final ElasticNetSelection.Model m : chosen.models()) {
       final String name = m.cell().label();
       assertEquals(m.fitted().score().mae(), Double.parseDouble(models.get(name)[3]), name);
@@ -205,6 +205,9 @@ class IssuesSimilarityInnerReportCommandTest {
         Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.REPORT));
     assertTrue(report.get(2).contains("optimistic") && report.get(2).contains("same inner "
         + "validation"), report.get(2));
+    // what the ninth model is, stated here and not in the test's record (ticket 22)
+    assertTrue(report.contains("- own_retrospective_before_pressure: "
+        + ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE_ROLE), report.toString());
     for (final String file : List.of(IssuesSimilarityInnerReportCommand.BANDS,
         IssuesSimilarityInnerReportCommand.COMPARISONS, IssuesSimilarityInnerReportCommand.ORDERING,
         IssuesSimilarityInnerReportCommand.DIAGNOSTICS,
@@ -222,8 +225,33 @@ class IssuesSimilarityInnerReportCommandTest {
         + "own_with_similarity_before_pressure\t")));
     assertTrue(comparisons.stream().anyMatch(l -> l.contains("\town_with_similarity_forest\t"
         + "own_with_similarity_before_pressure_forest\t")));
-    assertTrue(Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.ORDERING))
-        .stream().noneMatch(l -> l.contains("\tglobal_median\t")));
+    // the retrospective model against the one before ticket 19, Elastic Net and forest, and
+    // the ninth against the two medians (ticket 20)
+    for (final String pair : List.of("\town_retrospective\town_retrospective_before_pressure\t",
+        "\town_retrospective_forest\town_retrospective_before_pressure_forest\t",
+        "\town_retrospective_before_pressure\tglobal_median\t",
+        "\town_retrospective_before_pressure\tproject_median\t",
+        "\town_retrospective_before_pressure_forest\tglobal_median\t",
+        "\town_retrospective_before_pressure_forest\tproject_median\t")) {
+      assertTrue(comparisons.stream().anyMatch(l -> l.startsWith("all scored\t")
+          && l.contains(pair)), pair);
+    }
+    final List<String> ordering =
+        Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.ORDERING));
+    assertTrue(ordering.stream().noneMatch(l -> l.contains("\tglobal_median\t")));
+    for (final String pair : List.of("own_retrospective\town_retrospective_before_pressure\t",
+        "own_retrospective_forest\town_retrospective_before_pressure_forest\t",
+        "own_retrospective_before_pressure\tproject_median\t",
+        "own_retrospective_before_pressure_forest\tproject_median\t")) {
+      assertTrue(ordering.stream().anyMatch(l -> l.startsWith(pair)), pair);
+    }
+    final List<String> bands =
+        Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.BANDS));
+    assertTrue(bands.stream().anyMatch(l -> l.startsWith("own_retrospective_before_pressure\t")));
+    assertTrue(bands.stream()
+        .anyMatch(l -> l.startsWith("own_retrospective_before_pressure_forest\t")));
+    assertTrue(Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.IMPORTANCE))
+        .stream().anyMatch(l -> l.startsWith("own_retrospective_before_pressure_forest\t")));
   }
 
   @Test
