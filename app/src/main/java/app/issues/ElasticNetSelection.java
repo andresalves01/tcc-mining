@@ -23,7 +23,7 @@ import java.util.concurrent.Callable;
  * the four models reading the similarity medians, of the Jaccard n, embedding n and cluster k
  * they read.
  *
- * <p><b>Models.</b> Seven, each a {@link Cell}. Two are the registered in-progress cells read as
+ * <p><b>Models.</b> Eight, each a {@link Cell}. Two are the registered in-progress cells read as
  * they are: Al-Zubaidi at the start ({@code ALZUBAIDI / C1}) and Kikas at the start ({@code
  * KIKAS / C1}). The own specification with similarity, the study's own contribution, is
  * description length and team size, the registered {@code A01} and {@code A03}; the team's median
@@ -37,7 +37,10 @@ import java.util.concurrent.Callable;
  * them, Kikas's body length entering once as Al-Zubaidi's word counts, followed by the own
  * specification with similarity. The seventh, the retrospective scenario, is the own
  * specification with similarity followed by the ten attributes observed between the first In
- * Progress and the first resolution ({@link Retrospective}), twenty-six in all.
+ * Progress and the first resolution ({@link Retrospective}), twenty-six in all. The eighth is the
+ * own specification with similarity as it was before ticket 19, the ten and the three medians
+ * without the start columns of {@link Pressure} (item 36), so the new start model is compared
+ * with the old one on the same run.
  *
  * <p><b>Ticket 15.</b> The retrospective model ({@code own_retrospective}) reads what was observed
  * up to the resolution, and its counts grow with the duration itself: a gain over the own
@@ -97,16 +100,27 @@ import java.util.concurrent.Callable;
  */
 public final class ElasticNetSelection {
 
-  /** The retrospective scenario's model (ticket 15), the last of {@link #MODELS}. */
+  /** The retrospective scenario's model (ticket 15), the seventh of {@link #MODELS}. */
   public static final String RETROSPECTIVE = "own_retrospective";
 
-  /** The seven models, in their order: the six of the start, then the retrospective one. */
+  /**
+   * The own specification with similarity as it was before ticket 19, without the three start
+   * columns of {@link Pressure} (item 36), the last of {@link #MODELS}: the new start model is
+   * compared with it on the same run, and that comparison decides which goes to the outer test.
+   */
+  public static final String BEFORE_PRESSURE = "own_with_similarity_before_pressure";
+
+  /**
+   * The eight models, in their order: the six of the start, the retrospective one, then the own
+   * specification with similarity as before ticket 19.
+   */
   public static final List<String> MODELS = List.of("own_without_similarity", "similarity_alone",
-      "own_with_similarity", "alzubaidi_start", "kikas_start", "union_own", RETROSPECTIVE);
+      "own_with_similarity", "alzubaidi_start", "kikas_start", "union_own", RETROSPECTIVE,
+      BEFORE_PRESSURE);
 
   /** The models that read the similarity medians, whose n, n and k are chosen with them. */
-  public static final List<String> WITH_SIMILARITY =
-      List.of("similarity_alone", "own_with_similarity", "union_own", RETROSPECTIVE);
+  public static final List<String> WITH_SIMILARITY = List.of("similarity_alone",
+      "own_with_similarity", "union_own", RETROSPECTIVE, BEFORE_PRESSURE);
 
   private static final Population P = Population.IN_PROGRESS;
 
@@ -212,7 +226,8 @@ public final class ElasticNetSelection {
   public static final String HEADER = "# Elastic Net alpha and lambda, the similarity medians' "
       + "n, n and k, and each random forest's column share and leaf, chosen on the inner "
       + "validation only, the target in whole business days on the issues of at least one, for "
-      + "seven models with the retrospective one; the outer test was not read";
+      + "eight models with the retrospective one and the own one before ticket 19; the outer test was "
+      + "not read";
 
   /** The step of the Elastic Net choices in the parameters file. */
   public static final String STEP = "elastic-net";
@@ -573,7 +588,7 @@ public final class ElasticNetSelection {
 
   /**
    * Every model at every combination, in the given variant: the combinations in {@link
-   * Combination#all}'s order, the seven models of each in theirs. What the selection may read.
+   * Combination#all}'s order, the eight models of each in theirs. What the selection may read.
    */
   public static List<Cell> everyCell(final Augmentation.Variant variant) {
     final List<Cell> out = new ArrayList<>();
@@ -584,7 +599,7 @@ public final class ElasticNetSelection {
   }
 
   /**
-   * The seven models in their order, reading the split-dependent columns of the given variant,
+   * The eight models in their order, reading the split-dependent columns of the given variant,
    * each with the similarity medians at its own combination.
    *
    * @param combinations per model of {@link #WITH_SIMILARITY}, the values it reads the medians
@@ -607,7 +622,7 @@ public final class ElasticNetSelection {
   }
 
   /**
-   * The seven models in their order, reading the split-dependent columns of the given variant,
+   * The eight models in their order, reading the split-dependent columns of the given variant,
    * the four with the similarity medians at {@code c}; the other three do not depend on it.
    */
   public static List<Cell> cells(final Combination c, final Augmentation.Variant variant) {
@@ -622,11 +637,14 @@ public final class ElasticNetSelection {
         "A13_exec_open_load")) {
       without.add(Attributes.byName(executor));
     }
-    without.addAll(pressure());
     final List<Attribute> similarity = List.of(
         revised(Augmentation.jaccard(c.jaccardN(), variant)),
         revised(Augmentation.embedding(c.embeddingN(), variant)),
         revised(Augmentation.cluster(c.clusterK(), variant)));
+    // the own specification with similarity as before ticket 19: the ten, then the three medians
+    final List<Attribute> beforePressure = new ArrayList<>(without);
+    beforePressure.addAll(similarity);
+    without.addAll(pressure());
     final List<Attribute> with = new ArrayList<>(without);
     with.addAll(similarity);
 
@@ -648,7 +666,8 @@ public final class ElasticNetSelection {
         registered(MODELS.get(3), "ALZUBAIDI / C1"),
         registered(MODELS.get(4), "KIKAS / C1"),
         new Cell(MODELS.get(5), Family.UNION, Scenario.C1, union),
-        new Cell(RETROSPECTIVE, Family.OWN, Scenario.C2, retrospective));
+        new Cell(RETROSPECTIVE, Family.OWN, Scenario.C2, retrospective),
+        new Cell(BEFORE_PRESSURE, Family.OWN, Scenario.C1, beforePressure));
   }
 
   /**

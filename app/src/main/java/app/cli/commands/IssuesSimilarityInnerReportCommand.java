@@ -24,8 +24,8 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * The inner report of the description-similarity chain (ticket 16): the seventeen models of the
- * test -- the three medians, the seven Elastic Nets and their seven forests -- refitted on the
+ * The inner report of the description-similarity chain (ticket 16): the nineteen models of the
+ * test -- the three medians, the eight Elastic Nets and their eight forests -- refitted on the
  * inner fitting rows at the choices of the parameters file and scored on the inner validation,
  * by the study's own scoring ({@link SimilarityScoring}, {@link SimilarityScoring.Scope#INNER}),
  * in whole business days on the issues of at least one ({@link BusinessDays}).

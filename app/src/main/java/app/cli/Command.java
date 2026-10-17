@@ -290,7 +290,7 @@ public enum Command {
       boundary, holidays ignored, the time back in Open or Reopened left
       out), on the issues of at least one business day: chooses alpha and
       lambda on the inner validation, by the
-      registered grid's sweep, for seven Elastic Net models: the own
+      registered grid's sweep, for eight Elastic Net models: the own
       specification without similarity (description length, team size, the
       team's median and spread of lines of code and complexity, the
       corrected reporter median, the executor's lines of code, complexity
@@ -302,7 +302,9 @@ public enum Command {
       literature families with the own specification with similarity, and
       the retrospective scenario: the own specification with similarity and
       the ten attributes issues-in-progress-retrospective adds, observed up
-      to the resolution, whose counts grow with the duration itself. The
+      to the resolution, whose counts grow with the duration itself, and
+      the own specification with similarity as before ticket 19, without
+      the three start attributes, to compare the new start model with. The
       four models with the similarity medians are swept once for each of
       the 27 combinations of Jaccard n (5, 10, 20), embedding n (5, 10, 20)
       and cluster k (8, 16, 32), and keep the combination whose sweep errs
@@ -376,9 +378,9 @@ public enum Command {
       field, never parsed beyond it; drops the issues of 0 business days
       (the time back in Open or Reopened left out, as the similarity stage
       wrote them);
-      refits the seventeen models of the test (the global, project and
-      executor-project medians, the seven Elastic Nets at their chosen
-      alpha and lambda, unscaled, and n and k, and their seven forests at
+      refits the nineteen models of the test (the global, project and
+      executor-project medians, the eight Elastic Nets at their chosen
+      alpha and lambda, unscaled, and n and k, and their eight forests at
       their chosen column share and leaf) on the inner fitting rows and
       scores the inner validation, in whole business days, by the test's
       own scoring. Writes to REPORT_DIR: the report; the per-issue

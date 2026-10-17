@@ -31,8 +31,9 @@ import java.util.function.Function;
 
 /**
  * The test step of the description-similarity chain, outer mode only (see {@link
- * SimilarityScoring}): seventeen models -- the global, project and executor-project medians, the
- * seven Elastic Nets, the retrospective scenario's last ({@link Retrospective}), and, as a
+ * SimilarityScoring}): nineteen models -- the global, project and executor-project medians, the
+ * eight Elastic Nets, the retrospective scenario seventh ({@link Retrospective}) and the own
+ * specification with similarity before ticket 19 last, and, as a
  * robustness check, the random forest beside each -- refitted on the outer training set with the
  * parameters the selection step wrote, the outer test scored once, every agreed comparison, and
  * the side reading of the retrospective comparison on the issues with an implementation commit. The target is whole business days, on the issues of at least one
