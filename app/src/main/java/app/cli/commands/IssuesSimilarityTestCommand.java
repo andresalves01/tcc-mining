@@ -175,8 +175,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     System.out.printf("%n  DURATION FROM IN PROGRESS -- DESCRIPTION SIMILARITY -- OUTER TEST%n");
     System.out.printf("  matrix read %s  sha256 %s (%,d rows)%n", matrix, matrixSha,
         entries.size());
-    System.out.printf("  Elastic Net choices %s  sha256 %s (%d models)%n", elasticNet,
-        elasticNetSha, choices.size());
+    System.out.println(choicesLine(elasticNet, elasticNetSha));
     final RegistrationInProgress.Sizes s = ElasticNetSelection.sizes(entries);
     System.out.printf("  outer training %,d  outer test %,d  inner fitting %,d  inner validation "
         + "%,d%n", s.train(), s.test(), s.innerFit(), s.innerSelection());
@@ -407,7 +406,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
   /** What the run record states about the test it scores. */
   static Map<String, Object> statements() {
     final Map<String, Object> out = new LinkedHashMap<>();
-    out.put("outer_test_examined_before", EXAMINED);
+    out.put("outer_test_draw", EXAMINED);
     out.put("selection_effort", EFFORT);
     out.put("ordering_intervals", ORDERING);
     out.putAll(IssuesSimilarityElasticNetCommand.statements());
@@ -523,6 +522,17 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       }
     });
     return out;
+  }
+
+  /**
+   * The printed line naming the parameters file, with the count of Elastic Net models this step
+   * scores ({@link SimilarityScoring.Scope#scores}), not of those the file holds: the ninth
+   * model leaves no trace here.
+   */
+  static String choicesLine(final Path elasticNet, final String sha) {
+    return String.format("  Elastic Net choices %s  sha256 %s (%d models)", elasticNet, sha,
+        ElasticNetSelection.MODELS.stream().filter(SimilarityScoring.Scope.RESERVED::scores)
+            .count());
   }
 
   /** A combination as a document, its fields in a fixed order. */

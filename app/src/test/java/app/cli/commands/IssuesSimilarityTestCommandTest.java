@@ -250,7 +250,7 @@ class IssuesSimilarityTestCommandTest {
   void statements() {
     final Map<String, Object> run = IssuesSimilarityTestCommand.statements();
     assertEquals("the outer test is a new draw of 30% per project, seed 1738.",
-        run.get("outer_test_examined_before"));
+        run.get("outer_test_draw"));
     assertTrue(run.get("selection_effort").toString().contains("differs"));
     assertTrue(run.get("forest_role").toString().contains("robustness check"));
   }
@@ -328,5 +328,14 @@ class IssuesSimilarityTestCommandTest {
     assertFalse(record.contains("ticket 19's five"), record);
     assertTrue(IssuesSimilarityTestCommand.statements().get("selection_effort").toString()
         .contains("the 5 models reading the similarity medians"));
+  }
+
+  @Test
+  @DisplayName("the printed line naming the parameters file counts the eight Elastic Nets the "
+      + "test scores, not the nine the file holds")
+  void choicesLineCountsTheScoredModels() {
+    final String line = IssuesSimilarityTestCommand.choicesLine(Path.of("en.tsv"), "ab12");
+    assertEquals("  Elastic Net choices en.tsv  sha256 ab12 (8 models)", line);
+    assertEquals(9, ElasticNetSelection.MODELS.size());
   }
 }
