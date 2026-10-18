@@ -291,6 +291,44 @@ class IssuesSimilarityInnerReportCommandTest {
         .stream().anyMatch(l -> l.startsWith("own_retrospective_before_pressure_forest\t")));
   }
 
+  /**
+   * The inner report's files of {@link #entries} as the code wrote them, by SHA-256, but the
+   * report itself, which names the temporary paths, and the bands, which ticket 24 moved onto the
+   * quartiles of the fitting rows. Captured from fe685d2 (main after ticket 23).
+   */
+  private static final Map<String, String> AT_TICKET_23 = Map.of(
+      IssuesSimilarityInnerReportCommand.PREDICTIONS,
+      "5852d491842887224726449c31d0e612fe9cef0d911fb3e7bec4b156cb965db2",
+      IssuesSimilarityInnerReportCommand.MODELS,
+      "f45c935dbcbca0c02347663d557ea9152c50f69113ba99cfc464a170b23c51db",
+      IssuesSimilarityInnerReportCommand.COMPARISONS,
+      "779a7f21386d05017465b7d47dad5206508e713d3280a5c325b26f7e3dcaacb4",
+      IssuesSimilarityInnerReportCommand.ORDERING,
+      "109f70aca17b858822ff4ce903f1c7ffd501f996d398e6a6de35e767fe18b00b",
+      IssuesSimilarityInnerReportCommand.DIAGNOSTICS,
+      "7dee5aeb8257047e4849f5863854f8a8113452e5bfa0c379edb89d2a1858f868",
+      IssuesSimilarityInnerReportCommand.IMPORTANCE,
+      "7c994d93fd7961c9ae489eab0a66be94154ad5d6f46a6d31da793500a9ea4ee4");
+
+  @Test
+  @DisplayName("every file of the report but the report itself and the bands is, bit for bit, "
+      + "what it was at ticket 23")
+  void filesAsAtTicket23() throws IOException, CommandFailedException {
+    final Path matrix = dir.resolve("matrix.tsv");
+    final Path elasticNet = dir.resolve("elastic-net.tsv");
+    write(matrix, elasticNet);
+    final Path reports = dir.resolve("out");
+    set(matrix, elasticNet, reports);
+
+    command().run(context());
+
+    final Map<String, String> now = new HashMap<>();
+    for (final String file : AT_TICKET_23.keySet()) {
+      now.put(file, IssuesReservedCommand.sha256(reports.resolve(file)));
+    }
+    assertEquals(AT_TICKET_23, now);
+  }
+
   @Test
   @DisplayName("parameters chosen on another matrix, a fence the selection did not record, or "
       + "outer training rows the split set aside, refuse the report before anything is scored "
