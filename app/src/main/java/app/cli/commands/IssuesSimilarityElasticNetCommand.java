@@ -33,11 +33,12 @@ import java.util.function.Function;
 /**
  * The selection step of the description-similarity chain, inner mode only: each Elastic Net
  * model's alpha and lambda, by the registered chain's sweep on the inner validation, and, for the
- * five models reading the similarity medians, the Jaccard n, embedding n and cluster k they read,
+ * six models reading the similarity medians, the Jaccard n, embedding n and cluster k they read,
  * the combination of the 27 whose sweep errs least (see {@link ElasticNetSelection}); and beside
  * each model, as a robustness check, a random forest's column share and leaf, swept on the same
  * rows and columns. The seventh model is the retrospective scenario ({@link Retrospective}), whose
- * ten columns {@code issues-in-progress-retrospective} adds to the matrix.
+ * ten columns {@code issues-in-progress-retrospective} adds to the matrix; the ninth is the same
+ * without ticket 19's five columns.
  *
  * <p>The target is whole business days, on the issues of at least one ({@link BusinessDays}):
  * the outer training rows are read with each one's day boundary from the matrix, any of 0
@@ -150,6 +151,8 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     System.out.printf("  population: %s%n", BusinessDays.POPULATION);
     System.out.printf("  %s: %s%n", ElasticNetSelection.RETROSPECTIVE,
         Retrospective.SCENARIO);
+    System.out.printf("  %s: %s%n", ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE,
+        ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE_ROLE);
     System.out.printf("  issues of at least one business day: inner fitting %,d of %,d, inner "
         + "validation %,d of %,d, outer training %,d of %,d%n", population.kept().innerFit(),
         population.all().innerFit(), population.kept().innerSelection(),
@@ -226,6 +229,9 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     run.putAll(statements());
     run.put("population_rows", populationRows(population));
     run.put("models", ElasticNetSelection.MODELS);
+    // not in statements(), which the test's record shares
+    run.put("retrospective_before_pressure",
+        ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE_ROLE);
     run.put("matrix_sha256", matrixSha);
     run.put("parameters_sha256", parametersSha);
     run.put("jaccard_n", Augmentation.JACCARD_N);

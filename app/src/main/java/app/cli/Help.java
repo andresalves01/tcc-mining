@@ -93,7 +93,7 @@ public final class Help {
                                                 intervals, bit for bit, on any number of threads
           ELASTIC_NET_PARAMETERS (unset)        issues-in-progress-similarity-elastic-net: where
                                                 each model's alpha and lambda go, and the Jaccard
-                                                n, embedding n and cluster k of the five models
+                                                n, embedding n and cluster k of the six models
                                                 with the similarity medians; never PARAMETERS;
                                                 issues-in-progress-similarity-test and
                                                 -inner-report read it

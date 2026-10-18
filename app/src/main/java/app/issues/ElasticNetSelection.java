@@ -20,10 +20,10 @@ import java.util.concurrent.Callable;
 /**
  * The Elastic Net models of the description-similarity chain, and the choice on the inner
  * validation only of each one's alpha and lambda, by the registered chain's own sweep, and, for
- * the five models reading the similarity medians, of the Jaccard n, embedding n and cluster k
+ * the six models reading the similarity medians, of the Jaccard n, embedding n and cluster k
  * they read.
  *
- * <p><b>Models.</b> Eight, each a {@link Cell}. Two are the registered in-progress cells read as
+ * <p><b>Models.</b> Nine, each a {@link Cell}. Two are the registered in-progress cells read as
  * they are: Al-Zubaidi at the start ({@code ALZUBAIDI / C1}) and Kikas at the start ({@code
  * KIKAS / C1}). The own specification with similarity, the study's own contribution, is
  * description length and team size, the registered {@code A01} and {@code A03}; the team's median
@@ -40,7 +40,11 @@ import java.util.concurrent.Callable;
  * Progress and the first resolution ({@link Retrospective}), twenty-six in all. The eighth is the
  * own specification with similarity as it was before ticket 19, the ten and the three medians
  * without the start columns of {@link Pressure} (item 36), so the new start model is compared
- * with the old one on the same run.
+ * with the old one on the same run. The ninth is the retrospective model as it was before ticket
+ * 19, the retrospective one without ticket 19's five columns -- the three start columns of
+ * {@link Pressure} and the blocking-link wait and urgency of {@link Retrospective} -- and their
+ * missing indicators (item 43), twenty-one in all: it adds no attribute and only measures what
+ * ticket 19 did to the retrospective model.
  *
  * <p><b>Ticket 15.</b> The retrospective model ({@code own_retrospective}) reads what was observed
  * up to the resolution, and its counts grow with the duration itself: a gain over the own
@@ -55,7 +59,7 @@ import java.util.concurrent.Callable;
  * chain, its cell and its outputs, are untouched.
  *
  * <p><b>Similarity medians as attributes</b> (ticket 11, reversing ticket 08's choice by each
- * median's error read alone as a prediction). The five models with the medians ({@link
+ * median's error read alone as a prediction). The six models with the medians ({@link
  * #WITH_SIMILARITY}) are swept once per {@link Combination} of a Jaccard n, an embedding n and a
  * cluster k among the values the similarity stage computes, 27 in all, each sweep the registered
  * alpha by lambda grid, and keep the combination whose chosen point errs least on the inner
@@ -106,22 +110,39 @@ public final class ElasticNetSelection {
 
   /**
    * The own specification with similarity as it was before ticket 19, without the three start
-   * columns of {@link Pressure} (item 36), the last of {@link #MODELS}: the new start model is
+   * columns of {@link Pressure} (item 36), the eighth of {@link #MODELS}: the new start model is
    * compared with it on the same run, and that comparison decides which goes to the outer test.
    */
   public static final String BEFORE_PRESSURE = "own_with_similarity_before_pressure";
 
   /**
-   * The eight models, in their order: the six of the start, the retrospective one, then the own
-   * specification with similarity as before ticket 19.
+   * The retrospective model as it was before ticket 19, without ticket 19's five columns and their
+   * missing indicators (item 43), the last of {@link #MODELS}: compared with the retrospective
+   * model on the same run, it measures what ticket 19 did to it and nothing else.
+   */
+  public static final String RETROSPECTIVE_BEFORE_PRESSURE = "own_retrospective_before_pressure";
+
+  /**
+   * What the ninth model is, for the selection step's output and record and the inner report;
+   * never the test's, which does not score it (ticket 22).
+   */
+  public static final String RETROSPECTIVE_BEFORE_PRESSURE_ROLE = "the retrospective model "
+      + "without ticket 19's five columns (the three start ones, the blocking-link wait and "
+      + "urgency) and their missing indicators; it adds no attribute and only measures what "
+      + "ticket 19 did to the retrospective model; only the inner report scores it";
+
+  /**
+   * The nine models, in their order: the six of the start, the retrospective one, the own
+   * specification with similarity as before ticket 19, then the retrospective one as before it.
    */
   public static final List<String> MODELS = List.of("own_without_similarity", "similarity_alone",
       "own_with_similarity", "alzubaidi_start", "kikas_start", "union_own", RETROSPECTIVE,
-      BEFORE_PRESSURE);
+      BEFORE_PRESSURE, RETROSPECTIVE_BEFORE_PRESSURE);
 
   /** The models that read the similarity medians, whose n, n and k are chosen with them. */
   public static final List<String> WITH_SIMILARITY = List.of("similarity_alone",
-      "own_with_similarity", "union_own", RETROSPECTIVE, BEFORE_PRESSURE);
+      "own_with_similarity", "union_own", RETROSPECTIVE, BEFORE_PRESSURE,
+      RETROSPECTIVE_BEFORE_PRESSURE);
 
   private static final Population P = Population.IN_PROGRESS;
 
@@ -227,8 +248,8 @@ public final class ElasticNetSelection {
   public static final String HEADER = "# Elastic Net alpha and lambda, the similarity medians' "
       + "n, n and k, and each random forest's column share and leaf, chosen on the inner "
       + "validation only, the target in whole business days on the issues of at least one, for "
-      + "eight models with the retrospective one and the own one before ticket 19; the outer "
-      + "test was not read";
+      + "nine models with the retrospective one and the own and retrospective ones before ticket "
+      + "19; the outer test was not read";
 
   /** The step of the Elastic Net choices in the parameters file. */
   public static final String STEP = "elastic-net";
@@ -589,7 +610,7 @@ public final class ElasticNetSelection {
 
   /**
    * Every model at every combination, in the given variant: the combinations in {@link
-   * Combination#all}'s order, the eight models of each in theirs. What the selection may read.
+   * Combination#all}'s order, the nine models of each in theirs. What the selection may read.
    */
   public static List<Cell> everyCell(final Augmentation.Variant variant) {
     final List<Cell> out = new ArrayList<>();
@@ -600,7 +621,7 @@ public final class ElasticNetSelection {
   }
 
   /**
-   * The eight models in their order, reading the split-dependent columns of the given variant,
+   * The nine models in their order, reading the split-dependent columns of the given variant,
    * each with the similarity medians at its own combination.
    *
    * @param combinations per model of {@link #WITH_SIMILARITY}, the values it reads the medians
@@ -623,8 +644,8 @@ public final class ElasticNetSelection {
   }
 
   /**
-   * The eight models in their order, reading the split-dependent columns of the given variant,
-   * the five with the similarity medians at {@code c}; the other three do not depend on it.
+   * The nine models in their order, reading the split-dependent columns of the given variant,
+   * the six with the similarity medians at {@code c}; the other three do not depend on it.
    */
   public static List<Cell> cells(final Combination c, final Augmentation.Variant variant) {
     final List<Attribute> without = new ArrayList<>();
@@ -659,6 +680,10 @@ public final class ElasticNetSelection {
 
     final List<Attribute> retrospective = new ArrayList<>(with);
     retrospective.addAll(retrospective());
+    // the retrospective model as before ticket 19: the old start model, then the eight of ticket 15
+    final List<Attribute> retrospectiveBeforePressure = new ArrayList<>(beforePressure);
+    retrospective().stream().filter(a -> !Retrospective.LINKS_AND_RELEASES.contains(a.name()))
+        .forEach(retrospectiveBeforePressure::add);
 
     return List.of(
         new Cell(MODELS.get(0), Family.OWN, Scenario.C1, without),
@@ -668,7 +693,9 @@ public final class ElasticNetSelection {
         registered(MODELS.get(4), "KIKAS / C1"),
         new Cell(MODELS.get(5), Family.UNION, Scenario.C1, union),
         new Cell(RETROSPECTIVE, Family.OWN, Scenario.C2, retrospective),
-        new Cell(BEFORE_PRESSURE, Family.OWN, Scenario.C1, beforePressure));
+        new Cell(BEFORE_PRESSURE, Family.OWN, Scenario.C1, beforePressure),
+        new Cell(RETROSPECTIVE_BEFORE_PRESSURE, Family.OWN, Scenario.C2,
+            retrospectiveBeforePressure));
   }
 
   /**

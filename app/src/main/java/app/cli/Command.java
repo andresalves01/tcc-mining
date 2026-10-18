@@ -297,48 +297,50 @@ public enum Command {
   ISSUES_SIMILARITY_ELASTIC_NET("issues-in-progress-similarity-elastic-net",
       new IssuesSimilarityElasticNetCommand(), """
       Issue duration from the first In Progress, description-similarity
-      chain, in whole business days (Monday-to-Friday dates reached from
-      the first In Progress to the first resolution, at each issue's day
+      chain, in whole business days (Monday-to-Friday dates reached from the
+      first In Progress to the first resolution, at each issue's day
       boundary, holidays ignored, the time back in Open or Reopened left
       out), on the issues of at least one business day: chooses alpha and
-      lambda on the inner validation, by the
-      registered grid's sweep, for eight Elastic Net models: the own
-      specification without similarity (description length, team size, the
-      team's median and spread of lines of code and complexity, the
-      corrected reporter median, the executor's lines of code, complexity
-      and open workload, the fix version set before the start, the days
-      left in the release cycle and the pace of the other Blocker issues),
-      the similarity medians alone, the own
+      lambda on the inner validation, by the registered grid's sweep, for
+      nine Elastic Net models: the own specification without similarity
+      (description length, team size, the team's median and spread of lines
+      of code and complexity, the corrected reporter median, the executor's
+      lines of code, complexity and open workload, the fix version set
+      before the start, the days left in the release cycle and the pace of
+      the other Blocker issues), the similarity medians alone, the own
       specification with similarity (those thirteen and the three medians),
       Al-Zubaidi and Kikas at the start (the registered cells), and the
       literature families with the own specification with similarity, and
       the retrospective scenario: the own specification with similarity and
       the ten attributes issues-in-progress-retrospective adds, observed up
-      to the resolution, whose counts grow with the duration itself, and
-      the own specification with similarity as before ticket 19, without
-      the three start attributes, to compare the new start model with. The
-      five models with the similarity medians are swept once for each of
-      the 27 combinations of Jaccard n (5, 10, 20), embedding n (5, 10, 20)
-      and cluster k (8, 16, 32), and keep the combination whose sweep errs
-      least; exact ties go to the smaller Jaccard n, then embedding n, then
-      cluster k. As a robustness check, not a new contribution, a random
-      forest is swept beside each model on the same rows and every column
-      its Elastic Net kept, weighted or not, the similarity medians at the
-      chosen n and k (300 trees, depth 20, column share 1/6, 1/3 or 2/3,
-      leaf 5, 25 or 100, seed 20260927); the lowest inner validation error
-      is kept, exact ties going to the first point of the grid. Prints each
-      model's choice and, for those four, the best error of every
-      combination, and each forest's grid. The split-dependent columns are
-      read in their inner variant; a column missing on every inner fitting row is
-      removed from its models and reported. Refuses unless every row's
-      split is the one its rule draws and the matrix has every declared
-      column, the day boundary and the active business days. Reads
-      MATRIX; writes ELASTIC_NET_PARAMETERS, the forests' column share and leaf among them,
-      never over a file holding more than its own choices, one naming other
-      models, as one written before the own specification took the team
-      size back and left the previous one out, or one written before the
-      forests or for the hours; records the run in ISSUES_DB. The
-      outer test rows are not read."""),
+      to the resolution, whose counts grow with the duration itself, and the
+      own specification with similarity as before ticket 19, without the
+      three start attributes, to compare the new start model with, and the
+      retrospective scenario as before ticket 19, without its five
+      attributes (the three start ones, the blocking-link wait and urgency),
+      which adds nothing and only measures what ticket 19 did to the
+      retrospective model. The six models with the similarity medians are
+      swept once for each of the 27 combinations of Jaccard n (5, 10, 20),
+      embedding n (5, 10, 20) and cluster k (8, 16, 32), and keep the
+      combination whose sweep errs least; exact ties go to the smaller
+      Jaccard n, then embedding n, then cluster k. As a robustness check,
+      not a new contribution, a random forest is swept beside each model on
+      the same rows and every column its Elastic Net kept, weighted or not,
+      the similarity medians at the chosen n and k (300 trees, depth 20,
+      column share 1/6, 1/3 or 2/3, leaf 5, 25 or 100, seed 20260927); the
+      lowest inner validation error is kept, exact ties going to the first
+      point of the grid. Prints each model's choice and, for those six, the
+      best error of every combination, and each forest's grid. The
+      split-dependent columns are read in their inner variant; a column
+      missing on every inner fitting row is removed from its models and
+      reported. Refuses unless every row's split is the one its rule draws
+      and the matrix has every declared column, the day boundary and the
+      active business days. Reads MATRIX; writes ELASTIC_NET_PARAMETERS, the
+      forests' column share and leaf among them, never over a file holding
+      more than its own choices, one naming other models, as one written
+      before the own specification took the team size back and left the
+      previous one out, or one written before the forests or for the hours;
+      records the run in ISSUES_DB. The outer test rows are not read."""),
 
   ISSUES_SIMILARITY_TEST("issues-in-progress-similarity-test",
       new IssuesSimilarityTestCommand(), """
@@ -346,14 +348,15 @@ public enum Command {
       chain, outer mode only: SCORES THE OUTER TEST, in whole business days
       (Monday-to-Friday dates reached, at each issue's day boundary,
       holidays ignored, the time back in Open or Reopened left out) on the
-      issues of at least one business day, those
-      of 0 dropped from the outer training and test. Reads MATRIX and
-      ELASTIC_NET_PARAMETERS and chooses nothing: refits every Elastic Net
-      model on the outer training set with its chosen alpha and the chosen
-      lambda times the ratio of rows, as the registered reserved run does,
-      the similarity medians at the Jaccard n, embedding n and cluster k
-      chosen for each model; refits beside each, as a robustness check, its
-      random forest with the chosen count of columns per split and leaf; and with the
+      issues of at least one business day, those of 0 dropped from the outer
+      training and test. Reads MATRIX and ELASTIC_NET_PARAMETERS and chooses
+      nothing: refits every Elastic Net model but the retrospective one as
+      before ticket 19, which only the inner report scores, on the outer
+      training set with its chosen alpha and the chosen lambda times the
+      ratio of rows, as the registered reserved run does, the similarity
+      medians at the Jaccard n, embedding n and cluster k chosen for each
+      model; refits beside each, as a robustness check, its random forest
+      with the chosen count of columns per split and leaf; and with the
       global, project and executor-project medians scores the outer test:
       error in business days, with the slowest 10% left out too, Spearman,
       pairwise ordering, error by band of the true business days (1, 2-3,
@@ -367,18 +370,18 @@ public enum Command {
       against the forest with similarity, and every forest against the
       global and the project median. As a side reading, the two
       retrospective comparisons again on the issues with an implementation
-      commit only. Refuses unless the parameters file
-      exists and is for these models with a forest for each, its choices
-      were made on that matrix, every row's split is the one its rule
-      draws and every column is present. Writes the per-issue
-      predictions, the diagnostics and each forest's permutation
-      importance to REPORT_DIR; records the run in ISSUES_DB. States that
-      the earlier study already examined this test. Ordering intervals, a
-      declared measure stated before the outer test was opened: for every
-      agreed pair and every model against the project median (the global
-      median orders nothing), the paired difference in Spearman and in
-      pairwise ordering, each with its interval from the same draws of
-      whole projects as the error comparisons; printed and recorded."""),
+      commit only. Refuses unless the parameters file exists and is for
+      these models with a forest for each, its choices were made on that
+      matrix, every row's split is the one its rule draws and every column
+      is present. Writes the per-issue predictions, the diagnostics and each
+      forest's permutation importance to REPORT_DIR; records the run in
+      ISSUES_DB. States that the outer test is a new draw of 30% per
+      project, seed 1738. Ordering intervals, a declared measure stated
+      before the outer test was opened: for every agreed pair and every
+      model against the project median (the global median orders nothing),
+      the paired difference in Spearman and in pairwise ordering, each with
+      its interval from the same draws of whole projects as the error
+      comparisons; printed and recorded."""),
 
   ISSUES_SIMILARITY_INNER_REPORT("issues-in-progress-similarity-inner-report",
       new IssuesSimilarityInnerReportCommand(), """
@@ -389,26 +392,28 @@ public enum Command {
       only the outer training rows, the others left behind on their split
       field, never parsed beyond it; drops the issues of 0 business days
       (the time back in Open or Reopened left out, as the similarity stage
-      wrote them);
-      refits the nineteen models of the test (the global, project and
-      executor-project medians, the eight Elastic Nets at their chosen
-      alpha and lambda, unscaled, and n and k, and their eight forests at
-      their chosen column share and leaf) on the inner fitting rows and
-      scores the inner validation, in whole business days, by the test's
-      own scoring. Writes to REPORT_DIR: the report; the per-issue
-      predictions with whether the issue has an implementation commit;
-      per model the error, the gains over the global and the project
-      median, Spearman, pairwise ordering and the error's quantiles; the
-      error by band of the true business days (1, 2-3, 4-10, 11+); the
-      paired comparisons of the test, every model against the global and
-      the project median among them, with intervals resampling whole
-      projects; the retrospective pairs on the issues with and without an
-      implementation commit; the ordering intervals; the Elastic Nets'
-      coefficients and the forests' permutation importance. Refuses unless
-      the parameters file is the selection step's own for these models,
-      its choices were made on that matrix, every outer training row is
-      inner fitting or inner validation and every column is present.
-      Writes nothing to the database and records no run."""),
+      wrote them); refits the twenty-one models (the nineteen of the test:
+      the global, project and executor-project medians, eight Elastic Nets
+      at their chosen alpha and lambda, unscaled, and n and k, and their
+      eight forests at their chosen column share and leaf; and the ninth
+      Elastic Net, the retrospective scenario as before ticket 19, with its
+      forest, which the test does not score) on the inner fitting rows and
+      scores the inner validation, in whole business days, by the test's own
+      scoring. Writes to REPORT_DIR: the report; the per-issue predictions
+      with whether the issue has an implementation commit; per model the
+      error, the gains over the global and the project median, Spearman,
+      pairwise ordering and the error's quantiles; the error by band of the
+      true business days (1, 2-3, 4-10, 11+); the paired comparisons of the
+      test, every model against the global and the project median among
+      them, and the retrospective model against the one before ticket 19,
+      Elastic Net and forest, with intervals resampling whole projects; the
+      retrospective pairs on the issues with and without an implementation
+      commit; the ordering intervals; the Elastic Nets' coefficients and the
+      forests' permutation importance. Refuses unless the parameters file is
+      the selection step's own for these models, its choices were made on
+      that matrix, every outer training row is inner fitting or inner
+      validation and every column is present. Writes nothing to the database
+      and records no run."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both

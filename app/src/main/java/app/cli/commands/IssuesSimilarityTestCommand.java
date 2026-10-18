@@ -33,7 +33,7 @@ import java.util.function.Function;
 /**
  * The test step of the description-similarity chain, outer mode only (see {@link
  * SimilarityScoring}): nineteen models -- the global, project and executor-project medians, the
- * eight Elastic Nets, the retrospective scenario seventh ({@link Retrospective}) and the own
+ * first eight Elastic Nets, the retrospective scenario seventh ({@link Retrospective}) and the own
  * specification with similarity before ticket 19 last, and, as a
  * robustness check, the random forest beside each -- refitted on the outer training set with the
  * parameters the selection step wrote, the outer test scored once, every agreed comparison, and
@@ -44,8 +44,11 @@ import java.util.function.Function;
  * every error, band and comparison is in business days.
  *
  * <p>Reads MATRIX and ELASTIC_NET_PARAMETERS, which gives per model its alpha and lambda, for
- * the five with the similarity medians the Jaccard n, embedding n and cluster k they read, and
- * its forest's column share and leaf; it chooses nothing. A parameters file without a forest for
+ * the six with the similarity medians the Jaccard n, embedding n and cluster k they read, and
+ * its forest's column share and leaf; it chooses nothing. The ninth model, the retrospective one
+ * before ticket 19, is in the parameters file but not scored here, nor named in the run record:
+ * only the inner report scores it ({@link SimilarityScoring.Scope#scores}). A parameters file
+ * without a forest for
  * every model is refused. Refuses, scoring, writing and recording nothing, unless the parameters file
  * exists and is the step's own, its choices were made on this very matrix (by SHA-256), every
  * row's split is the one its rule draws ({@link ProjectSplit}), and the matrix has every column
@@ -79,14 +82,15 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
    */
   public static final String INPUTS = "similarity-test-inputs.tsv";
 
-  private static final String EXAMINED = "the outer test is the registered in-progress study's, "
-      + "which the earlier study already scored and examined; this run reads it again and is not "
-      + "a test untouched by the author";
+  /** What the outer test is, a sentence of its own (André, 17/10/2026). */
+  static final String EXAMINED = "the outer test is a new draw of 30% per project, seed 1738.";
 
   private static final String EFFORT = "selection effort differs between families: the two "
       + "registered cells (Al-Zubaidi, Kikas) chose only alpha and lambda on the 3 x 12 grid; the "
       + "own specification without similarity chose the same; the "
-      + ElasticNetSelection.WITH_SIMILARITY.size() + " models reading the "
+      // those this step scores: the ninth model is the inner report's only
+      + ElasticNetSelection.WITH_SIMILARITY.stream()
+          .filter(SimilarityScoring.Scope.RESERVED::scores).count() + " models reading the "
       + "similarity medians chose also their Jaccard n, embedding n and cluster k among "
       + ElasticNetSelection.Combination.all().size() + " "
       + "combinations, each swept on the same grid; each forest chose its column share and leaf "
@@ -171,8 +175,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     System.out.printf("%n  DURATION FROM IN PROGRESS -- DESCRIPTION SIMILARITY -- OUTER TEST%n");
     System.out.printf("  matrix read %s  sha256 %s (%,d rows)%n", matrix, matrixSha,
         entries.size());
-    System.out.printf("  Elastic Net choices %s  sha256 %s (%d models)%n", elasticNet,
-        elasticNetSha, choices.size());
+    System.out.println(choicesLine(elasticNet, elasticNetSha));
     final RegistrationInProgress.Sizes s = ElasticNetSelection.sizes(entries);
     System.out.printf("  outer training %,d  outer test %,d  inner fitting %,d  inner validation "
         + "%,d%n", s.train(), s.test(), s.innerFit(), s.innerSelection());
@@ -198,7 +201,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       throw refused(e.getMessage());
     }
 
-    System.out.printf("%n  NOTE: %s.%n  NOTE: %s.%n", EXAMINED, EFFORT);
+    System.out.printf("%n  NOTE: %s%n  NOTE: %s.%n", EXAMINED, EFFORT);
     System.out.printf("  target: %s; %s%n", BusinessDays.TARGET, BusinessDays.HOLIDAYS);
     System.out.printf("  population: %s%n", BusinessDays.POPULATION);
     System.out.printf("  issues of at least one business day: outer training %,d of %,d, outer "
@@ -322,10 +325,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     run.put("forest_importance_sha256", importanceSha);
     run.put("forest_grid", IssuesSimilarityElasticNetCommand.forestGrid());
     run.put("forest_permutation_repeats", Forest.PERMUTATION_REPEATS);
-    final Map<String, Object> candidates = new LinkedHashMap<>();
-    ElasticNetSelection.combinations(choices).forEach((name, c) -> candidates.put(name,
-        combination(c)));
-    run.put("candidates", candidates);
+    run.put("candidates", candidates(choices));
     run.put("fit_rows", r.fitRows());
     run.put("scored_rows", r.scoredRows());
     run.put("scored_rows_with_implementation_commit", r.withCommitRows());
@@ -406,7 +406,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
   /** What the run record states about the test it scores. */
   static Map<String, Object> statements() {
     final Map<String, Object> out = new LinkedHashMap<>();
-    out.put("outer_test_examined_before", EXAMINED);
+    out.put("outer_test_draw", EXAMINED);
     out.put("selection_effort", EFFORT);
     out.put("ordering_intervals", ORDERING);
     out.putAll(IssuesSimilarityElasticNetCommand.statements());
@@ -507,6 +507,32 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       }
     }
     return out;
+  }
+
+  /**
+   * The run record's Jaccard n, embedding n and cluster k, per model this step scores ({@link
+   * SimilarityScoring.Scope#scores}): the ninth model's choice is in the parameters file, but
+   * only the inner report reads it.
+   */
+  static Map<String, Object> candidates(final Map<String, ElasticNetSelection.Choice> choices) {
+    final Map<String, Object> out = new LinkedHashMap<>();
+    ElasticNetSelection.combinations(choices).forEach((name, c) -> {
+      if (SimilarityScoring.Scope.RESERVED.scores(name)) {
+        out.put(name, combination(c));
+      }
+    });
+    return out;
+  }
+
+  /**
+   * The printed line naming the parameters file, with the count of Elastic Net models this step
+   * scores ({@link SimilarityScoring.Scope#scores}), not of those the file holds: the ninth
+   * model leaves no trace here.
+   */
+  static String choicesLine(final Path elasticNet, final String sha) {
+    return String.format("  Elastic Net choices %s  sha256 %s (%d models)", elasticNet, sha,
+        ElasticNetSelection.MODELS.stream().filter(SimilarityScoring.Scope.RESERVED::scores)
+            .count());
   }
 
   /** A combination as a document, its fields in a fixed order. */
