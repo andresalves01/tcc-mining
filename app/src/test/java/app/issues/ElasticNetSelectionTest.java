@@ -151,6 +151,30 @@ class ElasticNetSelectionTest {
    */
   private static final String NINTH = "own_retrospective_before_pressure 64e61f67 5d9fca28";
 
+  /** The nine models before ticket 26, in their order. */
+  private static final List<String> NINE_MODELS = List.of("own_without_similarity",
+      "similarity_alone", "own_with_similarity", "alzubaidi_start", "kikas_start", "union_own",
+      "own_retrospective", "own_with_similarity_before_pressure",
+      "own_retrospective_before_pressure");
+
+  /**
+   * The selection of {@link #full} under the tail cut it chooses, as the code made it before
+   * ticket 26: a hash of the rows, the references, the k and its grid, then per model a hash of
+   * its {@link #everything} line (Elastic Net, removed columns, forest). Captured from 6d7edf1
+   * (main after ticket 24).
+   */
+  private static final List<String> NINE_AT_TICKET_24 = List.of(
+      "c591d0f1",
+      "own_without_similarity 4de30521",
+      "similarity_alone b5806bce",
+      "own_with_similarity 25f39608",
+      "alzubaidi_start e7762856",
+      "kikas_start 16b7d500",
+      "union_own 66ffbbb9",
+      "own_retrospective c75450ad",
+      "own_with_similarity_before_pressure 46d6e3a8",
+      "own_retrospective_before_pressure 628c2f1");
+
   private static final List<String> UNTOUCHED =
       List.of("similarity_alone", "alzubaidi_start", "kikas_start");
 
@@ -1159,6 +1183,23 @@ class ElasticNetSelectionTest {
       out.add(fingerprint(m) + " " + m.removed() + " " + forestFingerprint(m.forest()));
     }
     return out;
+  }
+
+  @Test
+  @DisplayName("the nine models before ticket 26 choose, bit for bit, what they chose at ticket "
+      + "24 under the tail cut chosen: the k, its grid, every Elastic Net and forest")
+  void nineAsAtTicket24() {
+    full();
+    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries), 1);
+    final List<String> lines = everything(r);
+    final List<String> now = new ArrayList<>(List.of(Integer.toHexString((lines.get(0) + " "
+        + hex(r.cut().k()) + " " + r.cut().grid()).hashCode())));
+    for (final String name : NINE_MODELS) {
+      final ElasticNetSelection.Model m = model(r, name);
+      now.add(name + " " + Integer.toHexString((fingerprint(m) + " " + m.removed() + " "
+          + forestFingerprint(m.forest())).hashCode()));
+    }
+    assertEquals(NINE_AT_TICKET_24, now);
   }
 
   @Test

@@ -46,6 +46,9 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class IssuesSimilarityInnerReportCommandTest {
 
+  /** The Kikas retrospective model, ticket 26's. */
+  private static final String KIKAS_RETROSPECTIVE = "kikas_retrospective";
+
   private final Map<String, String> settings = new HashMap<>();
 
   @TempDir
@@ -75,13 +78,17 @@ class IssuesSimilarityInnerReportCommandTest {
    * inner cut set aside, as a matrix of the temporal split held them.
    */
   private static List<RowCache.Entry> entries(final boolean crossing) {
+    // the columns of the nine models before ticket 26 draw from the shared generator as they
+    // did; any other model's from a draw of its own per row and column, so none of theirs moves
     final Set<Attribute> declared = new LinkedHashSet<>();
-    for (final Cell cell : ElasticNetSelection.everyCell(Augmentation.Variant.INNER)) {
-      declared.addAll(cell.attributes());
+    final Set<Attribute> later = new LinkedHashSet<>();
+    for (final Augmentation.Variant v : List.of(Augmentation.Variant.INNER,
+        Augmentation.Variant.OUTER)) {
+      for (final Cell cell : ElasticNetSelection.everyCell(v)) {
+        (cell.label().equals(KIKAS_RETROSPECTIVE) ? later : declared).addAll(cell.attributes());
+      }
     }
-    for (final Cell cell : ElasticNetSelection.everyCell(Augmentation.Variant.OUTER)) {
-      declared.addAll(cell.attributes());
-    }
+    later.removeAll(declared);
     final Random random = new Random(3);
     final Instant created = Instant.parse("2016-02-01T00:00:00Z");
     final List<RowCache.Entry> out = new ArrayList<>();
@@ -109,6 +116,13 @@ class IssuesSimilarityInnerReportCommandTest {
           if (Attributes.all().contains(a)) {
             // the registered matrix stores the missing indicator beside its own columns
             values.put(a.name() + "_ausente", 0.0);
+          }
+        }
+        for (final Attribute a : later) {
+          values.put(a.name(), (double) new Random(1_000_003L * n + a.name().hashCode())
+              .nextInt(40));
+          if (a.absenceIndicator()) {
+            values.put(a.absenceName(), 0.0);
           }
         }
         values.put(BusinessDays.BOUNDARY, 4.0);
@@ -384,6 +398,71 @@ class IssuesSimilarityInnerReportCommandTest {
       now.put(file, IssuesReservedCommand.sha256(reports.resolve(file)));
     }
     assertEquals(AT_TICKET_23, now);
+  }
+
+  /**
+   * Every file of the report of {@link #entries} but the report itself, which names the temporary
+   * paths, as the code wrote it before ticket 26, by a hash of its text without the Kikas
+   * retrospective model's lines, or, in the predictions, its columns. Captured from 6d7edf1 (main
+   * after ticket 24).
+   */
+  private static final Map<String, String> AT_TICKET_24 = Map.of(
+      IssuesSimilarityInnerReportCommand.PREDICTIONS, "41 623fa349",
+      IssuesSimilarityInnerReportCommand.MODELS, "43 625c1a12",
+      IssuesSimilarityInnerReportCommand.BANDS, "169 4463f337",
+      IssuesSimilarityInnerReportCommand.COMPARISONS, "121 c43730c8",
+      IssuesSimilarityInnerReportCommand.ORDERING, "73 8d562431",
+      IssuesSimilarityInnerReportCommand.DIAGNOSTICS, "368 d222d4c4",
+      IssuesSimilarityInnerReportCommand.IMPORTANCE, "172 f1508a21",
+      IssuesSimilarityInnerReportCommand.INTERVALS, "421 6f8421c1",
+      IssuesSimilarityInnerReportCommand.CALIBRATION, "43 34d3dd5");
+
+  /** A file's text without the Kikas retrospective model's lines or columns, hashed. */
+  private static String withoutKikasRetrospective(final Path file) throws IOException {
+    final List<String> lines = Files.readAllLines(file);
+    final List<String> kept = new ArrayList<>();
+    if (file.getFileName().toString().equals(IssuesSimilarityInnerReportCommand.PREDICTIONS)) {
+      final String[] header = lines.get(0).split("\t", -1);
+      for (final String line : lines) {
+        final String[] f = line.split("\t", -1);
+        final List<String> out = new ArrayList<>();
+        for (int i = 0; i < f.length; i++) {
+          if (!header[i].contains(KIKAS_RETROSPECTIVE)) {
+            out.add(f[i]);
+          }
+        }
+        kept.add(String.join("\t", out));
+      }
+    } else {
+      lines.stream().filter(l -> !l.contains(KIKAS_RETROSPECTIVE)).forEach(kept::add);
+    }
+    return kept.size() + " " + Integer.toHexString(kept.hashCode());
+  }
+
+  @Test
+  @DisplayName("every file of the report but the report itself is, bit for bit, what it was at "
+      + "ticket 24, the Kikas retrospective model's lines and columns aside")
+  void filesAsAtTicket24() throws IOException, CommandFailedException {
+    final Path matrix = dir.resolve("matrix.tsv");
+    final Path elasticNet = dir.resolve("elastic-net.tsv");
+    write(matrix, elasticNet);
+    final Path reports = dir.resolve("out");
+    set(matrix, elasticNet, reports);
+
+    command().run(context());
+
+    final Map<String, String> now = new HashMap<>();
+    for (final String file : List.of(IssuesSimilarityInnerReportCommand.PREDICTIONS,
+        IssuesSimilarityInnerReportCommand.MODELS, IssuesSimilarityInnerReportCommand.BANDS,
+        IssuesSimilarityInnerReportCommand.COMPARISONS,
+        IssuesSimilarityInnerReportCommand.ORDERING,
+        IssuesSimilarityInnerReportCommand.DIAGNOSTICS,
+        IssuesSimilarityInnerReportCommand.IMPORTANCE,
+        IssuesSimilarityInnerReportCommand.INTERVALS,
+        IssuesSimilarityInnerReportCommand.CALIBRATION)) {
+      now.put(file, withoutKikasRetrospective(reports.resolve(file)));
+    }
+    assertEquals(AT_TICKET_24, now);
   }
 
   @Test

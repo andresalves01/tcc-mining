@@ -165,6 +165,15 @@ class SimilarityScoringTest {
    */
   private static final String INNER_AT_TICKET_22 = "113 43e66d61";
 
+  /**
+   * The inner run of the fixture with a tail, cut at k = 1.5, as the code scored it before ticket
+   * 26: per reading the count of models, comparisons and ordering intervals and a hash of every
+   * one's bits ({@link #innerBits}) and of the fences and band limits, in their order, none of the
+   * Kikas retrospective model's. Captured from 6d7edf1 (main after ticket 24).
+   */
+  private static final List<String> INNER_AT_TICKET_24 =
+      List.of("114 9b40e4b5", "114 3993d3ba");
+
   private static List<String> concat(final List<String> a, final List<String> b) {
     final List<String> out = new ArrayList<>(a);
     out.addAll(b);
@@ -1070,6 +1079,26 @@ class SimilarityScoringTest {
     innerBits(r.complementary()).forEach((k, v) -> all.add(k + " " + v));
     assertEquals(INNER_AT_TICKET_22, all.size() + " " + Integer.toHexString(all.hashCode()));
     assertEquals(6 * 20, r.complementary().fitRows());
+  }
+
+  @Test
+  @DisplayName("tail cut: in both readings every model, comparison and ordering interval before "
+      + "ticket 26 scores bit for bit what it scored at ticket 24, the fences and bands too")
+  void innerAsAtTicket24() {
+    final SimilarityScoring.Readings r = SimilarityScoring.readings(withTail(training()),
+        choices(0.2), forests(), 1.5, INNER, 1, 1);
+    final List<String> now = new ArrayList<>();
+    for (final SimilarityScoring.Report reading : List.of(r.main(), r.complementary())) {
+      final List<String> all = new ArrayList<>();
+      innerBits(reading).forEach((k, v) -> {
+        if (!k.contains("kikas_retrospective")) {
+          all.add(k + " " + v);
+        }
+      });
+      all.add(reading.fences() + " " + java.util.Arrays.toString(reading.bandTops()));
+      now.add(all.size() + " " + Integer.toHexString(all.hashCode()));
+    }
+    assertEquals(INNER_AT_TICKET_24, now);
   }
 
   @Test
