@@ -96,6 +96,13 @@ import java.util.concurrent.Callable;
  * the count that share gave and its leaf go to the parameters file under the step {@link
  * #FOREST_STEP}.
  *
+ * <p><b>Tail cut</b> (ticket 23, item 50). Before anything else, the k of the fitting cut is
+ * chosen on the own specification with similarity alone ({@link #run(List, int)}); every model,
+ * forest and reference is then fitted on the inner fitting rows at or below that k's fence
+ * ({@link TailCut}). The similarity medians, the reporter median and the Blocker pace are columns
+ * of the matrix, written from every training-side issue, and are read as they are. Every choice,
+ * the k included, is scored on the usual-flow validation issues only.
+ *
  * <p><b>Business days</b> (ticket 14). The target is whole business days ({@link BusinessDays}),
  * the outcome each unit carries, and the rows are the issues of at least one: the entries are
  * {@link BusinessDays#population}'s. Every error the selection reads and keeps is in business
@@ -114,6 +121,12 @@ public final class ElasticNetSelection {
    * compared with it on the same run, and that comparison decides which goes to the outer test.
    */
   public static final String BEFORE_PRESSURE = "own_with_similarity_before_pressure";
+
+  /**
+   * The own specification with similarity, the start model the SPSP would use: the tail cut's k
+   * is chosen on it alone, then reaches every model (item 50 iv).
+   */
+  public static final String OWN_WITH_SIMILARITY = "own_with_similarity";
 
   /**
    * The retrospective model as it was before ticket 19, without ticket 19's five columns and their
@@ -136,7 +149,7 @@ public final class ElasticNetSelection {
    * specification with similarity as before ticket 19, then the retrospective one as before it.
    */
   public static final List<String> MODELS = List.of("own_without_similarity", "similarity_alone",
-      "own_with_similarity", "alzubaidi_start", "kikas_start", "union_own", RETROSPECTIVE,
+      OWN_WITH_SIMILARITY, "alzubaidi_start", "kikas_start", "union_own", RETROSPECTIVE,
       BEFORE_PRESSURE, RETROSPECTIVE_BEFORE_PRESSURE);
 
   /** The models that read the similarity medians, whose n, n and k are chosen with them. */
@@ -227,9 +240,14 @@ public final class ElasticNetSelection {
    * @param projectMae the project median's error on the inner validation, the sweep's
    *     baseline as in the registered grid
    * @param constantMae the inner fitting median's error there
+   * @param fitRows the inner fitting rows at or below the chosen k's fence, every model's
+   * @param cut the tail cut: the chosen k, its fence, the usual flow's and every k swept
+   * @param validationRows the inner validation issues every choice was scored on
+   * @param scored which they are: the usual flow, or, only as a check of the code before ticket
+   *     23, all of them
    */
   public record Result(int fitRows, int validationRows, double projectMae,
-      double constantMae, List<Model> models) {}
+      double constantMae, List<Model> models, TailCut.Choice cut, TailCut.Reading scored) {}
 
   /**
    * A model's chosen mixture and penalty, and the values it reads the similarity medians at, as
@@ -244,12 +262,30 @@ public final class ElasticNetSelection {
    */
   public record Parameter(String step, String name, String parameter, String value) {}
 
-  /** The first line of every parameters file this step writes. */
-  public static final String HEADER = "# Elastic Net alpha and lambda, the similarity medians' "
-      + "n, n and k, and each random forest's column share and leaf, chosen on the inner "
-      + "validation only, the target in whole business days on the issues of at least one, for "
-      + "nine models with the retrospective one and the own and retrospective ones before ticket "
-      + "19; the outer test was not read";
+  /**
+   * The first line of every parameters file this step writes; one without the tail cut, written
+   * before ticket 23, has another.
+   */
+  public static final String HEADER = "# the tail cut's k and fences, Elastic Net alpha and "
+      + "lambda, the similarity medians' n, n and k, and each random forest's column share and "
+      + "leaf, chosen on the usual flow of the inner validation only, the target in whole "
+      + "business days on the issues of at least one, for nine models with the retrospective one "
+      + "and the own and retrospective ones before ticket 19; the outer test was not read";
+
+  /** The step of the tail cut's lines in the parameters file (ticket 23). */
+  public static final String TAIL_STEP = "tail-cut";
+
+  private static final String CHOSEN = "chosen";
+
+  private static final String USUAL_FLOW = "usual_flow";
+
+  private static final String K = "k";
+
+  private static final String FENCE = "fence_business_days";
+
+  private static final String FIT_ROWS = "fit_rows";
+
+  private static final String MAE = "mae_business_days";
 
   /** The step of the Elastic Net choices in the parameters file. */
   public static final String STEP = "elastic-net";
@@ -308,13 +344,28 @@ public final class ElasticNetSelection {
    * as Java prints a double, which reads back to the same number, and for a model with the
    * similarity medians a {@code jaccard_n}, an {@code embedding_n} and a {@code cluster_k} line;
    * then per model, under the step {@link #FOREST_STEP}, its forest's {@code mtry_share} (as Java
-   * prints the double), {@code mtry} and {@code node_size}.
+   * prints the double), {@code mtry} and {@code node_size}. The tail cut's lines, under the step
+   * {@link #TAIL_STEP}, follow the matrix's: the chosen k and its fence, the usual flow's k and
+   * fence, then per k of the grid its fence, its fitting rows and its error on the usual-flow
+   * validation issues; each k as {@link TailCut#label} writes it, each fence and error as Java
+   * prints the double, no cut's fence {@code Infinity}.
    */
   public static List<String> parameters(final Result r, final String matrixSha) {
     final List<String> out = new ArrayList<>();
     out.add(HEADER);
     out.add("# step\tname\tparameter\tvalue");
     out.add(String.join("\t", STEP, INPUTS, MATRIX_SHA, matrixSha));
+    final TailCut.Choice cut = r.cut();
+    out.add(String.join("\t", TAIL_STEP, CHOSEN, K, TailCut.label(cut.k())));
+    out.add(String.join("\t", TAIL_STEP, CHOSEN, FENCE, Double.toString(cut.fence())));
+    out.add(String.join("\t", TAIL_STEP, USUAL_FLOW, K, TailCut.label(TailCut.USUAL_FLOW_K)));
+    out.add(String.join("\t", TAIL_STEP, USUAL_FLOW, FENCE, Double.toString(cut.usualFence())));
+    for (final TailCut.Trial t : cut.grid()) {
+      final String name = K + "_" + TailCut.label(t.k());
+      out.add(String.join("\t", TAIL_STEP, name, FENCE, Double.toString(t.fence())));
+      out.add(String.join("\t", TAIL_STEP, name, FIT_ROWS, Integer.toString(t.fitRows())));
+      out.add(String.join("\t", TAIL_STEP, name, MAE, Double.toString(t.mae())));
+    }
     for (final Model m : r.models()) {
       final String name = m.cell().label();
       out.add(String.join("\t", STEP, name, ALPHA, Double.toString(m.fitted().alpha())));
@@ -438,6 +489,52 @@ public final class ElasticNetSelection {
     return out;
   }
 
+  /**
+   * The tail cut the parameters file records: the chosen k and its fence, the usual flow's fence
+   * and every k of the grid with its fence, fitting rows and error. A file without any of them,
+   * as one written before ticket 23, refuses, as does a k off the grid, a usual flow at another
+   * k than {@link TailCut#USUAL_FLOW_K} or a line the step does not write.
+   */
+  public static TailCut.Choice tailCut(final List<Parameter> parameters) {
+    final Map<String, Map<String, String>> byName = new LinkedHashMap<>();
+    for (final Parameter p : parameters) {
+      if (p.step().equals(TAIL_STEP)) {
+        byName.computeIfAbsent(p.name(), k -> new HashMap<>()).put(p.parameter(), p.value());
+      }
+    }
+    final Map<String, Set<String>> expected = new LinkedHashMap<>();
+    expected.put(CHOSEN, Set.of(K, FENCE));
+    expected.put(USUAL_FLOW, Set.of(K, FENCE));
+    for (final String k : TailCut.labels()) {
+      expected.put(K + "_" + k, Set.of(FENCE, FIT_ROWS, MAE));
+    }
+    for (final Map.Entry<String, Set<String>> e : expected.entrySet()) {
+      final Map<String, String> v = byName.getOrDefault(e.getKey(), Map.of());
+      if (!v.keySet().equals(e.getValue())) {
+        throw new IllegalArgumentException("the parameters file has not the tail cut's "
+            + e.getKey() + " " + e.getValue() + " but " + v.keySet() + "; one written before "
+            + "ticket 23 has none: run issues-in-progress-similarity-elastic-net again");
+      }
+    }
+    if (!byName.keySet().equals(expected.keySet())) {
+      throw new IllegalArgumentException("the tail cut's lines are for " + byName.keySet()
+          + ", not " + expected.keySet());
+    }
+    if (TailCut.parse(byName.get(USUAL_FLOW).get(K)) != TailCut.USUAL_FLOW_K) {
+      throw new IllegalArgumentException("the usual flow is at k "
+          + TailCut.label(TailCut.USUAL_FLOW_K) + ", not " + byName.get(USUAL_FLOW).get(K));
+    }
+    final List<TailCut.Trial> grid = new ArrayList<>();
+    for (final double k : TailCut.GRID) {
+      final Map<String, String> v = byName.get(K + "_" + TailCut.label(k));
+      grid.add(new TailCut.Trial(k, Double.parseDouble(v.get(FENCE)),
+          Integer.parseInt(v.get(FIT_ROWS)), Double.parseDouble(v.get(MAE))));
+    }
+    return new TailCut.Choice(TailCut.parse(byName.get(CHOSEN).get(K)),
+        Double.parseDouble(byName.get(CHOSEN).get(FENCE)),
+        Double.parseDouble(byName.get(USUAL_FLOW).get(FENCE)), List.copyOf(grid));
+  }
+
   /** The SHA-256 of the matrix the choices were made on; null if not given. */
   public static String matrixSha(final List<Parameter> parameters) {
     return parameters.stream().filter(p -> p.step().equals(STEP) && p.name().equals(INPUTS)
@@ -450,11 +547,24 @@ public final class ElasticNetSelection {
   }
 
   /**
-   * Chooses, by the registered sweep ({@link Fitting#sweep}) on the inner fitting rows scored on
-   * the inner validation, alpha and lambda for every model, and for each of {@link
+   * Chooses the tail cut's k ({@link TailCut}, ticket 23), then, by the registered sweep ({@link
+   * Fitting#sweep}) on the inner fitting rows that cut leaves scored on the usual-flow inner
+   * validation issues, alpha and lambda for every model, and for each of {@link
    * #WITH_SIMILARITY} the combination too. The outer test rows are dropped before anything is
    * read from them: only an entry inside the outer training set goes on, and of those {@link
    * Fitting.Mode#INNER} reads the inner fitting and validation rows alone.
+   *
+   * <p><b>The k.</b> Both fences are taken on the inner fitting set before any cut, never on the
+   * validation: the usual flow's at {@link TailCut#USUAL_FLOW_K} and each candidate's. Every
+   * choice -- alpha, lambda, the medians' n and k, each forest's point and the k itself -- is
+   * scored on the usual-flow validation issues, those at or below the usual flow's fence (André,
+   * 18/10/2026). For each k of {@link TailCut#GRID}, {@link #OWN_WITH_SIMILARITY} is chosen as
+   * below on the inner fitting rows at or below its fence, and its chosen point's error is the
+   * k's; the lowest wins. <b>Ties</b>: the grid is read from the larger k down and a k is kept
+   * only when its error is strictly lower, the sweep's own rule, so of errors exactly equal the
+   * larger k, the smaller cut, wins. Every model and forest is then chosen on the rows of that k,
+   * the own specification with similarity's choice there reused as it is; the references learn
+   * on the same rows.
    *
    * <p>Every sweep -- one per model without the medians, one per model and combination with them
    * -- is one job, fitted alone on one thread from the same sides, which every job only reads; up
@@ -473,12 +583,83 @@ public final class ElasticNetSelection {
    * threads, and the Elastic Net's choices are made before it and do not depend on it.
    */
   public static Result run(final List<RowCache.Entry> entries, final int threads) {
-    final List<Combination> combinations = Combination.all();
+    return select(entries, TailCut.GRID, TailCut.Reading.USUAL_FLOW, threads);
+  }
+
+  /**
+   * The choice of {@link #run(List, int)} with the k given, no other k swept, every choice scored
+   * on the validation issues {@code scored} reads; at {@link TailCut#NO_CUT} and {@link
+   * TailCut.Reading#ALL}, the choice before ticket 23, bit for bit.
+   */
+  public static Result fixed(final List<RowCache.Entry> entries, final double k,
+      final TailCut.Reading scored, final int threads) {
+    if (!TailCut.GRID.contains(k)) {
+      throw new IllegalArgumentException("k " + k + " is not one of the grid " + TailCut.GRID);
+    }
+    return select(entries, List.of(k), scored, threads);
+  }
+
+  private static Result select(final List<RowCache.Entry> entries, final List<Double> grid,
+      final TailCut.Reading scored, final int threads) {
     final List<Cell> every = everyCell(Augmentation.Variant.INNER);
     final List<RowCache.Entry> training =
         BusinessDays.counted(entries.stream().filter(e -> TRAIN.equals(e.outer(P))).toList());
-    final Fitting.Sides sides = flagged(Fitting.sides(training, Fitting.Mode.INNER, P), every);
+    final Fitting.Sides whole = flagged(Fitting.sides(training, Fitting.Mode.INNER, P), every);
+    // both fences on the inner fitting set as it is, before any cut
+    final double usualFence = TailCut.fence(whole.fitUnits(), TailCut.USUAL_FLOW_K);
+    final Fitting.Sides sides = scored == TailCut.Reading.ALL ? whole
+        : TailCut.usualFlow(whole, usualFence);
 
+    final List<TailCut.Trial> trials = new ArrayList<>(grid.size());
+    final Map<Double, Model> own = new HashMap<>();
+    for (final double k : grid) {
+      final double fence = TailCut.fence(sides.fitUnits(), k);
+      final Fitting.Sides cut = TailCut.cut(sides, fence);
+      final Model m = choose(List.of(OWN_WITH_SIMILARITY), every, cut, threads).get(0);
+      own.put(k, m);
+      trials.add(new TailCut.Trial(k, fence, cut.fitUnits().size(),
+          TailCut.mae(m.fitted().predicted(), cut.observed(), usualFence)));
+    }
+    final TailCut.Trial best = trials.get(TailCut.chosen(trials));
+    final Fitting.Sides cut = TailCut.cut(sides, best.fence());
+    final References refs = References.learnedOn(cut.fitUnits());
+    final double[] observed = cut.observed();
+    final double constantMae = Fitting.mae(refs.constant(observed.length), observed);
+    final double projectMae = Fitting.mae(refs.projectMedian(cut.scoreUnits()), observed);
+
+    final List<String> others =
+        MODELS.stream().filter(name -> !name.equals(OWN_WITH_SIMILARITY)).toList();
+    final List<Model> rest = choose(others, every, cut, threads);
+    final List<Model> chosen = new ArrayList<>(MODELS.size());
+    for (final String name : MODELS) {
+      chosen.add(name.equals(OWN_WITH_SIMILARITY) ? own.get(best.k())
+          : rest.get(others.indexOf(name)));
+    }
+
+    final List<Callable<Forest.Fitted>> trees = new ArrayList<>(chosen.size());
+    for (final Model m : chosen) {
+      trees.add(() -> Forest.sweep(m.fitted().cell(), cut, projectMae, constantMae));
+    }
+    final List<Forest.Fitted> forests = Parallel.map(threads, trees);
+    final List<Model> out = new ArrayList<>(chosen.size());
+    for (int m = 0; m < chosen.size(); m++) {
+      final Model x = chosen.get(m);
+      out.add(new Model(x.cell(), x.combination(), x.fitted(), x.removed(), x.combinations(),
+          forests.get(m)));
+    }
+    return new Result(cut.fitUnits().size(), observed.length, projectMae, constantMae,
+        List.copyOf(out), new TailCut.Choice(best.k(), best.fence(), usualFence,
+            List.copyOf(trials)), scored);
+  }
+
+  /**
+   * The Elastic Net choice of each of {@code names}, in their order, on {@code sides}, without
+   * its forest: every sweep one job, reduced in the declared order (see {@link #run(List, int)}).
+   * The references the scores are read against learn on the fitting side given.
+   */
+  private static List<Model> choose(final List<String> names, final List<Cell> every,
+      final Fitting.Sides sides, final int threads) {
+    final List<Combination> combinations = Combination.all();
     final References refs = References.learnedOn(sides.fitUnits());
     final double[] observed = sides.observed();
     final double constantMae = Fitting.mae(refs.constant(observed.length), observed);
@@ -486,8 +667,9 @@ public final class ElasticNetSelection {
 
     // per model, one job, or one per combination; flattened in the declared order
     final List<Callable<Model>> jobs = new ArrayList<>();
-    for (int m = 0; m < MODELS.size(); m++) {
-      final boolean similar = WITH_SIMILARITY.contains(MODELS.get(m));
+    for (final String name : names) {
+      final int m = MODELS.indexOf(name);
+      final boolean similar = WITH_SIMILARITY.contains(name);
       for (int c = 0; c < (similar ? combinations.size() : 1); c++) {
         final Cell cell = every.get(c * MODELS.size() + m);
         final Combination combination = similar ? combinations.get(c) : null;
@@ -503,7 +685,7 @@ public final class ElasticNetSelection {
 
     final List<Model> chosen = new ArrayList<>();
     int next = 0;
-    for (final String name : MODELS) {
+    for (final String name : names) {
       if (!WITH_SIMILARITY.contains(name)) {
         chosen.add(swept.get(next++));
         continue;
@@ -522,20 +704,7 @@ public final class ElasticNetSelection {
       chosen.add(new Model(best.cell(), best.combination(), best.fitted(), best.removed(),
           List.copyOf(each), null));
     }
-
-    final List<Callable<Forest.Fitted>> trees = new ArrayList<>(chosen.size());
-    for (final Model m : chosen) {
-      trees.add(() -> Forest.sweep(m.fitted().cell(), sides, projectMae, constantMae));
-    }
-    final List<Forest.Fitted> forests = Parallel.map(threads, trees);
-    final List<Model> out = new ArrayList<>(chosen.size());
-    for (int m = 0; m < chosen.size(); m++) {
-      final Model x = chosen.get(m);
-      out.add(new Model(x.cell(), x.combination(), x.fitted(), x.removed(), x.combinations(),
-          forests.get(m)));
-    }
-    return new Result(sides.fitUnits().size(), observed.length, projectMae, constantMae,
-        List.copyOf(out));
+    return chosen;
   }
 
   /**

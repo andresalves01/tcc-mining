@@ -49,7 +49,14 @@ class IssuesSimilarityTestCommandTest {
 
   private Path elasticNet(final String matrixSha) throws IOException {
     final List<String> lines = new java.util.ArrayList<>(List.of(ElasticNetSelection.HEADER,
-        "# step\tname\tparameter\tvalue", "elastic-net\tinputs\tmatrix_sha256\t" + matrixSha));
+        "# step\tname\tparameter\tvalue", "elastic-net\tinputs\tmatrix_sha256\t" + matrixSha,
+        "tail-cut\tchosen\tk\t5.0", "tail-cut\tchosen\tfence_business_days\t30.0",
+        "tail-cut\tusual_flow\tk\t3.0", "tail-cut\tusual_flow\tfence_business_days\t20.0"));
+    for (final String k : List.of("1.5", "3.0", "5.0", "10.0", "none")) {
+      lines.add("tail-cut\tk_" + k + "\tfence_business_days\t10.0");
+      lines.add("tail-cut\tk_" + k + "\tfit_rows\t100");
+      lines.add("tail-cut\tk_" + k + "\tmae_business_days\t2.0");
+    }
     for (final String m : ElasticNetSelection.MODELS) {
       lines.add("elastic-net\t" + m + "\talpha\t0.5");
       lines.add("elastic-net\t" + m + "\tlambda\t0.1");
@@ -178,6 +185,34 @@ class IssuesSimilarityTestCommandTest {
     Files.write(elasticNet, partial);
     why = refusal();
     assertTrue(why.contains("union_own's forest has not its mtry share, mtry and leaf"), why);
+  }
+
+  @Test
+  @DisplayName("a parameters file without the tail cut's k, fences and grid refuses the run, as "
+      + "does one written before ticket 23, under its header then")
+  void refusesAFileWithoutTheTailCut() throws IOException {
+    final Path matrix = matrix();
+    final Path elasticNet = elasticNet(IssuesReservedCommand.sha256(matrix));
+    final List<String> none = new java.util.ArrayList<>(Files.readAllLines(elasticNet));
+    none.removeIf(l -> l.startsWith("tail-cut\t"));
+    set(matrix, Files.write(dir.resolve("no-cut.tsv"), none));
+    String why = refusal();
+    assertTrue(why.contains("has not the tail cut's chosen"), why);
+
+    final List<String> grid = new java.util.ArrayList<>(Files.readAllLines(elasticNet));
+    grid.remove("tail-cut\tk_10.0\tmae_business_days\t2.0");
+    set(matrix, Files.write(dir.resolve("short-grid.tsv"), grid));
+    why = refusal();
+    assertTrue(why.contains("has not the tail cut's k_10.0"), why);
+
+    none.set(0, "# Elastic Net alpha and lambda, the similarity medians' n, n and k, and each "
+        + "random forest's column share and leaf, chosen on the inner validation only, the target "
+        + "in whole business days on the issues of at least one, for nine models with the "
+        + "retrospective one and the own and retrospective ones before ticket 19; the outer test "
+        + "was not read");
+    set(matrix, Files.write(dir.resolve("ticket-22.tsv"), none));
+    why = refusal();
+    assertTrue(why.contains("is not the Elastic Net step's parameters file"), why);
   }
 
   @Test

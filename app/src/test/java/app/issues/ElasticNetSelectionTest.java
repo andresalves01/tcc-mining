@@ -604,7 +604,7 @@ class ElasticNetSelectionTest {
       + "chose before ticket 12: combination, alpha, lambda, error, predictions and every sweep")
   void unchangedModelsAsBefore() {
     full();
-    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries), 1);
+    final ElasticNetSelection.Result r = uncut(counted(entries));
     assertEquals(BEFORE, UNTOUCHED.stream().map(name -> fingerprint(model(r, name))).toList());
     for (final String name : WITHOUT) {
       assertNull(model(r, name).combination(), name);
@@ -617,7 +617,7 @@ class ElasticNetSelectionTest {
       + "over alpha and lambda, the one with the lowest inner validation error")
   void keepsTheLowestCombination() {
     full();
-    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries));
+    final ElasticNetSelection.Result r = uncut(counted(entries));
     for (final String name : WITH) {
       final ElasticNetSelection.Model m = model(r, name);
       assertEquals(Combination.all(),
@@ -648,7 +648,7 @@ class ElasticNetSelectionTest {
       + "first, then embedding n, then cluster k")
   void tiesGoToTheSmallerValues() {
     tied();
-    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries));
+    final ElasticNetSelection.Result r = uncut(counted(entries));
     for (final String name : WITH) {
       final ElasticNetSelection.Model m = model(r, name);
       assertEquals(1, m.combinations().stream().mapToLong(s -> bits(s.mae())).distinct()
@@ -676,7 +676,7 @@ class ElasticNetSelectionTest {
       blanked.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values, absent),
           e.parts()));
     }
-    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(blanked));
+    final ElasticNetSelection.Result r = uncut(counted(blanked));
     assertEquals(40, r.fitRows());
     assertEquals(20, r.validationRows());
     for (final String name : WITH) {
@@ -768,7 +768,7 @@ class ElasticNetSelectionTest {
   void missingIsHandedOnWithItsIndicator() {
     full();
     final List<String> columns =
-        model(ElasticNetSelection.run(counted(entries)), "own_without_similarity").fitted()
+        model(uncut(counted(entries)), "own_without_similarity").fitted()
             .columns();
     assertTrue(columns.contains("reporter_median_inner"));
     assertTrue(columns.contains("reporter_median_inner_ausente"));
@@ -776,14 +776,14 @@ class ElasticNetSelectionTest {
     assertFalse(columns.contains("TEAM_loc_median_ausente"));
 
     row("nan", 10, "TRAIN", "TRAIN", Map.of("TEAM_loc_sd", Double.NaN));
-    assertThrows(IllegalArgumentException.class, () -> ElasticNetSelection.run(counted(entries)));
+    assertThrows(IllegalArgumentException.class, () -> uncut(counted(entries)));
   }
 
   @Test
   @DisplayName("the two registered cells choose the alpha and lambda the registered grid does")
   void registeredCellsAsTheGrid() {
     full();
-    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries));
+    final ElasticNetSelection.Result r = uncut(counted(entries));
     final app.pipeline.IssuesGridTask.Report grid =
         new app.pipeline.IssuesGridTask(app.pipeline.port.Progress.silent()).run(counted(entries),
             Population.IN_PROGRESS);
@@ -810,12 +810,24 @@ class ElasticNetSelectionTest {
     assertEquals(ElasticNetSelection.HEADER, lines.get(0));
     final List<String> data = lines.stream().filter(l -> !l.startsWith("#")).toList();
     assertEquals("elastic-net\tinputs\tmatrix_sha256\tcd34", data.get(0));
-    assertEquals(1 + 2 * 9 + 3 * 6 + 3 * 9, data.size());
-    // the Elastic Net lines first, as before the forests; then three forest lines per model
-    assertTrue(data.subList(0, 1 + 2 * 9 + 3 * 6).stream()
+    final int tail = 4 + 3 * TailCut.GRID.size();
+    assertEquals(1 + tail + 2 * 9 + 3 * 6 + 3 * 9, data.size());
+    // the tail cut after the matrix: the chosen k and fence, the usual flow's, then each k's
+    final TailCut.Choice cut = r.cut();
+    assertEquals(List.of("tail-cut\tchosen\tk\t" + TailCut.label(cut.k()),
+        "tail-cut\tchosen\tfence_business_days\t" + cut.fence(),
+        "tail-cut\tusual_flow\tk\t3.0",
+        "tail-cut\tusual_flow\tfence_business_days\t" + cut.usualFence()), data.subList(1, 5));
+    assertEquals(List.of("tail-cut\tk_none\tfence_business_days\tInfinity",
+        "tail-cut\tk_none\tfit_rows\t40",
+        "tail-cut\tk_none\tmae_business_days\t" + cut.grid().get(4).mae()),
+        data.subList(tail - 2, tail + 1));
+    // the Elastic Net lines, as before the forests; then three forest lines per model
+    assertTrue(data.subList(1 + tail, 1 + tail + 2 * 9 + 3 * 6).stream()
         .allMatch(l -> l.startsWith("elastic-net\t")));
-    assertEquals(ElasticNetSelection.MODELS, data.subList(1 + 2 * 9 + 3 * 6, data.size()).stream()
-        .map(l -> l.split("\t")[1]).distinct().toList());
+    assertEquals(ElasticNetSelection.MODELS, data.subList(1 + tail + 2 * 9 + 3 * 6, data.size())
+        .stream().map(l -> l.split("\t")[1]).distinct().toList());
+    assertEquals(cut, ElasticNetSelection.tailCut(ElasticNetSelection.read(lines)));
     final Forest.Fitted ownForest = model(r, "own_with_similarity").forest();
     assertTrue(data.contains("forest\town_with_similarity\tmtry_share\t" + ownForest.share()));
     assertTrue(data.contains("forest\town_with_similarity\tmtry\t" + ownForest.mtry()));
@@ -914,13 +926,13 @@ class ElasticNetSelectionTest {
   void elasticNetAsBeforeTheForests() {
     full();
     final List<RowCache.Entry> withoutStart = without(entries, START);
-    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(withoutStart), 1);
+    final ElasticNetSelection.Result r = uncut(counted(withoutStart));
     assertEquals(BEFORE_FORESTS, SIX.stream().map(name -> fingerprint(model(r, name))).toList());
     assertEquals(ElasticNetSelection.MODELS, r.models().stream().map(m -> m.cell().label())
         .toList());
 
     final ElasticNetSelection.Result before =
-        ElasticNetSelection.run(counted(without(withoutStart, RETROSPECTIVE)), 1);
+        uncut(counted(without(withoutStart, RETROSPECTIVE)));
     for (final String name : SIX) {
       assertEquals(fingerprint(model(before, name)), fingerprint(model(r, name)), name);
       assertEquals(java.util.Arrays.toString(model(before, name).forest().predicted()),
@@ -935,7 +947,7 @@ class ElasticNetSelectionTest {
       + "alpha, lambda, error, predictions and every sweep")
   void beforePressureIsTheOldStartModel() {
     full();
-    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries), 1);
+    final ElasticNetSelection.Result r = uncut(counted(entries));
     final String old = BEFORE_FORESTS.get(2);
     assertTrue(old.startsWith("own_with_similarity "), old);
     assertEquals(
@@ -945,8 +957,8 @@ class ElasticNetSelectionTest {
         "the new own model reads the start columns");
     // its forest is the old start model's forest: on the matrix without the start columns the
     // own model with similarity is the old one, and the two forests agree to the bit
-    final Forest.Fitted before = model(ElasticNetSelection.run(counted(without(entries, START)),
-        1), "own_with_similarity").forest();
+    final Forest.Fitted before = model(uncut(counted(without(entries, START))),
+        "own_with_similarity").forest();
     final Forest.Fitted eighth = model(r, ElasticNetSelection.BEFORE_PRESSURE).forest();
     assertEquals(before.columns(), eighth.columns());
     assertEquals(bits(before.share()), bits(eighth.share()));
@@ -971,7 +983,7 @@ class ElasticNetSelectionTest {
       + "and forest (columns, column share, leaf, error, predictions, grid)")
   void eightAsBeforeTheNinth() {
     full();
-    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries), 1);
+    final ElasticNetSelection.Result r = uncut(counted(entries));
     final List<String> now = new ArrayList<>();
     for (final String name : EIGHT_MODELS) {
       now.add(name + " " + Integer.toHexString(fingerprint(model(r, name)).hashCode()) + " "
@@ -981,16 +993,6 @@ class ElasticNetSelectionTest {
     assertEquals(EIGHT_MODELS, ElasticNetSelection.MODELS.subList(0, 8));
   }
 
-  @Test
-  @DisplayName("the ninth model chooses, bit for bit, what it chose at ticket 22: Elastic Net and "
-      + "forest")
-  void ninthAsAtTicket22() {
-    full();
-    final ElasticNetSelection.Model m = model(ElasticNetSelection.run(counted(entries), 1),
-        ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE);
-    assertEquals(NINTH, m.cell().label() + " " + Integer.toHexString(fingerprint(m).hashCode())
-        + " " + Integer.toHexString(forestFingerprint(m.forest()).hashCode()));
-  }
 
   @Test
   @DisplayName("the ninth model is swept over the 27 combinations, reads none of ticket 19's five "
@@ -998,7 +1000,7 @@ class ElasticNetSelectionTest {
       + "on the same columns")
   void ninthChosen() {
     full();
-    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries), 1);
+    final ElasticNetSelection.Result r = uncut(counted(entries));
     final ElasticNetSelection.Model m = model(r, "own_retrospective_before_pressure");
     assertEquals(27, m.combinations().size());
     assertEquals(List.of(), m.removed());
@@ -1021,7 +1023,7 @@ class ElasticNetSelectionTest {
       + "same columns")
   void retrospectiveChosen() {
     full();
-    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries), 1);
+    final ElasticNetSelection.Result r = uncut(counted(entries));
     final ElasticNetSelection.Model m = model(r, "own_retrospective");
     assertEquals(27, m.combinations().size());
     assertEquals(List.of(), m.removed());
@@ -1038,7 +1040,7 @@ class ElasticNetSelectionTest {
       + "the grid point that errs least on the inner validation")
   void forestBesideEachModel() {
     full();
-    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries));
+    final ElasticNetSelection.Result r = uncut(counted(entries));
     assertEquals(ElasticNetSelection.MODELS, r.models().stream().map(m -> m.forest().cell()
         .label()).toList());
     for (final ElasticNetSelection.Model m : r.models()) {
@@ -1090,7 +1092,7 @@ class ElasticNetSelectionTest {
         BusinessDays.population(BusinessDayFixtures.bounded(entries));
     assertEquals(p.all().innerFit() - 4, p.kept().innerFit());
     assertEquals(p.all().innerSelection() - 2, p.kept().innerSelection());
-    final ElasticNetSelection.Result r = ElasticNetSelection.run(p.entries(), 1);
+    final ElasticNetSelection.Result r = uncut(p.entries());
     assertEquals(p.kept().innerFit(), r.fitRows());
     assertEquals(p.kept().innerSelection(), r.validationRows());
     final double error = model(r, "own_with_similarity").fitted().score().mae();
@@ -1116,5 +1118,212 @@ class ElasticNetSelectionTest {
 
   private static List<RowCache.Entry> counted(final List<RowCache.Entry> entries) {
     return BusinessDayFixtures.counted(entries);
+  }
+
+  /**
+   * The selection at no cut, every choice scored on all the validation issues, on one thread: the
+   * choice before ticket 23, which every pin above was taken from.
+   */
+  private static ElasticNetSelection.Result uncut(final List<RowCache.Entry> entries) {
+    return ElasticNetSelection.fixed(entries, TailCut.NO_CUT, TailCut.Reading.ALL, 1);
+  }
+
+  /** The inner fitting units of counted entries, as the selection reads them. */
+  private static List<IssueUnit> innerFitting(final List<RowCache.Entry> entries) {
+    return entries.stream().filter(e -> "TRAIN".equals(e.outer(Population.IN_PROGRESS))
+        && "TRAIN".equals(e.inner(Population.IN_PROGRESS))).map(RowCache.Entry::unit).toList();
+  }
+
+  /**
+   * The same entries with every other inner validation issue's business days times three plus
+   * one, so some stay in the usual flow.
+   */
+  private static List<RowCache.Entry> longerValidation(final List<RowCache.Entry> entries) {
+    final List<RowCache.Entry> out = new ArrayList<>();
+    for (int i = 0; i < entries.size(); i++) {
+      final RowCache.Entry e = entries.get(i);
+      final IssueUnit u = e.unit();
+      out.add("TEST".equals(e.inner(Population.IN_PROGRESS)) && i % 2 == 0
+          ? new RowCache.Entry(u.withBusinessDays(3 * u.businessDays() + 1), e.row(), e.parts())
+          : e);
+    }
+    return out;
+  }
+
+  /** Every Elastic Net and forest of a result as bits, and the references' errors. */
+  private static List<String> everything(final ElasticNetSelection.Result r) {
+    final List<String> out = new ArrayList<>();
+    out.add(r.fitRows() + " " + r.validationRows() + " " + hex(r.projectMae()) + " "
+        + hex(r.constantMae()));
+    for (final ElasticNetSelection.Model m : r.models()) {
+      out.add(fingerprint(m) + " " + m.removed() + " " + forestFingerprint(m.forest()));
+    }
+    return out;
+  }
+
+  @Test
+  @DisplayName("tail cut: both fences and every k's fitting rows are taken on the inner fitting "
+      + "set only; changing every validation label moves none of them")
+  void fencesOnTheFittingSetOnly() {
+    full();
+    final List<RowCache.Entry> counted = counted(entries);
+    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted, 1);
+    final List<IssueUnit> fitting = innerFitting(counted);
+    assertEquals(bits(TailCut.fence(fitting, 3)), bits(r.cut().usualFence()));
+    // every choice is scored on the usual-flow validation issues
+    assertEquals(TailCut.Reading.USUAL_FLOW, r.scored());
+    assertEquals(java.util.Arrays.stream(validation(counted))
+        .filter(d -> d <= r.cut().usualFence()).count(), r.validationRows());
+    assertTrue(r.validationRows() < validation(counted).length, "the fixture's tail is read");
+    assertEquals(TailCut.GRID, r.cut().grid().stream().map(TailCut.Trial::k).toList());
+    for (final TailCut.Trial t : r.cut().grid()) {
+      assertEquals(bits(TailCut.fence(fitting, t.k())), bits(t.fence()), "k " + t.k());
+      assertEquals(fitting.stream().filter(u -> u.duration() <= t.fence()).count(), t.fitRows(),
+          "k " + t.k());
+    }
+    final ElasticNetSelection.Result longer =
+        ElasticNetSelection.run(longerValidation(counted), 1);
+    assertEquals(bits(r.cut().usualFence()), bits(longer.cut().usualFence()));
+    for (int t = 0; t < TailCut.GRID.size(); t++) {
+      assertEquals(bits(r.cut().grid().get(t).fence()), bits(longer.cut().grid().get(t).fence()));
+      assertEquals(r.cut().grid().get(t).fitRows(), longer.cut().grid().get(t).fitRows());
+    }
+  }
+
+  @Test
+  @DisplayName("tail cut: k is the grid's lowest error of own_with_similarity on the usual-flow "
+      + "validation issues, read from its own choice at each k, and reaches every model and "
+      + "forest; each is fitted on exactly the inner fitting rows at or below the k's fence, bit "
+      + "for bit as if the rows above it were not there")
+  void chosenKReachesEveryModel() {
+    full();
+    final List<RowCache.Entry> counted = counted(entries);
+    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted, 1);
+    final TailCut.Choice cut = r.cut();
+    final TailCut.Trial chosen = cut.grid().get(TailCut.chosen(cut.grid()));
+    assertEquals(chosen.k(), cut.k());
+    assertEquals(bits(chosen.fence()), bits(cut.fence()));
+    assertEquals(chosen.fitRows(), r.fitRows());
+    // each k's error is own_with_similarity's, chosen on that k's rows, on the usual flow
+    for (final TailCut.Trial t : List.of(cut.grid().get(0), chosen)) {
+      final ElasticNetSelection.Model own = model(ElasticNetSelection.fixed(counted, t.k(),
+          TailCut.Reading.USUAL_FLOW, 1), "own_with_similarity");
+      assertEquals(bits(own.fitted().score().mae()), bits(t.mae()), "k " + t.k());
+    }
+    // the same k reaches every model and forest
+    assertEquals(everything(r), everything(ElasticNetSelection.fixed(counted, cut.k(),
+        TailCut.Reading.USUAL_FLOW, 1)));
+
+    // at a k that cuts, the fitting rows above its fence and the validation issues above the
+    // usual flow's left out of the matrix, every choice scored on what is left: the same bits
+    final ElasticNetSelection.Result low =
+        ElasticNetSelection.fixed(counted, 1.5, TailCut.Reading.USUAL_FLOW, 1);
+    assertTrue(low.fitRows() < innerFitting(counted).size(), "the fixture's tail is cut");
+    final List<RowCache.Entry> kept = counted.stream().filter(e -> "TRAIN".equals(
+        e.inner(Population.IN_PROGRESS)) ? e.unit().duration() <= low.cut().fence()
+            : e.unit().duration() <= low.cut().usualFence()).toList();
+    assertEquals(everything(low), everything(uncut(kept)));
+  }
+
+  /** The inner validation's business days, in the entries' order, as the selection scores them. */
+  private static double[] validation(final List<RowCache.Entry> counted) {
+    return counted.stream().filter(e -> "TRAIN".equals(e.outer(Population.IN_PROGRESS))
+        && "TEST".equals(e.inner(Population.IN_PROGRESS)))
+        .mapToDouble(e -> e.unit().duration()).toArray();
+  }
+
+  @Test
+  @DisplayName("tail cut: k is chosen on own_with_similarity alone; changing columns only other "
+      + "models read changes no k, fence nor error of the grid")
+  void kOnTheOwnModelOnly() {
+    full();
+    final List<RowCache.Entry> counted = counted(entries);
+    final TailCut.Choice before = ElasticNetSelection.run(counted, 1).cut();
+    final List<RowCache.Entry> changed = new ArrayList<>();
+    for (final RowCache.Entry e : counted) {
+      final Map<String, Double> values = new HashMap<>(e.row().values());
+      values.replaceAll((k, v) -> k.startsWith("Z08_") || k.startsWith("K14_")
+          || k.startsWith("RETRO_") ? v * 1000 + 7 : v);
+      changed.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values,
+          e.row().absent()), e.parts()));
+    }
+    assertEquals(before, ElasticNetSelection.run(changed, 1).cut());
+  }
+
+  @Test
+  @DisplayName("tail cut: when no k cuts a fitting row, every k errs the same and no cut wins the "
+      + "tie, the larger k; the choices are those of no cut")
+  void tieGoesToTheLargerK() {
+    full();
+    final List<RowCache.Entry> counted = counted(entries);
+    // every inner fitting issue held at the fitting set's Q3: the largest is then at the fence
+    final double[] days = innerFitting(counted).stream().mapToDouble(IssueUnit::duration)
+        .sorted().toArray();
+    final int q3 = (int) Math.floor(TailCut.quantile(days, 0.75));
+    final List<RowCache.Entry> held = new ArrayList<>();
+    for (final RowCache.Entry e : counted) {
+      final IssueUnit u = e.unit();
+      held.add("TRAIN".equals(e.inner(Population.IN_PROGRESS)) && u.businessDays() > q3
+          ? new RowCache.Entry(u.withBusinessDays(q3), e.row(), e.parts()) : e);
+    }
+    final ElasticNetSelection.Result r = ElasticNetSelection.run(held, 1);
+    assertEquals(1, r.cut().grid().stream().mapToLong(t -> bits(t.mae())).distinct().count(),
+        r.cut().grid().toString());
+    assertTrue(r.cut().grid().stream().allMatch(t -> t.fitRows() == r.fitRows()));
+    assertEquals(TailCut.NO_CUT, r.cut().k());
+    assertEquals(everything(ElasticNetSelection.fixed(held, TailCut.NO_CUT,
+        TailCut.Reading.USUAL_FLOW, 1)), everything(r));
+  }
+
+  @Test
+  @DisplayName("no cut, every choice scored on all the validation issues, chooses bit for bit "
+      + "what the selection chose at ticket 22: its fitting rows are the inner fitting set whole, "
+      + "every model, forest and reference the same")
+  void noCutIsTicket22() {
+    full();
+    final ElasticNetSelection.Result r = uncut(counted(entries));
+    assertEquals(40, r.fitRows());
+    assertEquals(List.of(TailCut.NO_CUT), r.cut().grid().stream().map(TailCut.Trial::k).toList());
+    assertEquals(Double.POSITIVE_INFINITY, r.cut().fence());
+    final List<String> now = new ArrayList<>();
+    for (final String name : EIGHT_MODELS) {
+      now.add(name + " " + Integer.toHexString(fingerprint(model(r, name)).hashCode()) + " "
+          + Integer.toHexString(forestFingerprint(model(r, name).forest()).hashCode()));
+    }
+    assertEquals(EIGHT, now);
+    final ElasticNetSelection.Model ninth =
+        model(r, ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE);
+    assertEquals(NINTH, ninth.cell().label() + " "
+        + Integer.toHexString(fingerprint(ninth).hashCode()) + " "
+        + Integer.toHexString(forestFingerprint(ninth.forest()).hashCode()));
+  }
+
+  @Test
+  @DisplayName("a parameters file without the tail cut's lines, with a k off the grid, a grid "
+      + "short of a k or a usual flow at another k, is refused")
+  void refusesAFileWithoutTheTailCut() {
+    full();
+    final List<String> lines =
+        ElasticNetSelection.parameters(ElasticNetSelection.run(counted(entries), 1), "cd34");
+    ElasticNetSelection.tailCut(ElasticNetSelection.read(lines));
+    final List<String> none = lines.stream().filter(l -> !l.startsWith("tail-cut\t")).toList();
+    assertThrows(IllegalArgumentException.class,
+        () -> ElasticNetSelection.tailCut(ElasticNetSelection.read(none)));
+    final List<String> shortGrid = lines.stream()
+        .filter(l -> !l.startsWith("tail-cut\tk_5.0\t")).toList();
+    assertThrows(IllegalArgumentException.class,
+        () -> ElasticNetSelection.tailCut(ElasticNetSelection.read(shortGrid)));
+    final List<String> offGrid = lines.stream().map(l -> l.startsWith("tail-cut\tchosen\tk\t")
+        ? "tail-cut\tchosen\tk\t2.0" : l).toList();
+    assertThrows(IllegalArgumentException.class,
+        () -> ElasticNetSelection.tailCut(ElasticNetSelection.read(offGrid)));
+    final List<String> usual = lines.stream().map(l -> l.startsWith("tail-cut\tusual_flow\tk\t")
+        ? "tail-cut\tusual_flow\tk\t1.5" : l).toList();
+    assertThrows(IllegalArgumentException.class,
+        () -> ElasticNetSelection.tailCut(ElasticNetSelection.read(usual)));
+    final List<String> extra = new ArrayList<>(lines);
+    extra.add("tail-cut\tk_2.0\tmae_business_days\t1.0");
+    assertThrows(IllegalArgumentException.class,
+        () -> ElasticNetSelection.tailCut(ElasticNetSelection.read(extra)));
   }
 }
