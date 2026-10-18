@@ -158,6 +158,13 @@ class SimilarityScoringTest {
    */
   private static final String PAIRS_BEFORE_NINTH = "80 eb1f0a39";
 
+  /**
+   * The whole inner run of ticket 22, the ninth model and its pairs included: the count of models,
+   * comparisons and ordering intervals and a hash of every one's bits ({@link #innerBits}), in
+   * their order. Captured from 5ff8564 (main after ticket 22), before the tail cut.
+   */
+  private static final String INNER_AT_TICKET_22 = "113 43e66d61";
+
   private static List<String> concat(final List<String> a, final List<String> b) {
     final List<String> out = new ArrayList<>(a);
     out.addAll(b);
@@ -738,6 +745,17 @@ class SimilarityScoringTest {
       }
     });
     assertEquals(PAIRS_BEFORE_NINTH, pairs.size() + " " + Integer.toHexString(pairs.hashCode()));
+  }
+
+  @Test
+  @DisplayName("in the inner scope every model, comparison and ordering interval, the ninth's "
+      + "included, scores bit for bit what it scored at ticket 22")
+  void innerAsAtTicket22() {
+    final Map<String, String> now = innerBits(
+        SimilarityScoring.run(training(), choices(0.2), forests(), INNER, 1, 1));
+    final List<String> all = new ArrayList<>();
+    now.forEach((k, v) -> all.add(k + " " + v));
+    assertEquals(INNER_AT_TICKET_22, all.size() + " " + Integer.toHexString(all.hashCode()));
   }
 
   @Test

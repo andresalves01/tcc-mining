@@ -145,6 +145,12 @@ class ElasticNetSelectionTest {
       "own_retrospective 6c6a7086 db8e5bd",
       "own_with_similarity_before_pressure b8c08335 17b86ec4");
 
+  /**
+   * The ninth model as the code chose it on {@link #full}, as {@link #EIGHT} pins the others.
+   * Captured from 5ff8564 (main after ticket 22), before the tail cut.
+   */
+  private static final String NINTH = "own_retrospective_before_pressure 64e61f67 5d9fca28";
+
   private static final List<String> UNTOUCHED =
       List.of("similarity_alone", "alzubaidi_start", "kikas_start");
 
@@ -973,6 +979,17 @@ class ElasticNetSelectionTest {
     }
     assertEquals(EIGHT, now);
     assertEquals(EIGHT_MODELS, ElasticNetSelection.MODELS.subList(0, 8));
+  }
+
+  @Test
+  @DisplayName("the ninth model chooses, bit for bit, what it chose at ticket 22: Elastic Net and "
+      + "forest")
+  void ninthAsAtTicket22() {
+    full();
+    final ElasticNetSelection.Model m = model(ElasticNetSelection.run(counted(entries), 1),
+        ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE);
+    assertEquals(NINTH, m.cell().label() + " " + Integer.toHexString(fingerprint(m).hashCode())
+        + " " + Integer.toHexString(forestFingerprint(m.forest()).hashCode()));
   }
 
   @Test
