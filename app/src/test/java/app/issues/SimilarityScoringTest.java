@@ -1143,4 +1143,34 @@ class SimilarityScoringTest {
           java.util.Arrays.toString(model(moved, m.name()).predicted()), m.name());
     }
   }
+
+  @Test
+  @DisplayName("the outer test's prediction intervals, end to end on the synthetic corpus: the "
+      + "inner calibration applied to the outer models, every model of both readings read, the "
+      + "global median's widths finite (ticket 24; code only, the seal holds)")
+  void outerIntervalsEndToEnd() {
+    final List<RowCache.Entry> entries = withTail(corpus());
+    final SimilarityScoring.Readings outer =
+        SimilarityScoring.readings(entries, choices(0.2), forests(), 1.5, RESERVED, 1, 1);
+    final Map<String, PredictionIntervals.Calibration> calibrated =
+        PredictionIntervals.calibrated(PredictionIntervals.Sample.of(
+            SimilarityScoring.calibration(entries, choices(0.2), forests(), 1.5)));
+    // the constant global median gets a finite factor at every level, inner
+    for (final double factor : calibrated.get(SimilarityScoring.GLOBAL).factors()) {
+      assertTrue(Double.isFinite(factor), Double.toString(factor));
+    }
+    final List<PredictionIntervals.Read> reads = PredictionIntervals.outer(calibrated,
+        PredictionIntervals.Sample.of(outer.main()),
+        PredictionIntervals.Sample.of(outer.complementary()), 1);
+    assertEquals(2 * MODELS.size() * PredictionIntervals.LEVELS.size(), reads.size());
+    for (final PredictionIntervals.Read r : reads) {
+      final int n = r.reading() == TailCut.Reading.USUAL_FLOW ? outer.main().scoredRows()
+          : outer.complementary().scoredRows();
+      assertEquals(n, r.overall().n(), r.model());
+      if (r.model().equals(SimilarityScoring.GLOBAL)) {
+        assertTrue(Double.isFinite(r.overall().medianWidth()), r.toString());
+        assertEquals(1, r.overall().relativeWidth(), 1e-12);
+      }
+    }
+  }
 }

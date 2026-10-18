@@ -27,7 +27,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.function.Function;
-import java.util.stream.IntStream;
 
 /**
  * The inner report of the description-similarity chain (ticket 16): twenty-one models -- the
@@ -50,9 +49,10 @@ import java.util.stream.IntStream;
  * coefficients and the permutation importance are the main reading's.
  *
  * <p><b>Prediction intervals</b> (ticket 24; {@link PredictionIntervals}). Calibrated on the
- * usual-flow validation issues of half A, checked on half B in each reading, the halves by whole
- * projects; nothing of them chooses a model, k or column. The report's header states each model's
- * prediction span.
+ * usual-flow validation issues of half A, one factor per model and level, checked on half B in
+ * each reading, overall and per band of the observed duration (the error bands, read after the
+ * fact), the halves by whole projects; nothing of them chooses a model, k or column. The report's
+ * header states each model's prediction span.
  *
  * <p><b>Optimistic.</b> The settings were chosen on this same inner validation, so every figure
  * of the report is optimistic; the report says so on top. It is a reading of the development
@@ -220,7 +220,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     files.put(ORDERING, ordering(readings));
     files.put(DIAGNOSTICS, IssuesSimilarityTestCommand.diagnostics(main));
     files.put(IMPORTANCE, IssuesSimilarityTestCommand.importance(main));
-    files.put(INTERVALS, intervals(intervals));
+    files.put(INTERVALS, intervals(intervals, main.bandTops()));
     files.put(CALIBRATION, calibration(intervals));
     files.get(REPORT).forEach(line -> System.out.println("  " + line));
     try {
@@ -384,9 +384,9 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
         + ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE_ROLE);
     md.add("- the Elastic Nets' coefficients and the forests' permutation importance, in the files "
         + "beside this one, are the main reading's");
-    md.add(f("- error bands: %s; here %s, %s and %s business days, of the %d cut inner fitting "
-        + "issues; %s", BusinessDays.BANDS, r.bandTops()[0], r.bandTops()[1], r.bandTops()[2],
-        r.fitRows(), TailCut.QUANTILES));
+    md.add(f("- error bands: %s; here %s business days, of the %d cut inner fitting issues; %s",
+        BusinessDays.BANDS, BusinessDays.bandLimits(r.bandTops()), r.fitRows(),
+        TailCut.QUANTILES));
     final PredictionIntervals.Halves h = intervals.halves();
     md.add("- prediction intervals: " + PredictionIntervals.RULE + "; "
         + PredictionIntervals.FACTOR);
@@ -398,9 +398,8 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     md.add("- each model's prediction span on the usual-flow validation issues, business days: "
         + String.join("; ", intervals.calibrated().entrySet().stream().map(e -> f("%s %.2f-%.2f",
             e.getKey(), e.getValue().low(), e.getValue().high())).toList()));
-    md.add("- the factors and prediction-quartile limits recomputed on A and B together, for "
-        + "later use, are in " + CALIBRATION + "; those of A, which the check reads, in "
-        + INTERVALS);
+    md.add("- the factors recomputed on A and B together, for later use, are in " + CALIBRATION
+        + "; those of A, which the check reads, in " + INTERVALS);
     md.add("");
     section(md, readings.main(), intervals, "Main reading: the usual flow");
     section(md, r, intervals, "Complementary reading: all issues");
@@ -430,7 +429,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     }
     md.add("");
     md.add(f("### MAE by band of the true business days (at the quartiles of the cut fitting rows, "
-        + "%s, %s and %s)", r.bandTops()[0], r.bandTops()[1], r.bandTops()[2]));
+        + "%s)", BusinessDays.bandLimits(r.bandTops())));
     md.add("");
     final List<Breakdown.Band> first = r.models().get(0).bands();
     final StringBuilder head = new StringBuilder("| model |");
@@ -471,7 +470,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
           o.pairwise().high(), o.pairwise().tied() ? " tie" : ""));
     }
     md.add("");
-    intervalTable(md, r.reading(), intervals);
+    intervalTable(md, r, intervals);
   }
 
   /** How many issues of half B the check reads in {@code reading}. */
@@ -482,105 +481,105 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
   }
 
   /**
-   * The prediction intervals of one reading, checked on half B: per model, level and prediction
-   * quartile of half A, the coverage with its interval, the median width, the width over the
-   * global median's on the same issues, and the MAE.
+   * The prediction intervals of one reading, checked on half B: per model and level, overall and
+   * per band of the observed duration (the error bands, read after the fact), the coverage with
+   * its interval, the median width, the width over the global median's on the same issues, and
+   * the MAE.
    */
-  private static void intervalTable(final List<String> md, final TailCut.Reading reading,
+  private static void intervalTable(final List<String> md, final SimilarityScoring.Report r,
       final PredictionIntervals.Inner intervals) {
     md.add(f("### Prediction intervals, calibrated on half A, checked on the %d issues of half B",
-        checked(intervals, reading)));
+        checked(intervals, r.reading())));
     md.add("");
-    md.add("Coverage: the share of the issues inside their interval, with its 95% interval "
-        + "resampling whole projects (" + ProjectBootstrap.DRAWS + " draws, seed "
-        + ProjectBootstrap.SEED + "); width: the median, in business days; width / global: over "
-        + "the global median's median width on the same issues; MAE in business days. The "
-        + "prediction quartiles are the model's own on half A.");
+    md.add("One factor per model and level. Coverage: the share of the issues inside their "
+        + "interval, with its 95% interval resampling whole projects (" + ProjectBootstrap.DRAWS
+        + " draws, seed " + ProjectBootstrap.SEED + "); width: the median, in business days; "
+        + "width / global: over the global median's median width on the same issues; MAE in "
+        + "business days. Each figure is read overall and per band of the observed duration, the "
+        + "error bands (" + BusinessDays.bandLimits(r.bandTops()) + "), after the fact: the band "
+        + "never chooses the factor. An infinite width, ∞, comes from fewer calibration "
+        + "issues than the level needs, their count beside it.");
     md.add("");
-    md.add("| model | level | prediction quartile | n | coverage [95%] | median width "
+    md.add("| model | level | observed band | n | coverage [95%] | median width "
         + "| width / global | MAE |");
     md.add("|---|---:|---|---:|---|---:|---:|---:|");
+    final String[] labels = BusinessDays.bandLabels(r.bandTops());
     for (final PredictionIntervals.Read x : intervals.reads()) {
-      if (x.reading() != reading) {
+      if (x.reading() != r.reading()) {
         continue;
       }
-      final double[] limits = intervals.checked().get(x.model()).limits();
-      md.add(groupRow(x, "all", x.overall()));
-      for (int q = 0; q < PredictionIntervals.QUARTILES; q++) {
-        md.add(groupRow(x, quartileLabel(limits, q), x.quartiles().get(q)));
+      final String calibrated =
+          f(" (%d calibration issues)", intervals.checked().get(x.model()).n());
+      md.add(groupRow(x, "all", x.overall(), calibrated));
+      for (int b = 0; b < PredictionIntervals.BANDS; b++) {
+        md.add(groupRow(x, labels[b], x.bands().get(b), calibrated));
       }
     }
     md.add("");
   }
 
-  private static String groupRow(final PredictionIntervals.Read x, final String quartile,
-      final PredictionIntervals.Group g) {
+  /**
+   * One row of the interval table; an infinite width is {@code ∞}, with {@code calibrated},
+   * the calibration issues its factor came from, beside it.
+   */
+  private static String groupRow(final PredictionIntervals.Read x, final String band,
+      final PredictionIntervals.Group g, final String calibrated) {
     final String coverage = g.coverage() == null ? "-" : f("%.3f [%.3f, %.3f]",
         g.coverage().value(), g.coverage().low(), g.coverage().high());
-    return f("| %s | %.0f%% | %s | %d | %s | %.2f | %.2f | %.3f |", x.model(), 100 * x.level(),
-        quartile, g.n(), coverage, g.medianWidth(), g.relativeWidth(), g.mae());
+    final String width = Double.isInfinite(g.medianWidth()) ? "∞" + calibrated
+        : number(g.medianWidth());
+    return f("| %s | %.0f%% | %s | %d | %s | %s | %s | %s |", x.model(), 100 * x.level(),
+        band, g.n(), coverage, width, number(g.relativeWidth()),
+        Double.isNaN(g.mae()) ? "-" : f("%.3f", g.mae()));
   }
 
-  /** Prediction quartile {@code q} at {@code limits}, a half-open range of predictions. */
-  private static String quartileLabel(final double[] limits, final int q) {
-    return f("Q%d %s", q + 1, q == 0 ? f("<=%.2f", limits[0])
-        : q == limits.length ? f(">%.2f", limits[q - 1])
-        : f("(%.2f, %.2f]", limits[q - 1], limits[q]));
+  /** A width or a ratio as the interval table writes it: {@code ∞}, {@code -} for none. */
+  private static String number(final double v) {
+    return Double.isInfinite(v) ? "∞" : Double.isNaN(v) ? "-" : f("%.2f", v);
   }
 
   /**
-   * Per reading, model, level and prediction quartile of half A, or all of them, the check on
-   * half B: the quartile's limits, calibration issues and factor, then the figures.
+   * Per reading, model and level, the check on half B, overall and per band of the observed
+   * duration: the band's limits, the model's calibration issues and factor on half A, then the
+   * figures.
+   *
+   * @param tops the bands' limits, the error bands', of the inner fitting rows cut
    */
-  static List<String> intervals(final PredictionIntervals.Inner intervals) {
+  static List<String> intervals(final PredictionIntervals.Inner intervals, final double[] tops) {
     final List<String> out = new ArrayList<>();
-    out.add("reading\tmodel\tlevel\tprediction_quartile\tprediction_above_bd"
-        + "\tprediction_up_to_bd\tcalibration_issues\tfactor\tn\tcoverage\tcoverage_ci_low"
-        + "\tcoverage_ci_high\tmedian_width_bd\twidth_over_global\tmae_bd");
+    out.add("reading\tmodel\tlevel\tobserved_band\tobserved_above_bd\tobserved_up_to_bd"
+        + "\tcalibration_issues\tfactor\tn\tcoverage\tcoverage_ci_low\tcoverage_ci_high"
+        + "\tmedian_width_bd\twidth_over_global\tmae_bd");
+    final String[] labels = BusinessDays.bandLabels(tops);
     for (final PredictionIntervals.Read x : intervals.reads()) {
       final PredictionIntervals.Calibration c = intervals.checked().get(x.model());
-      final int l = PredictionIntervals.LEVELS.indexOf(x.level());
+      final String factor = d(c.factors()[PredictionIntervals.LEVELS.indexOf(x.level())]);
       final String reading = x.reading().name().toLowerCase(Locale.ROOT);
       out.add(String.join("\t", reading, x.model(), d(x.level()), "all", "", "",
-          Integer.toString(IntStream.of(c.counts()).sum()), "", figures(x.overall())));
-      for (int q = 0; q < PredictionIntervals.QUARTILES; q++) {
-        out.add(String.join("\t", reading, x.model(), d(x.level()), Integer.toString(q + 1),
-            above(c, q), upTo(c, q), Integer.toString(c.counts()[q]), d(c.factors()[l][q]),
-            figures(x.quartiles().get(q))));
+          Integer.toString(c.n()), factor, figures(x.overall())));
+      for (int b = 0; b < PredictionIntervals.BANDS; b++) {
+        out.add(String.join("\t", reading, x.model(), d(x.level()), labels[b],
+            b == 0 ? "" : d(tops[b - 1]), b == tops.length ? "" : d(tops[b]),
+            Integer.toString(c.n()), factor, figures(x.bands().get(b))));
       }
     }
     return out;
   }
 
   /**
-   * Per model, level and prediction quartile, the calibration recomputed on halves A and B
-   * together, for every later use: the quartile's limits, calibration issues and factor, and
-   * the span of the model's predictions.
+   * Per model and level, the calibration recomputed on halves A and B together, for every later
+   * use: the calibration issues, the factor and the span of the model's predictions.
    */
   static List<String> calibration(final PredictionIntervals.Inner intervals) {
     final List<String> out = new ArrayList<>();
-    out.add("model\tlevel\tprediction_quartile\tprediction_above_bd\tprediction_up_to_bd"
-        + "\tcalibration_issues\tfactor\tprediction_min_bd\tprediction_max_bd");
+    out.add("model\tlevel\tcalibration_issues\tfactor\tprediction_min_bd\tprediction_max_bd");
     intervals.calibrated().forEach((model, c) -> {
       for (int l = 0; l < PredictionIntervals.LEVELS.size(); l++) {
-        for (int q = 0; q < PredictionIntervals.QUARTILES; q++) {
-          out.add(String.join("\t", model, d(PredictionIntervals.LEVELS.get(l)),
-              Integer.toString(q + 1), above(c, q), upTo(c, q), Integer.toString(c.counts()[q]),
-              d(c.factors()[l][q]), d(c.low()), d(c.high())));
-        }
+        out.add(String.join("\t", model, d(PredictionIntervals.LEVELS.get(l)),
+            Integer.toString(c.n()), d(c.factors()[l]), d(c.low()), d(c.high())));
       }
     });
     return out;
-  }
-
-  /** The prediction quartile's lower limit, exclusive; none for the first. */
-  private static String above(final PredictionIntervals.Calibration c, final int q) {
-    return q == 0 ? "" : d(c.limits()[q - 1]);
-  }
-
-  /** The prediction quartile's upper limit, inclusive; none for the last. */
-  private static String upTo(final PredictionIntervals.Calibration c, final int q) {
-    return q == c.limits().length ? "" : d(c.limits()[q]);
   }
 
   private static String figures(final PredictionIntervals.Group g) {

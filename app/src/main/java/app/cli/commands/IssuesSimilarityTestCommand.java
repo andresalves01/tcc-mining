@@ -56,11 +56,11 @@ import java.util.function.Function;
  *
  * <p><b>Prediction intervals</b> (ticket 24; {@link PredictionIntervals}). The inner models are
  * refitted as the inner report fits them and calibrated on the whole usual-flow inner validation
- * ({@link SimilarityScoring#calibration}); their factors and prediction-quartile limits are applied
- * to the outer models' predictions, an approximation (item 53 viii), and the coverage, median
- * width, width over the global median's and MAE are printed and recorded per reading, model,
- * level and prediction quartile. The error bands are cut at the quartiles of the outer training
- * rows fitted.
+ * ({@link SimilarityScoring#calibration}); their factors, one per model and level, are applied to
+ * the outer models' predictions, an approximation (item 53 viii), and the coverage, median width,
+ * width over the global median's and MAE are printed and recorded per reading, model and level,
+ * overall and per band of the observed duration, read after the fact. The bands, the error
+ * bands', are cut at the quartiles of the outer training rows fitted.
  *
  * <p>Reads MATRIX and ELASTIC_NET_PARAMETERS, which gives per model its alpha and lambda, for
  * the six with the similarity medians the Jaccard n, embedding n and cluster k they read, and
@@ -268,9 +268,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         Forest.MAX_DEPTH, Forest.SEED);
     System.out.printf("  test projects with no issue in training (there the project median is "
         + "the global one): %,d issues, %s%n", r.unseenRows(), r.unseenProjects());
-    System.out.printf("  error bands: %s; here %s, %s and %s business days, of the outer "
-        + "training rows fitted%n", BusinessDays.BANDS, r.bandTops()[0], r.bandTops()[1],
-        r.bandTops()[2]);
+    System.out.printf("  error bands: %s; here %s business days, of the outer training rows "
+        + "fitted%n", BusinessDays.BANDS, BusinessDays.bandLimits(r.bandTops()));
     System.out.printf("  prediction intervals: %s; %s; %s%n", PredictionIntervals.RULE,
         PredictionIntervals.FACTOR, PredictionIntervals.OUTER);
 
@@ -280,7 +279,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       final List<Map<String, Object>> of = new ArrayList<>();
       print(reading, of, choices);
       printIntervals(intervals.stream().filter(x -> x.reading() == reading.reading()).toList(),
-          of);
+          reading.bandTops(), of);
       final String name = reading.reading().name().toLowerCase(java.util.Locale.ROOT);
       of.forEach(row -> row.put("reading", name));
       rows.addAll(of);
@@ -654,8 +653,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       }
     }
     System.out.printf("%n  error by band of the true business days (at the quartiles of the "
-        + "outer training rows fitted, %s, %s and %s), MAE in business days%n", r.bandTops()[0],
-        r.bandTops()[1], r.bandTops()[2]);
+        + "outer training rows fitted, %s), MAE in business days%n",
+        BusinessDays.bandLimits(r.bandTops()));
     for (final SimilarityScoring.Scored m : r.models()) {
       final StringBuilder line = new StringBuilder(String.format("  %-24s", m.name()));
       for (final Breakdown.Band b : m.bands()) {
@@ -691,32 +690,38 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
   }
 
   /**
-   * One reading's prediction intervals, printed, each model, level and prediction quartile's
-   * document added to {@code rows}: the coverage with its interval, the median width, the width
-   * over the global median's and the MAE.
+   * One reading's prediction intervals, printed, each model, level and band of the observed
+   * duration's document, overall too, added to {@code rows}: the coverage with its interval, the
+   * median width, the width over the global median's and the MAE.
+   *
+   * @param tops the bands' limits, the error bands' of the outer training rows fitted
    */
   private static void printIntervals(final List<PredictionIntervals.Read> reads,
-      final List<Map<String, Object>> rows) {
+      final double[] tops, final List<Map<String, Object>> rows) {
     System.out.printf("%n  prediction intervals, the inner calibration applied (an approximation):"
         + " coverage [95%% interval resampling whole projects], median width in business days, "
-        + "width over the global median's, MAE in business days%n");
+        + "width over the global median's, MAE in business days; overall and per band of the "
+        + "observed duration (%s), read after the fact%n", BusinessDays.bandLimits(tops));
+    final String[] labels = BusinessDays.bandLabels(tops);
     for (final PredictionIntervals.Read x : reads) {
       final StringBuilder line = new StringBuilder(String.format(java.util.Locale.ROOT,
           "  %-24s %3.0f%%", x.model(), 100 * x.level()));
       final List<PredictionIntervals.Group> groups = new ArrayList<>();
       groups.add(x.overall());
-      groups.addAll(x.quartiles());
+      groups.addAll(x.bands());
       for (int q = 0; q < groups.size(); q++) {
         final PredictionIntervals.Group g = groups.get(q);
-        line.append(q == 0 ? "  all" : "  Q" + q).append(g.coverage() == null
-            ? " (n 0)" : String.format(java.util.Locale.ROOT, " %.3f [%.3f, %.3f] w %.2f x%.2f "
+        final String band = q == 0 ? "all" : labels[q - 1];
+        line.append("  ").append(band).append(g.coverage() == null
+            ? " (n 0)" : String.format(java.util.Locale.ROOT, " %.3f [%.3f, %.3f] w %s x%s "
                 + "mae %.3f (n %d)", g.coverage().value(), g.coverage().low(),
-                g.coverage().high(), g.medianWidth(), g.relativeWidth(), g.mae(), g.n()));
+                g.coverage().high(), infinite(g.medianWidth()), infinite(g.relativeWidth()),
+                g.mae(), g.n()));
         final Map<String, Object> row = new LinkedHashMap<>();
         row.put("kind", "prediction_interval");
         row.put("model", x.model());
         row.put("level", x.level());
-        row.put("prediction_quartile", q == 0 ? "all" : Integer.toString(q));
+        row.put("observed_band", band);
         row.put("n", g.n());
         if (g.coverage() != null) {
           row.put("coverage", g.coverage().value());
@@ -729,6 +734,11 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       }
       System.out.println(line);
     }
+  }
+
+  /** A width or a ratio as printed: {@code ∞} when infinite. */
+  private static String infinite(final double v) {
+    return Double.isInfinite(v) ? "∞" : String.format(java.util.Locale.ROOT, "%.2f", v);
   }
 
   /** Each ordering comparison: the two differences, each with its interval. */

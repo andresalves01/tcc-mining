@@ -380,9 +380,9 @@ public enum Command {
       pairwise ordering, error by band of the true business days (at the
       quartiles of the outer training rows fitted; nothing clipped),
       prediction intervals at 80% and 95% (split conformal on the log1p
-      scale, one factor per quartile of the model's own predictions, the
-      factors and limits the inner models calibrated on the usual-flow
-      inner validation applied to the outer models, an approximation),
+      scale, one factor per model and level, the factors the inner models
+      calibrated on the usual-flow inner validation applied to the outer
+      models, an approximation; read overall and per error band),
       and the agreed paired comparisons with
       intervals resampling whole projects: the own specification with
       similarity against the same without, every model against the global
@@ -436,12 +436,13 @@ public enum Command {
       true business days, at the quartiles of the cut fitting rows; the
       prediction intervals at 80% and 95% (split conformal on the log1p
       scale, symmetric, the lower end at least 1 business day, one factor
-      per quartile of the model's own predictions), calibrated on half A
-      of the usual-flow validation issues, split by whole projects, and
-      checked on half B: per reading, model, level and prediction quartile,
-      the coverage with its interval resampling whole projects, the median
-      width, the width over the global median's and the MAE; the factors
-      and limits recomputed on both halves for later use; the paired
+      per model and level), calibrated on half A of the usual-flow
+      validation issues, split by whole projects, and checked on half B:
+      per reading, model and level, overall and per error band of the
+      observed duration (read after the fact), the coverage with its
+      interval resampling whole projects, the median width, the width over
+      the global median's and the MAE; the factors recomputed on both
+      halves for later use; the paired
       comparisons of the test, every model against the global and the
       project median among them, and the retrospective model against the
       one before ticket 19, Elastic Net and forest, with intervals

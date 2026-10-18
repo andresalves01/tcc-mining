@@ -2,7 +2,6 @@ package app.issues;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
@@ -25,11 +24,18 @@ class PredictionIntervalsTest {
   /** The model of a constant, then one that tracks the truth with lognormal noise. */
   private static final String MODEL = "model";
 
+  /** The truth of one synthetic issue around {@code predicted}, at least one business day. */
+  private static double truth(final Random random, final double predicted) {
+    final double spread = 0.2 + 0.1 * Math.log1p(predicted);
+    return Math.max(1, Math.expm1(Math.log1p(predicted) + spread * random.nextGaussian()));
+  }
+
   /**
    * {@code n} issues over {@code projects} projects of uneven size: predictions 2 plus a
    * lognormal, the truth the prediction moved on the log1p scale by a normal draw whose spread
    * grows with the prediction, at least one business day, a floor seldom reached; exchangeable,
-   * issue by issue.
+   * issue by issue. The global median predicts 3 everywhere. The bands are the quartiles of the
+   * truths of a fitting side of its own, drawn alike.
    */
   private static PredictionIntervals.Sample sample(final int n, final int projects,
       final long seed) {
@@ -38,19 +44,20 @@ class PredictionIntervalsTest {
     final double[] observed = new double[n];
     final double[] predicted = new double[n];
     final double[] global = new double[n];
+    final double[] fitting = new double[n];
     for (int i = 0; i < n; i++) {
       project.add("p" + Math.min(projects - 1, (int) (projects * Math.pow(random.nextDouble(),
           1.5))));
       predicted[i] = 2 + Math.exp(1 + 0.8 * random.nextGaussian());
-      final double spread = 0.2 + 0.1 * Math.log1p(predicted[i]);
-      observed[i] = Math.max(1, Math.expm1(Math.log1p(predicted[i])
-          + spread * random.nextGaussian()));
+      observed[i] = truth(random, predicted[i]);
       global[i] = 3;
+      fitting[i] = truth(random, 2 + Math.exp(1 + 0.8 * random.nextGaussian()));
     }
     final Map<String, double[]> models = new LinkedHashMap<>();
     models.put(SimilarityScoring.GLOBAL, global);
     models.put(MODEL, predicted);
-    return new PredictionIntervals.Sample(project, observed, models);
+    return new PredictionIntervals.Sample(project, observed, models,
+        TailCut.quartiles(fitting));
   }
 
   @Test
@@ -86,63 +93,64 @@ class PredictionIntervalsTest {
   }
 
   @Test
-  @DisplayName("on residuals known by hand, each prediction quartile has its own factor, and a "
-      + "new prediction takes the factor of the quartile it falls in")
+  @DisplayName("on residuals known by hand, one factor per model and level, of all its "
+      + "calibration issues, whatever their predictions")
   void calibrationByHand() {
-    // predictions 1 to 16: quartiles, type 7, at 4.75, 8.5 and 12.25; four issues each
-    final double[] predicted = new double[16];
-    final double[] observed = new double[16];
-    for (int i = 0; i < 16; i++) {
-      predicted[i] = i + 1;
-      // residual on the log1p scale: 0.1 times the quartile plus 0.01 times the place in it
-      final double residual = 0.1 * (i / 4 + 1) + 0.01 * (i % 4);
+    final double[] predicted = new double[10];
+    final double[] observed = new double[10];
+    for (int i = 0; i < 10; i++) {
+      predicted[i] = 1 + 3 * i;
+      final double residual = (10 - i) / 10.0;
       observed[i] = Math.expm1(Math.log1p(predicted[i]) + (i % 2 == 0 ? residual : -residual));
     }
     final PredictionIntervals.Calibration c = PredictionIntervals.calibrate(predicted, observed);
-    assertEquals("[4.75, 8.5, 12.25]", Arrays.toString(c.limits()));
-    assertEquals("[4, 4, 4, 4]", Arrays.toString(c.counts()));
+    assertEquals(10, c.n());
     assertEquals(1, c.low());
-    assertEquals(16, c.high());
-    for (int q = 0; q < 4; q++) {
-      // ceil(5 * 0.8) = 4: the largest of four; ceil(5 * 0.95) = 5: none
-      assertEquals(0.1 * (q + 1) + 0.03, c.factors()[0][q], 1e-9, "quartile " + q);
-      assertEquals(Double.POSITIVE_INFINITY, c.factors()[1][q]);
+    assertEquals(28, c.high());
+    // ceil(11 * 0.8) = 9: the 9th of ten; ceil(11 * 0.95) = 11: none
+    assertEquals(0.9, c.factors()[0], 1e-9);
+    assertEquals(Double.POSITIVE_INFINITY, c.factors()[1]);
+    for (final double p : new double[] {2, 50, 400}) {
+      final double[] in = c.interval(0, p);
+      assertEquals(Math.expm1(Math.log1p(p) + 0.9), in[1], 1e-9);
     }
-    assertEquals(0, c.quartile(4.75));
-    assertEquals(1, c.quartile(4.76));
-    assertEquals(3, c.quartile(100));
-    assertEquals(0, c.quartile(-0.5));
-    final double[] in = c.interval(0, 10);
-    assertEquals(Math.expm1(Math.log1p(10) - 0.33), in[0], 1e-9);
-    assertEquals(Math.expm1(Math.log1p(10) + 0.33), in[1], 1e-9);
   }
 
   @Test
-  @DisplayName("the prediction quartiles hold about a quarter of the calibration issues each, "
-      + "per model")
-  void quartersOfTheCalibration() {
-    final PredictionIntervals.Sample s = sample(1001, 20, 5);
-    final PredictionIntervals.Calibration c =
-        PredictionIntervals.calibrate(s.predicted().get(MODEL), s.observed());
-    for (final int count : c.counts()) {
-      assertTrue(Math.abs(count - 1001 / 4.0) <= 1, Arrays.toString(c.counts()));
+  @DisplayName("the global median, a constant, gets an ordinary finite factor, and finite widths "
+      + "inner and outer, the outer constant other than the inner one")
+  void constantGetsAFiniteFactor() {
+    final PredictionIntervals.Sample s = sample(2000, 25, 17);
+    final PredictionIntervals.Inner inner = PredictionIntervals.inner(s, s, 1);
+    for (final PredictionIntervals.Calibration c : List.of(
+        inner.checked().get(SimilarityScoring.GLOBAL),
+        inner.calibrated().get(SimilarityScoring.GLOBAL))) {
+      assertTrue(Double.isFinite(c.factors()[0]) && Double.isFinite(c.factors()[1]),
+          Arrays.toString(c.factors()));
     }
-    // one number for every issue: every issue in the first quartile
-    final PredictionIntervals.Calibration g = PredictionIntervals.calibrate(
-        s.predicted().get(SimilarityScoring.GLOBAL), s.observed());
-    assertEquals("[1001, 0, 0, 0]", Arrays.toString(g.counts()));
+    final PredictionIntervals.Sample fresh = sample(3000, 25, 18);
+    final double[] five = new double[3000];
+    Arrays.fill(five, 5);
+    final Map<String, double[]> outerModels = new LinkedHashMap<>(fresh.predicted());
+    outerModels.put(SimilarityScoring.GLOBAL, five);
+    final PredictionIntervals.Sample outer = new PredictionIntervals.Sample(fresh.projects(),
+        fresh.observed(), outerModels, fresh.bandTops());
+    final List<PredictionIntervals.Read> reads = new ArrayList<>(inner.reads());
+    reads.addAll(PredictionIntervals.outer(inner.calibrated(), outer, outer, 1));
+    for (final PredictionIntervals.Read r : reads) {
+      assertTrue(Double.isFinite(r.overall().medianWidth())
+          && Double.isFinite(r.overall().relativeWidth()) && r.overall().relativeWidth() > 0,
+          r.model() + " " + r.level() + " " + r.overall());
+    }
   }
 
   @Test
-  @DisplayName("on exchangeable synthetic issues, the coverage at L on new issues is close to L, "
-      + "overall and per prediction quartile")
+  @DisplayName("on exchangeable synthetic issues, the coverage at L on new issues is close to L")
   void coverageCloseToTheLevel() {
     final PredictionIntervals.Sample calibration = sample(4000, 30, 7);
     final PredictionIntervals.Sample fresh = sample(40000, 30, 8);
-    final Map<String, PredictionIntervals.Calibration> c = new LinkedHashMap<>();
-    calibration.predicted().forEach((m, p) ->
-        c.put(m, PredictionIntervals.calibrate(p, calibration.observed())));
-    final List<PredictionIntervals.Read> reads = PredictionIntervals.outer(c, fresh, fresh, 1);
+    final List<PredictionIntervals.Read> reads = PredictionIntervals.outer(
+        PredictionIntervals.calibrated(calibration), fresh, fresh, 1);
     assertEquals(2 * 2 * 2, reads.size());
     for (final PredictionIntervals.Read r : reads) {
       if (r.model().equals(SimilarityScoring.GLOBAL)) {
@@ -152,14 +160,54 @@ class PredictionIntervalsTest {
       } else {
         assertTrue(Math.abs(r.overall().coverage().value() - r.level()) < 0.015,
             r.level() + " " + r.overall().coverage());
-        for (final PredictionIntervals.Group q : r.quartiles()) {
-          assertTrue(Math.abs(q.coverage().value() - r.level()) < 0.025,
-              r.level() + " " + q.coverage());
-        }
       }
       assertTrue(r.overall().coverage().low() <= r.overall().coverage().value()
           && r.overall().coverage().value() <= r.overall().coverage().high());
     }
+  }
+
+  @Test
+  @DisplayName("the coverage per band of the observed duration is read on half B at the band "
+      + "limits, the error bands'; the bands group the issues after the fact and never move a "
+      + "factor")
+  void bandsOnHalfB() {
+    final PredictionIntervals.Sample s = sample(2000, 25, 21);
+    final PredictionIntervals.Inner inner = PredictionIntervals.inner(s, s, 1);
+    final double[] tops = s.bandTops();
+    for (final PredictionIntervals.Read r : inner.reads()) {
+      final int l = PredictionIntervals.LEVELS.indexOf(r.level());
+      final PredictionIntervals.Calibration c = inner.checked().get(r.model());
+      final double[] p = s.predicted().get(r.model());
+      for (int b = 0; b < PredictionIntervals.BANDS; b++) {
+        final double low = b == 0 ? Double.NEGATIVE_INFINITY : tops[b - 1];
+        final double high = b == 3 ? Double.POSITIVE_INFINITY : tops[b];
+        int n = 0;
+        double covered = 0;
+        for (int i = 0; i < p.length; i++) {
+          if (!inner.halves().a().contains(s.projects().get(i)) && s.observed()[i] > low
+              && s.observed()[i] <= high) {
+            final double[] in = c.interval(l, p[i]);
+            covered += in[0] <= s.observed()[i] && s.observed()[i] <= in[1] ? 1 : 0;
+            n++;
+          }
+        }
+        final PredictionIntervals.Group g = r.bands().get(b);
+        assertEquals(n, g.n(), r.model() + " band " + b);
+        assertTrue(n > 0);
+        assertEquals(covered / n, g.coverage().value(), EXACT);
+      }
+      assertEquals(r.overall().n(), r.bands().stream().mapToInt(g -> g.n()).sum());
+    }
+    // other band limits regroup the issues and move no factor, nor the overall figures
+    final PredictionIntervals.Sample other = new PredictionIntervals.Sample(s.projects(),
+        s.observed(), s.predicted(), new double[] {2, 4, 8});
+    final PredictionIntervals.Inner regrouped = PredictionIntervals.inner(other, other, 1);
+    for (final String m : s.predicted().keySet()) {
+      assertEquals(Arrays.toString(inner.checked().get(m).factors()),
+          Arrays.toString(regrouped.checked().get(m).factors()));
+    }
+    assertEquals(inner.reads().get(1).overall(), regrouped.reads().get(1).overall());
+    assertNotEquals(inner.reads().get(1).bands(), regrouped.reads().get(1).bands());
   }
 
   @Test
@@ -201,34 +249,31 @@ class PredictionIntervalsTest {
       }
     }
     final PredictionIntervals.Sample b = new PredictionIntervals.Sample(usual.projects(), moved,
-        usual.predicted());
+        usual.predicted(), usual.bandTops());
     final PredictionIntervals.Inner again = PredictionIntervals.inner(usual, b, 1);
     final PredictionIntervals.Inner bothMoved = PredictionIntervals.inner(b, b, 1);
     for (final String m : usual.predicted().keySet()) {
       for (final PredictionIntervals.Inner other : List.of(again, bothMoved)) {
-        assertEquals(Arrays.toString(inner.checked().get(m).limits()),
-            Arrays.toString(other.checked().get(m).limits()), m);
-        assertEquals(Arrays.deepToString(inner.checked().get(m).factors()),
-            Arrays.deepToString(other.checked().get(m).factors()), m);
+        assertEquals(Arrays.toString(inner.checked().get(m).factors()),
+            Arrays.toString(other.checked().get(m).factors()), m);
       }
       // A and B together: B's labels count there
-      assertNotEquals(Arrays.deepToString(inner.calibrated().get(m).factors()),
-          Arrays.deepToString(bothMoved.calibrated().get(m).factors()), m);
+      assertNotEquals(Arrays.toString(inner.calibrated().get(m).factors()),
+          Arrays.toString(bothMoved.calibrated().get(m).factors()), m);
       final double[] p = usual.predicted().get(m);
-      assertEquals(Arrays.deepToString(PredictionIntervals.calibrate(p, usual.observed())
-          .factors()), Arrays.deepToString(inner.calibrated().get(m).factors()), m);
+      assertEquals(Arrays.toString(PredictionIntervals.calibrate(p, usual.observed())
+          .factors()), Arrays.toString(inner.calibrated().get(m).factors()), m);
     }
     // the check reads half B only: its issues, every model at both levels, on both readings
     assertEquals(2 * 2 * 2, inner.reads().size());
     for (final PredictionIntervals.Read r : inner.reads()) {
       assertEquals(inner.halves().bIssues(), r.overall().n());
-      assertEquals(r.overall().n(), r.quartiles().stream().mapToInt(q -> q.n()).sum());
     }
   }
 
   @Test
   @DisplayName("each group's figures: coverage, median width, width over the global median's on "
-      + "the same issues, and the MAE; an empty quartile has none")
+      + "the same issues, and the MAE")
   void groupFigures() {
     final PredictionIntervals.Sample s = sample(800, 12, 13);
     final PredictionIntervals.Inner inner = PredictionIntervals.inner(s, s, 1);
@@ -238,7 +283,6 @@ class PredictionIntervalsTest {
       final PredictionIntervals.Calibration g = inner.checked().get(SimilarityScoring.GLOBAL);
       final double[] p = s.predicted().get(r.model());
       final List<Double> widths = new ArrayList<>();
-      final List<Double> globalWidths = new ArrayList<>();
       double covered = 0;
       double error = 0;
       for (int i = 0; i < p.length; i++) {
@@ -248,24 +292,18 @@ class PredictionIntervalsTest {
         final double[] in = c.interval(l, p[i]);
         covered += in[0] <= s.observed()[i] && s.observed()[i] <= in[1] ? 1 : 0;
         widths.add(in[1] - in[0]);
-        final double[] gi = g.interval(l, 3);
-        globalWidths.add(gi[1] - gi[0]);
         error += Math.abs(p[i] - s.observed()[i]);
       }
+      final double[] gi = g.interval(l, 3);
       final PredictionIntervals.Group all = r.overall();
       assertEquals(covered / widths.size(), all.coverage().value(), EXACT);
       final double median = PredictionIntervals.median(
           widths.stream().mapToDouble(Double::doubleValue).toArray());
       assertEquals(median, all.medianWidth(), EXACT);
-      assertEquals(median / globalWidths.get(0), all.relativeWidth(), EXACT);
+      assertEquals(median / (gi[1] - gi[0]), all.relativeWidth(), EXACT);
       assertEquals(error / widths.size(), all.mae(), EXACT);
       if (r.model().equals(SimilarityScoring.GLOBAL)) {
         assertEquals(1, all.relativeWidth(), EXACT);
-        for (final PredictionIntervals.Group q : r.quartiles().subList(1, 4)) {
-          assertEquals(0, q.n());
-          assertNull(q.coverage());
-          assertTrue(Double.isNaN(q.medianWidth()) && Double.isNaN(q.mae()));
-        }
       }
     }
     assertEquals(Double.POSITIVE_INFINITY,

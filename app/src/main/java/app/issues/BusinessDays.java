@@ -212,7 +212,7 @@ public final class BusinessDays {
    * The bands' labels at {@code tops}, a half-open range each: {@code <=a}, {@code (a, b]},
    * {@code (b, c]}, {@code >c}.
    */
-  static String[] bandLabels(final double[] tops) {
+  public static String[] bandLabels(final double[] tops) {
     if (tops.length != 3) {
       throw new IllegalArgumentException("three quartiles, not " + tops.length);
     }
@@ -220,9 +220,19 @@ public final class BusinessDays {
         "(" + days(tops[1]) + ", " + days(tops[2]) + "]", ">" + days(tops[2])};
   }
 
-  /** Business days as the labels write them: a whole number without its decimal point. */
-  private static String days(final double v) {
-    return v == Math.rint(v) ? Long.toString((long) v) : Double.toString(v);
+  /** The bands' limits as the headers write them: {@code a, b and c}, as the labels do. */
+  public static String bandLimits(final double[] tops) {
+    return days(tops[0]) + ", " + days(tops[1]) + " and " + days(tops[2]);
+  }
+
+  /**
+   * Business days as the bands' labels and headers write them: a whole number without its
+   * decimal point, any other rounded to two decimals, trailing zeros dropped.
+   */
+  public static String days(final double v) {
+    return v == Math.rint(v) ? Long.toString((long) v)
+        : java.math.BigDecimal.valueOf(v).setScale(2, java.math.RoundingMode.HALF_UP)
+            .stripTrailingZeros().toPlainString();
   }
 
   /**

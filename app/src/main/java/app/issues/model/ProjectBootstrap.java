@@ -62,6 +62,13 @@ public final class ProjectBootstrap {
     }
   }
 
+  /**
+   * A mean over the rows -- of 0 and 1, a share, as a prediction interval's coverage (ticket 24)
+   * -- with its 95% interval from the same {@link #DRAWS} draws of whole projects (seed {@link
+   * #SEED}), a project drawn twice counted twice ({@link #share}).
+   */
+  public record Share(double value, double low, double high) {}
+
   private ProjectBootstrap() {}
 
   /**
@@ -237,13 +244,6 @@ public final class ProjectBootstrap {
     Arrays.sort(draws);
     return new Interval(point, draws[(int) (0.025 * DRAWS)], draws[(int) (0.975 * DRAWS) - 1]);
   }
-
-  /**
-   * A mean over the rows -- of 0 and 1, a share, as a prediction interval's coverage (ticket 24)
-   * -- with its 95% interval from the same {@link #DRAWS} draws of whole projects (seed {@link
-   * #SEED}), a project drawn twice counted twice.
-   */
-  public record Share(double value, double low, double high) {}
 
   /**
    * The mean of {@code values} with its interval, the draws evaluated on up to {@code threads}

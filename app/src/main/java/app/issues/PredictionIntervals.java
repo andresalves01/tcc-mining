@@ -13,36 +13,37 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 /**
- * The prediction intervals of the description-similarity chain (ticket 24, item 53): how far a
- * model's estimate of one issue can be trusted, beside the mean absolute error, which says only
- * how much it misses on average. Descriptive: nothing here chooses a model, k or column.
+ * The prediction intervals of the description-similarity chain (ticket 24, items 53 and 54): how
+ * far a model's estimate of one issue can be trusted, beside the mean absolute error, which says
+ * only how much it misses on average. Descriptive: nothing here chooses a model, k or column.
  *
  * <p><b>Interval.</b> Split conformal, symmetric on the {@code log1p} scale: {@code
  * expm1(log1p(prediction) +- factor)}, the prediction divided and multiplied by one factor, its
  * lower end raised to {@link #FLOOR}, one business day, the shortest duration of the population;
- * an upper end below it is raised too, so the interval is never empty. Levels 80% and 95%, side
- * by side, neither the main one ({@link #LEVELS}).
+ * an upper end below it is raised too, so the interval is never empty, which can add a little
+ * coverage at one business day. Levels 80% and 95%, side by side, neither the main one ({@link
+ * #LEVELS}).
  *
- * <p><b>Factor.</b> Per level and per prediction quartile, of the absolute residuals {@code
- * |log1p(observed) - log1p(predicted)|} of the quartile's calibration issues: the definition is
+ * <p><b>Factor.</b> One per model and level (item 54), of the absolute residuals {@code
+ * |log1p(observed) - log1p(predicted)|} of all the model's calibration issues: the definition is
  * {@link #FACTOR}, here only ({@link #factor}). It is not {@link TailCut#quantile}'s
  * interpolation: the finite-sample guarantee of split conformal holds for the order statistic.
  *
- * <p><b>Prediction quartiles.</b> The quartiles of the model's own predictions on its calibration
- * issues, by {@link TailCut#quartiles}: the observed duration is unknown when the interval is
- * given, so the band is the prediction's. A new prediction takes the factor of the quartile it
- * falls in: up to Q1, above it up to the median, above that up to Q3, above Q3. A model that
- * predicts one number for every issue, the global median, has every issue in its first quartile.
+ * <p><b>Reading by band.</b> Beside the overall figures, each is read per band of the observed
+ * duration, the error bands' own ({@link BusinessDays#bands}): at the quartiles of the observed
+ * business days of the cut fitting rows of the scope, never of validation or test labels. A
+ * reading after the fact: the band never chooses the factor, the observed duration being unknown
+ * when the interval is given.
  *
  * <p><b>Calibration</b> ({@link #inner}). On the usual-flow inner validation issues, split in two
  * halves by whole projects ({@link #halves}): half A calibrates, half B checks the coverage, on
  * the usual flow (the main reading) and on every validation issue of B (the complementary one).
- * The factors and limits for every later use are then recomputed on A and B together. A project
- * with no usual-flow validation issue is B's.
+ * The factors for every later use are then recomputed on A and B together. A project with no
+ * usual-flow validation issue is B's.
  *
- * <p><b>Outer test</b> ({@link #outer}, item 53 viii). The factors and limits calibrated on the
- * whole usual-flow inner validation by the inner models are applied to the outer models'
- * predictions, an approximation ({@link #OUTER}).
+ * <p><b>Outer test</b> ({@link #outer}, item 53 viii). The factors calibrated on the whole
+ * usual-flow inner validation by the inner models are applied to the outer models' predictions,
+ * an approximation ({@link #OUTER}).
  */
 public final class PredictionIntervals {
 
@@ -55,33 +56,33 @@ public final class PredictionIntervals {
   /** The seed of the halves' own {@link Random}. */
   public static final long HALVES_SEED = 1738L;
 
-  /** The prediction quartiles. */
-  public static final int QUARTILES = 4;
+  /** The bands of the observed duration each figure is also read by: the error bands. */
+  public static final int BANDS = 4;
 
   /** The factor's definition, in words, the one place it is stated. */
-  public static final String FACTOR = "the factor at level L of a prediction quartile is the "
-      + "k-th smallest absolute residual |log1p(observed) - log1p(predicted)| of its n calibration "
-      + "issues, k = ceil((n + 1) L): split conformal's finite-sample correction, the quantile at "
-      + "ceil((n + 1) L) / n read as an order statistic, without interpolation; infinite when k "
-      + "exceeds n";
+  public static final String FACTOR = "the factor at level L of a model is the k-th smallest "
+      + "absolute residual |log1p(observed) - log1p(predicted)| of its n calibration issues, all "
+      + "of them, k = ceil((n + 1) L): split conformal's finite-sample correction, the quantile "
+      + "at ceil((n + 1) L) / n read as an order statistic, without interpolation; infinite when "
+      + "k exceeds n";
 
   /** The intervals, in words, for the report and the run record. */
   public static final String RULE = "split-conformal prediction intervals, symmetric on the "
       + "log1p scale: expm1(log1p(prediction) +- factor), the lower end raised to 1 business day "
-      + "(an upper end below it too); levels 80% and 95%; one factor per quartile of the model's "
-      + "own predictions on the calibration issues, a new prediction taking its quartile's; "
-      + "calibrated on the usual-flow inner validation issues, split by whole projects (in name "
-      + "order, shuffled with Random(1738), to half A until A holds at least half of those "
-      + "issues, the rest to half B): A calibrates, B checks the coverage, with its 95% interval "
-      + "resampling whole projects; the factors and limits for later use recomputed on A and B "
-      + "together";
+      + "(an upper end below it too, which can add a little coverage at 1 day); levels 80% and "
+      + "95%; one factor per model and level; calibrated on the usual-flow inner validation "
+      + "issues, split by whole projects (in name order, shuffled with Random(1738), to half A "
+      + "until A holds at least half of those issues, the rest to half B): A calibrates, B checks "
+      + "the coverage, with its 95% interval resampling whole projects, overall and per band of "
+      + "the observed duration (the error bands, a reading after the fact that never chooses "
+      + "the factor); the factors for later use recomputed on A and B together";
 
   /** What the outer test's intervals are, in words. */
-  public static final String OUTER = "the outer models' intervals take the factors and "
-      + "prediction-quartile limits the inner models calibrated on the whole usual-flow inner "
-      + "validation, an approximation: the outer models are refitted on the whole outer training "
-      + "side, so no held-out outer issue is left to calibrate on; the outer coverage shows "
-      + "whether it holds";
+  public static final String OUTER = "the outer models' intervals take the factors the inner "
+      + "models calibrated on the whole usual-flow inner validation, an approximation: the outer "
+      + "models are refitted on the whole outer training side, so no held-out outer issue is left "
+      + "to calibrate on; the outer coverage shows whether it holds; the bands of the observed "
+      + "duration are those of the outer training rows fitted";
 
   /**
    * The calibration halves.
@@ -95,23 +96,15 @@ public final class PredictionIntervals {
   /**
    * One model's calibration.
    *
-   * @param limits the prediction quartiles' limits: Q1, the median and Q3 of its predictions on
-   *     the calibration issues
-   * @param counts per prediction quartile, its calibration issues
-   * @param factors per level of {@link #LEVELS}, per prediction quartile, the factor
+   * @param n its calibration issues
+   * @param factors per level of {@link #LEVELS}, the factor
    * @param low the smallest of its predictions on the calibration issues, {@code high} the largest
    */
-  public record Calibration(double[] limits, int[] counts, double[][] factors, double low,
-      double high) {
-
-    /** The prediction quartile, 0 to 3, {@code prediction} falls in. */
-    public int quartile(final double prediction) {
-      return PredictionIntervals.quartile(limits, prediction);
-    }
+  public record Calibration(int n, double[] factors, double low, double high) {
 
     /** The interval at the level of index {@code level} around {@code prediction}. */
     public double[] interval(final int level, final double prediction) {
-      return PredictionIntervals.interval(prediction, factors[level][quartile(prediction)]);
+      return PredictionIntervals.interval(prediction, factors[level]);
     }
   }
 
@@ -128,27 +121,31 @@ public final class PredictionIntervals {
       double relativeWidth, double mae) {}
 
   /**
-   * One model at one level on one reading's checked issues: overall and per prediction quartile.
+   * One model at one level on one reading's checked issues: overall and per band of the observed
+   * duration.
    *
-   * @param quartiles one per prediction quartile, the first the lowest predictions
+   * @param bands one per band of {@link BusinessDays#bands}, the first the shortest durations
    */
   public record Read(TailCut.Reading reading, String model, double level, Group overall,
-      List<Group> quartiles) {}
+      List<Group> bands) {}
 
   /**
    * Issues and every model's predictions of them.
    *
    * @param predicted per model, in the report's order, one prediction per issue
+   * @param bandTops the limits of the bands of the observed duration: the quartiles of the
+   *     observed business days of the cut fitting rows of the scope ({@link
+   *     SimilarityScoring.Report#bandTops})
    */
   public record Sample(List<String> projects, double[] observed,
-      Map<String, double[]> predicted) {
+      Map<String, double[]> predicted, double[] bandTops) {
 
-    /** A scoring's issues and predictions. */
+    /** A scoring's issues, predictions and band limits. */
     public static Sample of(final SimilarityScoring.Report r) {
       final Map<String, double[]> predicted = new LinkedHashMap<>();
       r.models().forEach(m -> predicted.put(m.name(), m.predicted()));
       return new Sample(r.scoredUnits().stream().map(IssueUnit::project).toList(), r.observed(),
-          predicted);
+          predicted, r.bandTops());
     }
   }
 
@@ -218,16 +215,16 @@ public final class PredictionIntervals {
   }
 
   /**
-   * The prediction quartile, 0 to 3, of {@code prediction} at {@code limits}: up to the first,
-   * above it up to the second, above that up to the third, above the third.
+   * The band, 0 to 3, of {@code observed} at {@code tops}, as {@link BusinessDays#bands} cuts
+   * them: up to the first, above it up to the second, above that up to the third, above the third.
    */
-  static int quartile(final double[] limits, final double prediction) {
-    for (int q = 0; q < limits.length; q++) {
-      if (prediction <= limits[q]) {
-        return q;
+  static int band(final double[] tops, final double observed) {
+    for (int b = 0; b < tops.length; b++) {
+      if (observed <= tops[b]) {
+        return b;
       }
     }
-    return limits.length;
+    return tops.length;
   }
 
   /** A model's calibration on the issues given, its own predictions of them and their truth. */
@@ -235,26 +232,16 @@ public final class PredictionIntervals {
     if (predicted.length != observed.length || predicted.length == 0) {
       throw new IllegalArgumentException("one prediction per calibration issue, and at least one");
     }
-    final double[] limits = TailCut.quartiles(predicted);
-    final List<List<Double>> residuals = new ArrayList<>();
-    for (int q = 0; q < QUARTILES; q++) {
-      residuals.add(new ArrayList<>());
-    }
+    final double[] residuals = new double[predicted.length];
     for (int i = 0; i < predicted.length; i++) {
-      residuals.get(quartile(limits, predicted[i]))
-          .add(Math.abs(Math.log1p(observed[i]) - Math.log1p(predicted[i])));
+      residuals[i] = Math.abs(Math.log1p(observed[i]) - Math.log1p(predicted[i]));
     }
-    final int[] counts = new int[QUARTILES];
-    final double[][] factors = new double[LEVELS.size()][QUARTILES];
-    for (int q = 0; q < QUARTILES; q++) {
-      final double[] r = residuals.get(q).stream().mapToDouble(Double::doubleValue).toArray();
-      counts[q] = r.length;
-      for (int l = 0; l < LEVELS.size(); l++) {
-        factors[l][q] = factor(r, LEVELS.get(l));
-      }
+    final double[] factors = new double[LEVELS.size()];
+    for (int l = 0; l < LEVELS.size(); l++) {
+      factors[l] = factor(residuals, LEVELS.get(l));
     }
-    return new Calibration(limits, counts, factors, Arrays.stream(predicted).min().getAsDouble(),
-        Arrays.stream(predicted).max().getAsDouble());
+    return new Calibration(predicted.length, factors, Arrays.stream(predicted).min()
+        .getAsDouble(), Arrays.stream(predicted).max().getAsDouble());
   }
 
   /**
@@ -280,8 +267,8 @@ public final class PredictionIntervals {
   }
 
   /**
-   * Every model calibrated on every issue of {@code usual}, both halves together: the factors
-   * and limits for every later use.
+   * Every model calibrated on every issue of {@code usual}, both halves together: the factors for
+   * every later use.
    *
    * @param usual the usual-flow inner validation issues, the inner models' predictions of them
    */
@@ -294,7 +281,8 @@ public final class PredictionIntervals {
 
   /**
    * The outer test's intervals (item 53 viii): every outer model's predictions with the factors
-   * and limits its inner twin was {@code calibrated} with, on every issue of each reading.
+   * its inner twin was {@code calibrated} with, on every issue of each reading, the bands those
+   * of the samples, the outer scope's.
    *
    * @param calibrated per model, the inner calibration on the whole usual-flow inner validation
    *     ({@link Inner#calibrated}); one for every model of the samples
@@ -317,6 +305,12 @@ public final class PredictionIntervals {
       throw new IllegalArgumentException("a calibration for every model, the global median's "
           + "included, is needed; there is one for " + calibrations.keySet());
     }
+    // the bands of the observed duration: an after-the-fact grouping of the checked issues
+    final List<List<Integer>> byBand = new ArrayList<>();
+    for (int b = 0; b < BANDS; b++) {
+      byBand.add(new ArrayList<>());
+    }
+    rows.forEach(i -> byBand.get(band(s.bandTops(), s.observed()[i])).add(i));
     final List<Read> out = new ArrayList<>();
     for (final Map.Entry<String, double[]> m : s.predicted().entrySet()) {
       final Calibration c = calibrations.get(m.getKey());
@@ -332,18 +326,12 @@ public final class PredictionIntervals {
           final double[] g = calibrations.get(global).interval(l, s.predicted().get(global)[i]);
           globalWidth[i] = g[1] - g[0];
         }
-        final List<List<Integer>> byQuartile = new ArrayList<>();
-        for (int q = 0; q < QUARTILES; q++) {
-          byQuartile.add(new ArrayList<>());
-        }
-        rows.forEach(i -> byQuartile.get(c.quartile(predicted[i])).add(i));
-        final List<Group> quartiles = new ArrayList<>();
-        for (final List<Integer> q : byQuartile) {
-          quartiles.add(group(q, s, predicted, covered, width, globalWidth, threads));
+        final List<Group> bands = new ArrayList<>();
+        for (final List<Integer> b : byBand) {
+          bands.add(group(b, s, predicted, covered, width, globalWidth, threads));
         }
         out.add(new Read(reading, m.getKey(), LEVELS.get(l),
-            group(rows, s, predicted, covered, width, globalWidth, threads),
-            List.copyOf(quartiles)));
+            group(rows, s, predicted, covered, width, globalWidth, threads), List.copyOf(bands)));
       }
     }
     return out;
