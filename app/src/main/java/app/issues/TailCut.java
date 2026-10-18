@@ -3,6 +3,7 @@ package app.issues;
 import app.issues.model.Fitting;
 import app.study.Row;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -115,6 +116,19 @@ public final class TailCut {
     final int low = (int) Math.floor(position);
     final int high = Math.min(low + 1, sorted.length - 1);
     return sorted[low] + (sorted[high] - sorted[low]) * (position - low);
+  }
+
+  /**
+   * The first quartile, the median and the third quartile of {@code values}, by {@link #quantile}:
+   * the limits of the error bands and of the prediction quartiles (ticket 24).
+   */
+  public static double[] quartiles(final double[] values) {
+    if (values.length == 0) {
+      throw new IllegalArgumentException("no value to take quartiles of");
+    }
+    final double[] sorted = values.clone();
+    Arrays.sort(sorted);
+    return new double[] {quantile(sorted, 0.25), quantile(sorted, 0.5), quantile(sorted, 0.75)};
   }
 
   /**

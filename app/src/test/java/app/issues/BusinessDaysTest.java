@@ -284,19 +284,26 @@ class BusinessDaysTest {
   }
 
   @Test
-  @DisplayName("the error by band of the true business days: 1, 2-3, 4-10, 11+; the bands only "
-      + "group the rows, nothing is clipped")
+  @DisplayName("the error by band of the true business days, cut at the quartiles of the fitting "
+      + "rows (ticket 24); the bands only group the rows, nothing is clipped")
   void bands() {
+    // fitting rows whose quartiles, type 7, are 1, 3 and 10
+    final double[] tops = TailCut.quartiles(new double[] {10, 1, 3, 1, 10, 1, 10});
+    assertEquals(List.of(1.0, 3.0, 10.0), List.of(tops[0], tops[1], tops[2]));
     final double[] observed = {1, 1, 2, 3, 4, 10, 11, 60};
     final double[] predicted = {1, 3, 2, 1, 4, 4, 20, 5};
-    final List<app.study.model.Breakdown.Band> b = BusinessDays.bands(predicted, observed);
-    assertEquals(List.of("1", "2-3", "4-10", "11+"),
+    final List<app.study.model.Breakdown.Band> b =
+        BusinessDays.bands(predicted, observed, tops);
+    assertEquals(List.of("<=1", "(1, 3]", "(3, 10]", ">10"),
         b.stream().map(app.study.model.Breakdown.Band::label).toList());
     assertEquals(List.of(2, 2, 2, 2), b.stream().map(x -> x.n()).toList());
-    assertEquals(new app.study.model.Breakdown.Band("1", 2, 1.0, 1.0, 1.0), b.get(0));
-    assertEquals(new app.study.model.Breakdown.Band("2-3", 2, 2.5, 1.0, 1.0), b.get(1));
-    assertEquals(new app.study.model.Breakdown.Band("4-10", 2, 7.0, 3.0, 3.0), b.get(2));
-    assertEquals(new app.study.model.Breakdown.Band("11+", 2, 35.5, 32.0, 32.0), b.get(3),
+    assertEquals(new app.study.model.Breakdown.Band("<=1", 2, 1.0, 1.0, 1.0), b.get(0));
+    assertEquals(new app.study.model.Breakdown.Band("(1, 3]", 2, 2.5, 1.0, 1.0), b.get(1));
+    assertEquals(new app.study.model.Breakdown.Band("(3, 10]", 2, 7.0, 3.0, 3.0), b.get(2));
+    assertEquals(new app.study.model.Breakdown.Band(">10", 2, 35.5, 32.0, 32.0), b.get(3),
         "60 against 5 counts 55, unclipped");
+    // quartiles between whole days keep their fraction in the labels
+    assertEquals(List.of("<=1.75", "(1.75, 2.5]", "(2.5, 3.25]", ">3.25"), List.of(
+        BusinessDays.bandLabels(TailCut.quartiles(new double[] {4, 3, 2, 1}))));
   }
 }

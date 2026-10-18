@@ -7,6 +7,7 @@ import app.issues.Augmentation;
 import app.issues.BusinessDays;
 import app.issues.DescriptionCleaner;
 import app.issues.ElasticNetSelection;
+import app.issues.PredictionIntervals;
 import app.issues.ProjectSplit;
 import app.issues.RegistrationInProgress;
 import app.issues.Retrospective;
@@ -16,6 +17,7 @@ import app.issues.TailCut;
 import app.issues.model.Fitting;
 import app.issues.model.Forest;
 import app.issues.model.ProjectBootstrap;
+import app.model.Parallel;
 import app.pipeline.embedding.EmbeddingModel;
 import app.study.model.Breakdown;
 import app.study.model.Score;
@@ -51,6 +53,14 @@ import java.util.function.Function;
  * the usual flow's fence, the main reading, and on every one, the complementary reading. The
  * predictions file holds every scored issue; the diagnostics and the forests' permutation
  * importance are the main reading's.
+ *
+ * <p><b>Prediction intervals</b> (ticket 24; {@link PredictionIntervals}). The inner models are
+ * refitted as the inner report fits them and calibrated on the whole usual-flow inner validation
+ * ({@link SimilarityScoring#calibration}); their factors, one per model and level, are applied to
+ * the outer models' predictions, an approximation (item 53 viii), and the coverage, median width,
+ * width over the global median's and MAE are printed and recorded per reading, model and level,
+ * overall and per band of the observed duration, read after the fact. The bands, the error
+ * bands', are cut at the quartiles of the outer training rows fitted.
  *
  * <p>Reads MATRIX and ELASTIC_NET_PARAMETERS, which gives per model its alpha and lambda, for
  * the six with the similarity medians the Jaccard n, embedding n and cluster k they read, and
@@ -221,9 +231,19 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     System.out.printf("  the parameters are read, never chosen; the outer test is scored now%n");
     final long fitting = System.nanoTime();
     final SimilarityScoring.Readings readings;
+    final List<PredictionIntervals.Read> intervals;
     try {
       readings = SimilarityScoring.readings(population.entries(), choices, forests, cut.k(),
           SimilarityScoring.Scope.RESERVED);
+      // the prediction intervals (ticket 24, item 53 viii): the inner models refitted and
+      // calibrated on the whole usual-flow inner validation, applied to the outer models
+      final Map<String, PredictionIntervals.Calibration> calibrated =
+          PredictionIntervals.calibrated(PredictionIntervals.Sample.of(
+              SimilarityScoring.calibration(population.entries(), choices, forests, cut.k())));
+      intervals = PredictionIntervals.outer(calibrated,
+          PredictionIntervals.Sample.of(readings.main()),
+          PredictionIntervals.Sample.of(readings.complementary()),
+          Parallel.threads(Parallel.BOOTSTRAP_THREADS));
     } catch (final IllegalArgumentException e) {
       throw refused(e.getMessage());
     }
@@ -248,12 +268,18 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         Forest.MAX_DEPTH, Forest.SEED);
     System.out.printf("  test projects with no issue in training (there the project median is "
         + "the global one): %,d issues, %s%n", r.unseenRows(), r.unseenProjects());
+    System.out.printf("  error bands: %s; here %s business days, of the outer training rows "
+        + "fitted%n", BusinessDays.BANDS, BusinessDays.bandLimits(r.bandTops()));
+    System.out.printf("  prediction intervals: %s; %s; %s%n", PredictionIntervals.RULE,
+        PredictionIntervals.FACTOR, PredictionIntervals.OUTER);
 
     final List<Map<String, Object>> rows = new ArrayList<>();
     for (final SimilarityScoring.Report reading : List.of(main, r)) {
       System.out.printf("%n  READING: %s%n", reading.reading().description());
       final List<Map<String, Object>> of = new ArrayList<>();
       print(reading, of, choices);
+      printIntervals(intervals.stream().filter(x -> x.reading() == reading.reading()).toList(),
+          reading.bandTops(), of);
       final String name = reading.reading().name().toLowerCase(java.util.Locale.ROOT);
       of.forEach(row -> row.put("reading", name));
       rows.addAll(of);
@@ -308,6 +334,9 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     run.put("forest_permutation_repeats", Forest.PERMUTATION_REPEATS);
     run.put("candidates", candidates(choices));
     run.put("tail_cut", tailCut(r.fences()));
+    run.put("error_bands", BusinessDays.BANDS);
+    run.put("error_band_tops_business_days",
+        List.of(r.bandTops()[0], r.bandTops()[1], r.bandTops()[2]));
     run.put("fit_rows", r.fitRows());
     run.put("scored_rows", r.scoredRows());
     run.put("usual_flow_scored_rows", main.scoredRows());
@@ -396,6 +425,9 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     out.put("outer_test_draw", EXAMINED);
     out.put("selection_effort", EFFORT);
     out.put("ordering_intervals", ORDERING);
+    out.put("prediction_intervals", PredictionIntervals.RULE);
+    out.put("prediction_interval_factor", PredictionIntervals.FACTOR);
+    out.put("prediction_interval_outer_calibration", PredictionIntervals.OUTER);
     out.putAll(IssuesSimilarityElasticNetCommand.statements());
     return out;
   }
@@ -620,8 +652,9 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
             m.forest().share(), m.forest().nodeSize());
       }
     }
-    System.out.printf("%n  error by band of the true business days (1, 2-3, 4-10, 11+), MAE in "
-        + "business days%n");
+    System.out.printf("%n  error by band of the true business days (at the quartiles of the "
+        + "outer training rows fitted, %s), MAE in business days%n",
+        BusinessDays.bandLimits(r.bandTops()));
     for (final SimilarityScoring.Scored m : r.models()) {
       final StringBuilder line = new StringBuilder(String.format("  %-24s", m.name()));
       for (final Breakdown.Band b : m.bands()) {
@@ -654,6 +687,58 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       row.put("n", r.withCommitRows());
       rows.add(row);
     }
+  }
+
+  /**
+   * One reading's prediction intervals, printed, each model, level and band of the observed
+   * duration's document, overall too, added to {@code rows}: the coverage with its interval, the
+   * median width, the width over the global median's and the MAE.
+   *
+   * @param tops the bands' limits, the error bands' of the outer training rows fitted
+   */
+  private static void printIntervals(final List<PredictionIntervals.Read> reads,
+      final double[] tops, final List<Map<String, Object>> rows) {
+    System.out.printf("%n  prediction intervals, the inner calibration applied (an approximation):"
+        + " coverage [95%% interval resampling whole projects], median width in business days, "
+        + "width over the global median's, MAE in business days; overall and per band of the "
+        + "observed duration (%s), read after the fact%n", BusinessDays.bandLimits(tops));
+    final String[] labels = BusinessDays.bandLabels(tops);
+    for (final PredictionIntervals.Read x : reads) {
+      final StringBuilder line = new StringBuilder(String.format(java.util.Locale.ROOT,
+          "  %-24s %3.0f%%", x.model(), 100 * x.level()));
+      final List<PredictionIntervals.Group> groups = new ArrayList<>();
+      groups.add(x.overall());
+      groups.addAll(x.bands());
+      for (int q = 0; q < groups.size(); q++) {
+        final PredictionIntervals.Group g = groups.get(q);
+        final String band = q == 0 ? "all" : labels[q - 1];
+        line.append("  ").append(band).append(g.coverage() == null
+            ? " (n 0)" : String.format(java.util.Locale.ROOT, " %.3f [%.3f, %.3f] w %s x%s "
+                + "mae %.3f (n %d)", g.coverage().value(), g.coverage().low(),
+                g.coverage().high(), infinite(g.medianWidth()), infinite(g.relativeWidth()),
+                g.mae(), g.n()));
+        final Map<String, Object> row = new LinkedHashMap<>();
+        row.put("kind", "prediction_interval");
+        row.put("model", x.model());
+        row.put("level", x.level());
+        row.put("observed_band", band);
+        row.put("n", g.n());
+        if (g.coverage() != null) {
+          row.put("coverage", g.coverage().value());
+          row.put("coverage_ci_projects", List.of(g.coverage().low(), g.coverage().high()));
+          row.put("median_width_business_days", g.medianWidth());
+          row.put("width_over_global", g.relativeWidth());
+          row.put("mae_business_days", g.mae());
+        }
+        rows.add(row);
+      }
+      System.out.println(line);
+    }
+  }
+
+  /** A width or a ratio as printed: {@code ∞} when infinite. */
+  private static String infinite(final double v) {
+    return Double.isInfinite(v) ? "∞" : String.format(java.util.Locale.ROOT, "%.2f", v);
   }
 
   /** Each ordering comparison: the two differences, each with its interval. */

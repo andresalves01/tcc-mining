@@ -579,13 +579,13 @@ class SimilarityScoringTest {
 
   @Test
   @DisplayName("every model is read by its error, Spearman and pairwise ordering, and by band "
-      + "of the true business days: 1, 2-3, 4-10, 11+")
+      + "of the true business days, cut at the quartiles of the fitting rows (ticket 24)")
   void readings() {
     final SimilarityScoring.Report r =
         SimilarityScoring.run(corpus(), choices(0.2), forests(), RESERVED);
     assertEquals(MODELS, r.models().stream().map(SimilarityScoring.Scored::name).toList());
     for (final SimilarityScoring.Scored m : r.models()) {
-      assertEquals(List.of("1", "2-3", "4-10", "11+"),
+      assertEquals(List.of(BusinessDays.bandLabels(r.bandTops())),
           m.bands().stream().map(b -> b.label()).toList());
       assertEquals(60, m.bands().stream().mapToInt(b -> b.n()).sum());
     }
@@ -1070,5 +1070,107 @@ class SimilarityScoringTest {
     innerBits(r.complementary()).forEach((k, v) -> all.add(k + " " + v));
     assertEquals(INNER_AT_TICKET_22, all.size() + " " + Integer.toHexString(all.hashCode()));
     assertEquals(6 * 20, r.complementary().fitRows());
+  }
+
+  @Test
+  @DisplayName("the error bands are cut at the quartiles of the observed business days of the cut "
+      + "fitting rows, in each scope; changing every validation or outer test label moves them "
+      + "not (ticket 24)")
+  void bandsAtTheFittingQuartiles() {
+    final List<RowCache.Entry> inner = withTail(training());
+    final SimilarityScoring.Readings r =
+        SimilarityScoring.readings(inner, choices(0.2), forests(), 1.5, INNER, 1, 1);
+    final double fence = r.main().fences().fence();
+    final double[] cut = side(inner, true, "TRAIN").stream().mapToDouble(IssueUnit::duration)
+        .filter(d -> d <= fence).toArray();
+    for (final SimilarityScoring.Report reading : List.of(r.main(), r.complementary())) {
+      assertEquals(java.util.Arrays.toString(TailCut.quartiles(cut)),
+          java.util.Arrays.toString(reading.bandTops()));
+      for (final SimilarityScoring.Scored m : reading.models()) {
+        assertEquals(List.of(BusinessDays.bandLabels(reading.bandTops())),
+            m.bands().stream().map(b -> b.label()).toList(), m.name());
+        assertEquals(reading.scoredRows(), m.bands().stream().mapToInt(b -> b.n()).sum());
+      }
+    }
+    final SimilarityScoring.Readings changed = SimilarityScoring.readings(longer(inner,
+        e -> "TEST".equals(e.inner(Population.IN_PROGRESS))), choices(0.2), forests(), 1.5,
+        INNER, 1, 1);
+    assertEquals(java.util.Arrays.toString(r.main().bandTops()),
+        java.util.Arrays.toString(changed.complementary().bandTops()));
+
+    final List<RowCache.Entry> outer = withTail(corpus());
+    final SimilarityScoring.Readings o =
+        SimilarityScoring.readings(outer, choices(0.2), forests(), 1.5, RESERVED, 1, 1);
+    final double outerFence = o.main().fences().fence();
+    assertEquals(java.util.Arrays.toString(TailCut.quartiles(side(outer, false, "").stream()
+        .mapToDouble(IssueUnit::duration).filter(d -> d <= outerFence).toArray())),
+        java.util.Arrays.toString(o.main().bandTops()));
+    final SimilarityScoring.Readings moved = SimilarityScoring.readings(longer(outer,
+        e -> "TEST".equals(e.outer(Population.IN_PROGRESS))), choices(0.2), forests(), 1.5,
+        RESERVED, 1, 1);
+    assertEquals(java.util.Arrays.toString(o.main().bandTops()),
+        java.util.Arrays.toString(moved.complementary().bandTops()));
+  }
+
+  @Test
+  @DisplayName("the outer test's calibration is the inner report's usual-flow reading, bit for "
+      + "bit, with no comparison drawn; changing every outer test label moves none of it "
+      + "(ticket 24)")
+  void calibrationIsTheInnerUsualFlow() {
+    final List<RowCache.Entry> entries = withTail(corpus());
+    final SimilarityScoring.Report c =
+        SimilarityScoring.calibration(entries, choices(0.2), forests(), 1.5);
+    final SimilarityScoring.Readings inner = SimilarityScoring.readings(entries, choices(0.2),
+        forests(), 1.5, INNER, 1, 1);
+    assertEquals(INNER, c.scope());
+    assertEquals(TailCut.Reading.USUAL_FLOW, c.reading());
+    assertEquals(inner.main().scoredUnits(), c.scoredUnits());
+    assertEquals(concat(concat(LINEAR, List.of(NINTH)),
+        concat(FORESTS, List.of(SimilarityScoring.forest(NINTH)))),
+        c.models().stream().map(SimilarityScoring.Scored::name).toList());
+    for (final SimilarityScoring.Scored m : c.models()) {
+      assertEquals(java.util.Arrays.toString(model(inner.main(), m.name()).predicted()),
+          java.util.Arrays.toString(m.predicted()), m.name());
+    }
+    assertTrue(c.comparisons().isEmpty() && c.orderings().isEmpty()
+        && c.withCommits().isEmpty() && c.withoutCommits().isEmpty());
+    final SimilarityScoring.Report moved = SimilarityScoring.calibration(longer(entries,
+        e -> "TEST".equals(e.outer(Population.IN_PROGRESS))), choices(0.2), forests(), 1.5);
+    assertEquals(java.util.Arrays.toString(c.observed()),
+        java.util.Arrays.toString(moved.observed()));
+    for (final SimilarityScoring.Scored m : c.models()) {
+      assertEquals(java.util.Arrays.toString(m.predicted()),
+          java.util.Arrays.toString(model(moved, m.name()).predicted()), m.name());
+    }
+  }
+
+  @Test
+  @DisplayName("the outer test's prediction intervals, end to end on the synthetic corpus: the "
+      + "inner calibration applied to the outer models, every model of both readings read, the "
+      + "global median's widths finite (ticket 24; code only, the seal holds)")
+  void outerIntervalsEndToEnd() {
+    final List<RowCache.Entry> entries = withTail(corpus());
+    final SimilarityScoring.Readings outer =
+        SimilarityScoring.readings(entries, choices(0.2), forests(), 1.5, RESERVED, 1, 1);
+    final Map<String, PredictionIntervals.Calibration> calibrated =
+        PredictionIntervals.calibrated(PredictionIntervals.Sample.of(
+            SimilarityScoring.calibration(entries, choices(0.2), forests(), 1.5)));
+    // the constant global median gets a finite factor at every level, inner
+    for (final double factor : calibrated.get(SimilarityScoring.GLOBAL).factors()) {
+      assertTrue(Double.isFinite(factor), Double.toString(factor));
+    }
+    final List<PredictionIntervals.Read> reads = PredictionIntervals.outer(calibrated,
+        PredictionIntervals.Sample.of(outer.main()),
+        PredictionIntervals.Sample.of(outer.complementary()), 1);
+    assertEquals(2 * MODELS.size() * PredictionIntervals.LEVELS.size(), reads.size());
+    for (final PredictionIntervals.Read r : reads) {
+      final int n = r.reading() == TailCut.Reading.USUAL_FLOW ? outer.main().scoredRows()
+          : outer.complementary().scoredRows();
+      assertEquals(n, r.overall().n(), r.model());
+      if (r.model().equals(SimilarityScoring.GLOBAL)) {
+        assertTrue(Double.isFinite(r.overall().medianWidth()), r.toString());
+        assertEquals(1, r.overall().relativeWidth(), 1e-12);
+      }
+    }
   }
 }

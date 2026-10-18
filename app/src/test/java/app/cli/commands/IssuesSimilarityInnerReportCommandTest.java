@@ -289,6 +289,101 @@ class IssuesSimilarityInnerReportCommandTest {
         .anyMatch(l -> l.startsWith("all\town_retrospective_before_pressure_forest\t")));
     assertTrue(Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.IMPORTANCE))
         .stream().anyMatch(l -> l.startsWith("own_retrospective_before_pressure_forest\t")));
+
+    // ticket 24: the bands at the fitting quartiles, the intervals per reading, model and level,
+    // overall and per error band, one factor each; the calibration for later use per model and
+    // level
+    assertTrue(report.stream().anyMatch(l -> l.startsWith("- error bands: bands of the observed "
+        + "business days at the quartiles")), report.toString());
+    assertTrue(report.stream().anyMatch(l -> l.startsWith("- prediction intervals: split-conformal")
+        && l.contains("ceil((n + 1) L)")), report.toString());
+    assertTrue(report.stream().anyMatch(l -> l.startsWith("- each model's prediction span")
+        && l.contains("own_retrospective_before_pressure_forest ")), report.toString());
+    assertEquals(2, report.stream().filter(l -> l.startsWith("### Prediction intervals")).count());
+    final List<String> intervals =
+        Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.INTERVALS));
+    assertEquals(1 + 2 * 21 * 2 * 5, intervals.size());
+    assertTrue(intervals.stream().anyMatch(l -> l.startsWith("usual_flow\tglobal_median\t0.8\t"
+        + "all\t")));
+    // the bands are the error bands, labels and all; one factor for every band of a model and level
+    final List<String> bandLabels = bands.stream()
+        .filter(l -> l.startsWith("usual_flow\tglobal_median\t")).map(l -> l.split("\t")[2])
+        .toList();
+    assertEquals(4, bandLabels.size());
+    final List<String[]> forest95 = intervals.stream()
+        .filter(l -> l.startsWith("all\town_with_similarity_forest\t0.95\t"))
+        .map(l -> l.split("\t", -1)).toList();
+    assertEquals("all", forest95.get(0)[3]);
+    assertEquals(bandLabels, forest95.subList(1, 5).stream().map(f -> f[3]).toList());
+    assertEquals(1, forest95.stream().map(f -> f[7]).distinct().count());
+    assertEquals(Integer.parseInt(forest95.get(0)[8]), forest95.subList(1, 5).stream()
+        .mapToInt(f -> Integer.parseInt(f[8])).sum());
+    assertEquals(1 + 21 * 2,
+        Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.CALIBRATION)).size());
+    // the check reads half B of the validation, a part of it, whole projects
+    final int checkedUsual = Integer.parseInt(intervals.stream()
+        .filter(l -> l.startsWith("usual_flow\tglobal_median\t0.8\tall\t")).findFirst()
+        .orElseThrow().split("\t", -1)[8]);
+    assertTrue(0 < checkedUsual && 2 * checkedUsual <= chosen.validationRows(),
+        checkedUsual + " of " + chosen.validationRows());
+    // nothing of the outer test reaches any file: not one of its issues' keys, bare, anywhere
+    final List<java.util.regex.Pattern> outerTest = entries(false).stream()
+        .filter(e -> "TEST".equals(e.outer(Population.IN_PROGRESS)))
+        .map(e -> java.util.regex.Pattern.compile(
+            "(?<![\\w-])" + java.util.regex.Pattern.quote(e.unit().key()) + "(?!\\w)"))
+        .toList();
+    assertEquals(4 * 8, outerTest.size());
+    // the same search finds an inner validation issue's key where it is written
+    final String validationKey = entries(false).stream()
+        .filter(e -> "TEST".equals(e.inner(Population.IN_PROGRESS))).findFirst().orElseThrow()
+        .unit().key();
+    assertTrue(java.util.regex.Pattern.compile("(?<![\\w-])"
+        + java.util.regex.Pattern.quote(validationKey) + "(?!\\w)").matcher(String.join("\n",
+        predictions)).find(), validationKey);
+    try (var files = Files.list(reports)) {
+      for (final Path file : files.toList()) {
+        final String text = Files.readString(file);
+        assertTrue(outerTest.stream().noneMatch(p -> p.matcher(text).find()), file.toString());
+      }
+    }
+  }
+
+  /**
+   * The inner report's files of {@link #entries} as the code wrote them, by SHA-256, but the
+   * report itself, which names the temporary paths, and the bands, which ticket 24 moved onto the
+   * quartiles of the fitting rows. Captured from fe685d2 (main after ticket 23).
+   */
+  private static final Map<String, String> AT_TICKET_23 = Map.of(
+      IssuesSimilarityInnerReportCommand.PREDICTIONS,
+      "5852d491842887224726449c31d0e612fe9cef0d911fb3e7bec4b156cb965db2",
+      IssuesSimilarityInnerReportCommand.MODELS,
+      "f45c935dbcbca0c02347663d557ea9152c50f69113ba99cfc464a170b23c51db",
+      IssuesSimilarityInnerReportCommand.COMPARISONS,
+      "779a7f21386d05017465b7d47dad5206508e713d3280a5c325b26f7e3dcaacb4",
+      IssuesSimilarityInnerReportCommand.ORDERING,
+      "109f70aca17b858822ff4ce903f1c7ffd501f996d398e6a6de35e767fe18b00b",
+      IssuesSimilarityInnerReportCommand.DIAGNOSTICS,
+      "7dee5aeb8257047e4849f5863854f8a8113452e5bfa0c379edb89d2a1858f868",
+      IssuesSimilarityInnerReportCommand.IMPORTANCE,
+      "7c994d93fd7961c9ae489eab0a66be94154ad5d6f46a6d31da793500a9ea4ee4");
+
+  @Test
+  @DisplayName("every file of the report but the report itself and the bands is, bit for bit, "
+      + "what it was at ticket 23")
+  void filesAsAtTicket23() throws IOException, CommandFailedException {
+    final Path matrix = dir.resolve("matrix.tsv");
+    final Path elasticNet = dir.resolve("elastic-net.tsv");
+    write(matrix, elasticNet);
+    final Path reports = dir.resolve("out");
+    set(matrix, elasticNet, reports);
+
+    command().run(context());
+
+    final Map<String, String> now = new HashMap<>();
+    for (final String file : AT_TICKET_23.keySet()) {
+      now.put(file, IssuesReservedCommand.sha256(reports.resolve(file)));
+    }
+    assertEquals(AT_TICKET_23, now);
   }
 
   @Test

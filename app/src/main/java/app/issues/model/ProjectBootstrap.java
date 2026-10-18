@@ -62,6 +62,13 @@ public final class ProjectBootstrap {
     }
   }
 
+  /**
+   * A mean over the rows -- of 0 and 1, a share, as a prediction interval's coverage (ticket 24)
+   * -- with its 95% interval from the same {@link #DRAWS} draws of whole projects (seed {@link
+   * #SEED}), a project drawn twice counted twice ({@link #share}).
+   */
+  public record Share(double value, double low, double high) {}
+
   private ProjectBootstrap() {}
 
   /**
@@ -236,6 +243,30 @@ public final class ProjectBootstrap {
         sample -> gainOf(sample, model, reference, observed));
     Arrays.sort(draws);
     return new Interval(point, draws[(int) (0.025 * DRAWS)], draws[(int) (0.975 * DRAWS) - 1]);
+  }
+
+  /**
+   * The mean of {@code values} with its interval, the draws evaluated on up to {@code threads}
+   * threads, the same bits on any number.
+   *
+   * @param values one per row, same rows as {@code projectOfRow}; at least one
+   */
+  public static Share share(final List<String> projectOfRow, final double[] values,
+      final int threads) {
+    if (values.length != projectOfRow.size() || values.length == 0) {
+      throw new IllegalArgumentException("one value per row, and at least one row");
+    }
+    final ToDoubleFunction<List<Integer>> mean = sample -> {
+      double sum = 0;
+      for (final int i : sample) {
+        sum += values[i];
+      }
+      return sum / sample.size();
+    };
+    final double[] draws = draws(clusters(projectOfRow), values.length, threads, mean);
+    Arrays.sort(draws);
+    return new Share(mean.applyAsDouble(allRows(values.length)), draws[(int) (0.025 * DRAWS)],
+        draws[(int) (0.975 * DRAWS) - 1]);
   }
 
   private static List<Integer> allRows(final int n) {

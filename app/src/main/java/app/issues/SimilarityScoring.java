@@ -57,7 +57,8 @@ import java.util.concurrent.Callable;
  *
  * <p><b>Readings.</b> Per model: the error, Spearman and pairwise ordering ({@link Score}), the
  * error's distribution with the slowest tenth left out ({@link Breakdown#errors}) and the error by
- * band of the true business days, 1, 2-3, 4-10 and 11 or more ({@link BusinessDays#bands}).
+ * band of the true business days, the bands at the quartiles of the observed business days of the
+ * cut fitting rows ({@link BusinessDays#bands}, ticket 24; {@link Report#bandTops}).
  * Paired comparisons, gap in mean absolute error with the interval from resampling whole projects
  * ({@link ProjectBootstrap#compare}), for exactly the pairs of {@link #pairs}. Beside them, a side
  * reading (ticket 15): the pairs of {@link #WITH_COMMITS} again on the scored issues with at least
@@ -199,6 +200,9 @@ public final class SimilarityScoring {
   /**
    * @param reading which scored issues it reads; every figure below is of those
    * @param fences the tail cut the models were fitted under
+   * @param bandTops the limits of the error bands: the first quartile, the median and the third
+   *     quartile of the observed business days of the cut fitting rows ({@link
+   *     BusinessDays#bands}, ticket 24)
    * @param fitRows the fitting rows at or below the cut's fence, every model's and reference's
    * @param innerFitRows the rows the given lambdas were chosen on, those at or below the inner
    *     fitting set's own fence at the same k, which the final lambda scales by in the reserved
@@ -212,8 +216,8 @@ public final class SimilarityScoring {
    * @param orderings the ordering intervals (ticket 16, a declared measure) of {@link
    *     #orderingPairs}
    */
-  public record Report(Scope scope, TailCut.Reading reading, Fences fences, int fitRows,
-      int scoredRows, int innerFitRows,
+  public record Report(Scope scope, TailCut.Reading reading, Fences fences, double[] bandTops,
+      int fitRows, int scoredRows, int innerFitRows,
       List<IssueUnit> scoredUnits, double[] observed, List<Scored> models,
       List<ProjectBootstrap.Gap> comparisons, Set<String> unseenProjects, int unseenRows,
       int withCommitRows, List<ProjectBootstrap.Gap> withCommits, boolean[] implementationCommit,
@@ -249,10 +253,25 @@ public final class SimilarityScoring {
       final Map<String, Forest.Choice> forests, final double k, final Scope scope,
       final int fitThreads, final int drawThreads) {
     return new Readings(
-        score(entries, choices, forests, k, scope, TailCut.Reading.USUAL_FLOW, fitThreads,
+        score(entries, choices, forests, k, scope, TailCut.Reading.USUAL_FLOW, true, fitThreads,
             drawThreads),
-        score(entries, choices, forests, k, scope, TailCut.Reading.ALL, fitThreads,
+        score(entries, choices, forests, k, scope, TailCut.Reading.ALL, true, fitThreads,
             drawThreads));
+  }
+
+  /**
+   * The inner calibration the outer test's prediction intervals read (ticket 24, item 53 viii):
+   * every model refitted as the inner report fits it, on the inner fitting rows at or below the
+   * fence of {@code k}, and its predictions of the usual-flow inner validation issues, the main
+   * reading of the inner report; no comparison is drawn. Of the outer test nothing is read: the
+   * inner scope fits and scores the outer training rows only.
+   */
+  public static Report calibration(final List<RowCache.Entry> entries,
+      final Map<String, ElasticNetSelection.Choice> choices,
+      final Map<String, Forest.Choice> forests, final double k) {
+    return score(entries, choices, forests, k, Scope.INNER, TailCut.Reading.USUAL_FLOW, false,
+        Parallel.threads(Parallel.ELASTIC_NET_THREADS),
+        Parallel.threads(Parallel.BOOTSTRAP_THREADS));
   }
 
   /**
@@ -284,18 +303,22 @@ public final class SimilarityScoring {
       final Map<String, ElasticNetSelection.Choice> choices,
       final Map<String, Forest.Choice> forests, final Scope scope, final int fitThreads,
       final int drawThreads) {
-    return score(entries, choices, forests, TailCut.NO_CUT, scope, TailCut.Reading.ALL,
+    return score(entries, choices, forests, TailCut.NO_CUT, scope, TailCut.Reading.ALL, true,
         fitThreads, drawThreads);
   }
 
   /**
    * Refits on the fitting rows at or below the fence of {@code k}, both fences taken on the
    * scope's fitting side before the cut, and scores the reading's issues.
+   *
+   * @param compared whether the paired comparisons, the ordering intervals and the side reading
+   *     are drawn; without them their lists are empty
    */
   private static Report score(final List<RowCache.Entry> entries,
       final Map<String, ElasticNetSelection.Choice> choices,
       final Map<String, Forest.Choice> forests, final double k, final Scope scope,
-      final TailCut.Reading reading, final int fitThreads, final int drawThreads) {
+      final TailCut.Reading reading, final boolean compared, final int fitThreads,
+      final int drawThreads) {
     if (!new LinkedHashSet<>(ElasticNetSelection.MODELS).equals(choices.keySet())) {
       throw new IllegalArgumentException("the parameters hold alpha and lambda for "
           + choices.keySet() + "; the models are " + ElasticNetSelection.MODELS);
@@ -325,6 +348,9 @@ public final class SimilarityScoring {
     final int fitRows = sides.fitUnits().size();
     final double[] observed = sides.observed();
     final List<String> projects = sides.projects();
+    // the error bands' limits, of the cut fitting rows only (ticket 24)
+    final double[] tops = TailCut.quartiles(
+        sides.fitUnits().stream().mapToDouble(IssueUnit::duration).toArray());
 
     final References refs = References.learnedOn(sides.fitUnits());
     final double[] globalMedian = refs.constant(observed.length);
@@ -333,10 +359,10 @@ public final class SimilarityScoring {
     final double projectMae = Fitting.mae(projectMedian, observed);
 
     final List<Scored> models = new ArrayList<>();
-    models.add(given(GLOBAL, "reference", globalMedian, observed, projectMae, constantMae));
-    models.add(given(PROJECT, "reference", projectMedian, observed, projectMae, constantMae));
-    models.add(given(PAIR, "reference", refs.pairMedian(sides.scoreUnits()), observed, projectMae,
-        constantMae));
+    models.add(given(GLOBAL, globalMedian, observed, projectMae, constantMae, tops));
+    models.add(given(PROJECT, projectMedian, observed, projectMae, constantMae, tops));
+    models.add(given(PAIR, refs.pairMedian(sides.scoreUnits()), observed, projectMae,
+        constantMae, tops));
 
     final List<Callable<Scored>> refits = new ArrayList<>(cells.size());
     for (final Cell cell : cells) {
@@ -350,7 +376,7 @@ public final class SimilarityScoring {
             constantMae);
         return new Scored(cell.label(), "elastic-net", f.predicted(), f.score(),
             Breakdown.errors(f.predicted(), observed),
-            BusinessDays.bands(f.predicted(), observed), f, kept.removed(), null);
+            BusinessDays.bands(f.predicted(), observed, tops), f, kept.removed(), null);
       });
     }
     models.addAll(Parallel.map(fitThreads, refits));
@@ -366,7 +392,7 @@ public final class SimilarityScoring {
             kept.cell().attributes()), sides, c, projectMae, constantMae);
         return new Scored(name, "forest", f.predicted(), f.score(),
             Breakdown.errors(f.predicted(), observed),
-            BusinessDays.bands(f.predicted(), observed), null, kept.removed(), f);
+            BusinessDays.bands(f.predicted(), observed, tops), null, kept.removed(), f);
       });
     }
     models.addAll(Parallel.map(fitThreads, trees));
@@ -377,14 +403,14 @@ public final class SimilarityScoring {
     }
     final List<String> names = models.stream().map(Scored::name).toList();
     final List<ProjectBootstrap.Gap> comparisons = new ArrayList<>();
-    for (final String[] pair : pairs(names)) {
+    for (final String[] pair : compared ? pairs(names) : List.<String[]>of()) {
       comparisons.add(ProjectBootstrap.compare(projects, pair[0], errors.get(pair[0]), pair[1],
           errors.get(pair[1]), drawThreads));
     }
     final Map<String, double[]> predicted = new HashMap<>();
     models.forEach(m -> predicted.put(m.name(), m.predicted()));
     final List<ProjectBootstrap.Ordering> orderings = new ArrayList<>();
-    for (final String[] pair : orderingPairs(names)) {
+    for (final String[] pair : compared ? orderingPairs(names) : List.<String[]>of()) {
       orderings.add(ProjectBootstrap.ordering(projects, pair[0], predicted.get(pair[0]), pair[1],
           predicted.get(pair[1]), observed, drawThreads));
     }
@@ -395,9 +421,10 @@ public final class SimilarityScoring {
       commit[i] = sides.scoreRows().get(i).values().containsKey(Retrospective.LINES);
       (commit[i] ? withCommit : withoutCommit).add(i);
     }
-    final List<ProjectBootstrap.Gap> side = side(withCommit, projects, errors, drawThreads);
-    final List<ProjectBootstrap.Gap> contrast =
-        side(withoutCommit, projects, errors, drawThreads);
+    final List<ProjectBootstrap.Gap> side = compared
+        ? side(withCommit, projects, errors, drawThreads) : List.of();
+    final List<ProjectBootstrap.Gap> contrast = compared
+        ? side(withoutCommit, projects, errors, drawThreads) : List.of();
 
     final Set<String> seen = new HashSet<>();
     sides.fitUnits().forEach(u -> seen.add(u.project()));
@@ -409,7 +436,7 @@ public final class SimilarityScoring {
         unseenRows++;
       }
     }
-    return new Report(scope, reading, fences, fitRows, observed.length, innerFitRows,
+    return new Report(scope, reading, fences, tops, fitRows, observed.length, innerFitRows,
         List.copyOf(sides.scoreUnits()), observed, List.copyOf(models), List.copyOf(comparisons),
         unseen, unseenRows, withCommit.size(), side, commit, contrast, List.copyOf(orderings));
   }
@@ -566,11 +593,12 @@ public final class SimilarityScoring {
     return largest;
   }
 
-  private static Scored given(final String name, final String kind, final double[] predicted,
-      final double[] observed, final double projectMae, final double constantMae) {
-    return new Scored(name, kind, predicted,
+  private static Scored given(final String name, final double[] predicted,
+      final double[] observed, final double projectMae, final double constantMae,
+      final double[] tops) {
+    return new Scored(name, "reference", predicted,
         Score.of(name, predicted, observed, projectMae, constantMae),
-        Breakdown.errors(predicted, observed), BusinessDays.bands(predicted, observed), null,
+        Breakdown.errors(predicted, observed), BusinessDays.bands(predicted, observed, tops), null,
         List.of(), null);
   }
 }

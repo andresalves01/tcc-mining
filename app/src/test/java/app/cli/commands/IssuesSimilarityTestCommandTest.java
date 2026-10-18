@@ -344,6 +344,17 @@ class IssuesSimilarityTestCommandTest {
   }
 
   @Test
+  @DisplayName("the run record states the prediction intervals, the factor's definition and that "
+      + "the outer test applies the inner calibration as an approximation (ticket 24)")
+  void predictionIntervalStatements() {
+    final Map<String, Object> s = IssuesSimilarityTestCommand.statements();
+    assertEquals(app.issues.PredictionIntervals.RULE, s.get("prediction_intervals"));
+    assertTrue(s.get("prediction_interval_factor").toString().contains("ceil((n + 1) L)"));
+    final String outer = s.get("prediction_interval_outer_calibration").toString();
+    assertTrue(outer.contains("approximation") && outer.contains("inner validation"), outer);
+  }
+
+  @Test
   @DisplayName("nothing about the ninth model reaches the run record: not its n and k among the "
       + "candidates, though the parameters file holds them, nor its role in the statements; the "
       + "selection effort counts the five models with the medians the test scores")
