@@ -289,6 +289,42 @@ class IssuesSimilarityInnerReportCommandTest {
         .anyMatch(l -> l.startsWith("all\town_retrospective_before_pressure_forest\t")));
     assertTrue(Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.IMPORTANCE))
         .stream().anyMatch(l -> l.startsWith("own_retrospective_before_pressure_forest\t")));
+
+    // ticket 24: the bands at the fitting quartiles, the intervals per reading, model, level and
+    // prediction quartile, the calibration for later use per model, level and quartile
+    assertTrue(report.stream().anyMatch(l -> l.startsWith("- error bands: bands of the observed "
+        + "business days at the quartiles")), report.toString());
+    assertTrue(report.stream().anyMatch(l -> l.startsWith("- prediction intervals: split-conformal")
+        && l.contains("ceil((n + 1) L)")), report.toString());
+    assertTrue(report.stream().anyMatch(l -> l.startsWith("- each model's prediction span")
+        && l.contains("own_retrospective_before_pressure_forest ")), report.toString());
+    assertEquals(2, report.stream().filter(l -> l.startsWith("### Prediction intervals")).count());
+    final List<String> intervals =
+        Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.INTERVALS));
+    assertEquals(1 + 2 * 21 * 2 * 5, intervals.size());
+    assertTrue(intervals.stream().anyMatch(l -> l.startsWith("usual_flow\tglobal_median\t0.8\t"
+        + "all\t")));
+    assertTrue(intervals.stream().anyMatch(l -> l.startsWith("all\town_with_similarity_forest\t"
+        + "0.95\t4\t")));
+    assertEquals(1 + 21 * 2 * 4,
+        Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.CALIBRATION)).size());
+    // the check reads half B of the validation, a part of it, whole projects
+    final int checkedUsual = Integer.parseInt(intervals.stream()
+        .filter(l -> l.startsWith("usual_flow\tglobal_median\t0.8\tall\t")).findFirst()
+        .orElseThrow().split("\t", -1)[8]);
+    assertTrue(0 < checkedUsual && 2 * checkedUsual <= chosen.validationRows(),
+        checkedUsual + " of " + chosen.validationRows());
+    // nothing of the outer test reaches any file: not one of its issues' keys
+    final List<String> outerTest = entries(false).stream()
+        .filter(e -> "TEST".equals(e.outer(Population.IN_PROGRESS)))
+        .map(e -> "\t" + e.unit().key() + "\t").toList();
+    for (final String file : List.of(IssuesSimilarityInnerReportCommand.REPORT,
+        IssuesSimilarityInnerReportCommand.PREDICTIONS,
+        IssuesSimilarityInnerReportCommand.INTERVALS,
+        IssuesSimilarityInnerReportCommand.CALIBRATION)) {
+      final String text = Files.readString(reports.resolve(file));
+      assertTrue(outerTest.stream().noneMatch(text::contains), file);
+    }
   }
 
   /**

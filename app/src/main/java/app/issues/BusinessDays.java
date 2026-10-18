@@ -191,17 +191,38 @@ public final class BusinessDays {
     return entries;
   }
 
-  /** The upper ends of the bands of true business days the error is reported by, the last open. */
-  private static final double[] BAND_TOPS = {1, 3, 10};
-
-  private static final String[] BAND_LABELS = {"1", "2-3", "4-10", "11+"};
+  /** How the error bands are cut (ticket 24, item 53 vii), for the report and the run record. */
+  public static final String BANDS = "bands of the observed business days at the quartiles of "
+      + "the observed business days of the cut fitting rows (the fitting side, never validation "
+      + "or test labels): up to Q1, above Q1 up to the median, above the median up to Q3, above Q3";
 
   /**
-   * The predictions' error by band of the true business days: 1, 2-3, 4-10 and 11 or more ({@link
-   * Breakdown#byEdges}). The bands only group the rows; every error is the whole, unclipped one.
+   * The predictions' error by band of the true business days ({@link Breakdown#byEdges}), the
+   * bands cut at {@code tops}, the quartiles of the observed business days of the cut fitting rows
+   * ({@link TailCut#quartiles}): up to Q1, above it up to the median, above that up to Q3, above
+   * Q3. Equal quartiles leave a band empty. The bands only group the rows; every error is the
+   * whole, unclipped one. They replace the fixed bands 1, 2-3, 4-10 and 11 or more (ticket 24).
    */
-  public static List<Breakdown.Band> bands(final double[] predicted, final double[] observed) {
-    return Breakdown.byEdges(predicted, observed, BAND_TOPS, BAND_LABELS);
+  public static List<Breakdown.Band> bands(final double[] predicted, final double[] observed,
+      final double[] tops) {
+    return Breakdown.byEdges(predicted, observed, tops, bandLabels(tops));
+  }
+
+  /**
+   * The bands' labels at {@code tops}, a half-open range each: {@code <=a}, {@code (a, b]},
+   * {@code (b, c]}, {@code >c}.
+   */
+  static String[] bandLabels(final double[] tops) {
+    if (tops.length != 3) {
+      throw new IllegalArgumentException("three quartiles, not " + tops.length);
+    }
+    return new String[] {"<=" + days(tops[0]), "(" + days(tops[0]) + ", " + days(tops[1]) + "]",
+        "(" + days(tops[1]) + ", " + days(tops[2]) + "]", ">" + days(tops[2])};
+  }
+
+  /** Business days as the labels write them: a whole number without its decimal point. */
+  private static String days(final double v) {
+    return v == Math.rint(v) ? Long.toString((long) v) : Double.toString(v);
   }
 
   /**

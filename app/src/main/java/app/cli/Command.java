@@ -377,8 +377,13 @@ public enum Command {
       with the chosen count of columns per split and leaf; and with the
       global, project and executor-project medians scores the outer test:
       error in business days, with the slowest 10% left out too, Spearman,
-      pairwise ordering, error by band of the true business days (1, 2-3,
-      4-10, 11+; nothing clipped), and the agreed paired comparisons with
+      pairwise ordering, error by band of the true business days (at the
+      quartiles of the outer training rows fitted; nothing clipped),
+      prediction intervals at 80% and 95% (split conformal on the log1p
+      scale, one factor per quartile of the model's own predictions, the
+      factors and limits the inner models calibrated on the usual-flow
+      inner validation applied to the outer models, an approximation),
+      and the agreed paired comparisons with
       intervals resampling whole projects: the own specification with
       similarity against the same without, every model against the global
       median and every model but the global median against the project
@@ -428,10 +433,19 @@ public enum Command {
       implementation commit; per reading and model the
       error, the gains over the global and the project median, Spearman,
       pairwise ordering and the error's quantiles; the error by band of the
-      true business days (1, 2-3, 4-10, 11+); the paired comparisons of the
-      test, every model against the global and the project median among
-      them, and the retrospective model against the one before ticket 19,
-      Elastic Net and forest, with intervals resampling whole projects; the
+      true business days, at the quartiles of the cut fitting rows; the
+      prediction intervals at 80% and 95% (split conformal on the log1p
+      scale, symmetric, the lower end at least 1 business day, one factor
+      per quartile of the model's own predictions), calibrated on half A
+      of the usual-flow validation issues, split by whole projects, and
+      checked on half B: per reading, model, level and prediction quartile,
+      the coverage with its interval resampling whole projects, the median
+      width, the width over the global median's and the MAE; the factors
+      and limits recomputed on both halves for later use; the paired
+      comparisons of the test, every model against the global and the
+      project median among them, and the retrospective model against the
+      one before ticket 19, Elastic Net and forest, with intervals
+      resampling whole projects; the
       retrospective pairs on the issues with and without an implementation
       commit; the ordering intervals; the Elastic Nets' coefficients and the
       forests' permutation importance. Refuses unless the parameters file is
