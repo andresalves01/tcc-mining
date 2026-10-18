@@ -302,7 +302,7 @@ public enum Command {
       boundary, holidays ignored, the time back in Open or Reopened left
       out), on the issues of at least one business day: chooses alpha and
       lambda on the inner validation, by the registered grid's sweep, for
-      nine Elastic Net models: the own specification without similarity
+      ten Elastic Net models: the own specification without similarity
       (description length, team size, the team's median and spread of lines
       of code and complexity, the corrected reporter median, the executor's
       lines of code, complexity and open workload, the fix version set
@@ -319,7 +319,11 @@ public enum Command {
       retrospective scenario as before ticket 19, without its five
       attributes (the three start ones, the blocking-link wait and urgency),
       which adds nothing and only measures what ticket 19 did to the
-      retrospective model. The six models with the similarity medians are
+      retrospective model, and Kikas's retrospective scenario, the registered
+      Kikas cell of it (Kikas at the start and the twelve counts observed up
+      to the resolution, with their missing indicator), the literature
+      counterpart of the retrospective model. The six models with the
+      similarity medians are
       swept once for each of the 27 combinations of Jaccard n (5, 10, 20),
       embedding n (5, 10, 20) and cluster k (8, 16, 32), and keep the
       combination whose sweep errs least; exact ties go to the smaller
@@ -369,7 +373,8 @@ public enum Command {
       the outer training set, the main reading, and on all issues, the
       complementary one. Reads MATRIX and ELASTIC_NET_PARAMETERS and chooses
       nothing: refits every Elastic Net model but the retrospective one as
-      before ticket 19, which only the inner report scores, on the outer
+      before ticket 19 and Kikas's retrospective one, which only the inner
+      report scores, on the outer
       training set with its chosen alpha and the chosen lambda times the
       ratio of rows, as the registered reserved run does, the similarity
       medians at the Jaccard n, embedding n and cluster k chosen for each
@@ -415,12 +420,13 @@ public enum Command {
       only the outer training rows, the others left behind on their split
       field, never parsed beyond it; drops the issues of 0 business days
       (the time back in Open or Reopened left out, as the similarity stage
-      wrote them); refits the twenty-one models (the nineteen of the test:
+      wrote them); refits the twenty-three models (the nineteen of the test:
       the global, project and executor-project medians, eight Elastic Nets
       at their chosen alpha and lambda, unscaled, and n and k, and their
-      eight forests at their chosen column share and leaf; and the ninth
-      Elastic Net, the retrospective scenario as before ticket 19, with its
-      forest, which the test does not score) on the inner fitting rows and
+      eight forests at their chosen column share and leaf; the ninth
+      Elastic Net, the retrospective scenario as before ticket 19, and the
+      tenth, Kikas's retrospective scenario, with their forests, which the
+      test does not score) on the inner fitting rows and
       scores the inner validation, in whole business days, by the test's own
       scoring, fitted on the inner fitting rows at or below the fence of the
       chosen k. Every table, models, bands, paired comparisons and ordering
@@ -445,7 +451,8 @@ public enum Command {
       halves for later use; the paired
       comparisons of the test, every model against the global and the
       project median among them, and the retrospective model against the
-      one before ticket 19, Elastic Net and forest, with intervals
+      one before ticket 19 and against Kikas's, Elastic Net and forest, with
+      intervals
       resampling whole projects; the
       retrospective pairs on the issues with and without an implementation
       commit; the ordering intervals; the Elastic Nets' coefficients and the

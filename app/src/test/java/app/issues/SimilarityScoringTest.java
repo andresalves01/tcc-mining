@@ -45,6 +45,9 @@ class SimilarityScoringTest {
   /** The ninth Elastic Net model, the retrospective one before ticket 19 (ticket 20). */
   private static final String NINTH = "own_retrospective_before_pressure";
 
+  /** The tenth Elastic Net model, Kikas's retrospective one (ticket 26). */
+  private static final String TENTH = "kikas_retrospective";
+
   private static final List<String> ELASTIC_NET = List.of("own_without_similarity",
       "similarity_alone", "own_with_similarity", "alzubaidi_start", "kikas_start", "union_own",
       "own_retrospective", "own_with_similarity_before_pressure");
@@ -60,10 +63,10 @@ class SimilarityScoringTest {
       "own_with_similarity_before_pressure_forest");
 
   /**
-   * The nine Elastic Net models the parameters hold: the eight the outer test scores, then the
-   * ninth, which only the inner report scores.
+   * The ten Elastic Net models the parameters hold: the eight the outer test scores, then the
+   * ninth and the tenth, which only the inner report scores.
    */
-  private static final List<String> CHOSEN = concat(ELASTIC_NET, List.of(NINTH));
+  private static final List<String> CHOSEN = concat(ELASTIC_NET, List.of(NINTH, TENTH));
 
   /** The references and Elastic Nets before the retrospective model (ticket 15). */
   private static final List<String> LINEAR_BEFORE = LINEAR.subList(0, 9);
@@ -749,7 +752,8 @@ class SimilarityScoringTest {
     assertEquals(INNER_BEFORE_NINTH, models);
     final List<String> pairs = new ArrayList<>();
     now.forEach((k, v) -> {
-      if (k.contains(" | ") && !k.contains("own_retrospective_before_pressure")) {
+      if (k.contains(" | ") && !k.contains("own_retrospective_before_pressure")
+          && !k.contains(TENTH)) {
         pairs.add(k + " " + v);
       }
     });
@@ -818,23 +822,26 @@ class SimilarityScoringTest {
   }
 
   @Test
-  @DisplayName("the inner report scores the ninth Elastic Net and its forest beside the others, "
-      + "each compared with the retrospective model's, and against the global and the project "
-      + "median, in the error comparisons and the ordering intervals")
-  void ninthInTheInnerScope() {
+  @DisplayName("the inner report scores the ninth and the tenth Elastic Net and their forests "
+      + "beside the others, each compared with the retrospective model's, and against the global "
+      + "and the project median, in the error comparisons and the ordering intervals")
+  void ninthAndTenthInTheInnerScope() {
     final SimilarityScoring.Report r =
         SimilarityScoring.run(training(), choices(0.2), forests(), INNER, 1, 1);
     final List<String> linear = new ArrayList<>(LINEAR);
     linear.add(NINTH);
+    linear.add(TENTH);
     final List<String> trees = new ArrayList<>(FORESTS);
     trees.add(NINTH + "_forest");
+    trees.add(TENTH + "_forest");
     assertEquals(concat(linear, trees),
         r.models().stream().map(SimilarityScoring.Scored::name).toList());
     final List<String> expected = new ArrayList<>(List.of(
         "own_with_similarity | own_without_similarity",
         "own_retrospective | own_with_similarity",
         "own_with_similarity | own_with_similarity_before_pressure",
-        "own_retrospective | own_retrospective_before_pressure"));
+        "own_retrospective | own_retrospective_before_pressure",
+        "own_retrospective | kikas_retrospective"));
     for (final String m : linear) {
       if (!m.equals("global_median")) {
         expected.add(m + " | global_median");
@@ -852,6 +859,7 @@ class SimilarityScoringTest {
     expected.add("own_retrospective_forest | own_with_similarity_forest");
     expected.add("own_with_similarity_forest | own_with_similarity_before_pressure_forest");
     expected.add("own_retrospective_forest | own_retrospective_before_pressure_forest");
+    expected.add("own_retrospective_forest | kikas_retrospective_forest");
     for (final String f : trees) {
       expected.add(f + " | global_median");
     }
@@ -863,6 +871,16 @@ class SimilarityScoringTest {
         r.orderings().stream().map(o -> o.a() + " | " + o.b()).toList());
     assertTrue(r.orderings().stream().anyMatch(o -> o.a().equals("own_retrospective_forest")
         && o.b().equals(NINTH + "_forest")));
+    assertTrue(r.orderings().stream().anyMatch(o -> o.a().equals("own_retrospective")
+        && o.b().equals(TENTH)));
+    // the tenth reads Kikas's columns only: no similarity median, no own column
+    assertTrue(model(r, TENTH).fitted().columns().stream().allMatch(c -> c.startsWith("K")
+        || c.startsWith("LBL_")), model(r, TENTH).fitted().columns().toString());
+    assertTrue(model(r, TENTH).fitted().columns().containsAll(List.of("K03_comments",
+        "K10_mean_comment_words", "K21_participant_committers")),
+        model(r, TENTH).fitted().columns().toString());
+    assertEquals(model(r, TENTH).fitted().columns(), model(r, TENTH + "_forest").forest()
+        .columns());
     // the ninth reads none of ticket 19's five columns, of either variant, nor their indicators;
     // the retrospective model all of them, the Blocker pace in the inner variant
     final List<String> five = List.of("START_fix_version", "START_release_cycle_days",
@@ -874,7 +892,7 @@ class SimilarityScoringTest {
         "RETRO_blocker_wait", "RETRO_urgency_days")));
     assertEquals(model(r, NINTH).fitted().columns(), model(r, NINTH + "_forest").forest()
         .columns());
-    // the test scores every model but the ninth, the inner report every one
+    // the test scores every model but the ninth and the tenth, the inner report every one
     assertEquals(ELASTIC_NET,
         CHOSEN.stream().filter(SimilarityScoring.Scope.RESERVED::scores).toList());
     assertEquals(CHOSEN, CHOSEN.stream().filter(INNER::scores).toList());
@@ -1076,7 +1094,11 @@ class SimilarityScoringTest {
     final SimilarityScoring.Readings r = SimilarityScoring.readings(training(), choices(0.2),
         forests(), TailCut.NO_CUT, INNER, 1, 1);
     final List<String> all = new ArrayList<>();
-    innerBits(r.complementary()).forEach((k, v) -> all.add(k + " " + v));
+    innerBits(r.complementary()).forEach((k, v) -> {
+      if (!k.contains(TENTH)) {
+        all.add(k + " " + v);
+      }
+    });
     assertEquals(INNER_AT_TICKET_22, all.size() + " " + Integer.toHexString(all.hashCode()));
     assertEquals(6 * 20, r.complementary().fitRows());
   }
@@ -1154,8 +1176,8 @@ class SimilarityScoringTest {
     assertEquals(INNER, c.scope());
     assertEquals(TailCut.Reading.USUAL_FLOW, c.reading());
     assertEquals(inner.main().scoredUnits(), c.scoredUnits());
-    assertEquals(concat(concat(LINEAR, List.of(NINTH)),
-        concat(FORESTS, List.of(SimilarityScoring.forest(NINTH)))),
+    assertEquals(concat(concat(LINEAR, List.of(NINTH, TENTH)), concat(FORESTS,
+        List.of(SimilarityScoring.forest(NINTH), SimilarityScoring.forest(TENTH)))),
         c.models().stream().map(SimilarityScoring.Scored::name).toList());
     for (final SimilarityScoring.Scored m : c.models()) {
       assertEquals(java.util.Arrays.toString(model(inner.main(), m.name()).predicted()),

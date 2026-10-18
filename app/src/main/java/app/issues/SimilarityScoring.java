@@ -29,16 +29,18 @@ import java.util.concurrent.Callable;
  * outer training and the outer test are the inner fitting and the inner validation in the inner
  * scope.
  *
- * <p><b>Models</b>, twenty-one in the inner report, in this order: the three references learned on
- * the outer training set -- the global median, the project median and the executor-project
- * median, as the registered chain learns them; the nine Elastic Net models of {@link
+ * <p><b>Models</b>, twenty-three in the inner report, in this order: the three references learned
+ * on the outer training set -- the global median, the project median and the executor-project
+ * median, as the registered chain learns them; the ten Elastic Net models of {@link
  * ElasticNetSelection#cells(Map, Augmentation.Variant)}, in the outer variant, each model with the
  * similarity medians reading them at the Jaccard n, embedding n and cluster k chosen for it, the
  * retrospective one seventh (ticket 15), the own specification with similarity before ticket 19
- * eighth (item 36) and the retrospective one before ticket 19 last (item 43); and the nine random
- * forests beside them ({@link #forest(String)}), a robustness check (ticket 13). The test scores
- * nineteen, all but the ninth Elastic Net and its forest ({@link Scope#scores}): ticket 20 added
- * them to the inner report only, and which models the outer test reads is not decided (item 39).
+ * eighth (item 36), the retrospective one before ticket 19 ninth (item 43) and Kikas's
+ * retrospective one last (item 59); and the ten random forests beside them ({@link
+ * #forest(String)}), a robustness check (ticket 13). The test scores nineteen, all but the ninth
+ * and the tenth Elastic Net and their forests ({@link Scope#scores}): ticket 20 added the ninth
+ * to the inner report only, and which models the outer test reads is not decided (item 39);
+ * ticket 26 the tenth, which ticket 25 adds to the outer test.
  * A similarity median is an attribute of the models that read it and is never
  * scored alone (ticket 11).
  *
@@ -105,6 +107,8 @@ public final class SimilarityScoring {
   private static final String RETROSPECTIVE_BEFORE_PRESSURE =
       ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE;
 
+  private static final String KIKAS_RETROSPECTIVE = ElasticNetSelection.KIKAS_RETROSPECTIVE;
+
   /**
    * The comparisons of the side reading on the scored issues with an implementation commit: the
    * retrospective model against the own specification with similarity, Elastic Net and forest.
@@ -160,10 +164,13 @@ public final class SimilarityScoring {
      * Whether this scope refits and scores the given Elastic Net model and its forest: the inner
      * report every one; the test all but {@link
      * ElasticNetSelection#RETROSPECTIVE_BEFORE_PRESSURE}, which ticket 20 added to the inner
-     * report only, so the test scores what it scored before (item 39 decides what it reads).
+     * report only, so the test scores what it scored before (item 39 decides what it reads), and
+     * {@link ElasticNetSelection#KIKAS_RETROSPECTIVE}, which ticket 26 added to the inner report
+     * and ticket 25 adds to the test.
      */
     public boolean scores(final String model) {
-      return this == INNER || !model.equals(RETROSPECTIVE_BEFORE_PRESSURE);
+      return this == INNER
+          || !model.equals(RETROSPECTIVE_BEFORE_PRESSURE) && !model.equals(KIKAS_RETROSPECTIVE);
     }
   }
 
@@ -478,13 +485,16 @@ public final class SimilarityScoring {
    * against the own specification with similarity, what the ten attributes observed up to the
    * resolution add (ticket 15); the own specification with similarity against the same before
    * ticket 19, what the three start columns add (items 29 i and 36); the retrospective model
-   * against the same before ticket 19, what ticket 19's five columns add to it (item 43); then
+   * against the same before ticket 19, what ticket 19's five columns add to it (item 43); the
+ * retrospective model against Kikas's, the own against the literature's retrospective set (item
+ * 59); then
    * each of them against the global median, and each but the global median against the project
    * median, so the two references are compared once. Then, of the forests (ticket 13), in the
    * order of {@code models}: each forest against its Elastic Net; the forest of the own
    * specification with similarity against the forest without; the retrospective forest against
    * the forest with similarity; the forest with similarity against the one before ticket 19; the
-   * retrospective forest against the one before ticket 19; each forest against the global median;
+   * retrospective forest against the one before ticket 19; the retrospective forest against
+   * Kikas's; each forest against the global median;
    * each forest against the project median.
    */
   public static List<String[]> pairs(final List<String> models) {
@@ -504,6 +514,9 @@ public final class SimilarityScoring {
     }
     if (linear.containsAll(List.of(RETROSPECTIVE, RETROSPECTIVE_BEFORE_PRESSURE))) {
       out.add(new String[] {RETROSPECTIVE, RETROSPECTIVE_BEFORE_PRESSURE});
+    }
+    if (linear.containsAll(List.of(RETROSPECTIVE, KIKAS_RETROSPECTIVE))) {
+      out.add(new String[] {RETROSPECTIVE, KIKAS_RETROSPECTIVE});
     }
     for (final String m : linear) {
       if (!m.equals(GLOBAL)) {
@@ -534,6 +547,9 @@ public final class SimilarityScoring {
     if (trees.containsAll(List.of(forest(RETROSPECTIVE),
         forest(RETROSPECTIVE_BEFORE_PRESSURE)))) {
       out.add(new String[] {forest(RETROSPECTIVE), forest(RETROSPECTIVE_BEFORE_PRESSURE)});
+    }
+    if (trees.containsAll(List.of(forest(RETROSPECTIVE), forest(KIKAS_RETROSPECTIVE)))) {
+      out.add(new String[] {forest(RETROSPECTIVE), forest(KIKAS_RETROSPECTIVE)});
     }
     for (final String f : trees) {
       out.add(new String[] {f, GLOBAL});

@@ -65,8 +65,9 @@ import java.util.function.Function;
  * <p>Reads MATRIX and ELASTIC_NET_PARAMETERS, which gives per model its alpha and lambda, for
  * the six with the similarity medians the Jaccard n, embedding n and cluster k they read, and
  * its forest's column share and leaf; it chooses nothing. The ninth model, the retrospective one
- * before ticket 19, is in the parameters file but not scored here, nor named in the run record:
- * only the inner report scores it ({@link SimilarityScoring.Scope#scores}). A parameters file
+ * before ticket 19, and the tenth, Kikas's retrospective one (ticket 26), are in the parameters
+ * file but not scored here, nor named in the run record: only the inner report scores them
+ * ({@link SimilarityScoring.Scope#scores}). A parameters file
  * without a forest for
  * every model is refused. Refuses, scoring, writing and recording nothing, unless the parameters file
  * exists and is the step's own, its choices were made on this very matrix (by SHA-256), every

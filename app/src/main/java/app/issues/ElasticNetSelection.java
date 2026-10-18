@@ -23,7 +23,7 @@ import java.util.concurrent.Callable;
  * the six models reading the similarity medians, of the Jaccard n, embedding n and cluster k
  * they read.
  *
- * <p><b>Models.</b> Nine, each a {@link Cell}. Two are the registered in-progress cells read as
+ * <p><b>Models.</b> Ten, each a {@link Cell}. Two are the registered in-progress cells read as
  * they are: Al-Zubaidi at the start ({@code ALZUBAIDI / C1}) and Kikas at the start ({@code
  * KIKAS / C1}). The own specification with similarity, the study's own contribution, is
  * description length and team size, the registered {@code A01} and {@code A03}; the team's median
@@ -44,7 +44,11 @@ import java.util.concurrent.Callable;
  * 19, the retrospective one without ticket 19's five columns -- the three start columns of
  * {@link Pressure} and the blocking-link wait and urgency of {@link Retrospective} -- and their
  * missing indicators (item 43), twenty-one in all: it adds no attribute and only measures what
- * ticket 19 did to the retrospective model.
+ * ticket 19 did to the retrospective model. The tenth is the registered Kikas cell of the
+ * retrospective scenario ({@code KIKAS / C2}, item 59): Kikas at the start followed by Kikas's
+ * whole retrospective set as adapted, the twelve counts observed up to the resolution and the
+ * missing indicator the matrix has for them, the literature counterpart of the retrospective
+ * model; no similarity median, no own column.
  *
  * <p><b>Ticket 15.</b> The retrospective model ({@code own_retrospective}) reads what was observed
  * up to the resolution, and its counts grow with the duration itself: a gain over the own
@@ -145,12 +149,28 @@ public final class ElasticNetSelection {
       + "ticket 19 did to the retrospective model; only the inner report scores it";
 
   /**
-   * The nine models, in their order: the six of the start, the retrospective one, the own
-   * specification with similarity as before ticket 19, then the retrospective one as before it.
+   * Kikas's retrospective model (item 59), the last of {@link #MODELS}: the registered Kikas cell
+   * of the retrospective scenario, the literature counterpart of {@link #RETROSPECTIVE}.
+   */
+  public static final String KIKAS_RETROSPECTIVE = "kikas_retrospective";
+
+  /**
+   * What the tenth model is, for the selection step's output and record and the inner report;
+   * never the test's, which does not score it yet (ticket 26).
+   */
+  public static final String KIKAS_RETROSPECTIVE_ROLE = "Kikas at the start followed by Kikas's "
+      + "retrospective set as adapted, the twelve counts observed up to the resolution and their "
+      + "missing indicator (KIKAS / C2), the literature counterpart of the retrospective model; "
+      + "only the inner report scores it";
+
+  /**
+   * The ten models, in their order: the six of the start, the retrospective one, the own
+   * specification with similarity as before ticket 19, the retrospective one as before it, then
+   * Kikas's retrospective one.
    */
   public static final List<String> MODELS = List.of("own_without_similarity", "similarity_alone",
       OWN_WITH_SIMILARITY, "alzubaidi_start", "kikas_start", "union_own", RETROSPECTIVE,
-      BEFORE_PRESSURE, RETROSPECTIVE_BEFORE_PRESSURE);
+      BEFORE_PRESSURE, RETROSPECTIVE_BEFORE_PRESSURE, KIKAS_RETROSPECTIVE);
 
   /** The models that read the similarity medians, whose n, n and k are chosen with them. */
   public static final List<String> WITH_SIMILARITY = List.of("similarity_alone",
@@ -269,8 +289,9 @@ public final class ElasticNetSelection {
   public static final String HEADER = "# the tail cut's k and fences, Elastic Net alpha and "
       + "lambda, the similarity medians' n, n and k, and each random forest's column share and "
       + "leaf, chosen on the usual flow of the inner validation only, the target in whole "
-      + "business days on the issues of at least one, for nine models with the retrospective one "
-      + "and the own and retrospective ones before ticket 19; the outer test was not read";
+      + "business days on the issues of at least one, for ten models with the retrospective one, "
+      + "the own and retrospective ones before ticket 19 and Kikas's retrospective one; the outer "
+      + "test was not read";
 
   /** The step of the tail cut's lines in the parameters file (ticket 23). */
   public static final String TAIL_STEP = "tail-cut";
@@ -779,7 +800,7 @@ public final class ElasticNetSelection {
 
   /**
    * Every model at every combination, in the given variant: the combinations in {@link
-   * Combination#all}'s order, the nine models of each in theirs. What the selection may read.
+   * Combination#all}'s order, the ten models of each in theirs. What the selection may read.
    */
   public static List<Cell> everyCell(final Augmentation.Variant variant) {
     final List<Cell> out = new ArrayList<>();
@@ -790,7 +811,7 @@ public final class ElasticNetSelection {
   }
 
   /**
-   * The nine models in their order, reading the split-dependent columns of the given variant,
+   * The ten models in their order, reading the split-dependent columns of the given variant,
    * each with the similarity medians at its own combination.
    *
    * @param combinations per model of {@link #WITH_SIMILARITY}, the values it reads the medians
@@ -813,7 +834,7 @@ public final class ElasticNetSelection {
   }
 
   /**
-   * The nine models in their order, reading the split-dependent columns of the given variant,
+   * The ten models in their order, reading the split-dependent columns of the given variant,
    * the six with the similarity medians at {@code c}; the other three do not depend on it.
    */
   public static List<Cell> cells(final Combination c, final Augmentation.Variant variant) {
@@ -864,7 +885,8 @@ public final class ElasticNetSelection {
         new Cell(RETROSPECTIVE, Family.OWN, Scenario.C2, retrospective),
         new Cell(BEFORE_PRESSURE, Family.OWN, Scenario.C1, beforePressure),
         new Cell(RETROSPECTIVE_BEFORE_PRESSURE, Family.OWN, Scenario.C2,
-            retrospectiveBeforePressure));
+            retrospectiveBeforePressure),
+        registered(KIKAS_RETROSPECTIVE, "KIKAS / C2"));
   }
 
   /**
