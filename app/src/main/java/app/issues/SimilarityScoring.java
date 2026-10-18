@@ -67,6 +67,15 @@ import java.util.concurrent.Callable;
  * pair of {@link #orderingPairs}, the paired difference in Spearman and in pairwise ordering with
  * its interval from the same draws of whole projects ({@link ProjectBootstrap#ordering}).
  *
+ * <p><b>Tail cut</b> (ticket 23, item 50; {@link TailCut}). Every model, forest and reference is
+ * refitted on the fitting rows at or below the fence of the k the selection chose, {@code Q3 + k
+ * IQR} of the business days of the scope's fitting side (the inner fitting set, or the outer
+ * training set), never of the scored side; the histories, columns of the matrix, are read as they
+ * are. Each scope is read twice ({@link #readings}): on the usual flow, the scored issues at or
+ * below the fence at {@link TailCut#USUAL_FLOW_K} of the same fitting side, the main reading;
+ * and on every scored issue, the complementary one. Each reading has its own figures, every one
+ * of those above.
+ *
  * <p><b>Unit</b> (ticket 14). Every duration, prediction and error is in whole business days
  * ({@link BusinessDays}), the outcome each unit carries ({@link IssueUnit#duration}); the shared
  * names of the fitting code are unit-neutral (ticket 17). The entries must be
@@ -171,8 +180,29 @@ public final class SimilarityScoring {
       List<ElasticNetSelection.Removed> removed, Forest.Frozen forest) {}
 
   /**
-   * @param innerFitRows the rows the given lambdas were chosen on, which the final lambda scales
-   *     by in the reserved scope
+   * The tail cut a report was fitted under, its fences taken on the fitting side of the scope (the
+   * inner fitting set, or the outer training set), never on the scored side.
+   *
+   * @param k the fitting cut's k, one of {@link TailCut#GRID}
+   * @param fence the fitting cut's fence, in business days; infinite for no cut
+   * @param usualFence the usual flow's fence, at {@link TailCut#USUAL_FLOW_K}
+   * @param uncutFitRows the fitting rows before the cut
+   * @param usualRows the scored issues of the usual flow
+   * @param allRows every scored issue
+   */
+  public record Fences(double k, double fence, double usualFence, int uncutFitRows,
+      int usualRows, int allRows) {}
+
+  /** Both readings of one fit: the usual flow, the main one, and every scored issue. */
+  public record Readings(Report main, Report complementary) {}
+
+  /**
+   * @param reading which scored issues it reads; every figure below is of those
+   * @param fences the tail cut the models were fitted under
+   * @param fitRows the fitting rows at or below the cut's fence, every model's and reference's
+   * @param innerFitRows the rows the given lambdas were chosen on, those at or below the inner
+   *     fitting set's own fence at the same k, which the final lambda scales by in the reserved
+   *     scope
    * @param unseenProjects scored projects with no fitting row, where the project median is the
    *     global one
    * @param withCommitRows the scored issues with at least one implementation commit
@@ -182,7 +212,8 @@ public final class SimilarityScoring {
    * @param orderings the ordering intervals (ticket 16, a declared measure) of {@link
    *     #orderingPairs}
    */
-  public record Report(Scope scope, int fitRows, int scoredRows, int innerFitRows,
+  public record Report(Scope scope, TailCut.Reading reading, Fences fences, int fitRows,
+      int scoredRows, int innerFitRows,
       List<IssueUnit> scoredUnits, double[] observed, List<Scored> models,
       List<ProjectBootstrap.Gap> comparisons, Set<String> unseenProjects, int unseenRows,
       int withCommitRows, List<ProjectBootstrap.Gap> withCommits, boolean[] implementationCommit,
@@ -196,7 +227,36 @@ public final class SimilarityScoring {
   }
 
   /**
-   * Refits and scores.
+   * Refits on the fitting rows at or below the fence of {@code k} and scores both readings, the
+   * usual flow and every scored issue, each with its own figures (ticket 23), on the threads
+   * {@link Parallel} asks for.
+   */
+  public static Readings readings(final List<RowCache.Entry> entries,
+      final Map<String, ElasticNetSelection.Choice> choices,
+      final Map<String, Forest.Choice> forests, final double k, final Scope scope) {
+    return readings(entries, choices, forests, k, scope,
+        Parallel.threads(Parallel.ELASTIC_NET_THREADS),
+        Parallel.threads(Parallel.BOOTSTRAP_THREADS));
+  }
+
+  /**
+   * {@link #readings(List, Map, Map, double, Scope)} on the threads given. Each reading refits:
+   * the fits are the same bits, being deterministic on the same rows, and every figure of a
+   * reading, the forests' permutation importance included, is read on its own issues.
+   */
+  public static Readings readings(final List<RowCache.Entry> entries,
+      final Map<String, ElasticNetSelection.Choice> choices,
+      final Map<String, Forest.Choice> forests, final double k, final Scope scope,
+      final int fitThreads, final int drawThreads) {
+    return new Readings(
+        score(entries, choices, forests, k, scope, TailCut.Reading.USUAL_FLOW, fitThreads,
+            drawThreads),
+        score(entries, choices, forests, k, scope, TailCut.Reading.ALL, fitThreads,
+            drawThreads));
+  }
+
+  /**
+   * Refits, with no tail cut, and scores every scored issue: the scoring before ticket 23.
    *
    * @param choices per Elastic Net model, its alpha and lambda chosen on the inner validation and,
    *     for a model with the similarity medians, its combination; exactly the models of {@link
@@ -224,6 +284,18 @@ public final class SimilarityScoring {
       final Map<String, ElasticNetSelection.Choice> choices,
       final Map<String, Forest.Choice> forests, final Scope scope, final int fitThreads,
       final int drawThreads) {
+    return score(entries, choices, forests, TailCut.NO_CUT, scope, TailCut.Reading.ALL,
+        fitThreads, drawThreads);
+  }
+
+  /**
+   * Refits on the fitting rows at or below the fence of {@code k}, both fences taken on the
+   * scope's fitting side before the cut, and scores the reading's issues.
+   */
+  private static Report score(final List<RowCache.Entry> entries,
+      final Map<String, ElasticNetSelection.Choice> choices,
+      final Map<String, Forest.Choice> forests, final double k, final Scope scope,
+      final TailCut.Reading reading, final int fitThreads, final int drawThreads) {
     if (!new LinkedHashSet<>(ElasticNetSelection.MODELS).equals(choices.keySet())) {
       throw new IllegalArgumentException("the parameters hold alpha and lambda for "
           + choices.keySet() + "; the models are " + ElasticNetSelection.MODELS);
@@ -236,9 +308,20 @@ public final class SimilarityScoring {
     final List<Cell> cells =
         ElasticNetSelection.cells(ElasticNetSelection.combinations(choices), scope.variant())
             .stream().filter(c -> scope.scores(c.label())).toList();
-    final Fitting.Sides sides = ElasticNetSelection.flagged(
+    final Fitting.Sides whole = ElasticNetSelection.flagged(
         Fitting.sides(entries, scope.mode(), P), cells);
-    final int innerFitRows = Fitting.sides(entries, Fitting.Mode.INNER, P).fitUnits().size();
+    final double fence = TailCut.fence(whole.fitUnits(), k);
+    final double usualFence = TailCut.fence(whole.fitUnits(), TailCut.USUAL_FLOW_K);
+    final Fitting.Sides cut = TailCut.cut(whole, fence);
+    final Fitting.Sides sides = reading == TailCut.Reading.ALL ? cut
+        : TailCut.usualFlow(cut, usualFence);
+    final Fences fences = new Fences(k, fence, usualFence, whole.fitUnits().size(),
+        TailCut.usualFlow(cut, usualFence).scoreUnits().size(), cut.scoreUnits().size());
+    // the rows the lambdas were chosen on: the inner fitting set cut at its own fence of this k
+    final List<IssueUnit> innerFit = Fitting.sides(entries, Fitting.Mode.INNER, P).fitUnits();
+    final double innerFence = TailCut.fence(innerFit, k);
+    final int innerFitRows = (int) innerFit.stream().filter(u -> u.duration() <= innerFence)
+        .count();
     final int fitRows = sides.fitUnits().size();
     final double[] observed = sides.observed();
     final List<String> projects = sides.projects();
@@ -326,7 +409,7 @@ public final class SimilarityScoring {
         unseenRows++;
       }
     }
-    return new Report(scope, fitRows, observed.length, innerFitRows,
+    return new Report(scope, reading, fences, fitRows, observed.length, innerFitRows,
         List.copyOf(sides.scoreUnits()), observed, List.copyOf(models), List.copyOf(comparisons),
         unseen, unseenRows, withCommit.size(), side, commit, contrast, List.copyOf(orderings));
   }

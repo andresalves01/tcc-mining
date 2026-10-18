@@ -158,6 +158,13 @@ class SimilarityScoringTest {
    */
   private static final String PAIRS_BEFORE_NINTH = "80 eb1f0a39";
 
+  /**
+   * The whole inner run of ticket 22, the ninth model and its pairs included: the count of models,
+   * comparisons and ordering intervals and a hash of every one's bits ({@link #innerBits}), in
+   * their order. Captured from 5ff8564 (main after ticket 22), before the tail cut.
+   */
+  private static final String INNER_AT_TICKET_22 = "113 43e66d61";
+
   private static List<String> concat(final List<String> a, final List<String> b) {
     final List<String> out = new ArrayList<>(a);
     out.addAll(b);
@@ -910,5 +917,158 @@ class SimilarityScoringTest {
       }
       assertEquals(gap / without.size(), g.gap(), 1e-9, g.toString());
     }
+  }
+
+  /**
+   * The entries with a tail on both fitting sides: every seventh outer training issue lasts 60
+   * business days more, so the low fences cut it.
+   */
+  private static List<RowCache.Entry> withTail(final List<RowCache.Entry> entries) {
+    final List<RowCache.Entry> out = new ArrayList<>();
+    for (int i = 0; i < entries.size(); i++) {
+      final RowCache.Entry e = entries.get(i);
+      final IssueUnit u = e.unit();
+      out.add("TRAIN".equals(e.outer(Population.IN_PROGRESS)) && i % 7 == 0
+          ? new RowCache.Entry(u.withBusinessDays(u.businessDays() + 60), e.row(), e.parts())
+          : e);
+    }
+    return out;
+  }
+
+  /** The units of the entries on the given side of the given split level. */
+  private static List<IssueUnit> side(final List<RowCache.Entry> entries, final boolean inner,
+      final String part) {
+    return entries.stream().filter(e -> "TRAIN".equals(e.outer(Population.IN_PROGRESS))
+        && (!inner || part.equals(e.inner(Population.IN_PROGRESS))))
+        .map(RowCache.Entry::unit).toList();
+  }
+
+  /**
+   * The same entries with every other unit {@code which} selects, by id, lasting 500 business
+   * days more: the others keep the usual flow from being empty.
+   */
+  private static List<RowCache.Entry> longer(final List<RowCache.Entry> entries,
+      final java.util.function.Predicate<RowCache.Entry> which) {
+    return entries.stream().map(e -> which.test(e) && e.unit().issueId().hashCode() % 2 == 0
+        ? new RowCache.Entry(e.unit().withBusinessDays(e.unit().businessDays() + 500), e.row(),
+            e.parts())
+        : e).toList();
+  }
+
+  @Test
+  @DisplayName("tail cut, inner scope: both fences are taken on the inner fitting set only; "
+      + "changing every validation label moves neither them nor any prediction")
+  void innerFencesOnTheFittingSetOnly() {
+    final List<RowCache.Entry> entries = withTail(training());
+    final SimilarityScoring.Readings r =
+        SimilarityScoring.readings(entries, choices(0.2), forests(), 1.5, INNER, 1, 1);
+    final List<IssueUnit> fitting = side(entries, true, "TRAIN");
+    for (final SimilarityScoring.Report reading : List.of(r.main(), r.complementary())) {
+      assertEquals(TailCut.fence(fitting, 1.5), reading.fences().fence());
+      assertEquals(TailCut.fence(fitting, 3), reading.fences().usualFence());
+      assertEquals(fitting.size(), reading.fences().uncutFitRows());
+    }
+    final SimilarityScoring.Readings changed = SimilarityScoring.readings(longer(entries,
+        e -> "TEST".equals(e.inner(Population.IN_PROGRESS))), choices(0.2), forests(), 1.5,
+        INNER, 1, 1);
+    assertEquals(r.main().fences().fence(), changed.main().fences().fence());
+    assertEquals(r.main().fences().usualFence(), changed.main().fences().usualFence());
+    for (final String name : MODELS) {
+      assertEquals(java.util.Arrays.toString(model(r.complementary(), name).predicted()),
+          java.util.Arrays.toString(model(changed.complementary(), name).predicted()), name);
+    }
+  }
+
+  @Test
+  @DisplayName("tail cut, outer scope: both fences are taken on the outer training set only; "
+      + "changing every outer test label moves neither them nor any prediction")
+  void outerFencesOnTheTrainingSetOnly() {
+    final List<RowCache.Entry> entries = withTail(corpus());
+    final SimilarityScoring.Readings r =
+        SimilarityScoring.readings(entries, choices(0.2), forests(), 1.5, RESERVED, 1, 1);
+    final List<IssueUnit> training = side(entries, false, "");
+    final List<IssueUnit> innerFitting = side(entries, true, "TRAIN");
+    assertEquals(TailCut.fence(training, 1.5), r.main().fences().fence());
+    assertEquals(TailCut.fence(training, 3), r.main().fences().usualFence());
+    final double fence = TailCut.fence(training, 1.5);
+    assertEquals(training.stream().filter(u -> u.duration() <= fence).count(),
+        r.main().fitRows());
+    assertTrue(r.main().fitRows() < training.size(), "the fixture's tail is cut");
+    // the final lambda's ratio reads the inner fitting rows the same k leaves there
+    final double innerFence = TailCut.fence(innerFitting, 1.5);
+    assertEquals(innerFitting.stream().filter(u -> u.duration() <= innerFence).count(),
+        r.main().innerFitRows());
+    final SimilarityScoring.Readings changed = SimilarityScoring.readings(longer(entries,
+        e -> "TEST".equals(e.outer(Population.IN_PROGRESS))), choices(0.2), forests(), 1.5,
+        RESERVED, 1, 1);
+    assertEquals(r.main().fences().fence(), changed.main().fences().fence());
+    assertEquals(r.main().fences().usualFence(), changed.main().fences().usualFence());
+    assertEquals(r.main().fitRows(), changed.main().fitRows());
+    for (final String name : MODELS) {
+      assertEquals(java.util.Arrays.toString(model(r.complementary(), name).predicted()),
+          java.util.Arrays.toString(model(changed.complementary(), name).predicted()), name);
+    }
+  }
+
+  @Test
+  @DisplayName("tail cut: every model and reference is fitted on exactly the fitting rows at or "
+      + "below the fence, bit for bit as if those above were not there; the usual-flow reading "
+      + "holds exactly the validation issues at or below the k = 3 fence, the complementary one "
+      + "all, with the same predictions")
+  void cutRowsAndTwoReadings() {
+    final List<RowCache.Entry> entries = withTail(training());
+    final SimilarityScoring.Readings r =
+        SimilarityScoring.readings(entries, choices(0.2), forests(), 1.5, INNER, 1, 1);
+    final double fence = r.main().fences().fence();
+    final List<RowCache.Entry> kept = entries.stream().filter(e ->
+        !"TRAIN".equals(e.inner(Population.IN_PROGRESS)) || e.unit().duration() <= fence)
+        .toList();
+    assertTrue(kept.size() < entries.size(), "the fixture's tail is cut");
+    final SimilarityScoring.Report alone = SimilarityScoring.run(kept, choices(0.2), forests(),
+        INNER, 1, 1);
+    assertEquals(innerBits(alone), innerBits(r.complementary()));
+    assertEquals(alone.fitRows(), r.complementary().fitRows());
+
+    final double usual = r.main().fences().usualFence();
+    final List<String> all = side(entries, true, "TEST").stream().map(IssueUnit::issueId)
+        .toList();
+    final List<String> flow = side(entries, true, "TEST").stream()
+        .filter(u -> u.duration() <= usual).map(IssueUnit::issueId).toList();
+    assertTrue(flow.size() < all.size(), "the fixture has validation issues above the fence");
+    assertEquals(all, r.complementary().scoredUnits().stream().map(IssueUnit::issueId).toList());
+    assertEquals(flow, r.main().scoredUnits().stream().map(IssueUnit::issueId).toList());
+    assertEquals(flow.size(), r.main().fences().usualRows());
+    assertEquals(all.size(), r.main().fences().allRows());
+    assertEquals(TailCut.Reading.USUAL_FLOW, r.main().reading());
+    assertEquals(TailCut.Reading.ALL, r.complementary().reading());
+    // the same fit: each prediction of the usual flow is the complementary reading's
+    for (final String name : MODELS) {
+      final double[] every = model(r.complementary(), name).predicted();
+      final double[] main = model(r.main(), name).predicted();
+      int k = 0;
+      for (int i = 0; i < all.size(); i++) {
+        if (flow.contains(all.get(i))) {
+          assertEquals(Double.doubleToRawLongBits(every[i]), Double.doubleToRawLongBits(main[k++]),
+              name);
+        }
+      }
+      assertEquals(main.length, k);
+    }
+    // every table is the usual flow's own: comparisons and orderings too
+    assertEquals(r.complementary().comparisons().size(), r.main().comparisons().size());
+    assertEquals(r.complementary().orderings().size(), r.main().orderings().size());
+    assertNotEquals(innerBits(r.complementary()), innerBits(r.main()));
+  }
+
+  @Test
+  @DisplayName("tail cut: no cut reproduces ticket 22's inner run bit for bit in the "
+      + "complementary reading, every model, comparison and ordering interval")
+  void noCutIsTicket22() {
+    final SimilarityScoring.Readings r = SimilarityScoring.readings(training(), choices(0.2),
+        forests(), TailCut.NO_CUT, INNER, 1, 1);
+    final List<String> all = new ArrayList<>();
+    innerBits(r.complementary()).forEach((k, v) -> all.add(k + " " + v));
+    assertEquals(INNER_AT_TICKET_22, all.size() + " " + Integer.toHexString(all.hashCode()));
+    assertEquals(6 * 20, r.complementary().fitRows());
   }
 }

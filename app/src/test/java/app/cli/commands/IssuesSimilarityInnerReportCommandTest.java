@@ -15,6 +15,7 @@ import app.issues.ElasticNetSelection;
 import app.issues.IssueUnit;
 import app.issues.RowCache;
 import app.issues.SimilarityScoring;
+import app.issues.TailCut;
 import app.issues.Universe.Population;
 import app.issues.model.Cell;
 import app.pipeline.port.Progress;
@@ -91,7 +92,9 @@ class IssuesSimilarityInnerReportCommandTest {
             : k < 30 ? new String[] {"TRAIN", "TEST"}
             : k < 36 || !crossing ? new String[] {"TEST", ""}
             : new String[] {"TRAIN", "CROSSES"};
-        final int days = 1 + (int) Math.floor(Math.exp(3 * random.nextDouble()));
+        // a tail: every ninth issue from the fifth of each project lasts 60 business days more
+        final int days = 1 + (int) Math.floor(Math.exp(3 * random.nextDouble()))
+            + (k % 9 == 4 ? 60 : 0);
         final Map<String, Double> values = new HashMap<>();
         for (final Attribute a : declared) {
           final boolean similarity = a.name().startsWith("jaccard_")
@@ -165,15 +168,20 @@ class IssuesSimilarityInnerReportCommandTest {
     settings.put("REPORT_DIR", reports.toString());
   }
 
-  private static Map<String, String[]> byModel(final List<String> tsv) {
+  /** One reading's lines of a file, by model, the reading's column left out. */
+  private static Map<String, String[]> byModel(final List<String> tsv, final String reading) {
     final Map<String, String[]> out = new LinkedHashMap<>();
-    tsv.subList(1, tsv.size()).forEach(l -> out.put(l.split("\t")[0], l.split("\t", -1)));
+    tsv.subList(1, tsv.size()).stream().filter(l -> l.startsWith(reading + "\t")).forEach(l -> {
+      final String[] f = l.substring(reading.length() + 1).split("\t", -1);
+      out.put(f[0], f);
+    });
     return out;
   }
 
   @Test
   @DisplayName("on the outer training rows alone, the outer test never parsed and nothing "
-      + "recorded, every model's error is, to the bit, the selection's inner validation error")
+      + "recorded, every model's error in the usual-flow reading is, to the bit, the selection's "
+      + "inner validation error; the all-issues reading holds every validation issue")
   void reportsTheSelectionsErrors() throws IOException, CommandFailedException {
     final Path matrix = dir.resolve("matrix.tsv");
     final Path elasticNet = dir.resolve("elastic-net.tsv");
@@ -184,9 +192,14 @@ class IssuesSimilarityInnerReportCommandTest {
 
     command().run(context());
 
-    final Map<String, String[]> models =
-        byModel(Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.MODELS)));
+    final List<String> modelLines =
+        Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.MODELS));
+    final Map<String, String[]> models = byModel(modelLines, "usual_flow");
+    final Map<String, String[]> all = byModel(modelLines, "all");
     assertEquals(21, models.size());
+    assertEquals(models.keySet(), all.keySet());
+    assertEquals(1 + 2 * 21, modelLines.size());
+    assertEquals(chosen.validationRows(), Integer.parseInt(models.get("global_median")[2]));
     for (final ElasticNetSelection.Model m : chosen.models()) {
       final String name = m.cell().label();
       assertEquals(m.fitted().score().mae(), Double.parseDouble(models.get(name)[3]), name);
@@ -198,13 +211,29 @@ class IssuesSimilarityInnerReportCommandTest {
 
     final List<String> predictions =
         Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.PREDICTIONS));
-    assertEquals(List.of("id", "key", "project", "observed_business_days",
-        "has_implementation_commit"), List.of(predictions.get(0).split("\t")).subList(0, 5));
-    assertEquals(1 + chosen.validationRows(), predictions.size());
+    assertEquals(List.of("id", "key", "project", "observed_business_days", "usual_flow",
+        "has_implementation_commit"), List.of(predictions.get(0).split("\t")).subList(0, 6));
+    final int validation = Integer.parseInt(all.get("global_median")[2]);
+    assertEquals(1 + validation, predictions.size());
+    assertTrue(chosen.validationRows() < validation, "the fixture's validation has a tail");
+    assertEquals(chosen.validationRows(), predictions.stream().skip(1)
+        .filter(l -> "true".equals(l.split("\t")[4])).count());
     final List<String> report =
         Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.REPORT));
     assertTrue(report.get(2).contains("optimistic") && report.get(2).contains("same inner "
         + "validation"), report.get(2));
+    // the header states the chosen k, both fences and each reading's count of issues
+    assertTrue(report.stream().anyMatch(l -> l.startsWith("- chosen k: "
+        + TailCut.label(chosen.cut().k()) + ", fence " + chosen.cut().fence())
+        && l.contains("usual flow: k 3.0, fence " + chosen.cut().usualFence())),
+        report.toString());
+    assertTrue(report.stream().anyMatch(l -> l.startsWith("- readings: main, usual flow")
+        && l.contains(": " + chosen.validationRows() + " inner validation issues")
+        && l.endsWith(": " + validation)), report.toString());
+    assertTrue(report.contains("## Main reading: the usual flow (" + chosen.validationRows()
+        + " issues)"), report.toString());
+    assertTrue(report.contains("## Complementary reading: all issues (" + validation
+        + " issues)"), report.toString());
     // what the ninth model is, stated here and not in the test's record (ticket 22)
     assertTrue(report.contains("- own_retrospective_before_pressure: "
         + ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE_ROLE), report.toString());
@@ -216,8 +245,12 @@ class IssuesSimilarityInnerReportCommandTest {
     }
     final List<String> comparisons =
         Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.COMPARISONS));
-    assertTrue(comparisons.stream().anyMatch(l -> l.startsWith("without implementation commit\t")));
-    assertTrue(comparisons.stream().anyMatch(l -> l.startsWith("with implementation commit\t")));
+    for (final String reading : List.of("usual_flow\t", "all\t")) {
+      assertTrue(comparisons.stream().anyMatch(l -> l.startsWith(reading
+          + "without implementation commit\t")), reading);
+      assertTrue(comparisons.stream().anyMatch(l -> l.startsWith(reading
+          + "with implementation commit\t")), reading);
+    }
     assertTrue(comparisons.stream().anyMatch(l -> l.contains("\town_retrospective_forest\t"
         + "project_median\t")));
     // the new start model against the one before ticket 19, read from the same run (item 29 i)
@@ -233,8 +266,10 @@ class IssuesSimilarityInnerReportCommandTest {
         "\town_retrospective_before_pressure\tproject_median\t",
         "\town_retrospective_before_pressure_forest\tglobal_median\t",
         "\town_retrospective_before_pressure_forest\tproject_median\t")) {
-      assertTrue(comparisons.stream().anyMatch(l -> l.startsWith("all scored\t")
-          && l.contains(pair)), pair);
+      for (final String reading : List.of("usual_flow\t", "all\t")) {
+        assertTrue(comparisons.stream().anyMatch(l -> l.startsWith(reading + "all scored\t")
+            && l.contains(pair)), reading + pair);
+      }
     }
     final List<String> ordering =
         Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.ORDERING));
@@ -243,20 +278,23 @@ class IssuesSimilarityInnerReportCommandTest {
         "own_retrospective_forest\town_retrospective_before_pressure_forest\t",
         "own_retrospective_before_pressure\tproject_median\t",
         "own_retrospective_before_pressure_forest\tproject_median\t")) {
-      assertTrue(ordering.stream().anyMatch(l -> l.startsWith(pair)), pair);
+      assertTrue(ordering.stream().anyMatch(l -> l.startsWith("usual_flow\t" + pair)), pair);
+      assertTrue(ordering.stream().anyMatch(l -> l.startsWith("all\t" + pair)), pair);
     }
     final List<String> bands =
         Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.BANDS));
-    assertTrue(bands.stream().anyMatch(l -> l.startsWith("own_retrospective_before_pressure\t")));
     assertTrue(bands.stream()
-        .anyMatch(l -> l.startsWith("own_retrospective_before_pressure_forest\t")));
+        .anyMatch(l -> l.startsWith("usual_flow\town_retrospective_before_pressure\t")));
+    assertTrue(bands.stream()
+        .anyMatch(l -> l.startsWith("all\town_retrospective_before_pressure_forest\t")));
     assertTrue(Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.IMPORTANCE))
         .stream().anyMatch(l -> l.startsWith("own_retrospective_before_pressure_forest\t")));
   }
 
   @Test
-  @DisplayName("parameters chosen on another matrix, or outer training rows the split set aside, "
-      + "refuse the report before anything is scored or written")
+  @DisplayName("parameters chosen on another matrix, a fence the selection did not record, or "
+      + "outer training rows the split set aside, refuse the report before anything is scored "
+      + "or written")
   void refuses() throws IOException {
     final Path matrix = dir.resolve("matrix.tsv");
     final Path elasticNet = dir.resolve("elastic-net.tsv");
@@ -271,7 +309,23 @@ class IssuesSimilarityInnerReportCommandTest {
         e.lines().toString());
     assertFalse(Files.exists(reports));
 
-    write(matrix, elasticNet);
+    final ElasticNetSelection.Result chosen = write(matrix, elasticNet);
+
+    // a fence the selection did not take on this inner fitting set: refused before any fitting
+    final List<String> parameters = Files.readAllLines(elasticNet);
+    final String fenceLine = "tail-cut\tchosen\tfence_business_days\t" + chosen.cut().fence();
+    assertTrue(parameters.contains(fenceLine), parameters.toString());
+    final double other = chosen.cut().fence() == 12.5 ? 13.5 : 12.5;
+    final List<String> changed = new ArrayList<>(parameters);
+    changed.set(parameters.indexOf(fenceLine), "tail-cut\tchosen\tfence_business_days\t" + other);
+    Files.write(elasticNet, changed);
+    e = assertThrows(CommandFailedException.class, () -> command().run(context()));
+    assertEquals(List.of("  REFUSED, nothing was scored or written: the fences on the inner "
+        + "fitting set, " + chosen.cut().fence() + " and " + chosen.cut().usualFence()
+        + " business days, are not those the selection recorded, " + other + " and "
+        + chosen.cut().usualFence()), e.lines());
+    assertFalse(Files.exists(reports));
+    Files.write(elasticNet, parameters);
 
     Files.writeString(matrix, "\n", java.nio.file.StandardOpenOption.APPEND);
     e = assertThrows(CommandFailedException.class, () -> command().run(context()));

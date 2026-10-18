@@ -12,6 +12,7 @@ import app.issues.RegistrationInProgress;
 import app.issues.Retrospective;
 import app.issues.RowCache;
 import app.issues.SimilarityScoring;
+import app.issues.TailCut;
 import app.issues.model.Fitting;
 import app.issues.model.Forest;
 import app.issues.model.ProjectBootstrap;
@@ -42,6 +43,14 @@ import java.util.function.Function;
  * business days is dropped from the outer training and the outer test before anything is fitted
  * (none since ticket 21, the split being drawn over the issues of at least one);
  * every error, band and comparison is in business days.
+ *
+ * <p><b>Tail cut</b> (ticket 23; {@link TailCut}). Every model, forest and reference is refitted
+ * on the outer training rows at or below the fence of the k the parameters file records, both
+ * fences taken on the outer training set, never on the outer test. Every table is printed and
+ * recorded twice, each document with its {@code reading}: on the outer test issues at or below
+ * the usual flow's fence, the main reading, and on every one, the complementary reading. The
+ * predictions file holds every scored issue; the diagnostics and the forests' permutation
+ * importance are the main reading's.
  *
  * <p>Reads MATRIX and ELASTIC_NET_PARAMETERS, which gives per model its alpha and lambda, for
  * the six with the similarity medians the Jaccard n, embedding n and cluster k they read, and
@@ -148,6 +157,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final String elasticNetSha;
     final Map<String, ElasticNetSelection.Choice> choices;
     final Map<String, Forest.Choice> forests;
+    final TailCut.Choice cut;
     final List<RowCache.Entry> entries;
     final List<String> columns;
     try {
@@ -161,6 +171,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       matrixSha = chosen.matrixSha();
       choices = chosen.choices();
       forests = chosen.forests();
+      cut = chosen.cut();
       entries = RowCache.read(matrix);
       columns = RowCache.columns(matrix);
     } catch (final IOException e) {
@@ -209,17 +220,27 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         population.kept().test(), population.all().test());
     System.out.printf("  the parameters are read, never chosen; the outer test is scored now%n");
     final long fitting = System.nanoTime();
-    final SimilarityScoring.Report r;
+    final SimilarityScoring.Readings readings;
     try {
-      r = SimilarityScoring.run(population.entries(), choices, forests,
+      readings = SimilarityScoring.readings(population.entries(), choices, forests, cut.k(),
           SimilarityScoring.Scope.RESERVED);
     } catch (final IllegalArgumentException e) {
       throw refused(e.getMessage());
     }
     final double scoringSeconds = (System.nanoTime() - fitting) / 1e9;
+    // the complementary reading holds every scored issue: the predictions file is of those
+    final SimilarityScoring.Report r = readings.complementary();
+    final SimilarityScoring.Report main = readings.main();
 
-    System.out.printf("%n  refit on the outer training set (%,d rows); scored %,d rows of the "
-        + "outer test%n", r.fitRows(), r.scoredRows());
+    System.out.printf("%n  refit on the outer training set (%,d of %,d rows, those at or below "
+        + "the fence of k %s, %.3f bd, taken on the outer training set); scored %,d rows of the "
+        + "outer test%n", r.fitRows(), r.fences().uncutFitRows(), TailCut.label(cut.k()),
+        r.fences().fence(), r.scoredRows());
+    System.out.printf("  tail cut: %s; %s%n", TailCut.RULE, TailCut.QUANTILES);
+    System.out.printf("  readings: %s, %,d issues (fence %.3f bd on the outer training set); %s, "
+        + "%,d issues%n", TailCut.Reading.USUAL_FLOW.description(),
+        main.scoredRows(), main.fences().usualFence(),
+        TailCut.Reading.ALL.description(), r.scoredRows());
     System.out.printf("  final lambda = chosen lambda x %,d / %,d, alpha as chosen; no "
         + "recalibration%n", r.fitRows(), r.innerFitRows());
     System.out.printf("  random forests (robustness check): %d trees, depth %d, seed %d, the chosen "
@@ -229,53 +250,13 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         + "the global one): %,d issues, %s%n", r.unseenRows(), r.unseenProjects());
 
     final List<Map<String, Object>> rows = new ArrayList<>();
-    System.out.printf("%n  %-24s %9s %12s %9s %9s  (w/o slow10%%: the rows at or under the "
-        + "90th percentile of the truth, %,d of %,d; ties at it all kept)%n", "model", "MAE bd",
-        "w/o slow10%", "Spearman", "pairwise", r.models().get(0).errors().trimmedN(),
-        r.scoredRows());
-    for (final SimilarityScoring.Scored m : r.models()) {
-      final Score sc = m.score();
-      System.out.printf("  %-24s %9.3f %12.3f %9.3f %9.3f%n", m.name(), sc.mae(),
-          m.errors().trimmedMae(), sc.spearman(), sc.pairwise());
-      rows.add(modelRow(m, choices.get(m.name())));
-      if (m.forest() != null) {
-        System.out.printf("    %-22s mtry %d (share %.3f), leaf %d%n", "", m.forest().mtry(),
-            m.forest().share(), m.forest().nodeSize());
-      }
-    }
-    System.out.printf("%n  error by band of the true business days (1, 2-3, 4-10, 11+), MAE in "
-        + "business days%n");
-    for (final SimilarityScoring.Scored m : r.models()) {
-      final StringBuilder line = new StringBuilder(String.format("  %-24s", m.name()));
-      for (final Breakdown.Band b : m.bands()) {
-        line.append(String.format("  %s: %.3f (n %d)", b.label(), b.mae(), b.n()));
-      }
-      System.out.println(line);
-    }
-    System.out.printf("%n  paired comparisons: MAE(a) - MAE(b) in business days, 95%% interval "
-        + "resampling whole projects (%d draws); an interval containing zero is a tie%n",
-        ProjectBootstrap.DRAWS);
-    for (final ProjectBootstrap.Gap g : r.comparisons()) {
-      System.out.printf("  %-24s vs %-24s %10.3f [%10.3f, %10.3f]%s%n", g.a(), g.b(),
-          g.gap(), g.low(), g.high(), g.tied() ? "  tie" : "");
-      rows.add(comparisonRow(g));
-    }
-    System.out.printf("%n  ordering intervals (a declared measure): a - b in Spearman and in "
-        + "pairwise ordering, 95%% interval from the same %d draws of whole projects; an "
-        + "interval containing zero is a tie; the global median orders nothing%n",
-        ProjectBootstrap.DRAWS);
-    printOrderings(r.orderings());
-    r.orderings().forEach(o -> rows.add(orderingRow(o)));
-    System.out.printf("%n  side reading, the retrospective scenario on the %,d of %,d scored issues "
-        + "with at least one implementation commit, intervals resampling their projects%n",
-        r.withCommitRows(), r.scoredRows());
-    for (final ProjectBootstrap.Gap g : r.withCommits()) {
-      System.out.printf("  %-24s vs %-24s %10.3f [%10.3f, %10.3f]%s%n", g.a(), g.b(),
-          g.gap(), g.low(), g.high(), g.tied() ? "  tie" : "");
-      final Map<String, Object> row = comparisonRow(g);
-      row.put("kind", "side_reading_with_commits");
-      row.put("n", r.withCommitRows());
-      rows.add(row);
+    for (final SimilarityScoring.Report reading : List.of(main, r)) {
+      System.out.printf("%n  READING: %s%n", reading.reading().description());
+      final List<Map<String, Object>> of = new ArrayList<>();
+      print(reading, of, choices);
+      final String name = reading.reading().name().toLowerCase(java.util.Locale.ROOT);
+      of.forEach(row -> row.put("reading", name));
+      rows.addAll(of);
     }
 
     final List<String> predictions = SimilarityScoring.predictions(r);
@@ -290,8 +271,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       rerun = rerun(predictionsFile, inputsFile, inputs, predictions);
       write(inputsFile, inputs);
       write(predictionsFile, predictions);
-      write(diagnosticsFile, diagnostics(r));
-      write(importanceFile, importance(r));
+      write(diagnosticsFile, diagnostics(main));
+      write(importanceFile, importance(main));
       predictionsSha = IssuesReservedCommand.sha256(predictionsFile);
       diagnosticsSha = IssuesReservedCommand.sha256(diagnosticsFile);
       importanceSha = IssuesReservedCommand.sha256(importanceFile);
@@ -326,8 +307,10 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     run.put("forest_grid", IssuesSimilarityElasticNetCommand.forestGrid());
     run.put("forest_permutation_repeats", Forest.PERMUTATION_REPEATS);
     run.put("candidates", candidates(choices));
+    run.put("tail_cut", tailCut(r.fences()));
     run.put("fit_rows", r.fitRows());
     run.put("scored_rows", r.scoredRows());
+    run.put("usual_flow_scored_rows", main.scoredRows());
     run.put("scored_rows_with_implementation_commit", r.withCommitRows());
     run.put("inner_fit_rows", r.innerFitRows());
     run.put("final_lambda", "chosen lambda x fit_rows / inner_fit_rows; alpha as chosen");
@@ -356,15 +339,18 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
    *
    * @param elasticNetSha the SHA-256 of the bytes parsed
    * @param matrixSha the SHA-256 of the matrix, the one the choices were made on
+   * @param cut the tail cut the selection chose (ticket 23): its k, fences and grid
    */
   record Chosen(String elasticNetSha, String matrixSha,
-      Map<String, ElasticNetSelection.Choice> choices, Map<String, Forest.Choice> forests) {}
+      Map<String, ElasticNetSelection.Choice> choices, Map<String, Forest.Choice> forests,
+      TailCut.Choice cut) {}
 
   /**
    * The choices of {@code elasticNet}, refused -- an {@link IllegalArgumentException} with the
    * reason -- unless the file exists and is the Elastic Net step's own for these models, with a
-   * forest for each, and its choices were made on {@code matrix}, by SHA-256. Nothing of the
-   * matrix but its bytes' hash is read.
+   * forest for each and the tail cut's k, fences and grid ({@link ElasticNetSelection#tailCut}),
+   * and its choices were made on {@code matrix}, by SHA-256. Nothing of the matrix but its bytes'
+   * hash is read.
    */
   static Chosen chosen(final Path elasticNet, final Path matrix) throws IOException {
     if (!Files.exists(elasticNet)) {
@@ -385,6 +371,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final Map<String, ElasticNetSelection.Choice> choices =
         ElasticNetSelection.choices(enParameters);
     final Map<String, Forest.Choice> forests = ElasticNetSelection.forests(enParameters);
+    final TailCut.Choice cut = ElasticNetSelection.tailCut(enParameters);
     if (!Set.copyOf(ElasticNetSelection.MODELS).equals(choices.keySet())) {
       throw new IllegalArgumentException(elasticNet + " holds alpha and lambda for "
           + choices.keySet() + "; the models are " + ElasticNetSelection.MODELS);
@@ -400,7 +387,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
           + "another matrix (sha256 " + ElasticNetSelection.matrixSha(enParameters) + "), not "
           + matrix + " (sha256 " + matrixSha + ")");
     }
-    return new Chosen(sha256(elasticNetBytes), matrixSha, choices, forests);
+    return new Chosen(sha256(elasticNetBytes), matrixSha, choices, forests, cut);
   }
 
   /** What the run record states about the test it scores. */
@@ -596,6 +583,77 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       row.put("dropped_constant", m.forest().dropped());
     }
     return row;
+  }
+
+  /**
+   * The tail cut a scoring was fitted under, as a document: its rule, k, both fences, taken on the
+   * fitting side of the scope, and the rows each one leaves.
+   */
+  static Map<String, Object> tailCut(final SimilarityScoring.Fences f) {
+    final Map<String, Object> out = new LinkedHashMap<>();
+    out.put("rule", TailCut.RULE);
+    out.put("quantiles", TailCut.QUANTILES);
+    out.put("k", TailCut.label(f.k()));
+    out.put("fence_business_days", f.fence());
+    out.put("fit_rows_before_cut", f.uncutFitRows());
+    out.put("usual_flow_k", TailCut.label(TailCut.USUAL_FLOW_K));
+    out.put("usual_flow_fence_business_days", f.usualFence());
+    out.put("usual_flow_scored_rows", f.usualRows());
+    out.put("all_scored_rows", f.allRows());
+    return out;
+  }
+
+  /** One reading's tables, printed, each line's document added to {@code rows}. */
+  private static void print(final SimilarityScoring.Report r, final List<Map<String, Object>> rows,
+      final Map<String, ElasticNetSelection.Choice> choices) {
+    System.out.printf("  %-24s %9s %12s %9s %9s  (w/o slow10%%: the rows at or under the "
+        + "90th percentile of the truth, %,d of %,d; ties at it all kept)%n", "model", "MAE bd",
+        "w/o slow10%", "Spearman", "pairwise", r.models().get(0).errors().trimmedN(),
+        r.scoredRows());
+    for (final SimilarityScoring.Scored m : r.models()) {
+      final Score sc = m.score();
+      System.out.printf("  %-24s %9.3f %12.3f %9.3f %9.3f%n", m.name(), sc.mae(),
+          m.errors().trimmedMae(), sc.spearman(), sc.pairwise());
+      rows.add(modelRow(m, choices.get(m.name())));
+      if (m.forest() != null) {
+        System.out.printf("    %-22s mtry %d (share %.3f), leaf %d%n", "", m.forest().mtry(),
+            m.forest().share(), m.forest().nodeSize());
+      }
+    }
+    System.out.printf("%n  error by band of the true business days (1, 2-3, 4-10, 11+), MAE in "
+        + "business days%n");
+    for (final SimilarityScoring.Scored m : r.models()) {
+      final StringBuilder line = new StringBuilder(String.format("  %-24s", m.name()));
+      for (final Breakdown.Band b : m.bands()) {
+        line.append(String.format("  %s: %.3f (n %d)", b.label(), b.mae(), b.n()));
+      }
+      System.out.println(line);
+    }
+    System.out.printf("%n  paired comparisons: MAE(a) - MAE(b) in business days, 95%% interval "
+        + "resampling whole projects (%d draws); an interval containing zero is a tie%n",
+        ProjectBootstrap.DRAWS);
+    for (final ProjectBootstrap.Gap g : r.comparisons()) {
+      System.out.printf("  %-24s vs %-24s %10.3f [%10.3f, %10.3f]%s%n", g.a(), g.b(),
+          g.gap(), g.low(), g.high(), g.tied() ? "  tie" : "");
+      rows.add(comparisonRow(g));
+    }
+    System.out.printf("%n  ordering intervals (a declared measure): a - b in Spearman and in "
+        + "pairwise ordering, 95%% interval from the same %d draws of whole projects; an "
+        + "interval containing zero is a tie; the global median orders nothing%n",
+        ProjectBootstrap.DRAWS);
+    printOrderings(r.orderings());
+    r.orderings().forEach(o -> rows.add(orderingRow(o)));
+    System.out.printf("%n  side reading, the retrospective scenario on the %,d of %,d scored "
+        + "issues with at least one implementation commit, intervals resampling their projects%n",
+        r.withCommitRows(), r.scoredRows());
+    for (final ProjectBootstrap.Gap g : r.withCommits()) {
+      System.out.printf("  %-24s vs %-24s %10.3f [%10.3f, %10.3f]%s%n", g.a(), g.b(),
+          g.gap(), g.low(), g.high(), g.tied() ? "  tie" : "");
+      final Map<String, Object> row = comparisonRow(g);
+      row.put("kind", "side_reading_with_commits");
+      row.put("n", r.withCommitRows());
+      rows.add(row);
+    }
   }
 
   /** Each ordering comparison: the two differences, each with its interval. */

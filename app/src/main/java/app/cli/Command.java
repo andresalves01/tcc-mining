@@ -340,7 +340,20 @@ public enum Command {
       more than its own choices, one naming other models, as one written
       before the own specification took the team size back and left the
       previous one out, or one written before the forests or for the hours;
-      records the run in ISSUES_DB. The outer test rows are not read."""),
+      records the run in ISSUES_DB. The outer test rows are not read.
+      Tail cut: the fence is Q3 + k IQR of the business days of the inner
+      fitting set (quartiles by linear interpolation, R's and numpy's
+      default), never of the validation; the usual flow is the issues at or
+      below the k = 3 fence, and every choice above, alpha, lambda, n and k
+      and each forest's point, is scored on the usual-flow validation
+      issues. First the fitting k is chosen on the grid 1.5, 3, 5, 10 and
+      no cut: own_with_similarity, chosen as above on the inner fitting
+      rows at or below each k's fence, keeps the k of its lowest error,
+      exact ties going to the larger k; then every model, forest and
+      reference fits on the rows of that k. The similarity medians, the
+      reporter median and the Blocker pace keep reading every training
+      issue. The parameters file records the chosen k, both fences in
+      business days and every k's error; one without them is refused."""),
 
   ISSUES_SIMILARITY_TEST("issues-in-progress-similarity-test",
       new IssuesSimilarityTestCommand(), """
@@ -349,7 +362,12 @@ public enum Command {
       (Monday-to-Friday dates reached, at each issue's day boundary,
       holidays ignored, the time back in Open or Reopened left out) on the
       issues of at least one business day, those of 0 dropped from the outer
-      training and test. Reads MATRIX and ELASTIC_NET_PARAMETERS and chooses
+      training and test. Every model, forest and reference fits on the outer
+      training rows at or below the fence of the chosen k (Q3 + k IQR of the
+      outer training set's business days), and every table is read twice:
+      on the usual flow, the outer test issues at or below the k = 3 fence of
+      the outer training set, the main reading, and on all issues, the
+      complementary one. Reads MATRIX and ELASTIC_NET_PARAMETERS and chooses
       nothing: refits every Elastic Net model but the retrospective one as
       before ticket 19, which only the inner report scores, on the outer
       training set with its chosen alpha and the chosen lambda times the
@@ -399,8 +417,15 @@ public enum Command {
       Elastic Net, the retrospective scenario as before ticket 19, with its
       forest, which the test does not score) on the inner fitting rows and
       scores the inner validation, in whole business days, by the test's own
-      scoring. Writes to REPORT_DIR: the report; the per-issue predictions
-      with whether the issue has an implementation commit; per model the
+      scoring, fitted on the inner fitting rows at or below the fence of the
+      chosen k. Every table, models, bands, paired comparisons and ordering
+      intervals, is read twice: on the usual flow, the validation issues at
+      or below the k = 3 fence of the inner fitting set, the main reading,
+      and on all issues, the complementary one, marked as such; the report's
+      header states the chosen k, both fences and each reading's issues.
+      Writes to REPORT_DIR: the report; the per-issue predictions with
+      whether the issue is of the usual flow and whether it has an
+      implementation commit; per reading and model the
       error, the gains over the global and the project median, Spearman,
       pairwise ordering and the error's quantiles; the error by band of the
       true business days (1, 2-3, 4-10, 11+); the paired comparisons of the
