@@ -265,6 +265,8 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     run.put("tail_cut", tailCut(cut));
     run.put("fit_rows", r.fitRows());
     run.put("validation_rows", r.validationRows());
+    // every inner validation issue, as validation_rows counted before ticket 23
+    run.put("validation_rows_all", population.kept().innerSelection());
     run.put("validation_scored", r.scored().description());
     run.put("project_mae_business_days", r.projectMae());
     run.put("constant_mae_business_days", r.constantMae());

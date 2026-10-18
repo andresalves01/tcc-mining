@@ -747,7 +747,6 @@ class SimilarityScoringTest {
     assertEquals(PAIRS_BEFORE_NINTH, pairs.size() + " " + Integer.toHexString(pairs.hashCode()));
   }
 
-
   @Test
   @DisplayName("in the inner scope every model is fitted on the inner fitting rows at the lambda "
       + "chosen, unscaled, reads the inner variant, and only the inner validation is scored")

@@ -292,8 +292,9 @@ class IssuesSimilarityInnerReportCommandTest {
   }
 
   @Test
-  @DisplayName("parameters chosen on another matrix, or outer training rows the split set aside, "
-      + "refuse the report before anything is scored or written")
+  @DisplayName("parameters chosen on another matrix, a fence the selection did not record, or "
+      + "outer training rows the split set aside, refuse the report before anything is scored "
+      + "or written")
   void refuses() throws IOException {
     final Path matrix = dir.resolve("matrix.tsv");
     final Path elasticNet = dir.resolve("elastic-net.tsv");
@@ -308,7 +309,23 @@ class IssuesSimilarityInnerReportCommandTest {
         e.lines().toString());
     assertFalse(Files.exists(reports));
 
-    write(matrix, elasticNet);
+    final ElasticNetSelection.Result chosen = write(matrix, elasticNet);
+
+    // a fence the selection did not take on this inner fitting set: refused before any fitting
+    final List<String> parameters = Files.readAllLines(elasticNet);
+    final String fenceLine = "tail-cut\tchosen\tfence_business_days\t" + chosen.cut().fence();
+    assertTrue(parameters.contains(fenceLine), parameters.toString());
+    final double other = chosen.cut().fence() == 12.5 ? 13.5 : 12.5;
+    final List<String> changed = new ArrayList<>(parameters);
+    changed.set(parameters.indexOf(fenceLine), "tail-cut\tchosen\tfence_business_days\t" + other);
+    Files.write(elasticNet, changed);
+    e = assertThrows(CommandFailedException.class, () -> command().run(context()));
+    assertEquals(List.of("  REFUSED, nothing was scored or written: the fences on the inner "
+        + "fitting set, " + chosen.cut().fence() + " and " + chosen.cut().usualFence()
+        + " business days, are not those the selection recorded, " + other + " and "
+        + chosen.cut().usualFence()), e.lines());
+    assertFalse(Files.exists(reports));
+    Files.write(elasticNet, parameters);
 
     Files.writeString(matrix, "\n", java.nio.file.StandardOpenOption.APPEND);
     e = assertThrows(CommandFailedException.class, () -> command().run(context()));

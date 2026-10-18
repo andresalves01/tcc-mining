@@ -6,6 +6,7 @@ import app.cli.Context;
 import app.issues.Augmentation;
 import app.issues.BusinessDays;
 import app.issues.ElasticNetSelection;
+import app.issues.IssueUnit;
 import app.issues.ProjectSplit;
 import app.issues.RegistrationInProgress;
 import app.issues.RowCache;
@@ -175,18 +176,22 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     final SimilarityScoring.Readings readings;
     try {
       population = BusinessDays.population(training);
+      // the same inner fitting set as the selection's, by the matrix's hash: the same fences,
+      // checked before any model is fitted
+      final List<IssueUnit> fitting = population.entries().stream()
+          .filter(e -> "TRAIN".equals(e.inner(P))).map(RowCache.Entry::unit).toList();
+      final double fence = TailCut.fence(fitting, chosen.cut().k());
+      final double usualFence = TailCut.fence(fitting, TailCut.USUAL_FLOW_K);
+      if (Double.compare(fence, chosen.cut().fence()) != 0
+          || Double.compare(usualFence, chosen.cut().usualFence()) != 0) {
+        throw refused(String.format(Locale.ROOT, "the fences on the inner fitting set, %s and %s "
+            + "business days, are not those the selection recorded, %s and %s", fence,
+            usualFence, chosen.cut().fence(), chosen.cut().usualFence()));
+      }
       readings = SimilarityScoring.readings(population.entries(), chosen.choices(),
           chosen.forests(), chosen.cut().k(), SimilarityScoring.Scope.INNER);
     } catch (final IllegalArgumentException e) {
       throw refused(e.getMessage());
-    }
-    // the same inner fitting set as the selection's, by the matrix's hash: the same fences
-    final SimilarityScoring.Fences fences = readings.main().fences();
-    if (Double.compare(fences.fence(), chosen.cut().fence()) != 0
-        || Double.compare(fences.usualFence(), chosen.cut().usualFence()) != 0) {
-      throw refused(String.format(Locale.ROOT, "the fences on the inner fitting set, %s and %s "
-          + "business days, are not those the selection recorded, %s and %s", fences.fence(),
-          fences.usualFence(), chosen.cut().fence(), chosen.cut().usualFence()));
     }
 
     final SimilarityScoring.Report main = readings.main();
