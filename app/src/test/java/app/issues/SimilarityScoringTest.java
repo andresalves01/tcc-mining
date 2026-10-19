@@ -1167,6 +1167,102 @@ class SimilarityScoringTest {
     assertEquals(START_AT_TICKET_27, now);
   }
 
+  /**
+   * The six attribute sets the scope of fourteen models keeps, each with its forest beside it:
+   * the own start model, Al-Zubaidi and Kikas at the start, both readings of the own
+   * retrospective model and Kikas's retrospective one.
+   */
+  private static final List<String> SIX_SETS = List.of("own_with_similarity_before_pressure",
+      "alzubaidi_start", "kikas_start", "own_retrospective", "own_retrospective_with_discussion",
+      "kikas_retrospective");
+
+  /** The sets the outer test did not score before the fourteen models: the ceiling and Kikas's. */
+  private static final List<String> NOT_OUTER_BEFORE = List.of(
+      "own_retrospective_with_discussion", "kikas_retrospective");
+
+  /**
+   * Whether a model is one of the fourteen and was scored in the scope before they were settled:
+   * a reference median but the executor-project one, or one of {@link #SIX_SETS} or its forest,
+   * the outer test without the ceiling and Kikas's retrospective one.
+   */
+  private static boolean ofTheFourteen(final String name, final SimilarityScoring.Scope scope) {
+    final String set = name.endsWith("_forest")
+        ? name.substring(0, name.length() - "_forest".length()) : name;
+    if (name.equals("global_median") || name.equals("project_median")) {
+      return true;
+    }
+    return SIX_SETS.contains(set) && (scope == INNER || !NOT_OUTER_BEFORE.contains(set));
+  }
+
+  /**
+   * Whether a comparison or ordering key ({@code a | b}, perhaps behind a word) is of two of the
+   * fourteen and existed before they were settled: not a forest against its own Elastic Net, nor
+   * the own start model against a literature start model, which the fourteen add.
+   */
+  private static boolean pairOfTheFourteen(final String key,
+      final SimilarityScoring.Scope scope) {
+    final String[] ab = key.substring(key.lastIndexOf(' ', key.indexOf(" | ") - 1) + 1)
+        .split(" \\| ");
+    final boolean literature = ab[0].startsWith("own_with_similarity_before_pressure")
+        && (ab[1].startsWith("alzubaidi_start") || ab[1].startsWith("kikas_start"));
+    return ofTheFourteen(ab[0], scope) && ofTheFourteen(ab[1], scope)
+        && !ab[0].equals(ab[1] + "_forest") && !literature;
+  }
+
+  /**
+   * One reading's bits of the fourteen models as they were before they were settled: the models,
+   * comparisons and ordering intervals of {@link #innerBits} of the fourteen and their pairs, the
+   * side reading on the issues with and without an implementation commit, the fences and the
+   * band limits; their count and a hash of them, sorted, so the models' order does not count.
+   */
+  private static String fourteenBits(final SimilarityScoring.Report r) {
+    final List<String> all = new ArrayList<>();
+    innerBits(r).forEach((k, v) -> {
+      if (k.contains(" | ") ? pairOfTheFourteen(k, r.scope()) : ofTheFourteen(k, r.scope())) {
+        all.add(k + " " + v);
+      }
+    });
+    for (final var g : r.withCommits()) {
+      all.add("with " + g.a() + " | " + g.b() + " " + hex(g.gap()) + " " + hex(g.low()) + " "
+          + hex(g.high()));
+    }
+    for (final var g : r.withoutCommits()) {
+      all.add("without " + g.a() + " | " + g.b() + " " + hex(g.gap()) + " " + hex(g.low()) + " "
+          + hex(g.high()));
+    }
+    all.add(r.fences() + " " + java.util.Arrays.toString(r.bandTops()));
+    java.util.Collections.sort(all);
+    return all.size() + " " + Integer.toHexString(all.hashCode());
+  }
+
+  /**
+   * The fourteen models as the code scored them before they were settled: per scope (inner, then
+   * outer), with a tail cut at k = 1.5 in each reading (main, then complementary), then without a
+   * cut on every scored issue, inner then outer, {@link #fourteenBits}. Captured from e67f85f
+   * (ticket 29).
+   */
+  private static final List<String> FOURTEEN_AT_TICKET_29 = List.of("72 8a61ae68",
+      "72 77f3d859", "44 d8d7924d", "44 d8d7924d", "72 97fa0fdb", "44 b9607449");
+
+  @Test
+  @DisplayName("the fourteen models, their comparisons, ordering intervals and side reading score, "
+      + "bit for bit, what they scored at ticket 29, in both scopes, with and without a tail cut")
+  void fourteenAsAtTicket29() {
+    final List<String> now = new ArrayList<>();
+    for (final SimilarityScoring.Readings r : List.of(
+        SimilarityScoring.readings(withTail(training()), choices(0.2), forests(), 1.5, INNER, 1,
+            1),
+        SimilarityScoring.readings(withTail(corpus()), choices(0.2), forests(), 1.5, RESERVED, 1,
+            1))) {
+      now.add(fourteenBits(r.main()));
+      now.add(fourteenBits(r.complementary()));
+    }
+    now.add(fourteenBits(SimilarityScoring.run(training(), choices(0.2), forests(), INNER, 1, 1)));
+    now.add(fourteenBits(SimilarityScoring.run(corpus(), choices(0.2), forests(), RESERVED, 1,
+        1)));
+    assertEquals(FOURTEEN_AT_TICKET_29, now);
+  }
+
   @Test
   @DisplayName("the error bands are cut at the quartiles of the observed business days of the cut "
       + "fitting rows, in each scope; changing every validation or outer test label moves them "

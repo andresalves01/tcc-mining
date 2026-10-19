@@ -471,6 +471,95 @@ class IssuesSimilarityInnerReportCommandTest {
     assertEquals(START_AT_TICKET_27, now);
   }
 
+  /** The models and forests the scope of fourteen models leaves out. */
+  private static final Set<String> LEFT_OUT = leftOut();
+
+  private static Set<String> leftOut() {
+    final Set<String> out = new LinkedHashSet<>();
+    for (final String m : List.of("own_without_similarity", "similarity_alone",
+        "own_with_similarity", "union_own", "own_retrospective_before_pressure")) {
+      out.add(m);
+      out.add(m + "_forest");
+    }
+    out.add("executor_project_median");
+    return out;
+  }
+
+  /**
+   * A file's text with only what the fourteen models had before they were settled: without the
+   * lines, or, in the predictions, the columns, of a model they leave out, and without a forest
+   * against its own Elastic Net or the own start model against a literature start model, a pair
+   * the fourteen do not have or add; hashed with its lines sorted, and, in the predictions, its
+   * columns, so the models' order does not count.
+   */
+  private static String ofTheFourteen(final Path file) throws IOException {
+    final List<String> lines = Files.readAllLines(file);
+    final List<String> kept = new ArrayList<>();
+    if (file.getFileName().toString().equals(IssuesSimilarityInnerReportCommand.PREDICTIONS)) {
+      final String[] header = lines.get(0).split("\t", -1);
+      for (int i = 0; i < header.length; i++) {
+        if (!LEFT_OUT.contains(header[i])) {
+          final List<String> column = new ArrayList<>();
+          for (final String line : lines) {
+            column.add(line.split("\t", -1)[i]);
+          }
+          kept.add(String.join("\t", column));
+        }
+      }
+    } else {
+      for (final String line : lines) {
+        final List<String> f = List.of(line.split("\t", -1));
+        boolean pair = false;
+        for (int i = 0; i + 1 < f.size(); i++) {
+          pair |= f.get(i).equals(f.get(i + 1) + "_forest")
+              || f.get(i).startsWith("own_with_similarity_before_pressure")
+              && (f.get(i + 1).startsWith("alzubaidi_start")
+                  || f.get(i + 1).startsWith("kikas_start"));
+        }
+        if (!pair && f.stream().noneMatch(LEFT_OUT::contains)) {
+          kept.add(line);
+        }
+      }
+    }
+    java.util.Collections.sort(kept);
+    return kept.size() + " " + Integer.toHexString(kept.hashCode());
+  }
+
+  /**
+   * Every file of the report of {@link #entries} but the report itself, as the code wrote it
+   * before the fourteen models were settled, by {@link #ofTheFourteen}. Captured from e67f85f
+   * (ticket 29).
+   */
+  private static final Map<String, String> FOURTEEN_AT_TICKET_29 = Map.of(
+      IssuesSimilarityInnerReportCommand.PREDICTIONS, "20 95de5350",
+      IssuesSimilarityInnerReportCommand.MODELS, "29 1563925c",
+      IssuesSimilarityInnerReportCommand.BANDS, "113 ee7cecd",
+      IssuesSimilarityInnerReportCommand.COMPARISONS, "75 e73a8e25",
+      IssuesSimilarityInnerReportCommand.ORDERING, "41 c7b22d96",
+      IssuesSimilarityInnerReportCommand.DIAGNOSTICS, "222 504d3d26",
+      IssuesSimilarityInnerReportCommand.IMPORTANCE, "120 a8a42d",
+      IssuesSimilarityInnerReportCommand.INTERVALS, "281 4e13181b",
+      IssuesSimilarityInnerReportCommand.CALIBRATION, "29 403bf11d");
+
+  @Test
+  @DisplayName("every file of the report but the report itself is, bit for bit, what it was at "
+      + "ticket 29 for the fourteen models and their pairs")
+  void fourteenFilesAsAtTicket29() throws IOException, CommandFailedException {
+    final Path matrix = dir.resolve("matrix.tsv");
+    final Path elasticNet = dir.resolve("elastic-net.tsv");
+    write(matrix, elasticNet);
+    final Path reports = dir.resolve("out");
+    set(matrix, elasticNet, reports);
+
+    command().run(context());
+
+    final Map<String, String> now = new HashMap<>();
+    for (final String file : START_AT_TICKET_27.keySet()) {
+      now.put(file, ofTheFourteen(reports.resolve(file)));
+    }
+    assertEquals(FOURTEEN_AT_TICKET_29, now);
+  }
+
   @Test
   @DisplayName("parameters chosen on another matrix, a fence the selection did not record, or "
       + "outer training rows the split set aside, refuse the report before anything is scored "

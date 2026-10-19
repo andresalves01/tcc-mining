@@ -1362,6 +1362,59 @@ class ElasticNetSelectionTest {
     assertEquals(START_AT_TICKET_27, now);
   }
 
+  /**
+   * The six attribute sets the scope of fourteen models keeps: the own start model, Al-Zubaidi
+   * and Kikas at the start, both readings of the own retrospective model and Kikas's
+   * retrospective one.
+   */
+  private static final List<String> SIX_SETS = List.of("own_with_similarity_before_pressure",
+      "alzubaidi_start", "kikas_start", "own_retrospective", "own_retrospective_with_discussion",
+      "kikas_retrospective");
+
+  /**
+   * The selection of {@link #full} as the code made it before the fourteen models were settled:
+   * under the tail cut it chooses, a hash of the rows, the references, the chosen k, both fences
+   * and every k's fence and fitting rows (not its error, which is of the model the k is chosen
+   * on), then per set of {@link #SIX_SETS} a hash of its {@link #everything} line (Elastic Net,
+   * removed columns, forest); then, at no cut on every validation issue, the same per set.
+   * Captured from e67f85f (ticket 29).
+   */
+  private static final List<String> SIX_SETS_AT_TICKET_29 = List.of(
+      "d3d3ddba",
+      "own_with_similarity_before_pressure 46d6e3a8",
+      "alzubaidi_start e7762856",
+      "kikas_start 16b7d500",
+      "own_retrospective 2af32f91",
+      "own_retrospective_with_discussion 4546c0cc",
+      "kikas_retrospective 51cd32ef",
+      "own_with_similarity_before_pressure d655ca57",
+      "alzubaidi_start a86a7d59",
+      "kikas_start dfec3b71",
+      "own_retrospective ed97e9c3",
+      "own_retrospective_with_discussion 22c0299",
+      "kikas_retrospective cad789cc");
+
+  @Test
+  @DisplayName("the six attribute sets choose, bit for bit, what they chose at ticket 29, under "
+      + "the tail cut chosen and at no cut: the k, its fences, every Elastic Net and forest")
+  void sixSetsAsAtTicket29() {
+    full();
+    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries), 1);
+    final List<String> now = new ArrayList<>(List.of(Integer.toHexString((everything(r).get(0)
+        + " " + hex(r.cut().k()) + " " + hex(r.cut().fence()) + " " + hex(r.cut().usualFence())
+        + " " + r.cut().grid().stream().map(t -> hex(t.k()) + " " + hex(t.fence()) + " "
+            + t.fitRows()).toList()).hashCode())));
+    final ElasticNetSelection.Result u = uncut(counted(entries));
+    for (final ElasticNetSelection.Result x : List.of(r, u)) {
+      for (final String name : SIX_SETS) {
+        final ElasticNetSelection.Model m = model(x, name);
+        now.add(name + " " + Integer.toHexString((fingerprint(m) + " " + m.removed() + " "
+            + forestFingerprint(m.forest())).hashCode()));
+      }
+    }
+    assertEquals(SIX_SETS_AT_TICKET_29, now);
+  }
+
   @Test
   @DisplayName("tail cut: both fences and every k's fitting rows are taken on the inner fitting "
       + "set only; changing every validation label moves none of them")
