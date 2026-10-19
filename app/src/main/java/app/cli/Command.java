@@ -267,7 +267,7 @@ public enum Command {
   ISSUES_RETROSPECTIVE("issues-in-progress-retrospective", new IssuesRetrospectiveCommand(), """
       Issue duration from the first In Progress, description-similarity
       chain, RETROSPECTIVE SCENARIO: adds to the similarity stage's matrix
-      ten attributes observed between the first In Progress and the
+      nine attributes observed between the first In Progress and the
       first resolution. They describe the work as it was done, and the
       counts grow with the duration itself: a gain from them is association
       with the duration observed up to the resolution, not a prediction
@@ -283,21 +283,21 @@ public enum Command {
       implementation commit. In [first In Progress, first resolution), bot
       accounts left out: the comments, the distinct people who commented or
       changed a field (the reporter only if active) and the effective
-      changes of assignee. From the links and the tags: the business days,
-      with recorded activity at the inner split's T as in the target,
-      from the first In Progress to the last first resolution of the
-      issues it waited on (is blocked by, depends upon, requires; any
-      project), clipped at its own; and urgency, the calendar days from
-      the first resolution to the release of its fix version, a tag
-      matched to the version's name, measured after the fact -- both
-      missing without their source. Refuses unless MATRIX is the similarity stage's,
+      changes of assignee; the comments and the people count the records
+      the target is built from, so only the ceiling reading of the
+      retrospective model reads them. From the tags: urgency, the calendar
+      days from the first resolution to the release of its fix version, a
+      tag matched to the version's name, measured after the fact, missing
+      without one. The wait on blocking issues is no longer written: it
+      equalled the target in about half of the issues that had one.
+      Refuses unless MATRIX is the similarity stage's,
       with its day boundary and active business days and without these
       columns, every row's split is the one its rule draws and the
       corpus holds every issue of the matrix as it is.
       Reads MATRIX, the corpus and the changed methods of the implementation
       commits (the expensive part); writes RETROSPECTIVE_MATRIX, never over
       MATRIX or a file that is not a retrospective matrix; records the run,
-      with the coverage of each of the ten on the inner fitting and inner
+      with the coverage of each of the nine on the inner fitting and inner
       validation, in ISSUES_DB. The other matrices are left untouched."""),
 
   ISSUES_SIMILARITY_ELASTIC_NET("issues-in-progress-similarity-elastic-net",
@@ -309,7 +309,7 @@ public enum Command {
       the whole working days of silent gaps between records left out),
       on the issues of at least one business day: chooses alpha and
       lambda on the inner validation, by the registered grid's sweep, for
-      ten Elastic Net models: the own specification without similarity
+      eleven Elastic Net models: the own specification without similarity
       (description length, team size, the team's median and spread of lines
       of code and complexity, the corrected reporter median, the executor's
       lines of code, complexity and open workload, the fix version set
@@ -317,20 +317,22 @@ public enum Command {
       the other Blocker issues), the similarity medians alone, the own
       specification with similarity (those thirteen and the three medians),
       Al-Zubaidi and Kikas at the start (the registered cells), and the
-      literature families with the own specification with similarity, and
-      the retrospective scenario: the own specification with similarity and
-      the ten attributes issues-in-progress-retrospective adds, observed up
-      to the resolution, whose counts grow with the duration itself, and the
-      own specification with similarity as before ticket 19, without the
-      three start attributes, to compare the new start model with, and the
-      retrospective scenario as before ticket 19, without its five
-      attributes (the three start ones, the blocking-link wait and urgency),
-      which adds nothing and only measures what ticket 19 did to the
-      retrospective model, and Kikas's retrospective scenario, the registered
-      Kikas cell of it (Kikas at the start and the twelve counts observed up
-      to the resolution, with their missing indicator), the literature
-      counterpart of the retrospective model. The six models with the
-      similarity medians are
+      literature families with the own specification with similarity; the
+      own start model, the own specification with similarity without the
+      three pressure attributes (fix version, release cycle, Blocker pace);
+      the retrospective scenario in its main reading: the own start model
+      and, of the attributes issues-in-progress-retrospective adds,
+      observed up to the resolution, the five of the implementation
+      content, the assignee changes and urgency, without the comments and
+      the participants, which count the records the target is made of;
+      the same without urgency, which adds nothing and only measures what
+      urgency does to the retrospective model; Kikas's retrospective
+      scenario, the registered Kikas cell of it (Kikas at the start and the
+      twelve counts observed up to the resolution, with their missing
+      indicator), the literature counterpart of the retrospective model,
+      which counts comments; and the main reading with the comments and
+      the participants, a CEILING, not a competitor: part of its gain is
+      mechanical. The seven models with the similarity medians are
       swept once for each of the 27 combinations of Jaccard n (5, 10, 20),
       embedding n (5, 10, 20) and cluster k (8, 16, 32), and keep the
       combination whose sweep errs least; exact ties go to the smaller
@@ -340,7 +342,7 @@ public enum Command {
       the similarity medians at the chosen n and k (300 trees, depth 20,
       column share 1/6, 1/3 or 2/3, leaf 5, 25 or 100, seed 20260927); the
       lowest inner validation error is kept, exact ties going to the first
-      point of the grid. Prints each model's choice and, for those six, the
+      point of the grid. Prints each model's choice and, for those seven, the
       best error of every combination, and each forest's grid. The
       split-dependent columns are read in their inner variant; a column
       missing on every inner fitting row is removed from its models and
@@ -379,9 +381,10 @@ public enum Command {
       on the usual flow, the outer test issues at or below the k = 3 fence of
       the outer training set, the main reading, and on all issues, the
       complementary one. Reads MATRIX and ELASTIC_NET_PARAMETERS and chooses
-      nothing: refits every Elastic Net model but the retrospective one as
-      before ticket 19 and Kikas's retrospective one, which only the inner
-      report scores, on the outer
+      nothing: refits every Elastic Net model but the retrospective main
+      reading without urgency, Kikas's retrospective one and the
+      retrospective one with the comments and the participants, which only
+      the inner report scores, on the outer
       training set with its chosen alpha and the chosen lambda times the
       ratio of rows, as the registered reserved run does, the similarity
       medians at the Jaccard n, embedding n and cluster k chosen for each
@@ -399,11 +402,11 @@ public enum Command {
       intervals resampling whole projects: the own specification with
       similarity against the same without, every model against the global
       median and every model but the global median against the project
-      median, and the retrospective scenario against the own specification
-      with similarity; each forest against its Elastic Net, the forest with
-      similarity against the forest without, the retrospective forest
-      against the forest with similarity, and every forest against the
-      global and the project median. As a side reading, the two
+      median, the own specification with similarity against the same
+      without the pressure attributes, and the retrospective scenario
+      against the own start model; each forest against its Elastic Net,
+      the forests of the same pairs, and every forest against the global
+      and the project median. As a side reading, the two
       retrospective comparisons again on the issues with an implementation
       commit only. Refuses unless the parameters file exists and is for
       these models with a forest for each, its choices were made on that
@@ -427,13 +430,15 @@ public enum Command {
       only the outer training rows, the others left behind on their split
       field, never parsed beyond it; drops the issues of 0 business days
       (the time back in Open or Reopened left out, as the similarity stage
-      wrote them); refits the twenty-three models (the nineteen of the test:
+      wrote them); refits the twenty-five models (the nineteen of the test:
       the global, project and executor-project medians, eight Elastic Nets
       at their chosen alpha and lambda, unscaled, and n and k, and their
       eight forests at their chosen column share and leaf; the ninth
-      Elastic Net, the retrospective scenario as before ticket 19, and the
-      tenth, Kikas's retrospective scenario, with their forests, which the
-      test does not score) on the inner fitting rows and
+      Elastic Net, the retrospective main reading without urgency, the
+      tenth, Kikas's retrospective scenario, and the eleventh, the
+      retrospective scenario with the comments and the participants, a
+      ceiling, with their forests, which the test does not score) on the
+      inner fitting rows and
       scores the inner validation, in whole business days, by the test's own
       scoring, fitted on the inner fitting rows at or below the fence of the
       chosen k. Every table, models, bands, paired comparisons and ordering
@@ -457,13 +462,16 @@ public enum Command {
       the global median's and the MAE; the factors recomputed on both
       halves for later use; the paired
       comparisons of the test, every model against the global and the
-      project median among them, and the retrospective model against the
-      one before ticket 19 and against Kikas's, Elastic Net and forest, with
-      intervals
-      resampling whole projects; the
-      retrospective pairs on the issues with and without an implementation
-      commit; the ordering intervals; the Elastic Nets' coefficients and the
-      forests' permutation importance. Refuses unless the parameters file is
+      project median among them; the retrospective main reading against
+      the own start model, against itself without urgency and against
+      Kikas's (which counts comments, the main reading not); the ceiling,
+      the main reading with the comments and the participants, against the
+      main reading and against Kikas's, the fair literature comparison,
+      Elastic Net and forest, with intervals resampling whole projects; the
+      main reading against the own start model on the issues with and
+      without an implementation commit; the ordering intervals; the
+      Elastic Nets' coefficients and the forests' permutation importance.
+      Refuses unless the parameters file is
       the selection step's own for these models, its choices were made on
       that matrix, every outer training row is inner fitting or inner
       validation and every column is present. Writes nothing to the database

@@ -29,13 +29,14 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * The inner report of the description-similarity chain (ticket 16): twenty-three models -- the
+ * The inner report of the description-similarity chain (ticket 16): twenty-five models -- the
  * nineteen of the test, the three medians, eight Elastic Nets and their eight forests; the ninth
- * Elastic Net, the retrospective model as before ticket 19 (ticket 20), and the tenth, Kikas's
- * retrospective model (ticket 26), with their forests, which the test does not score -- refitted
- * on the
- * inner fitting rows at the choices of the parameters file and scored on the inner validation,
- * by the study's own scoring ({@link SimilarityScoring}, {@link SimilarityScoring.Scope#INNER}),
+ * Elastic Net, the main reading of the retrospective model without urgency (ticket 20), the
+ * tenth, Kikas's retrospective model (ticket 26), and the eleventh, the retrospective model with
+ * the comments and the participants, a ceiling and not a competitor, with their forests, which
+ * the test does not score -- refitted on the inner fitting rows at the choices of the parameters
+ * file and scored on the inner validation, by the study's own scoring ({@link
+ * SimilarityScoring}, {@link SimilarityScoring.Scope#INNER}),
  * in whole business days on the issues of at least one ({@link BusinessDays}).
  *
  * <p><b>Tail cut and two readings</b> (ticket 23; {@link TailCut}). The models are fitted on the
@@ -77,10 +78,11 @@ import java.util.function.Function;
  * days, the bands at the quartiles of the cut fitting rows ({@link #BANDS}, ticket 24); the
  * prediction intervals checked on half B ({@link #INTERVALS}) and the calibration recomputed on
  * both halves for later use ({@link #CALIBRATION}); the paired comparisons of the test, which
- * hold every model against the global and the project median and the retrospective model
- * against the one before ticket 19 and against Kikas's, Elastic Net and forest, and the side
- * reading of the
- * retrospective pairs on the issues with and without an implementation commit ({@link
+ * hold every model against the global and the project median, the main reading of the
+ * retrospective model against the own start model, against itself without urgency and against
+ * Kikas's, and the ceiling against the main reading and against Kikas's, Elastic Net and forest,
+ * and the side reading of the main reading's pair with the own start model on the issues with and
+ * without an implementation commit ({@link
  * #COMPARISONS}); the ordering intervals, a declared measure ({@link #ORDERING}); the Elastic Nets'
  * coefficients and the forests' permutation importance on the inner validation, as the test writes
  * them ({@link #DIAGNOSTICS}, {@link #IMPORTANCE}).
@@ -385,6 +387,10 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
         + r.withCommitRows() + " of them with an implementation commit");
     md.add("- validation projects with no fitting issue (the project median is the global one "
         + "there): " + r.unseenRows() + " issues, " + r.unseenProjects());
+    md.add("- " + ElasticNetSelection.RETROSPECTIVE + ": "
+        + ElasticNetSelection.RETROSPECTIVE_ROLE);
+    md.add("- " + ElasticNetSelection.WITH_DISCUSSION + ": "
+        + ElasticNetSelection.WITH_DISCUSSION_ROLE);
     md.add("- " + ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE + ": "
         + ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE_ROLE);
     md.add("- " + ElasticNetSelection.KIKAS_RETROSPECTIVE + ": "
@@ -457,8 +463,8 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
         + "projects (" + ProjectBootstrap.DRAWS + " draws, seed " + ProjectBootstrap.SEED + ")");
     md.add("");
     table(md, r.comparisons());
-    md.add("### Side reading: the retrospective pairs on the " + r.withCommitRows()
-        + " issues with an implementation commit");
+    md.add("### Side reading: the main reading of the retrospective model against the own start "
+        + "model on the " + r.withCommitRows() + " issues with an implementation commit");
     md.add("");
     table(md, r.withCommits());
     md.add("### For contrast: the same pairs on the " + (r.scoredRows() - r.withCommitRows())

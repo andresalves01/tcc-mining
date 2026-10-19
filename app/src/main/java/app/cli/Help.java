@@ -69,7 +69,7 @@ public final class Help {
                                                 last three, the retrospective matrix, which has
                                                 every model's columns)
           RETROSPECTIVE_MATRIX (unset)          issues-in-progress-retrospective: the matrix with
-                                                the ten retrospective columns written
+                                                the nine retrospective columns written
           TEAM_COLUMNS      (unset)             issues-in-progress-team writes it,
                                                 issues-in-progress-similarity reads it
           MODEL_DIR         (unset)             issues-download-model: where the embedding model goes;

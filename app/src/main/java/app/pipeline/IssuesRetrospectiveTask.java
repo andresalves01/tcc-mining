@@ -28,12 +28,10 @@ import java.util.function.Function;
 
 /**
  * The retrospective stage after the similarity stage (ticket 15): the similarity stage's matrix in,
- * the same matrix with the ten {@link Retrospective} columns added out. The earlier columns are
- * copied as they are, so every model before the retrospective one reads the same values. The
- * blocking-link wait is counted at the day boundary the matrix holds for each issue and, as the
- * target, with recorded activity at the inner variant's threshold the matrix holds (ticket 27):
- * the retrospective columns are read by the inner chain alone; urgency reads
- * the projects' release dates from the tags of the corpus (ticket 19).
+ * the same matrix with the nine {@link Retrospective} columns added out. The earlier columns are
+ * copied as they are, so every model before the retrospective one reads the same values. Urgency
+ * reads the projects' release dates from the tags of the corpus (ticket 19). The wait on blocking
+ * issues is no longer written: no model reads it.
  *
  * <p>The split is checked first against its rule ({@link ProjectSplit#differences}), and a
  * difference refuses the run before the corpus is read; so does an issue of the matrix the corpus
@@ -57,7 +55,7 @@ public final class IssuesRetrospectiveTask {
    * @param refused why the matrix's split is not its rule's, or the matrix's issues the
    *     corpus does not hold as they are; when not empty nothing else was done and the other
    *     fields are empty
-   * @param entries the matrix's rows with the ten columns, in its order
+   * @param entries the matrix's rows with the nine columns, in its order
    * @param commits the implementation commits whose methods were read
    * @param withMethods of those, the commits that changed a recovered method
    * @param bots the raw accounts left out of the discussion
@@ -130,8 +128,6 @@ public final class IssuesRetrospectiveTask {
     final Set<String> bots = Set.copyOf(DayBoundaries.bots(corpus.comments(),
         new HashSet<>(universe.universe())));
     final Retrospective retrospective = new Retrospective(world, bots, Releases.of(corpus));
-    final BusinessDays.Records records = BusinessDays.Records.of(corpus, universe, world, bots);
-    final String threshold = BusinessDays.threshold(Augmentation.Variant.INNER);
     final Set<String> commits = new TreeSet<>();
     for (final RowCache.Entry e : entries) {
       final Universe.Unit u = universe.unit(P, e.unit().issueId());
@@ -144,9 +140,8 @@ public final class IssuesRetrospectiveTask {
     progress.phase(4, 4, "adding %d columns", Retrospective.COLUMNS.size());
     final List<RowCache.Entry> out = new ArrayList<>(entries.size());
     for (final RowCache.Entry e : entries) {
-      final Map<String, Double> added = retrospective.row(universe.unit(P, e.unit().issueId()),
-          changed, e.row().values().get(BusinessDays.BOUNDARY).intValue(),
-          records.of(e.unit().issueId()), e.row().values().get(threshold));
+      final Map<String, Double> added =
+          retrospective.row(universe.unit(P, e.unit().issueId()), changed);
       final Map<String, Double> values = new HashMap<>(e.row().values());
       final Set<String> absent = new HashSet<>(e.row().absent());
       for (final String column : Retrospective.COLUMNS) {
@@ -167,7 +162,7 @@ public final class IssuesRetrospectiveTask {
 
   /**
    * Per inner side, fitting then validation, on its issues of at least one business day, the rows
-   * with each of the ten observed. Only rows of the outer training set are read.
+   * with each of the nine observed. Only rows of the outer training set are read.
    */
   static List<Coverage> coverage(final List<RowCache.Entry> entries) {
     final BusinessDays.Population population = BusinessDays.population(entries.stream()

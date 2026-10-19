@@ -20,10 +20,10 @@ import java.util.concurrent.Callable;
 /**
  * The Elastic Net models of the description-similarity chain, and the choice on the inner
  * validation only of each one's alpha and lambda, by the registered chain's own sweep, and, for
- * the six models reading the similarity medians, of the Jaccard n, embedding n and cluster k
+ * the seven models reading the similarity medians, of the Jaccard n, embedding n and cluster k
  * they read.
  *
- * <p><b>Models.</b> Ten, each a {@link Cell}. Two are the registered in-progress cells read as
+ * <p><b>Models.</b> Eleven, each a {@link Cell}. Two are the registered in-progress cells read as
  * they are: Al-Zubaidi at the start ({@code ALZUBAIDI / C1}) and Kikas at the start ({@code
  * KIKAS / C1}). The own specification with similarity, the study's own contribution, is
  * description length and team size, the registered {@code A01} and {@code A03}; the team's median
@@ -35,35 +35,37 @@ import java.util.concurrent.Callable;
  * similarity, its control, is the same thirteen without the three medians; the similarity block
  * alone is the three medians; the union is the literature families as the registered union reads
  * them, Kikas's body length entering once as Al-Zubaidi's word counts, followed by the own
- * specification with similarity. The seventh, the retrospective scenario, is the own
- * specification with similarity followed by the ten attributes observed between the first In
- * Progress and the first resolution ({@link Retrospective}), twenty-six in all. The eighth is the
- * own specification with similarity as it was before ticket 19, the ten and the three medians
- * without the start columns of {@link Pressure} (item 36), so the new start model is compared
- * with the old one on the same run. The ninth is the retrospective model as it was before ticket
- * 19, the retrospective one without ticket 19's five columns -- the three start columns of
- * {@link Pressure} and the blocking-link wait and urgency of {@link Retrospective} -- and their
- * missing indicators (item 43), twenty-one in all: it adds no attribute and only measures what
- * ticket 19 did to the retrospective model. The tenth is the registered Kikas cell of the
- * retrospective scenario ({@code KIKAS / C2}, item 59): Kikas at the start followed by Kikas's
- * whole retrospective set as adapted, the twelve counts observed up to the resolution and the
- * missing indicator the matrix has for them, the literature counterpart of the retrospective
- * model; no similarity median, no own column.
+ * specification with similarity. The eighth is the own specification with similarity without
+ * the pressure attributes, the start columns of {@link Pressure} (item 36): the ten and the three
+ * medians, the own start model chosen (item 49). The seventh, the retrospective scenario in its
+ * main reading, is that own start model followed by what was observed between the first In
+ * Progress and the first resolution ({@link Retrospective}) except the comments and the
+ * participants: the five content attributes, the assignee changes and urgency, twenty in all. The
+ * eleventh, the same reading with the comments and the participants added, twenty-two in all, is
+ * a ceiling, not a competitor: those two count the very records the target is made of ({@link
+ * Retrospective#DISCUSSION}). The ninth is the main reading without the pressure attribute left
+ * in it, urgency (item 43), nineteen in all: it adds no attribute and only measures what urgency
+ * does to the retrospective model. The tenth is the registered Kikas cell of the retrospective
+ * scenario ({@code KIKAS / C2}, item 59): Kikas at the start followed by Kikas's whole
+ * retrospective set as adapted, the twelve counts observed up to the resolution and the missing
+ * indicator the matrix has for them, the literature counterpart of the retrospective model; no
+ * similarity median, no own column. The wait on blocking issues is in no model: it equalled the
+ * target in about half of the issues that had one.
  *
  * <p><b>Ticket 15.</b> The retrospective model ({@code own_retrospective}) reads what was observed
- * up to the resolution, and its counts grow with the duration itself: a gain over the own
- * specification with similarity is association with the duration, not a prediction available
- * during the work. It reads the similarity medians, so it is swept over the 27 combinations as the
- * other models with them are; its forest follows as for every model. The six models before it are
- * declared, read and chosen as they were; the ten columns are new names, beside the registered
- * columns of the same constructs, which keep their meaning.
+ * up to the resolution, and its counts grow with the duration itself: a gain over the own start
+ * model is association with the duration, not a prediction available during the work. It reads
+ * the similarity medians, so it is swept over the 27 combinations as the other models with them
+ * are; its forest follows as for every model. The six models before it are
+ * declared, read and chosen as they were; the retrospective columns are new names, beside the
+ * registered columns of the same constructs, which keep their meaning.
  *
  * <p><b>Ticket 12.</b> The previous own specification ({@code OWN / C1}) is no longer a model of
  * this chain, and the team size returns to the own specification. The registered in-progress
  * chain, its cell and its outputs, are untouched.
  *
  * <p><b>Similarity medians as attributes</b> (ticket 11, reversing ticket 08's choice by each
- * median's error read alone as a prediction). The six models with the medians ({@link
+ * median's error read alone as a prediction). The seven models with the medians ({@link
  * #WITH_SIMILARITY}) are swept once per {@link Combination} of a Jaccard n, an embedding n and a
  * cluster k among the values the similarity stage computes, 27 in all, each sweep the registered
  * alpha by lambda grid, and keep the combination whose chosen point errs least on the inner
@@ -81,7 +83,7 @@ import java.util.concurrent.Callable;
  * the four team columns take the transform of the registered columns they revise ({@code D05};
  * {@code A04} to {@code A07}), which is also {@code log1p}. Every new column carries a missing
  * indicator: a missing value is handed to the registered preparation as missing, filled there by
- * the fitting set's median. The retrospective model's ten are declared as {@link
+ * the fitting set's median. The retrospective columns are declared as {@link
  * #retrospective} says: the three counts of the discussion are never missing and carry none. The
  * registered columns ({@code A01}, {@code A03}, {@code A09}, {@code A10}, {@code A13}) keep their
  * own transform and missing-indicator setting. A declared
@@ -116,13 +118,40 @@ import java.util.concurrent.Callable;
  */
 public final class ElasticNetSelection {
 
-  /** The retrospective scenario's model (ticket 15), the seventh of {@link #MODELS}. */
+  /**
+   * The retrospective scenario's model in its main reading (ticket 15), the seventh of {@link
+   * #MODELS}: the own start model ({@link #BEFORE_PRESSURE}) followed by the five content
+   * attributes, the assignee changes and urgency, without the comments and the participants.
+   */
   public static final String RETROSPECTIVE = "own_retrospective";
 
+  /** What the main reading is, for the selection step's output and record and the inner report. */
+  public static final String RETROSPECTIVE_ROLE = "the main reading of the retrospective model: "
+      + "the own start model followed by the five content attributes (Java lines, files, mean "
+      + "complexity, mean nesting, familiarity), the assignee changes and urgency, with their "
+      + "missing indicators; no comments and no participants, which count the records the "
+      + "target is made of";
+
   /**
-   * The own specification with similarity as it was before ticket 19, without the three start
-   * columns of {@link Pressure} (item 36), the eighth of {@link #MODELS}: the new start model is
-   * compared with it on the same run, and that comparison decides which goes to the outer test.
+   * The retrospective model with the comments and the participants, the last of {@link #MODELS}:
+   * {@link #RETROSPECTIVE} followed by those two and nothing else.
+   */
+  public static final String WITH_DISCUSSION = "own_retrospective_with_discussion";
+
+  /**
+   * What the reading with the discussion is, for the selection step's output and record and the
+   * inner report; the test does not score it.
+   */
+  public static final String WITH_DISCUSSION_ROLE = "a CEILING, not a competitor: the main "
+      + "reading of the retrospective model followed by the comments and the participants, which "
+      + "count the very records the target is made of, so part of any gain is mechanical; it "
+      + "compares fairly with Kikas's retrospective set, which counts comments too; only the "
+      + "inner report scores it";
+
+  /**
+   * The own specification with similarity without the pressure attributes, the three start
+   * columns of {@link Pressure} (item 36), the eighth of {@link #MODELS}: the own start model
+   * chosen (item 49), which both readings of the retrospective model build on.
    */
   public static final String BEFORE_PRESSURE = "own_with_similarity_before_pressure";
 
@@ -133,9 +162,9 @@ public final class ElasticNetSelection {
   public static final String OWN_WITH_SIMILARITY = "own_with_similarity";
 
   /**
-   * The retrospective model as it was before ticket 19, without ticket 19's five columns and their
-   * missing indicators (item 43), the last of {@link #MODELS}: compared with the retrospective
-   * model on the same run, it measures what ticket 19 did to it and nothing else.
+   * The main reading of the retrospective model without the pressure attribute left in it,
+   * urgency and its missing indicator (item 43), the ninth of {@link #MODELS}: compared with the
+   * main reading on the same run, it measures what urgency does to it and nothing else.
    */
   public static final String RETROSPECTIVE_BEFORE_PRESSURE = "own_retrospective_before_pressure";
 
@@ -143,13 +172,14 @@ public final class ElasticNetSelection {
    * What the ninth model is, for the selection step's output and record and the inner report;
    * never the test's, which does not score it (ticket 22).
    */
-  public static final String RETROSPECTIVE_BEFORE_PRESSURE_ROLE = "the retrospective model "
-      + "without ticket 19's five columns (the three start ones, the blocking-link wait and "
-      + "urgency) and their missing indicators; it adds no attribute and only measures what "
-      + "ticket 19 did to the retrospective model; only the inner report scores it";
+  public static final String RETROSPECTIVE_BEFORE_PRESSURE_ROLE = "the main reading of the "
+      + "retrospective model without the pressure attributes (the three start ones, already out "
+      + "of the own start model it builds on, and urgency) and their missing indicators; it adds "
+      + "no attribute and only measures what they do to the retrospective model; only the inner "
+      + "report scores it";
 
   /**
-   * Kikas's retrospective model (item 59), the last of {@link #MODELS}: the registered Kikas cell
+   * Kikas's retrospective model (item 59), the tenth of {@link #MODELS}: the registered Kikas cell
    * of the retrospective scenario, the literature counterpart of {@link #RETROSPECTIVE}.
    */
   public static final String KIKAS_RETROSPECTIVE = "kikas_retrospective";
@@ -161,21 +191,23 @@ public final class ElasticNetSelection {
   public static final String KIKAS_RETROSPECTIVE_ROLE = "Kikas at the start followed by Kikas's "
       + "retrospective set as adapted, the twelve counts observed up to the resolution and their "
       + "missing indicator (KIKAS / C2), the literature counterpart of the retrospective model; "
+      + "it counts comments, which the main reading of the own retrospective model does not; "
       + "only the inner report scores it";
 
   /**
-   * The ten models, in their order: the six of the start, the retrospective one, the own
-   * specification with similarity as before ticket 19, the retrospective one as before it, then
-   * Kikas's retrospective one.
+   * The eleven models, in their order: the six of the start, the retrospective one's main
+   * reading, the own start model without the pressure attributes, the main reading without
+   * urgency, Kikas's retrospective one, then the retrospective one with the discussion, the
+   * ceiling.
    */
   public static final List<String> MODELS = List.of("own_without_similarity", "similarity_alone",
       OWN_WITH_SIMILARITY, "alzubaidi_start", "kikas_start", "union_own", RETROSPECTIVE,
-      BEFORE_PRESSURE, RETROSPECTIVE_BEFORE_PRESSURE, KIKAS_RETROSPECTIVE);
+      BEFORE_PRESSURE, RETROSPECTIVE_BEFORE_PRESSURE, KIKAS_RETROSPECTIVE, WITH_DISCUSSION);
 
   /** The models that read the similarity medians, whose n, n and k are chosen with them. */
   public static final List<String> WITH_SIMILARITY = List.of("similarity_alone",
       "own_with_similarity", "union_own", RETROSPECTIVE, BEFORE_PRESSURE,
-      RETROSPECTIVE_BEFORE_PRESSURE);
+      RETROSPECTIVE_BEFORE_PRESSURE, WITH_DISCUSSION);
 
   private static final Population P = Population.IN_PROGRESS;
 
@@ -289,9 +321,10 @@ public final class ElasticNetSelection {
   public static final String HEADER = "# the tail cut's k and fences, Elastic Net alpha and "
       + "lambda, the similarity medians' n, n and k, and each random forest's column share and "
       + "leaf, chosen on the usual flow of the inner validation only, the target in whole "
-      + "business days on the issues of at least one, for ten models with the retrospective one, "
-      + "the own and retrospective ones before ticket 19 and Kikas's retrospective one; the outer "
-      + "test was not read";
+      + "business days on the issues of at least one, for eleven models with the retrospective "
+      + "one with and without the comments and participants, the own and retrospective ones "
+      + "without the pressure attributes and Kikas's retrospective one; the outer test was not "
+      + "read";
 
   /** The step of the tail cut's lines in the parameters file (ticket 23). */
   public static final String TAIL_STEP = "tail-cut";
@@ -800,7 +833,7 @@ public final class ElasticNetSelection {
 
   /**
    * Every model at every combination, in the given variant: the combinations in {@link
-   * Combination#all}'s order, the ten models of each in theirs. What the selection may read.
+   * Combination#all}'s order, the eleven models of each in theirs. What the selection may read.
    */
   public static List<Cell> everyCell(final Augmentation.Variant variant) {
     final List<Cell> out = new ArrayList<>();
@@ -811,7 +844,7 @@ public final class ElasticNetSelection {
   }
 
   /**
-   * The ten models in their order, reading the split-dependent columns of the given variant,
+   * The eleven models in their order, reading the split-dependent columns of the given variant,
    * each with the similarity medians at its own combination.
    *
    * @param combinations per model of {@link #WITH_SIMILARITY}, the values it reads the medians
@@ -834,8 +867,8 @@ public final class ElasticNetSelection {
   }
 
   /**
-   * The ten models in their order, reading the split-dependent columns of the given variant,
-   * the six with the similarity medians at {@code c}; the other three do not depend on it.
+   * The eleven models in their order, reading the split-dependent columns of the given variant,
+   * the seven with the similarity medians at {@code c}; the other four do not depend on it.
    */
   public static List<Cell> cells(final Combination c, final Augmentation.Variant variant) {
     final List<Attribute> without = new ArrayList<>();
@@ -853,7 +886,7 @@ public final class ElasticNetSelection {
         revised(Augmentation.jaccard(c.jaccardN(), variant)),
         revised(Augmentation.embedding(c.embeddingN(), variant)),
         revised(Augmentation.cluster(c.clusterK(), variant)));
-    // the own specification with similarity as before ticket 19: the ten, then the three medians
+    // the own start model, without the pressure attributes: the ten, then the three medians
     final List<Attribute> beforePressure = new ArrayList<>(without);
     beforePressure.addAll(similarity);
     without.addAll(pressure(variant));
@@ -868,11 +901,16 @@ public final class ElasticNetSelection {
     }
     union.addAll(with);
 
-    final List<Attribute> retrospective = new ArrayList<>(with);
-    retrospective.addAll(retrospective());
-    // the retrospective model as before ticket 19: the old start model, then the eight of ticket 15
+    // the main reading: the own start model, then content, assignee changes and urgency
+    final List<Attribute> retrospective = new ArrayList<>(beforePressure);
+    retrospective.addAll(retrospective(MAIN_READING));
+    // the ceiling: the main reading, then the comments and the participants, nothing else
+    final List<Attribute> withDiscussion = new ArrayList<>(retrospective);
+    withDiscussion.addAll(retrospective(Retrospective.DISCUSSION));
+    // the main reading without the pressure attribute it still holds, urgency
     final List<Attribute> retrospectiveBeforePressure = new ArrayList<>(beforePressure);
-    retrospective().stream().filter(a -> !Retrospective.LINKS_AND_RELEASES.contains(a.name()))
+    retrospective(MAIN_READING).stream()
+        .filter(a -> !a.name().equals(Retrospective.URGENCY))
         .forEach(retrospectiveBeforePressure::add);
 
     return List.of(
@@ -886,28 +924,37 @@ public final class ElasticNetSelection {
         new Cell(BEFORE_PRESSURE, Family.OWN, Scenario.C1, beforePressure),
         new Cell(RETROSPECTIVE_BEFORE_PRESSURE, Family.OWN, Scenario.C2,
             retrospectiveBeforePressure),
-        registered(KIKAS_RETROSPECTIVE, "KIKAS / C2"));
+        registered(KIKAS_RETROSPECTIVE, "KIKAS / C2"),
+        new Cell(WITH_DISCUSSION, Family.OWN, Scenario.C2, withDiscussion));
   }
 
   /**
-   * The ten attributes of the retrospective scenario ({@link Retrospective}), in its order: the
-   * counts and volumes {@code log1p}, the ratio and the means raw, as the registered columns they
-   * stand beside ({@code A15} to {@code A17}, {@code D07}, {@code D08}, {@code K03} to {@code
-   * K05}); a missing indicator beside the five that can be missing. Ticket 19's two follow: the
-   * blocking-link wait {@code log1p} and urgency raw, being signed, each with a missing indicator.
-   * Split-independent: the same in both variants.
+   * The retrospective columns the main reading reads, in their order: the five content ones,
+   * the assignee changes and urgency; every column but the comments and the participants.
    */
-  static List<Attribute> retrospective() {
-    final List<Attribute> out = new ArrayList<>(Retrospective.COLUMNS.size());
-    for (final String name : Retrospective.COLUMNS) {
+  static final List<String> MAIN_READING = Retrospective.COLUMNS.stream()
+      .filter(c -> !Retrospective.DISCUSSION.contains(c)).toList();
+
+  /**
+   * The given attributes of the retrospective scenario ({@link Retrospective}), in the order
+   * given: the counts and volumes {@code log1p}, the ratio and the means raw, as the registered
+   * columns they stand beside ({@code A15} to {@code A17}, {@code D07}, {@code D08}, {@code K03}
+   * to {@code K05}); a missing indicator beside the five that can be missing. Urgency raw, being
+   * signed, with a missing indicator. Split-independent: the same in both variants.
+   */
+  static List<Attribute> retrospective(final List<String> names) {
+    if (!Retrospective.COLUMNS.containsAll(names)) {
+      throw new IllegalArgumentException(names + " are not all retrospective columns");
+    }
+    final List<Attribute> out = new ArrayList<>(names.size());
+    for (final String name : names) {
       out.add(new Attribute(name, name, Family.OWN,
           Retrospective.CONTENT.contains(name) ? Scenario.Block.CONTENT
               : Scenario.Block.EXPOSURE,
           Construct.Kind.NUMERIC,
           Retrospective.COUNTS.contains(name) ? Construct.Transform.LOG1P
               : Construct.Transform.NONE,
-          Retrospective.CONTENT.contains(name)
-              || Retrospective.LINKS_AND_RELEASES.contains(name), true));
+          Retrospective.CONTENT.contains(name) || Retrospective.URGENCY.equals(name), true));
     }
     return List.copyOf(out);
   }

@@ -88,7 +88,7 @@ class RetrospectiveTest {
           new Retrospective(new World(universe, corpus), bots, Releases.of(corpus));
       final Universe.Unit u = universe.unit(Universe.Population.IN_PROGRESS, id);
       assertNotNull(u, id + " is in the In-Progress population");
-      return r.row(u, methods, 0, new long[0], Double.POSITIVE_INFINITY);
+      return r.row(u, methods);
     }
 
     Map<String, Double> row(final String id) {

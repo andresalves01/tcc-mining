@@ -178,12 +178,11 @@ class IssuesRetrospectiveTest {
   }
 
   @Test
-  @DisplayName("the blocking-link wait is counted at the day boundary the matrix holds; urgency "
-      + "reads the release of the fix version from the tags; each missing without its source")
-  void blockingLinksAndUrgency() {
+  @DisplayName("urgency reads the release of the fix version from the tags, missing without one; "
+      + "the wait on blocking issues is not written, not even for an issue that waited on one")
+  void urgencyAndNoBlockingWait() {
     corpus();
-    // a, In Progress at T0 + D, a Thursday 00:00 UTC, before the 04:00 boundary: Wednesday's date;
-    // it waits on x, resolved a day later at 03:00 UTC, on Thursday's date: one business day
+    // a waits on x, resolved a day later: no column of the wait is written for it
     final Corpus.Link waits = new Corpus.Link("x", "Blocker", "is blocked by");
     issues.set(0, new Corpus.Issue("a", "P-a", "p", T0, "r", "r", null, "Bug", "Major", null,
         List.of(), List.of("x"), List.of(waits), List.of("2.0")));
@@ -195,11 +194,14 @@ class IssuesRetrospectiveTest {
     final IssuesRetrospectiveTask.Report r = task().run(entries);
     assertEquals(List.of(), r.refused());
     final RowCache.Entry a = entry(r, "a");
-    assertEquals(1.0, a.row().values().get(Retrospective.BLOCKER_WAIT));
     assertEquals(3.0, a.row().values().get(Retrospective.URGENCY), 1e-9);
     final RowCache.Entry b = entry(r, "b");
-    assertTrue(b.row().absent().contains(Retrospective.BLOCKER_WAIT));
     assertTrue(b.row().absent().contains(Retrospective.URGENCY));
+    for (final RowCache.Entry e : r.entries()) {
+      assertFalse(e.row().values().containsKey("RETRO_blocker_wait"), e.unit().issueId());
+      assertFalse(e.row().absent().contains("RETRO_blocker_wait"), e.unit().issueId());
+    }
+    assertFalse(Retrospective.COLUMNS.contains("RETRO_blocker_wait"));
   }
 
   @Test

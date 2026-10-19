@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The retrospective scenario's ten attributes (tickets 15 and 19), observed between the first In
+ * The retrospective scenario's nine attributes (tickets 15 and 19), observed between the first In
  * Progress (t0) and the first resolution (t1). They describe the work as it was done; a count
  * grows with the duration itself, so a model reading them shows association with the duration,
  * not a prediction available during the work.
@@ -53,17 +53,19 @@ import java.util.Set;
  *       person to another alike.
  * </ol>
  *
- * <p><b>Blocking links and the release</b> (ticket 19), each missing with its indicator:
+ * <p><b>The release</b> (ticket 19), missing with its indicator:
  *
  * <ol start="9">
- *   <li>{@link #BLOCKER_WAIT}: the active business days with recorded activity from t0, at the
- *       issue's day boundary, to the last first resolution of the issues it waited on, clipped at
- *       t1, the time back in Open or Reopened and the silent days left out as from the target and
- *       clipped at it ({@link Blocking}).
  *   <li>{@link #URGENCY}: calendar days from t1 to the release of the issue's fix version
  *       ({@link #urgency}), measured after the fact: small when fixed just before the release,
  *       large when the fix waited for it.
  * </ol>
+ *
+ * <p>The wait on the issues it was blocked by is no longer an attribute (André, 19/10/2026):
+ * counted in the target's own unit and clipped at it, it equalled the target in about half of the
+ * issues that had one. Comments and participants stay columns of the matrix, but they count the
+ * very records the target is built from, so the main retrospective model leaves them out and only
+ * its ceiling reads them ({@link #DISCUSSION}).
  *
  * <p>Separate from the registered columns of {@link Extractor}: {@code A15}, {@code A16}, {@code
  * A17}, {@code D07}, {@code D08}, {@code K03}, {@code K04} and {@code K05} keep their meaning in the
@@ -79,7 +81,6 @@ public final class Retrospective {
   public static final String COMMENTS = "RETRO_comments";
   public static final String PARTICIPANTS = "RETRO_participants";
   public static final String ASSIGNEE_CHANGES = "RETRO_assignee_changes";
-  public static final String BLOCKER_WAIT = "RETRO_blocker_wait";
   public static final String URGENCY = "RETRO_urgency_days";
 
   /**
@@ -89,36 +90,37 @@ public final class Retrospective {
   public static final List<String> CONTENT = List.of(LINES, MCCC, NESTING, FILES, FAMILIARITY);
 
   /**
-   * The blocking-link wait and urgency (ticket 19), each missing on its own, with its missing
-   * indicator.
+   * The comments and the participants: they count the very records the target is built from, so
+   * only the ceiling reading of the retrospective model reads them, never its main reading.
    */
-  public static final List<String> LINKS_AND_RELEASES = List.of(BLOCKER_WAIT, URGENCY);
+  public static final List<String> DISCUSSION = List.of(COMMENTS, PARTICIPANTS);
 
-  /** The ten: the eight of ticket 15 in its order, then the two of ticket 19. */
+  /** The nine: the eight of ticket 15 in its order, then urgency. */
   public static final List<String> COLUMNS = List.of(LINES, MCCC, NESTING, FILES, FAMILIARITY,
-      COMMENTS, PARTICIPANTS, ASSIGNEE_CHANGES, BLOCKER_WAIT, URGENCY);
+      COMMENTS, PARTICIPANTS, ASSIGNEE_CHANGES, URGENCY);
 
   /**
-   * The counts, the volumes and the blocking-link wait, which enter as {@code log1p}; the ratio,
-   * the means and urgency enter raw, urgency because it is negative when the release came before
-   * the resolution, as step 0 of ticket 19 found on inner rows.
+   * The counts and the volumes, which enter as {@code log1p}; the ratio, the means and urgency
+   * enter raw, urgency because it is negative when the release came before the resolution, as
+   * step 0 of ticket 19 found on inner rows.
    */
   public static final Set<String> COUNTS =
-      Set.of(LINES, FILES, COMMENTS, PARTICIPANTS, ASSIGNEE_CHANGES, BLOCKER_WAIT);
+      Set.of(LINES, FILES, COMMENTS, PARTICIPANTS, ASSIGNEE_CHANGES);
 
   /** What the scenario is, for the help text and the run records. */
-  public static final String SCENARIO = "retrospective: ten attributes observed between the "
+  public static final String SCENARIO = "retrospective: nine attributes observed between the "
       + "first In Progress and the first resolution (implementation content, discussion and "
-      + "coordination, the wait on blocking issues, and urgency, the days from the first "
-      + "resolution to the release of its fix version, measured after the fact); the counts grow "
-      + "with the duration itself, so a gain is association with the duration observed up to the "
-      + "resolution, not a prediction available during the work, nor causation";
+      + "coordination, and urgency, the days from the first resolution to the release of its fix "
+      + "version, measured after the fact); the counts grow with the duration itself, so a gain "
+      + "is association with the duration observed up to the resolution, not a prediction "
+      + "available during the work, nor causation. The main reading leaves the comments and the "
+      + "participants out, since they count the records the target is made of; the reading with "
+      + "them is a ceiling, not a competitor";
 
   private final World world;
   private final Universe universe;
   private final Set<String> bots;
   private final Releases releases;
-  private final Blocking blocking;
   private final Map<String, List<World.Commit>> byAuthor = new HashMap<>();
   private final Map<String, Map<Integer, List<World.Commit>>> touches = new HashMap<>();
 
@@ -131,7 +133,6 @@ public final class Retrospective {
     this.universe = world.universe;
     this.bots = Set.copyOf(bots);
     this.releases = releases;
-    this.blocking = Blocking.of(universe);
     for (final World.Commit c : world.commits()) {
       if (c.who() != null) {
         byAuthor.computeIfAbsent(c.who() + "\u0000" + c.project(), k -> new ArrayList<>()).add(c);
@@ -140,23 +141,18 @@ public final class Retrospective {
   }
 
   /**
-   * The ten attributes of one In-Progress unit, a missing one as null.
+   * The nine attributes of one In-Progress unit, a missing one as null.
    *
    * @param methods per commit id, the methods it changed; a commit absent or empty changed none
    *     recovered
-   * @param boundaryHour the issue's day boundary, at which the blocking-link wait is counted
-   * @param records the issue's record instants ({@link BusinessDays.Records}), and {@code
-   *     threshold} the silent gaps' threshold T, at which the wait is counted as the target is
    */
   public Map<String, Double> row(final Universe.Unit u,
-      final Map<String, Map<String, ChangedMethod>> methods, final int boundaryHour,
-      final long[] records, final double threshold) {
+      final Map<String, Map<String, ChangedMethod>> methods) {
     final long t0 = u.start();
     final long t1 = u.resolved();
     final Map<String, Double> v = new LinkedHashMap<>();
     content(u, t0, t1, methods, v);
     discussion(u, t0, t1, v);
-    v.put(BLOCKER_WAIT, blocking.wait(u, boundaryHour, records, threshold));
     v.put(URGENCY, urgency(u));
     return v;
   }

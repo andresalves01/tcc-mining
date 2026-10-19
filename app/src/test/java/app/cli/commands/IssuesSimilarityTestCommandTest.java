@@ -381,10 +381,10 @@ class IssuesSimilarityTestCommandTest {
 
   @Test
   @DisplayName("the printed line naming the parameters file counts the eight Elastic Nets the "
-      + "test scores, not the ten the file holds")
+      + "test scores, not the eleven the file holds")
   void choicesLineCountsTheScoredModels() {
     final String line = IssuesSimilarityTestCommand.choicesLine(Path.of("en.tsv"), "ab12");
     assertEquals("  Elastic Net choices en.tsv  sha256 ab12 (8 models)", line);
-    assertEquals(10, ElasticNetSelection.MODELS.size());
+    assertEquals(11, ElasticNetSelection.MODELS.size());
   }
 }

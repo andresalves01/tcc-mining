@@ -36,8 +36,9 @@ import java.util.function.Function;
 /**
  * The test step of the description-similarity chain, outer mode only (see {@link
  * SimilarityScoring}): nineteen models -- the global, project and executor-project medians, the
- * first eight Elastic Nets, the retrospective scenario seventh ({@link Retrospective}) and the own
- * specification with similarity before ticket 19 last, and, as a
+ * first eight Elastic Nets, the retrospective scenario's main reading seventh ({@link
+ * Retrospective}), without the comments and the participants, and the own start model, without
+ * the pressure attributes, last, and, as a
  * robustness check, the random forest beside each -- refitted on the outer training set with the
  * parameters the selection step wrote, the outer test scored once, every agreed comparison, and
  * the side reading of the retrospective comparison on the issues with an implementation commit. The target is whole business days, on the issues of at least one
@@ -63,9 +64,10 @@ import java.util.function.Function;
  * bands', are cut at the quartiles of the outer training rows fitted.
  *
  * <p>Reads MATRIX and ELASTIC_NET_PARAMETERS, which gives per model its alpha and lambda, for
- * the six with the similarity medians the Jaccard n, embedding n and cluster k they read, and
- * its forest's column share and leaf; it chooses nothing. The ninth model, the retrospective one
- * before ticket 19, and the tenth, Kikas's retrospective one (ticket 26), are in the parameters
+ * the seven with the similarity medians the Jaccard n, embedding n and cluster k they read, and
+ * its forest's column share and leaf; it chooses nothing. The ninth model, the main reading
+ * without urgency, the tenth, Kikas's retrospective one (ticket 26), and the eleventh, the
+ * retrospective one with the comments and the participants, the ceiling, are in the parameters
  * file but not scored here, nor named in the run record: only the inner report scores them
  * ({@link SimilarityScoring.Scope#scores}). A parameters file
  * without a forest for
@@ -108,7 +110,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
   private static final String EFFORT = "selection effort differs between families: the two "
       + "registered cells (Al-Zubaidi, Kikas) chose only alpha and lambda on the 3 x 12 grid; the "
       + "own specification without similarity chose the same; the "
-      // those this step scores: the ninth model is the inner report's only
+      // those this step scores: the ninth and the eleventh models are the inner report's only
       + ElasticNetSelection.WITH_SIMILARITY.stream()
           .filter(SimilarityScoring.Scope.RESERVED::scores).count() + " models reading the "
       + "similarity medians chose also their Jaccard n, embedding n and cluster k among "

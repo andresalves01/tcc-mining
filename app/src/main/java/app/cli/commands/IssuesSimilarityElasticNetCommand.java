@@ -34,12 +34,14 @@ import java.util.function.Function;
 /**
  * The selection step of the description-similarity chain, inner mode only: each Elastic Net
  * model's alpha and lambda, by the registered chain's sweep on the inner validation, and, for the
- * six models reading the similarity medians, the Jaccard n, embedding n and cluster k they read,
+ * seven models reading the similarity medians, the Jaccard n, embedding n and cluster k they read,
  * the combination of the 27 whose sweep errs least (see {@link ElasticNetSelection}); and beside
  * each model, as a robustness check, a random forest's column share and leaf, swept on the same
- * rows and columns. The seventh model is the retrospective scenario ({@link Retrospective}), whose
- * ten columns {@code issues-in-progress-retrospective} adds to the matrix; the ninth is the same
- * without ticket 19's five columns; the tenth is Kikas's retrospective cell ({@code KIKAS / C2}).
+ * rows and columns. The seventh model is the retrospective scenario's main reading ({@link
+ * Retrospective}), whose columns {@code issues-in-progress-retrospective} adds to the matrix, on
+ * the own start model and without the comments and the participants; the ninth is the same
+ * without urgency; the tenth is Kikas's retrospective cell ({@code KIKAS / C2}); the eleventh is
+ * the main reading with the comments and the participants, a ceiling, not a competitor.
  *
  * <p><b>Tail cut</b> (ticket 23; {@link TailCut}). Before the models, the fitting k is chosen on
  * the own specification with similarity among 1.5, 3, 5, 10 and no cut, every choice scored on
@@ -159,6 +161,10 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     System.out.printf("  population: %s%n", BusinessDays.POPULATION);
     System.out.printf("  %s: %s%n", ElasticNetSelection.RETROSPECTIVE,
         Retrospective.SCENARIO);
+    System.out.printf("  %s: %s%n", ElasticNetSelection.RETROSPECTIVE,
+        ElasticNetSelection.RETROSPECTIVE_ROLE);
+    System.out.printf("  %s: %s%n", ElasticNetSelection.WITH_DISCUSSION,
+        ElasticNetSelection.WITH_DISCUSSION_ROLE);
     System.out.printf("  %s: %s%n", ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE,
         ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE_ROLE);
     System.out.printf("  %s: %s%n", ElasticNetSelection.KIKAS_RETROSPECTIVE,
@@ -257,6 +263,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     run.put("retrospective_before_pressure",
         ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE_ROLE);
     run.put("kikas_retrospective", ElasticNetSelection.KIKAS_RETROSPECTIVE_ROLE);
+    run.put("own_retrospective_with_discussion", ElasticNetSelection.WITH_DISCUSSION_ROLE);
     run.put("matrix_sha256", matrixSha);
     run.put("parameters_sha256", parametersSha);
     run.put("jaccard_n", Augmentation.JACCARD_N);
@@ -367,6 +374,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     out.put("holidays", BusinessDays.HOLIDAYS);
     out.put("forest_role", FOREST_ROLE);
     out.put("retrospective_scenario", Retrospective.SCENARIO);
+    out.put("own_retrospective", ElasticNetSelection.RETROSPECTIVE_ROLE);
     return out;
   }
 

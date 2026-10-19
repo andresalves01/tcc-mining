@@ -112,9 +112,12 @@ class IssuesSimilarityElasticNetCommandTest {
     columns.addAll(app.issues.Extractor.TEAM_REVISED);
     columns.addAll(app.pipeline.IssuesSimilarityTask.columns());
     final List<Cell> every = ElasticNetSelection.everyCell(Augmentation.Variant.INNER);
-    assertEquals(27 * 10, every.size());
-    // the similarity stage's matrix lacks the retrospective columns, named in their order
-    assertEquals(app.issues.Retrospective.COLUMNS,
+    assertEquals(27 * 11, every.size());
+    // the similarity stage's matrix lacks the retrospective columns, named in the models' order:
+    // the main reading's, then the comments and the participants the ceiling adds
+    assertEquals(List.of("RETRO_java_lines", "RETRO_mean_mccc", "RETRO_mean_nesting",
+        "RETRO_files", "RETRO_familiarity", "RETRO_assignee_changes", "RETRO_urgency_days",
+        "RETRO_comments", "RETRO_participants"),
         IssuesSimilarityElasticNetCommand.missing(every, columns));
     columns.addAll(app.issues.Retrospective.COLUMNS);
     assertEquals(List.of(), IssuesSimilarityElasticNetCommand.missing(every, columns));

@@ -72,6 +72,34 @@ class IssuesSimilarityInnerReportCommandTest {
   }
 
   /**
+   * The retrospective columns of the matrix as the generator drew them before the comments and
+   * the participants left the main retrospective model: the ten, the wait on blocking issues
+   * among them, which a matrix of an earlier run holds and no model reads, all where the first of
+   * them stood and in their old order, so no other column's draw moves.
+   */
+  private static Set<Attribute> asBeforeTheCeiling(final Set<Attribute> drawn) {
+    final List<String> ten = List.of("RETRO_java_lines", "RETRO_mean_mccc",
+        "RETRO_mean_nesting", "RETRO_files", "RETRO_familiarity", "RETRO_comments",
+        "RETRO_participants", "RETRO_assignee_changes", "RETRO_blocker_wait",
+        "RETRO_urgency_days");
+    final Map<String, Attribute> retrospective = new HashMap<>();
+    drawn.stream().filter(a -> a.name().startsWith("RETRO_"))
+        .forEach(a -> retrospective.put(a.name(), a));
+    retrospective.put("RETRO_blocker_wait", new Attribute("RETRO_blocker_wait",
+        "RETRO_blocker_wait", app.issues.Family.OWN, app.issues.Scenario.Block.EXPOSURE,
+        Construct.Kind.NUMERIC, Construct.Transform.LOG1P, true, true));
+    final Set<Attribute> out = new LinkedHashSet<>();
+    for (final Attribute a : drawn) {
+      if (a.name().startsWith("RETRO_")) {
+        ten.forEach(name -> out.add(retrospective.get(name)));
+      } else {
+        out.add(a);
+      }
+    }
+    return out;
+  }
+
+  /**
    * Four projects; per project 20 inner fitting, 10 inner validation and 8 outer test rows, every
    * one of at least one business day, with every column any model declares. With {@code
    * crossing}, two of the outer test rows of each project are instead outer training rows the
@@ -80,15 +108,16 @@ class IssuesSimilarityInnerReportCommandTest {
   private static List<RowCache.Entry> entries(final boolean crossing) {
     // the columns of the nine models before ticket 26 draw from the shared generator as they
     // did; any other model's from a draw of its own per row and column, so none of theirs moves
-    final Set<Attribute> declared = new LinkedHashSet<>();
+    final Set<Attribute> drawn = new LinkedHashSet<>();
     final Set<Attribute> later = new LinkedHashSet<>();
     for (final Augmentation.Variant v : List.of(Augmentation.Variant.INNER,
         Augmentation.Variant.OUTER)) {
       for (final Cell cell : ElasticNetSelection.everyCell(v)) {
-        (cell.label().equals(KIKAS_RETROSPECTIVE) ? later : declared).addAll(cell.attributes());
+        (cell.label().equals(KIKAS_RETROSPECTIVE) ? later : drawn).addAll(cell.attributes());
       }
     }
-    later.removeAll(declared);
+    later.removeAll(drawn);
+    final Set<Attribute> declared = asBeforeTheCeiling(drawn);
     final Random random = new Random(3);
     final Instant created = Instant.parse("2016-02-01T00:00:00Z");
     final List<RowCache.Entry> out = new ArrayList<>();
@@ -216,9 +245,9 @@ class IssuesSimilarityInnerReportCommandTest {
         Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.MODELS));
     final Map<String, String[]> models = byModel(modelLines, "usual_flow");
     final Map<String, String[]> all = byModel(modelLines, "all");
-    assertEquals(23, models.size());
+    assertEquals(25, models.size());
     assertEquals(models.keySet(), all.keySet());
-    assertEquals(1 + 2 * 23, modelLines.size());
+    assertEquals(1 + 2 * 25, modelLines.size());
     assertEquals(chosen.validationRows(), Integer.parseInt(models.get("global_median")[2]));
     for (final ElasticNetSelection.Model m : chosen.models()) {
       final String name = m.cell().label();
@@ -330,9 +359,15 @@ class IssuesSimilarityInnerReportCommandTest {
     assertTrue(report.stream().anyMatch(l -> l.startsWith("- each model's prediction span")
         && l.contains("own_retrospective_before_pressure_forest ")), report.toString());
     assertEquals(2, report.stream().filter(l -> l.startsWith("### Prediction intervals")).count());
+    // both retrospective readings are named, the one with the discussion as a ceiling
+    assertTrue(report.contains("- own_retrospective: " + ElasticNetSelection.RETROSPECTIVE_ROLE),
+        report.toString());
+    assertTrue(report.contains("- own_retrospective_with_discussion: "
+        + ElasticNetSelection.WITH_DISCUSSION_ROLE), report.toString());
+    assertTrue(ElasticNetSelection.WITH_DISCUSSION_ROLE.startsWith("a CEILING, not a competitor"));
     final List<String> intervals =
         Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.INTERVALS));
-    assertEquals(1 + 2 * 23 * 2 * 5, intervals.size());
+    assertEquals(1 + 2 * 25 * 2 * 5, intervals.size());
     assertTrue(intervals.stream().anyMatch(l -> l.startsWith("usual_flow\tglobal_median\t0.8\t"
         + "all\t")));
     // the bands are the error bands, labels and all; one factor for every band of a model and level
@@ -348,7 +383,7 @@ class IssuesSimilarityInnerReportCommandTest {
     assertEquals(1, forest95.stream().map(f -> f[7]).distinct().count());
     assertEquals(Integer.parseInt(forest95.get(0)[8]), forest95.subList(1, 5).stream()
         .mapToInt(f -> Integer.parseInt(f[8])).sum());
-    assertEquals(1 + 23 * 2,
+    assertEquals(1 + 25 * 2,
         Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.CALIBRATION)).size());
     // the check reads half B of the validation, a part of it, whole projects
     final int checkedUsual = Integer.parseInt(intervals.stream()
@@ -379,23 +414,6 @@ class IssuesSimilarityInnerReportCommandTest {
   }
 
   /**
-   * Every file of the report of {@link #entries} but the report itself, which names the temporary
-   * paths, as the code wrote it before ticket 26, by a hash of its text without the Kikas
-   * retrospective model's lines, or, in the predictions, its columns. Captured from 6d7edf1 (main
-   * after ticket 24).
-   */
-  private static final Map<String, String> AT_TICKET_24 = Map.of(
-      IssuesSimilarityInnerReportCommand.PREDICTIONS, "41 623fa349",
-      IssuesSimilarityInnerReportCommand.MODELS, "43 625c1a12",
-      IssuesSimilarityInnerReportCommand.BANDS, "169 4463f337",
-      IssuesSimilarityInnerReportCommand.COMPARISONS, "121 c43730c8",
-      IssuesSimilarityInnerReportCommand.ORDERING, "73 8d562431",
-      IssuesSimilarityInnerReportCommand.DIAGNOSTICS, "368 d222d4c4",
-      IssuesSimilarityInnerReportCommand.IMPORTANCE, "172 f1508a21",
-      IssuesSimilarityInnerReportCommand.INTERVALS, "421 6f8421c1",
-      IssuesSimilarityInnerReportCommand.CALIBRATION, "43 34d3dd5");
-
-  /**
    * Every file of the report of {@link #entries} but the report itself, as the code wrote it
    * before the blocking wait, the comments and the participants left the main retrospective
    * model, by a hash of its text without the lines, or, in the predictions, the columns, that
@@ -411,11 +429,6 @@ class IssuesSimilarityInnerReportCommandTest {
       IssuesSimilarityInnerReportCommand.IMPORTANCE, "139 98eb3bc2",
       IssuesSimilarityInnerReportCommand.INTERVALS, "381 48d216d6",
       IssuesSimilarityInnerReportCommand.CALIBRATION, "39 47ffd963");
-
-  /** A file's text without the Kikas retrospective model's lines or columns, hashed. */
-  private static String withoutKikasRetrospective(final Path file) throws IOException {
-    return without(file, KIKAS_RETROSPECTIVE);
-  }
 
   /** A file's text without the lines or, in the predictions, the columns naming {@code name}. */
   private static String without(final Path file, final String name) throws IOException {
@@ -437,32 +450,6 @@ class IssuesSimilarityInnerReportCommandTest {
       lines.stream().filter(l -> !l.contains(name)).forEach(kept::add);
     }
     return kept.size() + " " + Integer.toHexString(kept.hashCode());
-  }
-
-  @Test
-  @DisplayName("every file of the report but the report itself is, bit for bit, what it was at "
-      + "ticket 24, the Kikas retrospective model's lines and columns aside")
-  void filesAsAtTicket24() throws IOException, CommandFailedException {
-    final Path matrix = dir.resolve("matrix.tsv");
-    final Path elasticNet = dir.resolve("elastic-net.tsv");
-    write(matrix, elasticNet);
-    final Path reports = dir.resolve("out");
-    set(matrix, elasticNet, reports);
-
-    command().run(context());
-
-    final Map<String, String> now = new HashMap<>();
-    for (final String file : List.of(IssuesSimilarityInnerReportCommand.PREDICTIONS,
-        IssuesSimilarityInnerReportCommand.MODELS, IssuesSimilarityInnerReportCommand.BANDS,
-        IssuesSimilarityInnerReportCommand.COMPARISONS,
-        IssuesSimilarityInnerReportCommand.ORDERING,
-        IssuesSimilarityInnerReportCommand.DIAGNOSTICS,
-        IssuesSimilarityInnerReportCommand.IMPORTANCE,
-        IssuesSimilarityInnerReportCommand.INTERVALS,
-        IssuesSimilarityInnerReportCommand.CALIBRATION)) {
-      now.put(file, withoutKikasRetrospective(reports.resolve(file)));
-    }
-    assertEquals(AT_TICKET_24, now);
   }
 
   @Test
