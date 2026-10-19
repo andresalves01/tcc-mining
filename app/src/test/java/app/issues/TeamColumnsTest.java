@@ -29,7 +29,7 @@ class TeamColumnsTest {
     final Map<Population, String[]> parts = new EnumMap<>(Population.class);
     parts.put(Population.IN_PROGRESS, new String[] {"TRAIN", "TRAIN"});
     return new RowCache.Entry(new IssueUnit(id, "P-" + id, "p", "r", "d", t, t.plusSeconds(7200),
-        "Fixed", false, t.plusSeconds(3600)), new Row(id, Map.of("A05_s_l", 3.0), Set.of()), parts);
+        "Fixed", false, t.plusSeconds(3600)), new Row(id, Map.of("A03_team_size", 3.0), Set.of()), parts);
   }
 
   private static Map<String, Double> team(final Double median, final Double sd) {
@@ -57,7 +57,7 @@ class TeamColumnsTest {
     final Row a = joined.get(0).row();
     assertEquals(10.0, a.values().get(Extractor.TEAM_LOC_MEDIAN));
     assertEquals(0.0, a.values().get(Extractor.TEAM_LOC_SD));
-    assertEquals(3.0, a.values().get("A05_s_l"), "the matrix's own columns stay");
+    assertEquals(3.0, a.values().get("A03_team_size"), "the matrix's own columns stay");
     assertTrue(a.absent().contains(Extractor.TEAM_MCCC_MEDIAN));
     final Row b = joined.get(1).row();
     assertNull(b.values().get(Extractor.TEAM_LOC_MEDIAN));

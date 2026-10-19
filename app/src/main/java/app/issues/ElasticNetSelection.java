@@ -71,9 +71,9 @@ import java.util.concurrent.Callable;
  * <p><b>Columns.</b> The reporter median and the three similarity medians depend
  * on the split, each reading the durations of its training side only (ticket 21); each model
  * reads them in the variant of its mode, {@code _inner} here. The three similarity
- * medians enter as {@code log1p} before standardisation, as the spec says; the reporter median and
- * the four team columns take the transform of the registered columns they revise ({@code D05};
- * {@code A04} to {@code A07}), which is also {@code log1p}. Every new column carries a missing
+ * medians enter as {@code log1p} before standardisation, as the spec says; the reporter median
+ * takes the transform of the registry's column it revises ({@code D05}), and the four team columns
+ * that of the registry's volumes, both {@code log1p}. Every new column carries a missing
  * indicator: a missing value is handed to the registered preparation as missing, filled there by
  * the fitting set's median. The retrospective columns are declared as {@link
  * #retrospective} says: the three counts of the discussion are never missing and carry none. The

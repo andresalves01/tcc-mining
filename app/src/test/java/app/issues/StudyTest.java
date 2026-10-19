@@ -341,7 +341,7 @@ class StudyTest {
 
   @Test
   @DisplayName("the revised team columns: median and spread over the members who committed in the "
-      + "90 days, a member without McCC left out of the complexity, the team means untouched")
+      + "90 days, a member without McCC left out of the complexity")
   void revisedTeam() {
     final long t0 = T0 + 200 * D;
     final Fixture f = new Fixture();
@@ -359,11 +359,6 @@ class StudyTest {
     // McCC 6 and 12 over the two measured members
     assertEquals(9.0, row.get(Extractor.TEAM_MCCC_MEDIAN), 1e-9);
     assertEquals(3.0, row.get(Extractor.TEAM_MCCC_SD), 1e-9);
-    // the old means still read m3's unmeasured McCC as zero, as they always did
-    assertEquals(50.0, row.get("A04_mu_l"), 1e-9);
-    assertEquals(Math.sqrt(1400), row.get("A05_s_l"), 1e-9);
-    assertEquals(6.0, row.get("A06_mu_m"), 1e-9);
-    assertEquals(Math.sqrt(24), row.get("A07_s_m"), 1e-9);
     assertEquals(0.75, row.get("A06c_team_mccc_coverage"), 1e-9,
         "three of the four Java commits measured: metadata, as before");
   }
@@ -387,7 +382,6 @@ class StudyTest {
     assertEquals(0.0, none.get(Extractor.TEAM_LOC_SD), 1e-9, "the lines are observed");
     assertNull(none.get(Extractor.TEAM_MCCC_MEDIAN), "missing, not zero experience");
     assertNull(none.get(Extractor.TEAM_MCCC_SD), "missing, not a false zero spread");
-    assertEquals(0.0, none.get("A06_mu_m"), "the old mean keeps reading it as zero");
   }
 
   @Test

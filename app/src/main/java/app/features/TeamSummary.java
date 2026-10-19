@@ -7,10 +7,9 @@ import java.util.Optional;
 /**
  * Median and spread of one historical measure across the team: the revised team summary.
  *
- * <p>The spread is {@link TeamStatistics}'s deviation, the population one dividing by {@code n},
- * so the revised columns keep the convention of the team means; one measured member has no spread.
- * The median replaces the mean because a single long-standing member moves the mean of an
- * accumulated volume far more than the middle of the team.
+ * <p>The spread is {@link TeamStatistics}'s deviation, the population one dividing by {@code n};
+ * one measured member has no spread. The median, not the mean, because a single long-standing
+ * member moves the mean of an accumulated volume far more than the middle of the team.
  *
  * <p>A member whose measure is unknown ({@code null}) is left out rather than counted as zero, and
  * a team left with nobody, or with no members at all, has no summary.

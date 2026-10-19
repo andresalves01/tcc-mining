@@ -178,34 +178,6 @@ public final class TimeTravel {
         }
       }
       add(tallies, "A03_team_size", (double) team.size(), v, (double) teamNaive.size());
-      final List<Double> locs = new ArrayList<>();
-      final List<Double> mcs = new ArrayList<>();
-      final List<Double> locsNaive = new ArrayList<>();
-      for (final String m : team.stream().sorted().toList()) {
-        double loc = 0;
-        double mc = 0;
-        double locNaive = 0;
-        for (final World.Commit c : projectCommits.getOrDefault(p, List.of())) {
-          if (m.equals(c.who())) {
-            if (c.visible() < t0) {
-              loc += c.loc();
-              mc += c.mccc() == null ? 0.0 : c.mccc();
-            }
-            if (c.authoredAt() < t0) {
-              locNaive += c.loc();
-            }
-          }
-        }
-        locs.add(loc);
-        mcs.add(mc);
-        locsNaive.add(locNaive);
-      }
-      final Double[] l = Extractor.meanSd(locs);
-      final Double[] mm = Extractor.meanSd(mcs);
-      add(tallies, "A04_mu_l", l[0], v, Extractor.meanSd(locsNaive)[0]);
-      add(tallies, "A05_s_l", l[1], v, null);
-      add(tallies, "A06_mu_m", mm[0], v, null);
-      add(tallies, "A07_s_m", mm[1], v, null);
       // ---- first interaction in the project's last 90 days, seen from t0
       final List<Double> waits = new ArrayList<>();
       final List<Double> waitsNaive = new ArrayList<>();

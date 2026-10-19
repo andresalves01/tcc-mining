@@ -92,10 +92,6 @@ public final class Attributes {
     // ---------------------------------------------------------------- own, C1
     a.add(c1("A01", "A01_desc_length", OWN, NUMERIC, LOG1P, true));
     a.add(c1("A03", "A03_team_size", OWN, NUMERIC, LOG1P, false));
-    a.add(c1("A04", "A04_mu_l", OWN, NUMERIC, LOG1P, true));
-    a.add(c1("A05", "A05_s_l", OWN, NUMERIC, LOG1P, true));
-    a.add(c1("A06", "A06_mu_m", OWN, NUMERIC, LOG1P, true));
-    a.add(c1("A07", "A07_s_m", OWN, NUMERIC, LOG1P, true));
     a.add(c1("A06c", "A06c_team_mccc_coverage", OWN, NUMERIC, NONE, true));
     a.add(c1("D01", "D01_backlog_open", OWN, NUMERIC, LOG1P, false));
     a.add(c1("D03", "D03_project_first_interaction_median_h", OWN, NUMERIC, LOG1P, true));

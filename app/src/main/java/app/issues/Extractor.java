@@ -251,23 +251,6 @@ public final class Extractor {
     return n % 2 == 1 ? s[n / 2] : (s[n / 2 - 1] + s[n / 2]) / 2.0;
   }
 
-  /** Population mean and standard deviation; nulls for an empty list. */
-  static Double[] meanSd(final List<Double> values) {
-    if (values.isEmpty()) {
-      return new Double[] {null, null};
-    }
-    double m = 0;
-    for (final double v : values) {
-      m += v;
-    }
-    m /= values.size();
-    double s = 0;
-    for (final double v : values) {
-      s += (v - m) * (v - m);
-    }
-    return new Double[] {m, Math.sqrt(s / values.size())};
-  }
-
   private static Double bool(final boolean b) {
     return b ? 1.0 : 0.0;
   }
@@ -387,26 +370,18 @@ public final class Extractor {
     final Set<String> team = world.authorsIn(p, t0 - WINDOW_90, t0);
     v.put("A03_team_size", (double) team.size());
     final List<Double> locs = new ArrayList<>();
-    final List<Double> mcs = new ArrayList<>();
     final List<Double> measuredMcs = new ArrayList<>();
     int teamJava = 0;
     int teamCovered = 0;
     for (final String m : team.stream().sorted().toList()) {
       final World.PersonHistory h = world.personHistory(m, p, t0);
       locs.add((double) h.loc());
-      mcs.add(h.mccc());
       // decision 8 adds nothing for an unmeasured commit: Java commits none of which was measured
       // leave the complexity unknown, while no Java at all is zero, as the Java lines are
       measuredMcs.add(h.javaCommits() > 0 && h.javaCovered() == 0 ? null : h.mccc());
       teamJava += h.javaCommits();
       teamCovered += h.javaCovered();
     }
-    final Double[] l = meanSd(locs);
-    final Double[] m = meanSd(mcs);
-    v.put("A04_mu_l", l[0]);
-    v.put("A05_s_l", l[1]);
-    v.put("A06_mu_m", m[0]);
-    v.put("A07_s_m", m[1]);
     v.put("A06c_team_mccc_coverage", teamJava == 0 ? null : (double) teamCovered / teamJava);
     final Optional<TeamSummary> revisedLoc = TeamSummary.of(locs);
     final Optional<TeamSummary> revisedMcs = TeamSummary.of(measuredMcs);
