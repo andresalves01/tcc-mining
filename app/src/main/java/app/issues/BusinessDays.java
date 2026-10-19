@@ -248,6 +248,19 @@ public final class BusinessDays {
    */
   public static int active(final List<Corpus.Event> events, final long start, final long end,
       final int boundaryHour) {
+    int days = 0;
+    for (final long[] s : stretches(events, start, end)) {
+      days += count(s[0], s[1], boundaryHour);
+    }
+    return days;
+  }
+
+  /**
+   * The active stretches of {@code [start, end)}, each {@code [from, to)} in order: the interval
+   * without its stopped periods, as {@link #active} counts it.
+   */
+  static List<long[]> stretches(final List<Corpus.Event> events, final long start,
+      final long end) {
     // the stopped periods in changelog order, each [from, to)
     final List<long[]> stopped = new ArrayList<>();
     Long since = null;
@@ -264,22 +277,187 @@ public final class BusinessDays {
       stopped.add(new long[] {since, Long.MAX_VALUE});
     }
     // the active stretches between them, clipped to [start, end)
-    int days = 0;
+    final List<long[]> out = new ArrayList<>();
     long from = start;
     for (final long[] p : stopped) {
       final long a = Math.max(p[0], start);
       final long b = Math.min(p[1], end);
       if (b > a) {
         if (a > from) {
-          days += count(from, a, boundaryHour);
+          out.add(new long[] {from, a});
         }
         from = Math.max(from, b);
       }
     }
     if (end > from) {
-      days += count(from, end, boundaryHour);
+      out.add(new long[] {from, end});
+    }
+    return out;
+  }
+
+  /** The least gap, in business days, that is silent whatever the fence ({@link #threshold}). */
+  public static final double LEAST_SILENT = 2;
+
+  /** The Tukey multiplier of the IQR the silent gaps' fence is drawn at ({@link #threshold}). */
+  public static final double SILENT_K = 3;
+
+  /** How the target leaves out the silent days, in words for the run records and the reports. */
+  public static final String SILENCE = "records = the issue's changelog events, its comments "
+      + "and the author and committer dates of its human implementation commits visible before "
+      + "the first resolution, strictly between the first In Progress and the first resolution "
+      + "and outside the time back in Open or Reopened; a gap between consecutive records (the "
+      + "first In Progress and the first resolution bound the first and the last) spans g "
+      + "active business days at the issue's day boundary; it is silent when g >= T and then "
+      + "leaves out its g - 1 whole working days without any record; T = max(2, Q3 + 3 IQR of "
+      + "every gap of the variant's fitting side: the inner fitting set for the inner variant, "
+      + "the outer training for the outer), quartiles of type 7; every issue keeps at least one "
+      + "day, so the population and the split are those of the active business days";
+
+  /**
+   * The business days of each gap between consecutive records of an issue (ticket 27, item 62),
+   * in order: the records are the instants strictly inside {@code (start, end)} that fall in an
+   * active stretch ({@link #stretches}), {@code start} and {@code end} bound the first and the
+   * last gap, and each gap counts only the business days of the active stretches it overlaps, at
+   * {@code boundaryHour}. Records at one instant give gaps of 0. The gaps sum to {@link #active}.
+   *
+   * @param records the issue's record instants ({@link Records}), in any order
+   */
+  public static int[] gaps(final List<Corpus.Event> events, final long[] records,
+      final long start, final long end, final int boundaryHour) {
+    final List<long[]> stretches = stretches(events, start, end);
+    final List<Long> bounds = new ArrayList<>(records.length + 2);
+    bounds.add(start);
+    for (final long r : records) {
+      if (r > start && r < end && stretches.stream().anyMatch(s -> r >= s[0] && r < s[1])) {
+        bounds.add(r);
+      }
+    }
+    bounds.add(end);
+    bounds.sort(null);
+    final int[] out = new int[bounds.size() - 1];
+    for (int k = 0; k < out.length; k++) {
+      final long g0 = bounds.get(k);
+      final long g1 = bounds.get(k + 1);
+      for (final long[] s : stretches) {
+        final long a = Math.max(s[0], g0);
+        final long b = Math.min(s[1], g1);
+        if (b > a) {
+          out[k] += count(a, b, boundaryHour);
+        }
+      }
+    }
+    return out;
+  }
+
+  /**
+   * The active business days with recorded activity (ticket 27, item 62): the sum of the gaps
+   * ({@link #gaps}), each silent one, of at least {@code threshold} business days, counted as 1,
+   * its g - 1 whole working days without any record left out. At least 1 whenever the {@link
+   * #active} count is: a gap of at least one day always keeps one.
+   */
+  public static int recorded(final int[] gaps, final double threshold) {
+    int days = 0;
+    for (final int g : gaps) {
+      days += g >= threshold ? 1 : g;
     }
     return days;
+  }
+
+  /** The same, from the changelog and the records ({@link #gaps}). */
+  public static int recorded(final List<Corpus.Event> events, final long[] records,
+      final long start, final long end, final int boundaryHour, final double threshold) {
+    return recorded(gaps(events, records, start, end, boundaryHour), threshold);
+  }
+
+  /**
+   * The silent gaps' threshold T: Tukey's fence Q3 + {@value #SILENT_K} IQR of every gap of
+   * {@code gaps} pooled, quartiles by {@link TailCut#quartiles}, or {@value #LEAST_SILENT} when
+   * that fence is below it or there is no gap (one business day is only the night or the time
+   * zone).
+   */
+  public static double threshold(final Collection<int[]> gaps) {
+    final double[] all = gaps.stream().flatMapToInt(java.util.Arrays::stream)
+        .asDoubleStream().toArray();
+    if (all.length == 0) {
+      return LEAST_SILENT;
+    }
+    final double[] q = TailCut.quartiles(all);
+    return Math.max(LEAST_SILENT, q[2] + SILENT_K * (q[2] - q[0]));
+  }
+
+  /**
+   * The threshold of each variant ({@link #threshold}), from the gaps of its fitting side alone
+   * ({@link Augmentation.Variant#fitting}): never a validation or test issue's.
+   *
+   * @param gaps per issue id, its gaps ({@link #gaps})
+   * @param parts per issue id, its outer and inner verdicts
+   */
+  public static Map<Augmentation.Variant, Double> thresholds(final Map<String, int[]> gaps,
+      final Map<String, String[]> parts) {
+    final Map<Augmentation.Variant, Double> out = new java.util.EnumMap<>(
+        Augmentation.Variant.class);
+    for (final Augmentation.Variant v : Augmentation.Variant.values()) {
+      final List<int[]> fitting = new ArrayList<>();
+      gaps.forEach((id, g) -> {
+        final String[] p = parts.get(id);
+        if (p != null && v.fitting(p[0], p[1])) {
+          fitting.add(g);
+        }
+      });
+      out.put(v, threshold(fitting));
+    }
+    return out;
+  }
+
+  /**
+   * Every issue's record instants, as the target with recorded activity reads them ({@link
+   * #gaps}): its changelog events and its comments with an instant, and the author and committer
+   * dates of its implementation commits ({@link World#implementation}: human, linked, visible
+   * before its first resolution). Nothing is clipped here; {@link #gaps} keeps what falls inside.
+   */
+  public static final class Records {
+
+    private final Universe universe;
+    private final World world;
+    private final Map<String, Long> committed;
+
+    private Records(final Universe universe, final World world,
+        final Map<String, Long> committed) {
+      this.universe = universe;
+      this.world = world;
+      this.committed = committed;
+    }
+
+    public static Records of(final Corpus corpus, final Universe universe, final World world) {
+      final Map<String, Long> committed = new HashMap<>();
+      for (final Corpus.Commit c : corpus.commits()) {
+        if (c.committedAt() != null) {
+          committed.put(c.id(), c.committedAt());
+        }
+      }
+      return new Records(universe, world, committed);
+    }
+
+    /** The records of In-Progress issue {@code id}, in no particular order. */
+    public long[] of(final String id) {
+      final Universe.Unit u = universe.unit(Universe.Population.IN_PROGRESS, id);
+      if (u == null) {
+        throw new IllegalArgumentException(id + " is not an In-Progress issue of the corpus");
+      }
+      final List<Long> out = new ArrayList<>();
+      universe.events(id).stream().map(Corpus.Event::at).filter(java.util.Objects::nonNull)
+          .forEach(out::add);
+      world.comments(id).stream().map(Corpus.Comment::at).filter(java.util.Objects::nonNull)
+          .forEach(out::add);
+      for (final World.Commit c : world.implementation(id, u.resolved())) {
+        out.add(c.authoredAt());
+        final Long at = committed.get(c.id());
+        if (at != null) {
+          out.add(at);
+        }
+      }
+      return out.stream().mapToLong(Long::longValue).toArray();
+    }
   }
 
   /**
