@@ -115,8 +115,8 @@ _Avoid_: direct predictor, similarity score
 The median duration of the reporter's other issues in the same project, from the history.
 
 **Pressure attributes**:
-The five attributes about releases and Blocker issues: the fix-version flag, the release cycle and
-the Blocker pace at the start; the blocker wait and the urgency in retrospect.
+The four attributes about releases and Blocker issues: the fix-version flag, the release cycle and
+the Blocker pace at the start; the urgency in retrospect.
 
 **Fix-version flag**:
 Whether the issue had a fix version before its start.
@@ -128,10 +128,6 @@ the start; negative when the release is overdue.
 **Blocker pace**:
 The median creation-to-resolution time, in calendar days, of the project's other Blocker-priority
 issues, read from the training side and from issues outside the population, never the test side.
-
-**Blocker wait**:
-The business days from the start until the last issue this one waits on was resolved, clipped at
-the first resolution.
 
 **Urgency**:
 The calendar days from the first resolution to the release of the issue's fix version.
@@ -154,11 +150,18 @@ Any model that reads only start attributes: the own specification's (with and wi
 the similarity-alone model, the literature families' and their union.
 
 **Own specification model**:
-The start model fitted on the own specification; the one a scheduler would use when the work
-starts, on which the fitting cut is chosen and on which the retrospective model builds.
+The start model fitted on the own specification, on which the fitting cut is chosen. Without its
+three start pressure attributes it is the **own start model**, the one chosen for the study, which a
+scheduler would use when the work starts and on which the retrospective model builds.
 
 **Retrospective model**:
-The own specification plus the retrospective attributes.
+The own start model plus the retrospective attributes, read twice. Its **main reading** leaves out
+the comments and the participants, which count the very records the target is built from; the
+reading **with discussion** adds those two and is a **ceiling**, an upper reference of what was
+recorded during the work, not a competitor of the other models. The wait on blocking issues is in
+neither: counted in the target's own unit, it equalled the target in about half of the issues that
+had one.
+_Avoid_: reading the ceiling's gain as a result of its own
 
 **Before pressure**:
 Said of a model without the pressure attributes, compared with the same model with them.
