@@ -26,9 +26,11 @@ import java.util.TreeSet;
  *
  * <p><b>Wait.</b> Each blocker's first resolution of any reason ({@link Universe#firstResolution}),
  * never resolved or resolved after t1 taken as t1; the latest of them; the active business days
- * from t0 to it at the issue's day boundary, the time the issue spent back in Open or Reopened left
- * out by the same function as the target ({@link BusinessDays#active}, item 37), so the wait never
- * exceeds the duration; 0 when it is not after t0. Missing without a blocker.
+ * with recorded activity from t0 to it at the issue's day boundary, the time the issue spent back
+ * in Open or Reopened and the silent days left out by the same function as the target ({@link
+ * BusinessDays#recorded}, item 37 and ticket 27), the latest resolution closing the last gap, and
+ * clipped at the target, so the wait never exceeds the duration; 0 when it is not after t0.
+ * Missing without a blocker.
  */
 public final class Blocking {
 
@@ -57,10 +59,15 @@ public final class Blocking {
   }
 
   /**
-   * The business days from t0 to the last of the blockers' first resolutions, clipped at t1, at
-   * {@code boundaryHour}; null without a blocker of known resolution.
+   * The business days with recorded activity from t0 to the last of the blockers' first
+   * resolutions, clipped at t1, at {@code boundaryHour}, and clipped at the target; null without
+   * a blocker of known resolution.
+   *
+   * @param records the issue's record instants ({@link BusinessDays.Records})
+   * @param threshold the silent gaps' threshold T the target was counted at
    */
-  public Double wait(final Universe.Unit u, final int boundaryHour) {
+  public Double wait(final Universe.Unit u, final int boundaryHour, final long[] records,
+      final double threshold) {
     final long t0 = u.start();
     final long t1 = u.resolved();
     Long latest = null;
@@ -78,8 +85,13 @@ public final class Blocking {
     if (latest == null) {
       return null;
     }
-    return latest <= t0 ? 0.0
-        : (double) BusinessDays.active(universe.events(u.id()), t0, latest, boundaryHour);
+    if (latest <= t0) {
+      return 0.0;
+    }
+    final List<Corpus.Event> events = universe.events(u.id());
+    return (double) Math.min(
+        BusinessDays.recorded(events, records, t0, latest, boundaryHour, threshold),
+        BusinessDays.recorded(events, records, t0, t1, boundaryHour, threshold));
   }
 
   /**

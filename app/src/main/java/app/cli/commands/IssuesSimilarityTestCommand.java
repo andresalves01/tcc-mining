@@ -218,7 +218,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     }
     final BusinessDays.Population population;
     try {
-      population = BusinessDays.population(entries);
+      population = BusinessDays.population(entries, Augmentation.Variant.OUTER);
     } catch (final IllegalArgumentException e) {
       throw refused(e.getMessage());
     }
@@ -326,6 +326,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     run.put("models", r.models().stream().map(SimilarityScoring.Scored::name).toList());
     run.putAll(statements());
     run.put("population_rows", populationRows(population));
+    run.put("silence", population.silence());
     run.put("matrix_sha256", matrixSha);
     run.put("elastic_net_parameters_sha256", elasticNetSha);
     run.put("predictions_sha256", predictionsSha);

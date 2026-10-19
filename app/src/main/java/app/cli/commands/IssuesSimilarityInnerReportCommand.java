@@ -189,7 +189,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     final BusinessDays.Population population;
     final SimilarityScoring.Readings readings;
     try {
-      population = BusinessDays.population(training);
+      population = BusinessDays.population(training, Augmentation.Variant.INNER);
       // the same inner fitting set as the selection's, by the matrix's hash: the same fences,
       // checked before any model is fitted
       final List<IssueUnit> fitting = population.entries().stream()
@@ -360,6 +360,9 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
         + "only, the others left behind on their split field");
     md.add("- choices: " + elasticNet + " (sha256 " + chosen.elasticNetSha() + ")");
     md.add("- target: " + BusinessDays.TARGET + "; " + BusinessDays.HOLIDAYS);
+    md.add("- silent days: T = " + BusinessDays.days(population.threshold()) + " business days, "
+        + "from the gaps of the inner fitting set; days left out of the active business days: "
+        + population.leftOut());
     md.add("- split: " + ProjectSplit.RULE);
     md.add("- population: " + BusinessDays.POPULATION + "; inner fitting "
         + population.kept().innerFit() + " of " + population.all().innerFit()

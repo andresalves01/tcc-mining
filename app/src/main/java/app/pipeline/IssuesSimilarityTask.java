@@ -1,6 +1,7 @@
 package app.pipeline;
 
 import app.issues.Augmentation;
+import app.issues.Augmentation.Variant;
 import app.issues.BusinessDays;
 import app.issues.Clusterer;
 import app.issues.Corpus;
@@ -17,11 +18,13 @@ import app.issues.Releases;
 import app.issues.RowCache;
 import app.issues.Universe;
 import app.issues.Universe.Population;
+import app.issues.World;
 import app.issues.port.StudySource;
 import app.pipeline.embedding.EmbeddingModel;
 import app.pipeline.port.Progress;
 import app.study.Row;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -45,10 +48,17 @@ import java.util.function.Function;
  * before its first In Progress, by the person who made that move, and written to the matrix as
  * {@link BusinessDays#BOUNDARY}. The issue's active business days at it, without the time its
  * changelog shows it back in Open or Reopened ({@link BusinessDays#active}), are written as {@link
- * BusinessDays#ACTIVE}: they are what the medians of the {@link Augmentation} read, and what the
- * later steps take as the target. Both are counted as the extraction counted them to draw the
- * split ({@link BusinessDays#of}); a row of 0 refuses the run, as a matrix extracted before
- * ticket 21 holds.
+ * BusinessDays#ACTIVE}, counted as the extraction counted them to draw the split ({@link
+ * BusinessDays#of}); a row of 0 refuses the run, as a matrix extracted before ticket 21 holds.
+ *
+ * <p><b>Target</b> (ticket 27). Only then, the split drawn and unchanged, each variant's threshold
+ * T is read from the gaps between the records of its fitting side's issues alone ({@link
+ * BusinessDays#thresholds}: the inner fitting set, the outer training), and every row's active
+ * business days with recorded activity at each T ({@link BusinessDays#recorded}) are written as
+ * {@link BusinessDays#recorded(Augmentation.Variant)}, each T beside them as {@link
+ * BusinessDays#threshold(Augmentation.Variant)}. They are the target: what the medians of the
+ * {@link Augmentation} of each variant read, and what the later steps take. The active count stays
+ * as a diagnostic no model reads.
  *
  * <p>The own start model's three attributes of ticket 19 ({@link Pressure}: a fix version set
  * before the start, the days left in the project's release cycle, the pace of its other Blocker
@@ -68,17 +78,19 @@ public final class IssuesSimilarityTask {
    * @param bots the raw accounts recognised as bots and left out of every boundary's history
    * @param fixVersions how far the changelog explains the fix versions the start columns read
    *     ({@link FixVersions#fidelity}), on the outer training rows only; null when refused
+   * @param thresholds each variant's threshold T of the silent gaps ({@link
+   *     BusinessDays#thresholds}); empty when refused
    */
   public record Report(List<String> refused, RegistrationInProgress.Sizes sizes,
       List<RowCache.Entry> entries, Augmentation.Result result, int described,
       Map<String, DayBoundaries.Boundary> boundaries, Set<String> bots,
-      Initial.Fidelity fixVersions) {
+      Initial.Fidelity fixVersions, Map<Augmentation.Variant, Double> thresholds) {
 
-    /** A report without the fix versions' fidelity, as a refusal has. */
+    /** A report without the fix versions' fidelity or the thresholds, as a refusal has. */
     public Report(final List<String> refused, final RegistrationInProgress.Sizes sizes,
         final List<RowCache.Entry> entries, final Augmentation.Result result, final int described,
         final Map<String, DayBoundaries.Boundary> boundaries, final Set<String> bots) {
-      this(refused, sizes, entries, result, described, boundaries, bots, null);
+      this(refused, sizes, entries, result, described, boundaries, bots, null, Map.of());
     }
   }
 
@@ -168,15 +180,33 @@ public final class IssuesSimilarityTask {
           List.of(), null, 0, Map.of(), Set.of());
     }
 
+    // the target, once the split is drawn: each variant's T from its fitting side's gaps alone
+    final Map<String, String[]> parts = new HashMap<>(entries.size() * 2);
+    entries.forEach(e -> parts.put(e.unit().issueId(), new String[] {e.outer(P), e.inner(P)}));
+    final BusinessDays.Records records =
+        BusinessDays.Records.of(corpus, universe, new World(universe, corpus));
+    final Map<String, int[]> gaps = new HashMap<>(entries.size() * 2);
+    for (final RowCache.Entry e : entries) {
+      final String id = e.unit().issueId();
+      gaps.put(id, BusinessDays.gaps(universe.events(id), records.of(id),
+          e.unit().startedAt().toEpochMilli(), e.unit().resolvedAt().toEpochMilli(),
+          boundaries.get(id).hour()));
+    }
+    final Map<Variant, Double> thresholds = BusinessDays.thresholds(gaps, parts);
+    final Map<Variant, Map<String, Integer>> target = new EnumMap<>(Variant.class);
+    for (final Variant v : Variant.values()) {
+      final Map<String, Integer> days = new HashMap<>(entries.size() * 2);
+      gaps.forEach((id, g) -> days.put(id, BusinessDays.recorded(g, thresholds.get(v))));
+      target.put(v, days);
+    }
+
     progress.phase(3, 4, "Jaccard and embedding neighbours, K-means clusters and reporter medians "
         + "of %,d issues, %,d with a description", entries.size(), descriptions.size());
     final Augmentation.Result result =
-        Augmentation.run(issues(entries, descriptions, active), embedder, dimension, clusterer);
+        Augmentation.run(issues(entries, descriptions, target), embedder, dimension, clusterer);
 
     progress.phase(4, 4, "adding %d columns", Augmentation.columns().size()
         + BusinessDays.COLUMNS.size() + Pressure.COLUMNS.size());
-    final Map<String, String[]> parts = new HashMap<>(entries.size() * 2);
-    entries.forEach(e -> parts.put(e.unit().issueId(), new String[] {e.outer(P), e.inner(P)}));
     final Pressure pressure = Pressure.of(universe, Releases.of(corpus), parts);
     final List<RowCache.Entry> out = new ArrayList<>(entries.size());
     for (final RowCache.Entry e : entries) {
@@ -186,6 +216,10 @@ public final class IssuesSimilarityTask {
       added.putAll(pressure.row(universe.unit(P, e.unit().issueId())));
       values.put(BusinessDays.BOUNDARY, (double) boundaries.get(e.unit().issueId()).hour());
       values.put(BusinessDays.ACTIVE, (double) active.get(e.unit().issueId()));
+      for (final Variant v : Variant.values()) {
+        values.put(BusinessDays.recorded(v), (double) target.get(v).get(e.unit().issueId()));
+        values.put(BusinessDays.threshold(v), thresholds.get(v));
+      }
       for (final String column : columns()) {
         final Double v = added.get(column);
         if (v == null) {
@@ -200,7 +234,7 @@ public final class IssuesSimilarityTask {
     final List<String> training = entries.stream().filter(e -> "TRAIN".equals(e.outer(P)))
         .map(e -> e.unit().issueId()).toList();
     return new Report(refused, found, out, result, descriptions.size(), boundaries,
-        counted.bots(), FixVersions.fidelity(universe, training));
+        counted.bots(), FixVersions.fidelity(universe, training), Map.copyOf(thresholds));
   }
 
   /**
@@ -213,16 +247,17 @@ public final class IssuesSimilarityTask {
     return List.copyOf(out);
   }
 
-  /** The rows as the augmentation reads them, each with its active business days. */
+  /** The rows as the augmentation reads them, each with its target in each variant. */
   private static List<Augmentation.Issue> issues(final List<RowCache.Entry> entries,
-      final Map<String, String> descriptions, final Map<String, Integer> active) {
+      final Map<String, String> descriptions, final Map<Variant, Map<String, Integer>> target) {
     final List<Augmentation.Issue> out = new ArrayList<>(entries.size());
     for (final RowCache.Entry e : entries) {
       final String id = e.unit().issueId();
       final long start = e.unit().startedAt().toEpochMilli();
       final long resolved = e.unit().resolvedAt().toEpochMilli();
       out.add(new Augmentation.Issue(id, e.unit().project(), e.unit().reporter(), start,
-          resolved, active.get(id), e.outer(P), e.inner(P), descriptions.get(id)));
+          resolved, target.get(Variant.INNER).get(id), target.get(Variant.OUTER).get(id),
+          e.outer(P), e.inner(P), descriptions.get(id)));
     }
     return out;
   }

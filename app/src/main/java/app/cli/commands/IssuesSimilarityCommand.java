@@ -229,6 +229,8 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     final Map<String, Integer> changed = changedByActiveTime(r);
     System.out.printf("  issues whose business days the time back in Open or Reopened changed: "
         + "%s%n", changed);
+    final Map<String, Object> silence = silence(r);
+    System.out.printf("  silent days (%s): %s%n", BusinessDays.SILENCE, silence);
 
     System.out.printf("%n  COVERAGE BY SPLIT%n");
     final List<Map<String, Object>> rows = new ArrayList<>();
@@ -304,6 +306,7 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     run.put("holidays", BusinessDays.HOLIDAYS);
     run.put("stopped_statuses", BusinessDays.STOPPED.stream().sorted().toList());
     run.put("changed_by_active_time", changed);
+    run.put("silence", silence);
     run.put("day_boundary", boundaryRule());
     run.put("day_boundary_sources", sources);
     run.put("bot_accounts", r.bots().stream().sorted().toList());
@@ -404,6 +407,25 @@ public final class IssuesSimilarityCommand implements CommandRunner {
       if (e.row().values().get(BusinessDays.ACTIVE).intValue() != whole) {
         out.merge(split, 1, Integer::sum);
       }
+    }
+    return out;
+  }
+
+  /**
+   * Each variant's threshold T and the silent days its target leaves out (ticket 27), on the outer
+   * training rows alone: the inner fitting and the inner validation at the inner T, the outer
+   * training at the outer T. The outer test is not counted: its outcomes are not summarised before
+   * it is opened.
+   */
+  static Map<String, Object> silence(final IssuesSimilarityTask.Report r) {
+    final List<RowCache.Entry> training =
+        r.entries().stream().filter(e -> "TRAIN".equals(e.outer(P))).toList();
+    final Map<String, Object> out = new LinkedHashMap<>();
+    for (final Augmentation.Variant v : Augmentation.Variant.values()) {
+      final Map<String, Object> one =
+          new LinkedHashMap<>(BusinessDays.population(training, v).silence());
+      one.remove("rule");
+      out.put(v.name().toLowerCase(Locale.ROOT), one);
     }
     return out;
   }

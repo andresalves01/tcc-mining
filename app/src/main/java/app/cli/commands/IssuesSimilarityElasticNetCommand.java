@@ -147,7 +147,8 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
       }
       // the outer test is left behind here, before any outcome is read
       population = BusinessDays.population(entries.stream()
-          .filter(e -> "TRAIN".equals(e.outer(Population.IN_PROGRESS))).toList());
+          .filter(e -> "TRAIN".equals(e.outer(Population.IN_PROGRESS))).toList(),
+          Augmentation.Variant.INNER);
       r = ElasticNetSelection.run(population.entries());
     } catch (final IllegalArgumentException e) {
       throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
@@ -250,6 +251,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     run.put("split_rule", ProjectSplit.RULE);
     run.putAll(statements());
     run.put("population_rows", populationRows(population));
+    run.put("silence", population.silence());
     run.put("models", ElasticNetSelection.MODELS);
     // not in statements(), which the test's record shares
     run.put("retrospective_before_pressure",

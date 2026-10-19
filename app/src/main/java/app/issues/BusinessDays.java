@@ -3,8 +3,11 @@ package app.issues;
 import app.study.model.Breakdown;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -43,13 +46,29 @@ public final class BusinessDays {
   public static final String BOUNDARY = "day_boundary_hour";
 
   /**
-   * The matrix column holding each issue's active business days ({@link #active}), the target;
-   * written by the similarity stage from the changelog.
+   * The matrix column holding each issue's active business days ({@link #active}), written by
+   * the similarity stage from the changelog: the target until ticket 27, now the population's
+   * count (at least one) and a diagnostic no model reads.
    */
   public static final String ACTIVE = "active_business_days";
 
+  /**
+   * The matrix column holding the target of {@code v}'s side: each issue's active business days
+   * with recorded activity ({@link #recorded}) at that variant's threshold (ticket 27).
+   */
+  public static String recorded(final Augmentation.Variant v) {
+    return "recorded_business_days" + v.suffix();
+  }
+
+  /** The matrix column holding {@code v}'s threshold T ({@link #threshold}), on every row. */
+  public static String threshold(final Augmentation.Variant v) {
+    return "silent_gap_threshold" + v.suffix();
+  }
+
   /** The matrix columns the target is read from, in the order the similarity stage writes them. */
-  public static final List<String> COLUMNS = List.of(BOUNDARY, ACTIVE);
+  public static final List<String> COLUMNS = List.of(BOUNDARY, ACTIVE,
+      recorded(Augmentation.Variant.INNER), recorded(Augmentation.Variant.OUTER),
+      threshold(Augmentation.Variant.INNER), threshold(Augmentation.Variant.OUTER));
 
   /**
    * Why a matrix with {@code columns} cannot give the target, null when it can: one without the
@@ -68,7 +87,8 @@ public final class BusinessDays {
     final List<String> missing = COLUMNS.stream().filter(c -> !columns.contains(c)).toList();
     return missing.isEmpty() ? null : "the matrix has no " + String.join(", ", missing)
         + "; it was written before business days or before the time back in Open or Reopened "
-        + "was taken out of them, run issues-in-progress-similarity again";
+        + "was taken out of them or before the days with recorded activity (ticket 27), run "
+        + "issues-in-progress-similarity again";
   }
 
   /**
@@ -77,14 +97,34 @@ public final class BusinessDays {
    */
   public static final Set<String> STOPPED = Set.of("Open", "Reopened");
 
+  /** The least gap, in business days, that is silent whatever the fence ({@link #threshold}). */
+  public static final double LEAST_SILENT = 2;
+
+  /** The Tukey multiplier of the IQR the silent gaps' fence is drawn at ({@link #threshold}). */
+  public static final double SILENT_K = 3;
+
+  /** How the target leaves out the silent days, in words for the run records and the reports. */
+  public static final String SILENCE = "records = the issue's changelog events, its comments "
+      + "and the author and committer dates of its human implementation commits visible before "
+      + "the first resolution, strictly between the first In Progress and the first resolution "
+      + "and outside the time back in Open or Reopened; a gap between consecutive records (the "
+      + "first In Progress and the first resolution bound the first and the last) spans g "
+      + "active business days at the issue's day boundary; it is silent when g >= T and then "
+      + "leaves out its g - 1 whole working days without any record; T = max(2, Q3 + 3 IQR of "
+      + "every gap of the variant's fitting side: the inner fitting set for the inner variant, "
+      + "the outer training for the outer), quartiles of type 7; every issue keeps at least one "
+      + "day, so the population and the split are those of the active business days";
+
   /** What the target is, in words for the help text and the run records. */
-  public static final String TARGET = "whole business days (Monday to Friday dates reached) from "
-      + "the first In Progress to the first resolution, dates cut at each issue's day boundary, "
-      + "without the time the issue was sent back to Open or Reopened in between (each period "
-      + "from a status change to either until the next status change, clipped to the interval; "
-      + "the business days of the remaining stretches summed; time in Patch Available kept): "
-      + "time nobody was working on the issue is not counted; fitted as log1p, predictions back "
-      + "with expm1 held at zero, never rounded or clipped";
+  public static final String TARGET = "active business days with recorded activity: whole "
+      + "business days (Monday to Friday dates reached) from the first In Progress to the first "
+      + "resolution, dates cut at each issue's day boundary, without the time the issue was "
+      + "sent back to Open or Reopened in between (each period from a status change to either "
+      + "until the next status change, clipped to the interval; the business days of the "
+      + "remaining stretches summed; time in Patch Available kept): time nobody was working on "
+      + "the issue is not counted; then the whole working days inside the silent gaps between "
+      + "records left out (" + SILENCE + "); fitted as log1p, predictions back with expm1 held "
+      + "at zero, never rounded or clipped";
 
   /** Who is studied, in words for the help text and the run records. */
   public static final String POPULATION = "issues of at least one business day: the model "
@@ -96,14 +136,31 @@ public final class BusinessDays {
   public static final String HOLIDAYS = "holidays ignored: the data hold no country per person";
 
   /**
-   * The issues of at least one business day, each unit carrying its count.
+   * The issues of at least one active business day, each unit carrying its target, the active
+   * business days with recorded activity of one variant's side.
    *
    * @param entries those issues, in the given order, rows and splits as they were
    * @param all the four split sizes before the drop
    * @param kept the four split sizes after it
+   * @param variant the side whose threshold the target was counted at
+   * @param threshold that threshold T
+   * @param leftOut per split of the variant the entries hold (its fitting side, then its scored
+   *     one), the silent days the target leaves out of its issues' active business days, summed
    */
   public record Population(List<RowCache.Entry> entries, RegistrationInProgress.Sizes all,
-      RegistrationInProgress.Sizes kept) {}
+      RegistrationInProgress.Sizes kept, Augmentation.Variant variant, double threshold,
+      Map<String, Integer> leftOut) {
+
+    /** The rule, T and the days left out, for the run records. */
+    public Map<String, Object> silence() {
+      final Map<String, Object> out = new LinkedHashMap<>();
+      out.put("rule", SILENCE);
+      out.put("variant", variant.name().toLowerCase(Locale.ROOT));
+      out.put("threshold_business_days", threshold);
+      out.put("days_left_out", leftOut);
+      return out;
+    }
+  }
 
   /**
    * The issues' day boundaries and active business days, as the extraction draws the split over
@@ -144,12 +201,25 @@ public final class BusinessDays {
   }
 
   /**
-   * Every issue's active business days, read from its {@link #ACTIVE} column, and the issues of at
-   * least one; refuses a row without the boundary, as a matrix written before ticket 14 has, a row
-   * without the active count, as one written before ticket 18 has, and a count that is not a whole
-   * number from 0 to the business days of the whole interval at the row's boundary.
+   * Every issue's active business days, read from its {@link #ACTIVE} column, the issues of at
+   * least one, each carrying its target at {@code variant}'s threshold, read from its {@link
+   * #recorded} column; refuses a row without the boundary, as a matrix written before ticket 14
+   * has, a row without the active count, as one written before ticket 18 has, a row without the
+   * target or its threshold, as one written before ticket 27 has, an active count that is not a
+   * whole number from 0 to the business days of the whole interval at the row's boundary, a
+   * target that is not a whole number from 1 to the active count, and thresholds that differ.
    */
-  public static Population population(final List<RowCache.Entry> entries) {
+  public static Population population(final List<RowCache.Entry> entries,
+      final Augmentation.Variant variant) {
+    final String target = recorded(variant);
+    final String bound = threshold(variant);
+    final boolean inner = variant == Augmentation.Variant.INNER;
+    final String fitting = inner ? "inner_fitting" : "outer_training";
+    final String scored = inner ? "inner_validation" : "outer_test";
+    // the fitting side first, then the scored one, each only when the entries hold it
+    final Map<String, Integer> leftOut = new LinkedHashMap<>();
+    final Map<String, Integer> scoredOut = new LinkedHashMap<>();
+    Double threshold = null;
     final List<RowCache.Entry> out = new ArrayList<>(entries.size());
     for (final RowCache.Entry e : entries) {
       final Double hour = e.row().values().get(BOUNDARY);
@@ -168,13 +238,41 @@ public final class BusinessDays {
         throw new IllegalArgumentException(e.unit().issueId() + " has " + active + " in "
             + ACTIVE + ", not a whole number from 0 to its " + whole + " business days");
       }
+      final Double recorded = e.row().values().get(target);
+      final Double t = e.row().values().get(bound);
+      if (recorded == null || t == null) {
+        throw new IllegalArgumentException(e.unit().issueId() + " has no " + target + " or "
+            + bound + "; the matrix was written before the days with recorded activity "
+            + "(ticket 27), run issues-in-progress-similarity again");
+      }
+      if (threshold == null) {
+        threshold = t;
+      } else if (Double.compare(threshold, t) != 0) {
+        throw new IllegalArgumentException(e.unit().issueId() + " has " + t + " in " + bound
+            + ", another row " + threshold + ": one threshold per variant");
+      }
       final int days = active.intValue();
-      if (days >= 1) {
-        out.add(new RowCache.Entry(e.unit().withBusinessDays(days), e.row(), e.parts()));
+      if (days < 1) {
+        continue;
+      }
+      if (recorded != Math.rint(recorded) || recorded < 1 || recorded > days) {
+        throw new IllegalArgumentException(e.unit().issueId() + " has " + recorded + " in "
+            + target + ", not a whole number from 1 to its " + days + " active business days");
+      }
+      out.add(new RowCache.Entry(e.unit().withBusinessDays(recorded.intValue()), e.row(),
+          e.parts()));
+      final String o = e.outer(Universe.Population.IN_PROGRESS);
+      final String i = e.inner(Universe.Population.IN_PROGRESS);
+      if (variant.fitting(o, i)) {
+        leftOut.merge(fitting, days - recorded.intValue(), Integer::sum);
+      } else if (variant.scored(o, i)) {
+        scoredOut.merge(scored, days - recorded.intValue(), Integer::sum);
       }
     }
+    leftOut.putAll(scoredOut);
     return new Population(List.copyOf(out), ElasticNetSelection.sizes(entries),
-        ElasticNetSelection.sizes(out));
+        ElasticNetSelection.sizes(out), variant, threshold == null ? LEAST_SILENT : threshold,
+        Collections.unmodifiableMap(leftOut));
   }
 
   /**
@@ -294,24 +392,6 @@ public final class BusinessDays {
     }
     return out;
   }
-
-  /** The least gap, in business days, that is silent whatever the fence ({@link #threshold}). */
-  public static final double LEAST_SILENT = 2;
-
-  /** The Tukey multiplier of the IQR the silent gaps' fence is drawn at ({@link #threshold}). */
-  public static final double SILENT_K = 3;
-
-  /** How the target leaves out the silent days, in words for the run records and the reports. */
-  public static final String SILENCE = "records = the issue's changelog events, its comments "
-      + "and the author and committer dates of its human implementation commits visible before "
-      + "the first resolution, strictly between the first In Progress and the first resolution "
-      + "and outside the time back in Open or Reopened; a gap between consecutive records (the "
-      + "first In Progress and the first resolution bound the first and the last) spans g "
-      + "active business days at the issue's day boundary; it is silent when g >= T and then "
-      + "leaves out its g - 1 whole working days without any record; T = max(2, Q3 + 3 IQR of "
-      + "every gap of the variant's fitting side: the inner fitting set for the inner variant, "
-      + "the outer training for the outer), quartiles of type 7; every issue keeps at least one "
-      + "day, so the population and the split are those of the active business days";
 
   /**
    * The business days of each gap between consecutive records of an issue (ticket 27, item 62),
