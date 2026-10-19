@@ -56,9 +56,10 @@ import java.util.Set;
  * <p><b>Blocking links and the release</b> (ticket 19), each missing with its indicator:
  *
  * <ol start="9">
- *   <li>{@link #BLOCKER_WAIT}: the active business days from t0, at the issue's day boundary, to
- *       the last first resolution of the issues it waited on, clipped at t1, the time back in Open
- *       or Reopened left out as from the target ({@link Blocking}).
+ *   <li>{@link #BLOCKER_WAIT}: the active business days with recorded activity from t0, at the
+ *       issue's day boundary, to the last first resolution of the issues it waited on, clipped at
+ *       t1, the time back in Open or Reopened and the silent days left out as from the target and
+ *       clipped at it ({@link Blocking}).
  *   <li>{@link #URGENCY}: calendar days from t1 to the release of the issue's fix version
  *       ({@link #urgency}), measured after the fact: small when fixed just before the release,
  *       large when the fix waited for it.
@@ -144,15 +145,18 @@ public final class Retrospective {
    * @param methods per commit id, the methods it changed; a commit absent or empty changed none
    *     recovered
    * @param boundaryHour the issue's day boundary, at which the blocking-link wait is counted
+   * @param records the issue's record instants ({@link BusinessDays.Records}), and {@code
+   *     threshold} the silent gaps' threshold T, at which the wait is counted as the target is
    */
   public Map<String, Double> row(final Universe.Unit u,
-      final Map<String, Map<String, ChangedMethod>> methods, final int boundaryHour) {
+      final Map<String, Map<String, ChangedMethod>> methods, final int boundaryHour,
+      final long[] records, final double threshold) {
     final long t0 = u.start();
     final long t1 = u.resolved();
     final Map<String, Double> v = new LinkedHashMap<>();
     content(u, t0, t1, methods, v);
     discussion(u, t0, t1, v);
-    v.put(BLOCKER_WAIT, blocking.wait(u, boundaryHour));
+    v.put(BLOCKER_WAIT, blocking.wait(u, boundaryHour, records, threshold));
     v.put(URGENCY, urgency(u));
     return v;
   }

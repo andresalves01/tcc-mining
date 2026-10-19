@@ -23,9 +23,10 @@ import java.util.stream.IntStream;
  * and of those closest by embedding, for each candidate number of neighbours, and the reporter's
  * historical median, once against the inner split and once against the outer.
  *
- * <p><b>Duration</b> (tickets 14 and 18). Every median is of past issues' active business days
- * ({@link BusinessDays}: the time back in Open or Reopened left out), each past issue counted at
- * its own day boundary, as the target is. A past issue
+ * <p><b>Duration</b> (tickets 14, 18 and 27). Every median is of past issues' target, the active
+ * business days with recorded activity ({@link BusinessDays#recorded}: the time back in Open or
+ * Reopened and the silent days left out), each past issue counted at its own day boundary and at
+ * the threshold of the variant's side, as the target is. A past issue
  * of 0 business days enters no history -- no neighbour search, no cluster fit or cluster, no
  * reporter median -- so a history holds only the kind of issue the model predicts; since ticket 21
  * the extraction draws none of them, and the rule stays as a guard.
@@ -153,24 +154,33 @@ public final class Augmentation {
    * @param reporter the canonical person who opened it
    * @param start the first In Progress, epoch milliseconds
    * @param resolved the first resolution, epoch milliseconds
-   * @param businessDays its active business days from {@code start} to {@code resolved}, at its
-   *     own day boundary, the time back in Open or Reopened left out ({@link
-   *     BusinessDays#active}): what a median of it reads; 0 keeps it out of every history
+   * @param innerDays its target from {@code start} to {@code resolved} at the inner variant's
+   *     threshold, at its own day boundary ({@link BusinessDays#recorded}): what a median of the
+   *     inner variant reads of it; 0 keeps it out of that history
+   * @param outerDays the same at the outer variant's threshold, read by the outer variant
    * @param outer the outer verdict: TRAIN or TEST
    * @param inner the inner verdict inside the outer training, TRAIN or TEST; empty outside it
    * @param description the cleaned description at the first In Progress, null when there is none
    */
   public record Issue(String id, String project, String reporter, long start, long resolved,
-      int businessDays, String outer, String inner, String description) {
+      int innerDays, int outerDays, String outer, String inner, String description) {
 
-    /** Whether it may be history: it lasted at least one business day. */
-    boolean counted() {
-      return businessDays >= 1;
+    /** An issue of the same target in both variants. */
+    public Issue(final String id, final String project, final String reporter, final long start,
+        final long resolved, final int businessDays, final String outer, final String inner,
+        final String description) {
+      this(id, project, reporter, start, resolved, businessDays, businessDays, outer, inner,
+          description);
     }
 
-    /** What a median reads of it. */
-    double days() {
-      return businessDays;
+    /** Whether it may be history of {@code v}: it lasted at least one business day there. */
+    boolean counted(final Variant v) {
+      return days(v) >= 1;
+    }
+
+    /** What a median of {@code v} reads of it. */
+    double days(final Variant v) {
+      return v == Variant.INNER ? innerDays : outerDays;
     }
   }
 
@@ -333,7 +343,7 @@ public final class Augmentation {
           .sorted(Comparator.comparingLong(Issue::start).thenComparing(Issue::id)).toList();
       final List<Issue> rows = new ArrayList<>(fitting);
       issues.stream().filter(v::scored).forEach(rows::add);
-      final List<Issue> history = fitting.stream().filter(Issue::counted).toList();
+      final List<Issue> history = fitting.stream().filter(i -> i.counted(v)).toList();
       final Index index = new Index(history, tokens);
       final Space space = new Space(history, vectors);
       histories.add(new History(v, rows.size(), history.size()));
@@ -450,7 +460,7 @@ public final class Augmentation {
     }
     final Clusterer.Assignment a = fit.assign(vectors.vector(row));
     final List<Double> days = groups.get(a.cluster()).stream()
-        .filter(m -> !m.id().equals(q.id())).map(Issue::days).toList();
+        .filter(m -> !m.id().equals(q.id())).map(m -> m.days(v)).toList();
     if (!days.isEmpty()) {
       columns.get(q.id()).put(cluster(k, v), median(days));
     }
@@ -465,7 +475,7 @@ public final class Augmentation {
     final List<Double> days = new ArrayList<>();
     for (final Index.Hit h : hits.subList(0, Math.min(most, hits.size()))) {
       nearest.add(new Neighbour(h.issue().id(), 1.0 - h.shared() / (double) h.union()));
-      days.add(h.issue().days());
+      days.add(h.issue().days(v));
     }
     if (!days.isEmpty()) {
       for (final int n : JACCARD_N) {
@@ -481,7 +491,7 @@ public final class Augmentation {
     final List<Double> days = new ArrayList<>();
     for (final Space.Hit h : found.nearest()) {
       nearest.add(new Neighbour(h.issue().id(), 1.0 - h.similarity()));
-      days.add(h.issue().days());
+      days.add(h.issue().days(v));
     }
     if (!days.isEmpty()) {
       for (final int n : EMBEDDING_N) {
@@ -508,7 +518,7 @@ public final class Augmentation {
         continue;
       }
       final List<Double> days = by.getOrDefault(new Who(q.project(), q.reporter()), List.of())
-          .stream().filter(h -> !h.id().equals(q.id())).map(Issue::days).toList();
+          .stream().filter(h -> !h.id().equals(q.id())).map(h -> h.days(v)).toList();
       if (!days.isEmpty()) {
         columns.get(q.id()).put(reporter(v), median(days));
       }

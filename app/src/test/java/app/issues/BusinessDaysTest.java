@@ -19,6 +19,8 @@ import org.junit.jupiter.api.Test;
 /** Whole business days between two instants, dates cut at a boundary hour. */
 class BusinessDaysTest {
 
+  private static final Augmentation.Variant INNER = Augmentation.Variant.INNER;
+
   /** 2024-01-01 was a Monday. */
   private static long at(final String instant) {
     return Instant.parse(instant).toEpochMilli();
@@ -194,6 +196,11 @@ class BusinessDaysTest {
     }
     if (active != null) {
       values.put(BusinessDays.ACTIVE, active);
+      // no silent day: the target is the active count in both variants
+      for (final Augmentation.Variant v : Augmentation.Variant.values()) {
+        values.put(BusinessDays.recorded(v), active);
+        values.put(BusinessDays.threshold(v), BusinessDays.LEAST_SILENT);
+      }
     }
     entries.add(new RowCache.Entry(new IssueUnit(id, "K-" + id, "p", "r", "e", s,
         Instant.parse(end), "Fixed", false, s), new Row(id, values, Set.of()), parts));
@@ -214,7 +221,7 @@ class BusinessDaysTest {
         4.0);
     entry("test-zero", "TEST", "", "2024-01-03T09:00:00Z", "2024-01-03T18:00:00Z", 4.0);
     entry("test-five", "TEST", "", "2024-01-01T10:00:00Z", "2024-01-08T10:00:00Z", 4.0);
-    final BusinessDays.Population p = BusinessDays.population(entries);
+    final BusinessDays.Population p = BusinessDays.population(entries, INNER);
     assertEquals(List.of("fit-one", "val-one", "crossing-ten", "test-five"),
         p.entries().stream().map(e -> e.unit().issueId()).toList());
     assertEquals(List.of(1.0, 1.0, 10.0, 5.0),
@@ -236,12 +243,83 @@ class BusinessDaysTest {
     entry("val-five", "TRAIN", "TEST", "2024-01-01T10:00:00Z", "2024-01-08T10:00:00Z", 4.0);
     entry("val-none", "TRAIN", "TEST", "2024-01-01T10:00:00Z", "2024-01-08T10:00:00Z", 4.0, 0.0);
     entry("test-none", "TEST", "", "2024-01-01T10:00:00Z", "2024-01-08T10:00:00Z", 4.0, 0.0);
-    final BusinessDays.Population p = BusinessDays.population(entries);
+    final BusinessDays.Population p = BusinessDays.population(entries, INNER);
     assertEquals(List.of("fit-two", "val-five"),
         p.entries().stream().map(e -> e.unit().issueId()).toList());
     assertEquals(List.of(2, 5), p.entries().stream().map(e -> e.unit().businessDays()).toList());
     assertEquals(new RegistrationInProgress.Sizes(4, 1, 2, 2), p.all());
     assertEquals(new RegistrationInProgress.Sizes(2, 0, 1, 1), p.kept());
+  }
+
+  /** Entry {@code k}'s target and threshold in {@code v}'s columns, {@code days} null for none. */
+  private void target(final int k, final Augmentation.Variant v, final Double days,
+      final double threshold) {
+    final RowCache.Entry e = entries.get(k);
+    final Map<String, Double> values = new HashMap<>(e.row().values());
+    values.remove(BusinessDays.recorded(v));
+    if (days != null) {
+      values.put(BusinessDays.recorded(v), days);
+    }
+    values.put(BusinessDays.threshold(v), threshold);
+    entries.set(k, new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values, Set.of()),
+        e.parts()));
+  }
+
+  @Test
+  @DisplayName("the population carries the target of the variant it is read for, its T and the "
+      + "silent days left out per side; the active count alone decides who is studied")
+  void populationReadsTarget() {
+    final Augmentation.Variant outer = Augmentation.Variant.OUTER;
+    for (final String[] e : new String[][] {{"fit", "TRAIN", "TRAIN"}, {"val", "TRAIN", "TEST"},
+        {"test", "TEST", ""}, {"none", "TRAIN", "TRAIN"}}) {
+      entry(e[0], e[1], e[2], "2024-01-01T10:00:00Z", "2024-01-08T10:00:00Z", 4.0,
+          "none".equals(e[0]) ? 0.0 : 5.0);
+    }
+    final double[][] days = {{2, 3}, {1, 5}, {4, 1}, {0, 0}};
+    for (int k = 0; k < days.length; k++) {
+      target(k, INNER, days[k][0], 2);
+      target(k, outer, days[k][1], 3);
+    }
+    final BusinessDays.Population in = BusinessDays.population(entries, INNER);
+    assertEquals(List.of(2, 1, 4), in.entries().stream().map(e -> e.unit().businessDays())
+        .toList(), "the issue of 0 active days is left out whatever its target");
+    // what every later reader takes, the fences, the references and the models alike
+    final List<IssueUnit> units = in.entries().stream().map(RowCache.Entry::unit).toList();
+    assertEquals(List.of(2.0, 1.0, 4.0), units.stream().map(IssueUnit::duration).toList());
+    assertEquals(3 + 3 * 1.5, TailCut.fence(units, 3), "Q3 3, IQR 1.5, of 1, 2 and 4; not 5");
+    assertEquals(2.0, in.threshold());
+    assertEquals(Map.of("inner_fitting", 3, "inner_validation", 4), in.leftOut());
+    final BusinessDays.Population out = BusinessDays.population(entries, outer);
+    assertEquals(List.of(3, 5, 1), out.entries().stream().map(e -> e.unit().businessDays())
+        .toList());
+    assertEquals(List.of("outer_training", "outer_test"), List.copyOf(out.leftOut().keySet()));
+    assertEquals(Map.of("outer_training", 2, "outer_test", 4), out.leftOut());
+    assertEquals("outer", out.silence().get("variant"));
+    assertEquals(3.0, out.silence().get("threshold_business_days"));
+    assertEquals(BusinessDays.SILENCE, out.silence().get("rule"));
+    assertEquals(Map.of("outer_training", 2), BusinessDays.population(entries.subList(0, 2),
+        outer).leftOut(), "a side the entries do not hold is not stated");
+  }
+
+  @Test
+  @DisplayName("refused: a matrix without the target (before ticket 27), a target that is not a "
+      + "whole number from 1 to the active count, thresholds that differ between rows")
+  void targetRefused() {
+    entry("a", "TRAIN", "TRAIN", "2024-01-01T10:00:00Z", "2024-01-08T10:00:00Z", 4.0, 5.0);
+    entry("b", "TRAIN", "TRAIN", "2024-01-01T10:00:00Z", "2024-01-08T10:00:00Z", 4.0, 5.0);
+    target(1, INNER, null, 2);
+    final IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+        () -> BusinessDays.population(entries, INNER));
+    assertTrue(e.getMessage().contains("ticket 27"), e.getMessage());
+    for (final double wrong : new double[] {0, 6, 2.5}) {
+      target(1, INNER, wrong, 2);
+      assertThrows(IllegalArgumentException.class, () -> BusinessDays.population(entries, INNER),
+          Double.toString(wrong));
+    }
+    target(1, INNER, 3.0, 4);
+    final IllegalArgumentException t = assertThrows(IllegalArgumentException.class,
+        () -> BusinessDays.population(entries, INNER));
+    assertTrue(t.getMessage().contains("one threshold"), t.getMessage());
   }
 
   @Test
@@ -250,12 +328,12 @@ class BusinessDaysTest {
   void noActive() {
     entry("old", "TRAIN", "TRAIN", "2024-01-01T10:00:00Z", "2024-01-08T10:00:00Z", 4.0, null);
     final IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-        () -> BusinessDays.population(entries));
+        () -> BusinessDays.population(entries, INNER));
     assertTrue(e.getMessage().contains(BusinessDays.ACTIVE), e.getMessage());
     for (final double wrong : new double[] {6, -1, 2.5}) {
       entries.clear();
       entry("x", "TRAIN", "TRAIN", "2024-01-01T10:00:00Z", "2024-01-08T10:00:00Z", 4.0, wrong);
-      assertThrows(IllegalArgumentException.class, () -> BusinessDays.population(entries),
+      assertThrows(IllegalArgumentException.class, () -> BusinessDays.population(entries, INNER),
           Double.toString(wrong));
     }
   }
@@ -264,8 +342,13 @@ class BusinessDaysTest {
   @DisplayName("a matrix's columns: refused without the day boundary or the active business "
       + "days, each named, with the stage to run again")
   void unwritten() {
-    assertEquals(null, BusinessDays.unwritten(List.of("x", BusinessDays.BOUNDARY,
-        BusinessDays.ACTIVE)));
+    final List<String> all = new ArrayList<>(BusinessDays.COLUMNS);
+    all.add("x");
+    assertEquals(null, BusinessDays.unwritten(all));
+    all.remove(BusinessDays.recorded(Augmentation.Variant.OUTER));
+    final String before27 = BusinessDays.unwritten(all);
+    assertTrue(before27.contains(BusinessDays.recorded(Augmentation.Variant.OUTER))
+        && before27.contains("ticket 27"), before27);
     final String old = BusinessDays.unwritten(List.of("x", BusinessDays.BOUNDARY));
     assertTrue(old.contains(BusinessDays.ACTIVE) && !old.contains(BusinessDays.BOUNDARY)
         && old.contains("issues-in-progress-similarity"), old);
@@ -279,7 +362,7 @@ class BusinessDaysTest {
   void noBoundary() {
     entry("old", "TRAIN", "TRAIN", "2024-01-01T10:00:00Z", "2024-01-08T10:00:00Z", null);
     final IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
-        () -> BusinessDays.population(entries));
+        () -> BusinessDays.population(entries, INNER));
     assertTrue(e.getMessage().contains(BusinessDays.BOUNDARY), e.getMessage());
   }
 

@@ -508,7 +508,7 @@ class AugmentationTest {
   private List<Augmentation.Issue> later(final String part, final long hours) {
     return issues.stream().map(i -> (part.equals("TEST") ? i.outer() : i.inner()).equals("TEST")
         ? new Augmentation.Issue(i.id(), i.project(), i.reporter(), i.start(),
-            i.resolved() + hours * H, i.businessDays() + (int) hours, i.outer(), i.inner(),
+            i.resolved() + hours * H, i.innerDays() + (int) hours, i.outer(), i.inner(),
             i.description()) : i).toList();
   }
 

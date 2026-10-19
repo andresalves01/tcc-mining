@@ -35,6 +35,9 @@ class BlockingTest {
     final List<Corpus.Issue> issues = new ArrayList<>();
     final List<Corpus.Event> events = new ArrayList<>();
     int ext = 1;
+    /** The issue's records and the threshold; by default never silent, the active days. */
+    long[] records = new long[0];
+    double threshold = Double.POSITIVE_INFINITY;
 
     void started(final String id, final String key, final List<Corpus.Link> links) {
       issues.add(new Corpus.Issue(id, key, "p", CREATED, "r", "r", null, "Bug", "Major", null,
@@ -73,8 +76,25 @@ class BlockingTest {
       final Universe universe = Universe.of(corpus);
       final Universe.Unit u = universe.unit(Universe.Population.IN_PROGRESS, id);
       assertNotNull(u, id + " is in the In-Progress population");
-      return Blocking.of(universe).wait(u, HOUR);
+      return Blocking.of(universe).wait(u, HOUR, records, threshold);
     }
+  }
+
+  @Test
+  @DisplayName("the wait is counted with recorded activity as the target is, and clipped at it "
+      + "(ticket 27)")
+  void recordedActivity() {
+    final Fixture f = new Fixture();
+    f.started("a", "P-1", List.of(blockedBy("b")));
+    f.other("b", "P-2", "p", T0 + 4 * D);
+    assertEquals(4.0, f.wait("a"), "never silent: the active business days");
+    f.threshold = 2;
+    assertEquals(1.0, f.wait("a"), "one silent gap of 4 keeps 1");
+    f.records = new long[] {T0 + D};
+    assertEquals(2.0, f.wait("a"), "gaps of 1 and 3: 1 + 1");
+    f.threshold = 4;
+    // alone the wait would be 1 + 3 = 4; the target, gaps of 1 and 9, is 1 + 1 = 2
+    assertEquals(2.0, f.wait("a"), "clipped at the target");
   }
 
   @Test

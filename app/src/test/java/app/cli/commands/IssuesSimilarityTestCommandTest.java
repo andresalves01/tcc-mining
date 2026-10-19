@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import app.cli.CommandFailedException;
 import app.cli.Context;
+import app.issues.BusinessDays;
 import app.issues.ElasticNetSelection;
 import app.pipeline.port.Progress;
 import java.io.IOException;
@@ -306,12 +307,14 @@ class IssuesSimilarityTestCommandTest {
   }
 
   @Test
-  @DisplayName("the run records of both steps name the target as business days, the population "
-      + "as the issues of at least one, and holidays as ignored")
+  @DisplayName("the run records of both steps name the target as active business days with "
+      + "recorded activity, the population as the issues of at least one, and holidays as ignored")
   void businessDayStatements() {
     for (final Map<String, Object> run : List.of(IssuesSimilarityTestCommand.statements(),
         IssuesSimilarityElasticNetCommand.statements())) {
-      assertTrue(run.get("target").toString().startsWith("whole business days"), run.toString());
+      assertTrue(run.get("target").toString().startsWith("active business days with recorded "
+          + "activity: whole business days"), run.toString());
+      assertTrue(run.get("target").toString().contains(BusinessDays.SILENCE), run.toString());
       assertTrue(run.get("population").toString().contains("at least one business day"));
       assertTrue(run.get("holidays").toString().contains("holidays ignored"));
     }

@@ -46,6 +46,8 @@ class IssuesSimilarityTest {
   private final Map<String, Corpus.Text> texts = new HashMap<>();
   private final List<RowCache.Entry> entries = new ArrayList<>();
   private final List<Corpus.Tag> tags = new ArrayList<>();
+  private final List<Corpus.Comment> comments = new ArrayList<>();
+  private final List<Corpus.Commit> commits = new ArrayList<>();
   private int ext = 1;
 
   private static final SmileKMeans KMEANS = new SmileKMeans();
@@ -97,9 +99,9 @@ class IssuesSimilarityTest {
   }
 
   private StudySource source(final boolean readable) {
-    final Corpus corpus = new Corpus(issues, events, List.of(), List.of(), List.of(),
-        Map.of("p", Set.of("P")), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(),
-        tags);
+    final Corpus corpus = new Corpus(issues, events, List.copyOf(comments), List.of(),
+        List.copyOf(commits), Map.of("p", Set.of("P")), Map.of(), Map.of(), Map.of(), Map.of(),
+        Map.of(), Map.of(), tags);
     return new StudySource() {
       @Override
       public Corpus load() {
@@ -351,13 +353,106 @@ class IssuesSimilarityTest {
     assertEquals(2.0, rows.get("a").values().get(BusinessDays.ACTIVE));
     assertEquals(4.0, rows.get("c").values().get(BusinessDays.ACTIVE));
     assertEquals(1.0, rows.get("v").values().get(BusinessDays.ACTIVE));
+    // the target (ticket 27): a's gaps 1 (to the move back to In Progress) and 1, kept; c's 1
+    // (to Patch Available) and 3, silent at both thresholds, 2 left out; the inner fitting's gaps
+    // 1, 1, 1, 3 give T = 1.5 + 3 * 0.5 = 3, the outer training's 1, 1, 1, 1, 3 the floor of 2
+    assertEquals(Map.of(Variant.INNER, 3.0, Variant.OUTER, 2.0), r.thresholds());
+    for (final Variant w : Variant.values()) {
+      assertEquals(2.0, rows.get("a").values().get(BusinessDays.recorded(w)));
+      assertEquals(2.0, rows.get("c").values().get(BusinessDays.recorded(w)));
+      assertEquals(1.0, rows.get("v").values().get(BusinessDays.recorded(w)));
+      assertEquals(r.thresholds().get(w), rows.get("t").values().get(BusinessDays.threshold(w)));
+    }
     final Map<String, Double> v = rows.get("v").values();
-    assertEquals(3.0, v.get(Augmentation.reporter(Variant.INNER)),
-        "a's two and c's four (whole intervals: 4 and 4)");
-    assertEquals(3.0, v.get(Augmentation.reporter(Variant.OUTER)));
-    assertEquals(3.0, v.get(Augmentation.embedding(5, Variant.INNER)));
+    assertEquals(2.0, v.get(Augmentation.reporter(Variant.INNER)),
+        "a's two and c's two (active 2 and 4; whole intervals 4 and 4)");
+    assertEquals(2.0, v.get(Augmentation.reporter(Variant.OUTER)));
+    assertEquals(2.0, v.get(Augmentation.embedding(5, Variant.INNER)));
     assertEquals(2.0, v.get(Augmentation.jaccard(5, Variant.INNER)),
         "a, the only one sharing a word with it");
+  }
+
+  /** Four issues, Thursday 10:00 to the next Thursday 10:00, 5 business days each. */
+  private void week() {
+    final long start = T0 + D + 10 * H;
+    final long end = T0 + 8 * D + 10 * H;
+    issue("f1", start, end, "TRAIN", "TRAIN");
+    edited("f1", "alpha", "alpha", T0);
+    issue("f2", start, end, "TRAIN", "TRAIN");
+    edited("f2", "alpha", "alpha", T0);
+    issue("v", start, end, "TRAIN", "TEST");
+    edited("v", "alpha", "alpha", T0);
+    issue("t", start, end, "TEST", "");
+    // f1: a comment Friday 12:00 and a commit authored Tuesday 12:00, committed Wednesday 12:00:
+    // gaps 1, 2, 1 and 1; f2 without a record, one gap of 5
+    comments.add(new Corpus.Comment("f1", "x", T0 + 2 * D + 12 * H, 3, false));
+    commits.add(new Corpus.Commit("c1", "p", "h1", "coder", T0 + 6 * D + 12 * H,
+        T0 + 7 * D + 12 * H, 1, List.of("f1")));
+  }
+
+  private IssuesSimilarityTask.Report run() {
+    final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
+        Progress.silent(), HAND, SAME, 2, KMEANS).run(entries);
+    assertEquals(List.of(), r.refused());
+    return r;
+  }
+
+  private static Map<String, Double> column(final IssuesSimilarityTask.Report r,
+      final String column) {
+    final Map<String, Double> out = new HashMap<>();
+    r.entries().forEach(e -> out.put(e.unit().issueId(), e.row().values().get(column)));
+    return out;
+  }
+
+  @Test
+  @DisplayName("the target with recorded activity (ticket 27): comments and commits are records, "
+      + "T is read from each variant's fitting side, and the medians read the target")
+  void recordedActivity() {
+    week();
+    final IssuesSimilarityTask.Report r = run();
+    // the inner fitting's gaps 1, 1, 1, 2, 5: Q1 1, Q3 2, T = 2 + 3 * 1 = 5; f2's gap of 5 is
+    // silent and keeps 1, f1's are all kept
+    assertEquals(5.0, r.thresholds().get(Variant.INNER));
+    final Map<String, Double> inner = column(r, BusinessDays.recorded(Variant.INNER));
+    assertEquals(5.0, inner.get("f1"));
+    assertEquals(1.0, inner.get("f2"));
+    assertEquals(1.0, inner.get("v"));
+    assertEquals(5.0, column(r, BusinessDays.ACTIVE).get("f2"), "the diagnostic stays");
+    // v reads f1's 5 and f2's 1
+    assertEquals(3.0, column(r, Augmentation.reporter(Variant.INNER)).get("v"));
+    assertEquals(3.0, column(r, Augmentation.jaccard(5, Variant.INNER)).get("v"));
+  }
+
+  @Test
+  @DisplayName("a validation or test record never moves the threshold of a side it is not on; "
+      + "the rows, their split and their active business days stay as the extraction drew them")
+  void thresholdsFromFittingSide() {
+    week();
+    final IssuesSimilarityTask.Report before = run();
+    // records on v (inner validation) and t (outer test) only
+    for (int k = 0; k < 4; k++) {
+      comments.add(new Corpus.Comment("v", "x", T0 + (2 + k) * D + 12 * H, 3, false));
+      comments.add(new Corpus.Comment("t", "x", T0 + (2 + k) * D + 12 * H, 3, false));
+    }
+    final IssuesSimilarityTask.Report after = run();
+    assertEquals(before.thresholds().get(Variant.INNER), after.thresholds().get(Variant.INNER));
+    assertEquals(column(before, BusinessDays.recorded(Variant.INNER)).get("f2"),
+        column(after, BusinessDays.recorded(Variant.INNER)).get("f2"));
+    comments.removeIf(c -> "v".equals(c.issue()));
+    final IssuesSimilarityTask.Report onlyTest = run();
+    assertEquals(before.thresholds().get(Variant.OUTER), onlyTest.thresholds().get(Variant.OUTER),
+        "the outer test never moves the outer T");
+    for (final IssuesSimilarityTask.Report r : List.of(before, after, onlyTest)) {
+      assertEquals(entries.stream().map(e -> e.unit().issueId()).toList(),
+          r.entries().stream().map(e -> e.unit().issueId()).toList());
+      for (int k = 0; k < entries.size(); k++) {
+        assertEquals(entries.get(k).parts().get(Population.IN_PROGRESS)[0],
+            r.entries().get(k).outer(Population.IN_PROGRESS));
+        assertEquals(entries.get(k).parts().get(Population.IN_PROGRESS)[1],
+            r.entries().get(k).inner(Population.IN_PROGRESS));
+        assertEquals(5.0, r.entries().get(k).row().values().get(BusinessDays.ACTIVE));
+      }
+    }
   }
 
   @Test

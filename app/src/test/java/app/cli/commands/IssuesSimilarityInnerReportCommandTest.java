@@ -128,6 +128,11 @@ class IssuesSimilarityInnerReportCommandTest {
         values.put(BusinessDays.BOUNDARY, 4.0);
         // never sent back to Open or Reopened: active, the whole interval's business days
         values.put(BusinessDays.ACTIVE, (double) days);
+        // no silent day: the target is the active count in both variants
+        for (final Augmentation.Variant v : Augmentation.Variant.values()) {
+          values.put(BusinessDays.recorded(v), (double) days);
+          values.put(BusinessDays.threshold(v), BusinessDays.LEAST_SILENT);
+        }
         final String id = "i" + n++;
         final Instant start = created.plusSeconds(3600L * 7 * n);
         final Map<Population, String[]> parts = new EnumMap<>(Population.class);
@@ -166,7 +171,8 @@ class IssuesSimilarityInnerReportCommandTest {
     }
     Files.write(matrix, lines);
     final ElasticNetSelection.Result chosen = ElasticNetSelection.run(BusinessDays.population(
-        RowCache.read(matrix, Population.IN_PROGRESS, "TRAIN")).entries(), 1);
+        RowCache.read(matrix, Population.IN_PROGRESS, "TRAIN"), Augmentation.Variant.INNER)
+        .entries(), 1);
     Files.write(elasticNet,
         ElasticNetSelection.parameters(chosen, IssuesReservedCommand.sha256(matrix)));
     return chosen;

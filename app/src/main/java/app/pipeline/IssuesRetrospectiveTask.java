@@ -1,5 +1,6 @@
 package app.pipeline;
 
+import app.issues.Augmentation;
 import app.issues.BusinessDays;
 import app.issues.Corpus;
 import app.issues.DayBoundaries;
@@ -29,7 +30,9 @@ import java.util.function.Function;
  * The retrospective stage after the similarity stage (ticket 15): the similarity stage's matrix in,
  * the same matrix with the ten {@link Retrospective} columns added out. The earlier columns are
  * copied as they are, so every model before the retrospective one reads the same values. The
- * blocking-link wait is counted at the day boundary the matrix holds for each issue; urgency reads
+ * blocking-link wait is counted at the day boundary the matrix holds for each issue and, as the
+ * target, with recorded activity at the inner variant's threshold the matrix holds (ticket 27):
+ * the retrospective columns are read by the inner chain alone; urgency reads
  * the projects' release dates from the tags of the corpus (ticket 19).
  *
  * <p>The split is checked first against its rule ({@link ProjectSplit#differences}), and a
@@ -127,6 +130,8 @@ public final class IssuesRetrospectiveTask {
     final Set<String> bots = Set.copyOf(DayBoundaries.bots(corpus.comments(),
         new HashSet<>(universe.universe())));
     final Retrospective retrospective = new Retrospective(world, bots, Releases.of(corpus));
+    final BusinessDays.Records records = BusinessDays.Records.of(corpus, universe, world);
+    final String threshold = BusinessDays.threshold(Augmentation.Variant.INNER);
     final Set<String> commits = new TreeSet<>();
     for (final RowCache.Entry e : entries) {
       final Universe.Unit u = universe.unit(P, e.unit().issueId());
@@ -140,7 +145,8 @@ public final class IssuesRetrospectiveTask {
     final List<RowCache.Entry> out = new ArrayList<>(entries.size());
     for (final RowCache.Entry e : entries) {
       final Map<String, Double> added = retrospective.row(universe.unit(P, e.unit().issueId()),
-          changed, e.row().values().get(BusinessDays.BOUNDARY).intValue());
+          changed, e.row().values().get(BusinessDays.BOUNDARY).intValue(),
+          records.of(e.unit().issueId()), e.row().values().get(threshold));
       final Map<String, Double> values = new HashMap<>(e.row().values());
       final Set<String> absent = new HashSet<>(e.row().absent());
       for (final String column : Retrospective.COLUMNS) {
@@ -165,7 +171,7 @@ public final class IssuesRetrospectiveTask {
    */
   static List<Coverage> coverage(final List<RowCache.Entry> entries) {
     final BusinessDays.Population population = BusinessDays.population(entries.stream()
-        .filter(e -> "TRAIN".equals(e.outer(P))).toList());
+        .filter(e -> "TRAIN".equals(e.outer(P))).toList(), Augmentation.Variant.INNER);
     final List<Coverage> out = new ArrayList<>(2);
     for (final String[] side : new String[][] {{"TRAIN", "inner fitting"},
         {"TEST", "inner validation"}}) {
