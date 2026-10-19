@@ -9,7 +9,6 @@ import app.issues.DescriptionCleaner;
 import app.issues.ElasticNetSelection;
 import app.issues.PredictionIntervals;
 import app.issues.ProjectSplit;
-import app.issues.RegistrationInProgress;
 import app.issues.Retrospective;
 import app.issues.RowCache;
 import app.issues.SimilarityScoring;
@@ -200,7 +199,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     System.out.printf("  matrix read %s  sha256 %s (%,d rows)%n", matrix, matrixSha,
         entries.size());
     System.out.println(choicesLine(elasticNet, elasticNetSha));
-    final RegistrationInProgress.Sizes s = ElasticNetSelection.sizes(entries);
+    final ProjectSplit.Sizes s = ElasticNetSelection.sizes(entries);
     System.out.printf("  outer training %,d  outer test %,d  inner fitting %,d  inner validation "
         + "%,d%n", s.train(), s.test(), s.innerFit(), s.innerSelection());
     final List<String> missing;
@@ -308,9 +307,9 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       write(predictionsFile, predictions);
       write(diagnosticsFile, diagnostics(main));
       write(relevanceFile, relevance(relevance));
-      predictionsSha = IssuesReservedCommand.sha256(predictionsFile);
-      diagnosticsSha = IssuesReservedCommand.sha256(diagnosticsFile);
-      relevanceSha = IssuesReservedCommand.sha256(relevanceFile);
+      predictionsSha = Sha256.of(predictionsFile);
+      diagnosticsSha = Sha256.of(diagnosticsFile);
+      relevanceSha = Sha256.of(relevanceFile);
     } catch (final IOException e) {
       throw new CommandFailedException(List.of("  could not write to " + reports + ": " + e));
     }
@@ -420,7 +419,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
           + forests.keySet() + "; every model has a forest, " + ElasticNetSelection.MODELS
           + "; run issues-in-progress-similarity-elastic-net again");
     }
-    final String matrixSha = IssuesReservedCommand.sha256(matrix);
+    final String matrixSha = Sha256.of(matrix);
     if (!matrixSha.equals(ElasticNetSelection.matrixSha(enParameters))) {
       throw new IllegalArgumentException("the choices in " + elasticNet + " were chosen on "
           + "another matrix (sha256 " + ElasticNetSelection.matrixSha(enParameters) + "), not "

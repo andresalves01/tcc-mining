@@ -3,6 +3,7 @@ package app.cli.commands;
 import app.cli.CommandFailedException;
 import app.cli.CommandRunner;
 import app.cli.Context;
+import app.issues.ProjectSplit;
 import app.issues.RegistrationInProgress;
 import app.issues.RowCache;
 import app.issues.Universe.Population;
@@ -57,7 +58,7 @@ public final class IssuesInProgressReservedCommand implements CommandRunner {
     final List<String> problems = new ArrayList<>();
     final Fitting.Sides outer = Fitting.sides(entries, Fitting.Mode.RESERVED, P);
     final Fitting.Sides inner = Fitting.sides(entries, Fitting.Mode.INNER, P);
-    final RegistrationInProgress.Sizes found = new RegistrationInProgress.Sizes(
+    final ProjectSplit.Sizes found = new ProjectSplit.Sizes(
         outer.fitUnits().size(), outer.scoreUnits().size(), inner.fitUnits().size(),
         inner.scoreUnits().size());
     if (frozen.stream().anyMatch(f -> f.population() != P)) {

@@ -9,7 +9,6 @@ import app.issues.Augmentation;
 import app.issues.BusinessDays;
 import app.issues.ElasticNetSelection;
 import app.issues.ProjectSplit;
-import app.issues.RegistrationInProgress;
 import app.issues.Retrospective;
 import app.issues.RowCache;
 import app.issues.TailCut;
@@ -114,7 +113,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     final List<String> columns;
     try {
       refuseForeign(parameters);
-      matrixSha = IssuesReservedCommand.sha256(matrix);
+      matrixSha = Sha256.of(matrix);
       entries = RowCache.read(matrix);
       columns = RowCache.columns(matrix);
     } catch (final IOException e) {
@@ -131,7 +130,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
       throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
           + split.get(0)));
     }
-    final RegistrationInProgress.Sizes s = ElasticNetSelection.sizes(entries);
+    final ProjectSplit.Sizes s = ElasticNetSelection.sizes(entries);
     System.out.printf("  outer training %,d  outer test %,d  inner fitting %,d  inner validation "
         + "%,d%n", s.train(), s.test(), s.innerFit(), s.innerSelection());
     final ElasticNetSelection.Result r;
@@ -245,7 +244,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
       Files.write(partial, ElasticNetSelection.parameters(r, matrixSha));
       Files.move(partial, parameters, StandardCopyOption.REPLACE_EXISTING,
           StandardCopyOption.ATOMIC_MOVE);
-      parametersSha = IssuesReservedCommand.sha256(parameters);
+      parametersSha = Sha256.of(parameters);
     } catch (final IOException e) {
       throw new CommandFailedException(List.of("  could not write " + parameters + ": " + e));
     }

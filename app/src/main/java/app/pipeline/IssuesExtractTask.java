@@ -132,7 +132,7 @@ public final class IssuesExtractTask {
       entries.add(new RowCache.Entry(new IssueUnit(u.id(), u.key(), u.project(),
           world.person(u.reporter()), ex == null ? null : ex.who(),
           Instant.ofEpochMilli(u.created()), Instant.ofEpochMilli(u.resolved()), u.reason(),
-          u.moved()), row(id, values.get(id)), parts));
+          u.moved()), IssuesInProgressExtractTask.row(id, values.get(id)), parts));
     }
     return new Report(universe.funnel(), summaries, thesis, fidelity, travel, entries, columns);
   }
@@ -145,33 +145,6 @@ public final class IssuesExtractTask {
     final Set<String> out = new HashSet<>();
     universe.population(p).forEach(u -> out.add(u.id()));
     return out;
-  }
-
-  /** The cache row: every registered column, its absence flag, and the sensitivity A15w. */
-  static Row row(final String id, final Map<String, Double> v) {
-    final Map<String, Double> values = new LinkedHashMap<>();
-    final Set<String> absent = new HashSet<>();
-    for (final Attribute a : Attributes.all()) {
-      put(a.name(), a.absenceIndicator(), v, values, absent);
-    }
-    put(Attributes.SENSITIVITY_A15W, true, v, values, absent);
-    return new Row(id, values, absent);
-  }
-
-  private static void put(final String name, final boolean indicator, final Map<String, Double> v,
-      final Map<String, Double> values, final Set<String> absent) {
-    final Double x = v.get(name);
-    if (x == null || x.isNaN()) {
-      absent.add(name);
-      if (!indicator) {
-        throw new IllegalStateException(name + " is absent but declares no absence indicator");
-      }
-    } else {
-      values.put(name, x);
-    }
-    if (indicator) {
-      values.put(name + "_ausente", x == null || x.isNaN() ? 1.0 : 0.0);
-    }
   }
 
   static SplitSummary summary(final Population p, final int rows, final Universe.Split s) {

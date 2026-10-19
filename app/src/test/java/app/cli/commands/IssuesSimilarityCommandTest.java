@@ -12,7 +12,7 @@ import app.issues.DayBoundaries;
 import app.issues.Augmentation.Variant;
 import app.issues.Embedder;
 import app.issues.IssueUnit;
-import app.issues.RegistrationInProgress;
+import app.issues.ProjectSplit;
 import app.issues.RowCache;
 import app.issues.Universe.Population;
 import app.pipeline.IssuesSimilarityTask;
@@ -88,7 +88,7 @@ class IssuesSimilarityCommandTest {
         "v", new DayBoundaries.Boundary(4, DayBoundaries.Source.FALLBACK, 0, 2),
         "t", new DayBoundaries.Boundary(4, DayBoundaries.Source.FALLBACK, 0, 3));
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask.Report(List.of(),
-        new RegistrationInProgress.Sizes(3, 1, 2, 1), augmented, result, 3, boundaries, Set.of());
+        new ProjectSplit.Sizes(3, 1, 2, 1), augmented, result, 3, boundaries, Set.of());
 
     final Path out = dir.resolve("matrix.tsv");
     IssuesSimilarityCommand.writeMatrix(out, r, RowCache.columns(cache));
@@ -201,7 +201,7 @@ class IssuesSimilarityCommandTest {
     issues.forEach(i -> boundaries.put(i.id(),
         new DayBoundaries.Boundary(4, DayBoundaries.Source.FALLBACK, 0, 0)));
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask.Report(List.of(),
-        new RegistrationInProgress.Sizes(9, 0, 8, 1), entries, result, 9, boundaries, Set.of());
+        new ProjectSplit.Sizes(9, 0, 8, 1), entries, result, 9, boundaries, Set.of());
     final Map<String, List<String>> files = IssuesSimilarityCommand.diagnostics(r);
 
     assertEquals("variant\tk\tvectors\tdistinct\tfitted\tdistortion",

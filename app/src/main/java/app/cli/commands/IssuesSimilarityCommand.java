@@ -97,14 +97,14 @@ public final class IssuesSimilarityCommand implements CommandRunner {
           + "three different files; the inputs are never overwritten"));
     }
     try {
-      cacheSha = IssuesReservedCommand.sha256(cache);
+      cacheSha = Sha256.of(cache);
       extracted = RowCache.read(cache);
       columns = new ArrayList<>(RowCache.columns(cache));
     } catch (final IOException e) {
       throw new CommandFailedException(List.of("  could not read CACHE " + cache + ": " + e));
     }
     try {
-      teamSha = IssuesReservedCommand.sha256(teamFile);
+      teamSha = Sha256.of(teamFile);
       team = TeamColumns.read(teamFile);
     } catch (final IOException e) {
       throw new CommandFailedException(List.of("  could not read TEAM_COLUMNS " + teamFile
@@ -189,12 +189,12 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     final Map<String, String> written = new LinkedHashMap<>();
     try {
       writeMatrix(matrix, r, columns);
-      written.put("matrix", IssuesReservedCommand.sha256(matrix));
+      written.put("matrix", Sha256.of(matrix));
       for (final Map.Entry<String, List<String>> f : diagnostics(r).entrySet()) {
         Files.createDirectories(reports);
         final Path file = reports.resolve(f.getKey());
         Files.write(file, f.getValue());
-        written.put(f.getKey(), IssuesReservedCommand.sha256(file));
+        written.put(f.getKey(), Sha256.of(file));
       }
     } catch (final IOException e) {
       throw new CommandFailedException(List.of("  could not write the outputs: " + e));

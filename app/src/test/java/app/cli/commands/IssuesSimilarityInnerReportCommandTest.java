@@ -235,7 +235,7 @@ class IssuesSimilarityInnerReportCommandTest {
         RowCache.read(matrix, Population.IN_PROGRESS, "TRAIN"), Augmentation.Variant.INNER)
         .entries(), 1);
     Files.write(elasticNet,
-        ElasticNetSelection.parameters(chosen, IssuesReservedCommand.sha256(matrix)));
+        ElasticNetSelection.parameters(chosen, Sha256.of(matrix)));
     return chosen;
   }
 
@@ -596,10 +596,10 @@ class IssuesSimilarityInnerReportCommandTest {
       }
       without.add(String.join("\t", fields));
     }
-    final String before = IssuesReservedCommand.sha256(old);
+    final String before = Sha256.of(old);
     Files.write(old, without);
     Files.writeString(elasticNet, Files.readString(elasticNet)
-        .replace(before, IssuesReservedCommand.sha256(old)));
+        .replace(before, Sha256.of(old)));
     set(old, elasticNet, reports);
     e = assertThrows(CommandFailedException.class, () -> command().run(context()));
     assertTrue(String.join("\n", e.lines()).contains(BusinessDays.ACTIVE)

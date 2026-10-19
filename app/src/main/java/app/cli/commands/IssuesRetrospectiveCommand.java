@@ -98,7 +98,7 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
       if (!already.isEmpty()) {
         throw refused(matrix + " already has " + String.join(", ", already));
       }
-      matrixSha = IssuesReservedCommand.sha256(matrix);
+      matrixSha = Sha256.of(matrix);
       entries = RowCache.read(matrix);
     } catch (final IOException e) {
       throw new CommandFailedException(List.of("  could not read " + matrix + ": " + e));
@@ -139,7 +139,7 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
     final String outSha;
     try {
       RowCache.write(out, r.entries(), all, List.of(Population.IN_PROGRESS));
-      outSha = IssuesReservedCommand.sha256(out);
+      outSha = Sha256.of(out);
     } catch (final IOException e) {
       throw new CommandFailedException(List.of("  could not write " + out + ": " + e));
     }

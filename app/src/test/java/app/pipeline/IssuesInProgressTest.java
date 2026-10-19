@@ -55,7 +55,7 @@ class IssuesInProgressTest {
     Attributes.all().forEach(a -> extracted.put(a.name(), 1.0));
     extracted.put(Attributes.SENSITIVITY_A15W, 1.0);
     Extractor.TEAM_REVISED.forEach(column -> extracted.put(column, 2.0));
-    final Row row = IssuesExtractTask.row("a", extracted);
+    final Row row = IssuesInProgressExtractTask.row("a", extracted);
 
     for (final String column : Extractor.TEAM_REVISED) {
       assertFalse(Attributes.stored().contains(column), column + " would change the matrix");

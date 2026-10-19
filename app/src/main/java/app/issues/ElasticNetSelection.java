@@ -346,7 +346,7 @@ public final class ElasticNetSelection {
    * Outer training, outer test, inner fitting and inner validation rows, counted from the split
    * labels: nothing else of an outer test row is read.
    */
-  public static RegistrationInProgress.Sizes sizes(final List<RowCache.Entry> entries) {
+  public static ProjectSplit.Sizes sizes(final List<RowCache.Entry> entries) {
     int train = 0;
     int test = 0;
     int fit = 0;
@@ -360,7 +360,7 @@ public final class ElasticNetSelection {
         test++;
       }
     }
-    return new RegistrationInProgress.Sizes(train, test, fit, validation);
+    return new ProjectSplit.Sizes(train, test, fit, validation);
   }
 
   /**

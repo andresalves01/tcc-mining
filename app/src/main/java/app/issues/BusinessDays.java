@@ -159,8 +159,8 @@ public final class BusinessDays {
    * @param leftOut per split of the variant the entries hold (its fitting side, then its scored
    *     one), the silent days the target leaves out of its issues' active business days, summed
    */
-  public record Population(List<RowCache.Entry> entries, RegistrationInProgress.Sizes all,
-      RegistrationInProgress.Sizes kept, Augmentation.Variant variant, double threshold,
+  public record Population(List<RowCache.Entry> entries, ProjectSplit.Sizes all,
+      ProjectSplit.Sizes kept, Augmentation.Variant variant, double threshold,
       Map<String, Integer> leftOut) {
 
     /** The rule, T and the days left out, for the run records. */

@@ -51,7 +51,7 @@ public final class IssuesInProgressTeamCommand implements CommandRunner {
     final String sha;
     try {
       TeamColumns.write(out, r.team());
-      sha = IssuesReservedCommand.sha256(out);
+      sha = Sha256.of(out);
     } catch (final IOException e) {
       throw new CommandFailedException(List.of("  could not write " + file + ": " + e));
     }

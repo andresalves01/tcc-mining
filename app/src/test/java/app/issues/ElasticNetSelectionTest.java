@@ -1072,7 +1072,7 @@ class ElasticNetSelectionTest {
     row("t", 1, "TEST", "", Map.of());
     row("u", 1, "TEST", "", Map.of());
     row("x", 1, "CROSSES", "", Map.of());
-    assertEquals(new RegistrationInProgress.Sizes(4, 2, 3, 1),
+    assertEquals(new ProjectSplit.Sizes(4, 2, 3, 1),
         ElasticNetSelection.sizes(entries));
   }
 

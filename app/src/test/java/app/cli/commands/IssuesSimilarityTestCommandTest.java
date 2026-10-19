@@ -96,7 +96,7 @@ class IssuesSimilarityTestCommandTest {
       + "before anything of it is printed, its sizes included; nothing scored, written or recorded")
   void refusesAnotherSplit() throws IOException {
     final Path matrix = MovedSplitFixture.write(dir.resolve("matrix.tsv"));
-    set(matrix, elasticNet(IssuesReservedCommand.sha256(matrix)));
+    set(matrix, elasticNet(Sha256.of(matrix)));
     final java.io.PrintStream out = System.out;
     final java.io.ByteArrayOutputStream printed = new java.io.ByteArrayOutputStream();
     final String why;
@@ -142,7 +142,7 @@ class IssuesSimilarityTestCommandTest {
   @DisplayName("a model with the similarity medians without its n, n and k refuses the run")
   void refusesAModelWithoutItsCombination() throws IOException {
     final Path matrix = matrix();
-    final Path elasticNet = elasticNet(IssuesReservedCommand.sha256(matrix));
+    final Path elasticNet = elasticNet(Sha256.of(matrix));
     final List<String> lines = new java.util.ArrayList<>(Files.readAllLines(elasticNet));
     lines.remove("elastic-net\town_retrospective\tcluster_k\t32");
     Files.write(elasticNet, lines);
@@ -155,7 +155,7 @@ class IssuesSimilarityTestCommandTest {
       + "column is checked")
   void refusesAMissingModel() throws IOException {
     final Path matrix = matrix();
-    final Path elasticNet = elasticNet(IssuesReservedCommand.sha256(matrix));
+    final Path elasticNet = elasticNet(Sha256.of(matrix));
     final List<String> lines = new java.util.ArrayList<>(Files.readAllLines(elasticNet));
     lines.removeIf(l -> l.startsWith("elastic-net\tkikas_start\t"));
     Files.write(elasticNet, lines);
@@ -168,7 +168,7 @@ class IssuesSimilarityTestCommandTest {
       + "refuses the run before anything is scored")
   void refusesWithoutTheForests() throws IOException {
     final Path matrix = matrix();
-    final Path elasticNet = elasticNet(IssuesReservedCommand.sha256(matrix));
+    final Path elasticNet = elasticNet(Sha256.of(matrix));
     final List<String> all = Files.readAllLines(elasticNet);
     set(matrix, elasticNet);
 
@@ -197,7 +197,7 @@ class IssuesSimilarityTestCommandTest {
       + "does one written before ticket 23, under its header then")
   void refusesAFileWithoutTheTailCut() throws IOException {
     final Path matrix = matrix();
-    final Path elasticNet = elasticNet(IssuesReservedCommand.sha256(matrix));
+    final Path elasticNet = elasticNet(Sha256.of(matrix));
     final List<String> none = new java.util.ArrayList<>(Files.readAllLines(elasticNet));
     none.removeIf(l -> l.startsWith("tail-cut\t"));
     set(matrix, Files.write(dir.resolve("no-cut.tsv"), none));
@@ -225,7 +225,7 @@ class IssuesSimilarityTestCommandTest {
       + "run")
   void refusesAFileBeforeTheForests() throws IOException {
     final Path matrix = matrix();
-    final Path elasticNet = elasticNet(IssuesReservedCommand.sha256(matrix));
+    final Path elasticNet = elasticNet(Sha256.of(matrix));
     final List<String> before = new java.util.ArrayList<>(Files.readAllLines(elasticNet));
     before.removeIf(l -> l.startsWith("forest\t"));
     before.set(0, "# Elastic Net alpha and lambda, and the similarity medians' n, n and k, chosen "
@@ -243,7 +243,7 @@ class IssuesSimilarityTestCommandTest {
     final Path old = Files.write(dir.resolve("old.tsv"), List.of(
         "# Elastic Net alpha and lambda chosen on the inner validation only; the outer test was "
             + "not read", "elastic-net\tinputs\tmatrix_sha256\t"
-            + IssuesReservedCommand.sha256(matrix)));
+            + Sha256.of(matrix)));
     set(matrix, old);
     assertTrue(refusal().contains("is not the Elastic Net step's parameters file"));
   }
@@ -253,7 +253,7 @@ class IssuesSimilarityTestCommandTest {
       + "refuses the run")
   void refusesAFileOfTheEarlierModels() throws IOException {
     final Path matrix = matrix();
-    final String sha = IssuesReservedCommand.sha256(matrix);
+    final String sha = Sha256.of(matrix);
     final List<String> lines = new java.util.ArrayList<>(List.of(ElasticNetSelection.HEADER,
         "# step\tname\tparameter\tvalue", "elastic-net\tinputs\tmatrix_sha256\t" + sha));
     for (final String m : List.of("previous_own_start", "revised_nine", "similarity_alone",
@@ -277,7 +277,7 @@ class IssuesSimilarityTestCommandTest {
   void refusesOutputOverAnInput() throws IOException {
     final Path matrix = Files.writeString(dir.resolve(IssuesSimilarityTestCommand.PREDICTIONS),
         "placeholder, never parsed\n");
-    set(matrix, elasticNet(IssuesReservedCommand.sha256(matrix)));
+    set(matrix, elasticNet(Sha256.of(matrix)));
     settings.put("REPORT_DIR", dir.toString());
     final CommandFailedException e = assertThrows(CommandFailedException.class,
         () -> command().run(context()));
@@ -300,7 +300,7 @@ class IssuesSimilarityTestCommandTest {
       + "refuses the run")
   void refusesAFileForTheHours() throws IOException {
     final Path matrix = matrix();
-    final Path elasticNet = elasticNet(IssuesReservedCommand.sha256(matrix));
+    final Path elasticNet = elasticNet(Sha256.of(matrix));
     final List<String> hours = new java.util.ArrayList<>(Files.readAllLines(elasticNet));
     hours.set(0, "# Elastic Net alpha and lambda, the similarity medians' n, n and k, and each "
         + "random forest's column share and leaf, chosen on the inner validation only; the outer "
@@ -375,7 +375,7 @@ class IssuesSimilarityTestCommandTest {
       + "refuses the run: under its own header, or under today's with a left-out model's lines")
   void refusesAFileOfTheElevenModels() throws IOException {
     final Path matrix = matrix();
-    final Path elasticNet = elasticNet(IssuesReservedCommand.sha256(matrix));
+    final Path elasticNet = elasticNet(Sha256.of(matrix));
     final List<String> eleven = new java.util.ArrayList<>(Files.readAllLines(elasticNet));
     eleven.set(0, ELEVEN_HEADER);
     set(matrix, Files.write(dir.resolve("eleven.tsv"), eleven));

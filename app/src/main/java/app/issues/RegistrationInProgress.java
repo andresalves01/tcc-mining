@@ -19,10 +19,7 @@ public final class RegistrationInProgress {
   public static final String PARAMETERS_SHA256 =
       "0600bf88ba533319c8c7667322f39e9c1038d0a937928c195f420b6c16fc8c2a";
 
-  /** Section 2: outer training, outer test, inner fitting and inner selection rows. */
-  public record Sizes(int train, int test, int innerFit, int innerSelection) {}
-
-  public static final Sizes SIZES = new Sizes(11_606, 5_066, 8_000, 3_483);
+  public static final ProjectSplit.Sizes SIZES = new ProjectSplit.Sizes(11_606, 5_066, 8_000, 3_483);
 
   /** Section 5: eleven cells in one population. */
   public static final int PARAMETER_LINES = 11;
@@ -31,7 +28,7 @@ public final class RegistrationInProgress {
 
   /** Every difference between what was registered and what was found; empty when none. */
   public static List<String> differences(final String matrixSha, final String parametersSha,
-      final int parameterLines, final Sizes found) {
+      final int parameterLines, final ProjectSplit.Sizes found) {
     final List<String> out = new ArrayList<>();
     if (!MATRIX_SHA256.equals(matrixSha)) {
       out.add("matrix: SHA-256 " + matrixSha + ", registered " + MATRIX_SHA256);

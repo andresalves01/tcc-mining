@@ -9,7 +9,6 @@ import app.issues.ElasticNetSelection;
 import app.issues.IssueUnit;
 import app.issues.PredictionIntervals;
 import app.issues.ProjectSplit;
-import app.issues.RegistrationInProgress;
 import app.issues.RowCache;
 import app.issues.SimilarityScoring;
 import app.issues.TailCut;
@@ -170,7 +169,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     System.out.printf("  matrix read %s  sha256 %s (%,d outer training rows; the other rows are "
         + "left behind on their split field)%n", matrix, chosen.matrixSha(), training.size());
     System.out.printf("  Elastic Net choices %s  sha256 %s%n", elasticNet, chosen.elasticNetSha());
-    final RegistrationInProgress.Sizes s = ElasticNetSelection.sizes(training);
+    final ProjectSplit.Sizes s = ElasticNetSelection.sizes(training);
     System.out.printf("  outer training %,d  inner fitting %,d  inner validation %,d%n", s.train(),
         s.innerFit(), s.innerSelection());
     // the rule is checked whole by the selection step, which read every row of this very matrix;

@@ -226,8 +226,8 @@ class BusinessDaysTest {
         p.entries().stream().map(e -> e.unit().issueId()).toList());
     assertEquals(List.of(1.0, 1.0, 10.0, 5.0),
         p.entries().stream().map(e -> e.unit().duration()).toList());
-    assertEquals(new RegistrationInProgress.Sizes(6, 2, 2, 2), p.all());
-    assertEquals(new RegistrationInProgress.Sizes(3, 1, 1, 1), p.kept());
+    assertEquals(new ProjectSplit.Sizes(6, 2, 2, 2), p.all());
+    assertEquals(new ProjectSplit.Sizes(3, 1, 1, 1), p.kept());
     assertEquals(entries.get(0).row(), p.entries().get(0).row());
     assertEquals(entries.get(0).parts(), p.entries().get(0).parts());
   }
@@ -247,8 +247,8 @@ class BusinessDaysTest {
     assertEquals(List.of("fit-two", "val-five"),
         p.entries().stream().map(e -> e.unit().issueId()).toList());
     assertEquals(List.of(2, 5), p.entries().stream().map(e -> e.unit().businessDays()).toList());
-    assertEquals(new RegistrationInProgress.Sizes(4, 1, 2, 2), p.all());
-    assertEquals(new RegistrationInProgress.Sizes(2, 0, 1, 1), p.kept());
+    assertEquals(new ProjectSplit.Sizes(4, 1, 2, 2), p.all());
+    assertEquals(new ProjectSplit.Sizes(2, 0, 1, 1), p.kept());
   }
 
   /** Entry {@code k}'s target and threshold in {@code v}'s columns, {@code days} null for none. */

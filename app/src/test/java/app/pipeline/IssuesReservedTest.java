@@ -9,6 +9,7 @@ import app.issues.Attributes;
 import app.issues.Family;
 import app.issues.IssueUnit;
 import app.issues.Registration;
+import app.issues.ProjectSplit;
 import app.issues.RegistrationInProgress;
 import app.issues.RowCache;
 import app.issues.Scenario;
@@ -148,7 +149,7 @@ class IssuesReservedTest {
         RegistrationInProgress.PARAMETERS_SHA256, 11, RegistrationInProgress.SIZES).size());
     assertEquals(1, RegistrationInProgress.differences(RegistrationInProgress.MATRIX_SHA256,
         RegistrationInProgress.PARAMETERS_SHA256, 11,
-        new RegistrationInProgress.Sizes(11_606, 5_065, 8_000, 3_483)).size());
+        new ProjectSplit.Sizes(11_606, 5_065, 8_000, 3_483)).size());
     assertEquals(1, RegistrationInProgress.differences(RegistrationInProgress.MATRIX_SHA256,
         RegistrationInProgress.PARAMETERS_SHA256, 33, RegistrationInProgress.SIZES).size());
   }

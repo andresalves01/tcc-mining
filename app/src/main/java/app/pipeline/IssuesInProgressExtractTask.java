@@ -1,5 +1,6 @@
 package app.pipeline;
 
+import app.issues.Attribute;
 import app.issues.Attributes;
 import app.issues.BusinessDays;
 import app.issues.Corpus;
@@ -12,6 +13,7 @@ import app.issues.TimeTravel;
 import app.issues.Universe;
 import app.issues.Universe.Population;
 import app.issues.World;
+import app.study.Row;
 import app.issues.port.StudySource;
 import app.pipeline.port.Progress;
 import java.time.Instant;
@@ -19,6 +21,7 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -150,17 +153,44 @@ public final class IssuesInProgressExtractTask {
       final Map<Population, String[]> parts = new EnumMap<>(Population.class);
       parts.put(Population.IN_PROGRESS,
           new String[] {outer.name(), inner == null ? "" : inner.name()});
-      final app.study.Row row = IssuesExtractTask.row(u.id(), values.get(u.id()));
+      final Row row = row(u.id(), values.get(u.id()));
       final Map<String, Double> withPause = new java.util.LinkedHashMap<>(row.values());
       withPause.put(PAUSED, values.get(u.id()).get(PAUSED));
       entries.add(new RowCache.Entry(new IssueUnit(u.id(), u.key(), u.project(),
           world.person(u.reporter()), at.get(u.id()).executor(),
           Instant.ofEpochMilli(u.created()), Instant.ofEpochMilli(u.resolved()), u.reason(),
           u.moved(), Instant.ofEpochMilli(u.start())),
-          new app.study.Row(u.id(), withPause, row.absent()), parts));
+          new Row(u.id(), withPause, row.absent()), parts));
     }
     return new Report(summary(started.size(), projects, split), travel, executors, entries,
         columns, team);
+  }
+
+  /** The cache row: every registered column, its absence flag, and the sensitivity A15w. */
+  static Row row(final String id, final Map<String, Double> v) {
+    final Map<String, Double> values = new LinkedHashMap<>();
+    final Set<String> absent = new HashSet<>();
+    for (final Attribute a : Attributes.all()) {
+      put(a.name(), a.absenceIndicator(), v, values, absent);
+    }
+    put(Attributes.SENSITIVITY_A15W, true, v, values, absent);
+    return new Row(id, values, absent);
+  }
+
+  private static void put(final String name, final boolean indicator, final Map<String, Double> v,
+      final Map<String, Double> values, final Set<String> absent) {
+    final Double x = v.get(name);
+    if (x == null || x.isNaN()) {
+      absent.add(name);
+      if (!indicator) {
+        throw new IllegalStateException(name + " is absent but declares no absence indicator");
+      }
+    } else {
+      values.put(name, x);
+    }
+    if (indicator) {
+      values.put(name + "_ausente", x == null || x.isNaN() ? 1.0 : 0.0);
+    }
   }
 
   /** The split in counts: how many issues were drawn, from how many projects, and where. */

@@ -13,7 +13,6 @@ import app.issues.Embedder;
 import app.issues.Initial;
 import app.issues.Pressure;
 import app.issues.ProjectSplit;
-import app.issues.RegistrationInProgress;
 import app.issues.Releases;
 import app.issues.RowCache;
 import app.issues.Universe;
@@ -81,13 +80,13 @@ public final class IssuesSimilarityTask {
    * @param thresholds each variant's threshold T of the silent gaps ({@link
    *     BusinessDays#thresholds}); empty when refused
    */
-  public record Report(List<String> refused, RegistrationInProgress.Sizes sizes,
+  public record Report(List<String> refused, ProjectSplit.Sizes sizes,
       List<RowCache.Entry> entries, Augmentation.Result result, int described,
       Map<String, DayBoundaries.Boundary> boundaries, Set<String> bots,
       Initial.Fidelity fixVersions, Map<Augmentation.Variant, Double> thresholds) {
 
     /** A report without the fix versions' fidelity or the thresholds, as a refusal has. */
-    public Report(final List<String> refused, final RegistrationInProgress.Sizes sizes,
+    public Report(final List<String> refused, final ProjectSplit.Sizes sizes,
         final List<RowCache.Entry> entries, final Augmentation.Result result, final int described,
         final Map<String, DayBoundaries.Boundary> boundaries, final Set<String> bots) {
       this(refused, sizes, entries, result, described, boundaries, bots, null, Map.of());
@@ -130,7 +129,7 @@ public final class IssuesSimilarityTask {
   }
 
   public Report run(final List<RowCache.Entry> entries) {
-    final RegistrationInProgress.Sizes found = ElasticNetSelection.sizes(entries);
+    final ProjectSplit.Sizes found = ElasticNetSelection.sizes(entries);
     final List<String> refused = split.apply(entries);
     if (!refused.isEmpty()) {
       return new Report(refused, found, List.of(), null, 0, Map.of(), Set.of());

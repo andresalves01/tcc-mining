@@ -64,6 +64,9 @@ public final class ProjectSplit {
    */
   public record Parts(Map<String, Part> outer, Map<String, Part> inner) {}
 
+  /** The rows on each side: outer training, outer test, inner fitting and inner validation. */
+  public record Sizes(int train, int test, int innerFit, int innerSelection) {}
+
   private ProjectSplit() {}
 
   /** The verdicts of the issues of {@code projects}, each id mapped to its project. */
