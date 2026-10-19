@@ -177,6 +177,17 @@ class SimilarityScoringTest {
   private static final List<String> INNER_AT_TICKET_24 =
       List.of("114 9b40e4b5", "114 3993d3ba");
 
+  /**
+   * The fixture with a tail, cut at k = 1.5, as the code scored it before the blocking wait, the
+   * comments and the participants left the main retrospective model: per scope (inner, then
+   * outer) and reading (main, then complementary) the count of models, comparisons and ordering
+   * intervals and a hash of every one's bits ({@link #innerBits}) and of the fences and band
+   * limits, in their order, none of an own retrospective model's or of a pair with one. Captured
+   * from ef6d555 (ticket 27 with the bot filter).
+   */
+  private static final List<String> START_AT_TICKET_27 =
+      List.of("96 4f3faac3", "96 57a5fc8", "86 d2900f5c", "86 d2900f5c");
+
   private static List<String> concat(final List<String> a, final List<String> b) {
     final List<String> out = new ArrayList<>(a);
     out.addAll(b);
@@ -1122,6 +1133,31 @@ class SimilarityScoringTest {
       now.add(all.size() + " " + Integer.toHexString(all.hashCode()));
     }
     assertEquals(INNER_AT_TICKET_24, now);
+  }
+
+  @Test
+  @DisplayName("tail cut: in both scopes and readings every model, comparison and ordering "
+      + "interval without an own retrospective model scores bit for bit what it scored at ticket "
+      + "27, the fences and bands too")
+  void startAsAtTicket27() {
+    final List<String> now = new ArrayList<>();
+    for (final SimilarityScoring.Readings r : List.of(
+        SimilarityScoring.readings(withTail(training()), choices(0.2), forests(), 1.5, INNER, 1,
+            1),
+        SimilarityScoring.readings(withTail(corpus()), choices(0.2), forests(), 1.5, RESERVED, 1,
+            1))) {
+      for (final SimilarityScoring.Report reading : List.of(r.main(), r.complementary())) {
+        final List<String> all = new ArrayList<>();
+        innerBits(reading).forEach((k, v) -> {
+          if (!k.contains("own_retrospective")) {
+            all.add(k + " " + v);
+          }
+        });
+        all.add(reading.fences() + " " + java.util.Arrays.toString(reading.bandTops()));
+        now.add(all.size() + " " + Integer.toHexString(all.hashCode()));
+      }
+    }
+    assertEquals(START_AT_TICKET_27, now);
   }
 
   @Test

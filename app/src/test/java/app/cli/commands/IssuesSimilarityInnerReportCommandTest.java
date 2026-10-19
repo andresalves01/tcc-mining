@@ -395,8 +395,30 @@ class IssuesSimilarityInnerReportCommandTest {
       IssuesSimilarityInnerReportCommand.INTERVALS, "421 6f8421c1",
       IssuesSimilarityInnerReportCommand.CALIBRATION, "43 34d3dd5");
 
+  /**
+   * Every file of the report of {@link #entries} but the report itself, as the code wrote it
+   * before the blocking wait, the comments and the participants left the main retrospective
+   * model, by a hash of its text without the lines, or, in the predictions, the columns, that
+   * name an own retrospective model. Captured from ef6d555 (ticket 27 with the bot filter).
+   */
+  private static final Map<String, String> START_AT_TICKET_27 = Map.of(
+      IssuesSimilarityInnerReportCommand.PREDICTIONS, "41 e64817c8",
+      IssuesSimilarityInnerReportCommand.MODELS, "39 d6d4ad40",
+      IssuesSimilarityInnerReportCommand.BANDS, "153 9e8901ef",
+      IssuesSimilarityInnerReportCommand.COMPARISONS, "95 cccb79ab",
+      IssuesSimilarityInnerReportCommand.ORDERING, "59 e61a1f8f",
+      IssuesSimilarityInnerReportCommand.DIAGNOSTICS, "295 b8611bc8",
+      IssuesSimilarityInnerReportCommand.IMPORTANCE, "139 98eb3bc2",
+      IssuesSimilarityInnerReportCommand.INTERVALS, "381 48d216d6",
+      IssuesSimilarityInnerReportCommand.CALIBRATION, "39 47ffd963");
+
   /** A file's text without the Kikas retrospective model's lines or columns, hashed. */
   private static String withoutKikasRetrospective(final Path file) throws IOException {
+    return without(file, KIKAS_RETROSPECTIVE);
+  }
+
+  /** A file's text without the lines or, in the predictions, the columns naming {@code name}. */
+  private static String without(final Path file, final String name) throws IOException {
     final List<String> lines = Files.readAllLines(file);
     final List<String> kept = new ArrayList<>();
     if (file.getFileName().toString().equals(IssuesSimilarityInnerReportCommand.PREDICTIONS)) {
@@ -405,14 +427,14 @@ class IssuesSimilarityInnerReportCommandTest {
         final String[] f = line.split("\t", -1);
         final List<String> out = new ArrayList<>();
         for (int i = 0; i < f.length; i++) {
-          if (!header[i].contains(KIKAS_RETROSPECTIVE)) {
+          if (!header[i].contains(name)) {
             out.add(f[i]);
           }
         }
         kept.add(String.join("\t", out));
       }
     } else {
-      lines.stream().filter(l -> !l.contains(KIKAS_RETROSPECTIVE)).forEach(kept::add);
+      lines.stream().filter(l -> !l.contains(name)).forEach(kept::add);
     }
     return kept.size() + " " + Integer.toHexString(kept.hashCode());
   }
@@ -441,6 +463,25 @@ class IssuesSimilarityInnerReportCommandTest {
       now.put(file, withoutKikasRetrospective(reports.resolve(file)));
     }
     assertEquals(AT_TICKET_24, now);
+  }
+
+  @Test
+  @DisplayName("every file of the report but the report itself is, bit for bit, what it was at "
+      + "ticket 27, the own retrospective models' lines and columns aside")
+  void filesAsAtTicket27() throws IOException, CommandFailedException {
+    final Path matrix = dir.resolve("matrix.tsv");
+    final Path elasticNet = dir.resolve("elastic-net.tsv");
+    write(matrix, elasticNet);
+    final Path reports = dir.resolve("out");
+    set(matrix, elasticNet, reports);
+
+    command().run(context());
+
+    final Map<String, String> now = new HashMap<>();
+    for (final String file : START_AT_TICKET_27.keySet()) {
+      now.put(file, without(reports.resolve(file), "own_retrospective"));
+    }
+    assertEquals(START_AT_TICKET_27, now);
   }
 
   @Test

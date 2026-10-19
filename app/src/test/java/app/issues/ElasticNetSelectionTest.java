@@ -175,6 +175,32 @@ class ElasticNetSelectionTest {
       "own_with_similarity_before_pressure 46d6e3a8",
       "own_retrospective_before_pressure 628c2f1");
 
+  /**
+   * The models the retrospective columns' revision must leave as they are: the seven start models
+   * and Kikas's retrospective one.
+   */
+  private static final List<String> START_AND_KIKAS = List.of("own_without_similarity",
+      "similarity_alone", "own_with_similarity", "alzubaidi_start", "kikas_start", "union_own",
+      "own_with_similarity_before_pressure", "kikas_retrospective");
+
+  /**
+   * The selection of {@link #full} under the tail cut it chooses, as the code made it before the
+   * blocking wait, the comments and the participants left the main retrospective model: a hash
+   * of the rows, the references, the k and its grid, then per model of {@link #START_AND_KIKAS}
+   * a hash of its {@link #everything} line (Elastic Net, removed columns, forest). Captured from
+   * ef6d555 (ticket 27 with the bot filter).
+   */
+  private static final List<String> START_AT_TICKET_27 = List.of(
+      "c591d0f1",
+      "own_without_similarity 4de30521",
+      "similarity_alone b5806bce",
+      "own_with_similarity 25f39608",
+      "alzubaidi_start e7762856",
+      "kikas_start 16b7d500",
+      "union_own 66ffbbb9",
+      "own_with_similarity_before_pressure 46d6e3a8",
+      "kikas_retrospective 51cd32ef");
+
   /** Kikas's twelve retrospective columns (item 59), in the registered order. */
   private static final List<String> KIKAS_RETROSPECTIVE = List.of("K03_comments", "K04_actors",
       "K05_assignments", "K06_labels_c2", "K07_mentions", "K08_commit_refs",
@@ -1274,6 +1300,24 @@ class ElasticNetSelectionTest {
           + forestFingerprint(m.forest())).hashCode()));
     }
     assertEquals(NINE_AT_TICKET_24, now);
+  }
+
+  @Test
+  @DisplayName("the start models and Kikas's retrospective one choose, bit for bit, what they "
+      + "chose at ticket 27 under the tail cut chosen: the k, its grid, every Elastic Net and "
+      + "forest")
+  void startAsAtTicket27() {
+    full();
+    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries), 1);
+    final List<String> lines = everything(r);
+    final List<String> now = new ArrayList<>(List.of(Integer.toHexString((lines.get(0) + " "
+        + hex(r.cut().k()) + " " + r.cut().grid()).hashCode())));
+    for (final String name : START_AND_KIKAS) {
+      final ElasticNetSelection.Model m = model(r, name);
+      now.add(name + " " + Integer.toHexString((fingerprint(m) + " " + m.removed() + " "
+          + forestFingerprint(m.forest())).hashCode()));
+    }
+    assertEquals(START_AT_TICKET_27, now);
   }
 
   @Test
