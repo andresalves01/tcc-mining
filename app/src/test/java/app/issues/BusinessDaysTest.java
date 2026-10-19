@@ -283,6 +283,10 @@ class BusinessDaysTest {
     final BusinessDays.Population in = BusinessDays.population(entries, INNER);
     assertEquals(List.of(2, 1, 4), in.entries().stream().map(e -> e.unit().businessDays())
         .toList(), "the issue of 0 active days is left out whatever its target");
+    // what every later reader takes, the fences, the references and the models alike
+    final List<IssueUnit> units = in.entries().stream().map(RowCache.Entry::unit).toList();
+    assertEquals(List.of(2.0, 1.0, 4.0), units.stream().map(IssueUnit::duration).toList());
+    assertEquals(3 + 3 * 1.5, TailCut.fence(units, 3), "Q3 3, IQR 1.5, of 1, 2 and 4; not 5");
     assertEquals(2.0, in.threshold());
     assertEquals(Map.of("inner_fitting", 3, "inner_validation", 4), in.leftOut());
     final BusinessDays.Population out = BusinessDays.population(entries, outer);
