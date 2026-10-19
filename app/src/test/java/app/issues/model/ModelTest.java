@@ -7,10 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import app.study.Row;
 import app.issues.Attribute;
 import app.issues.Attributes;
-import app.issues.Family;
 import app.issues.IssueUnit;
 import app.issues.RowCache;
-import app.issues.Scenario;
 import app.issues.Universe.Population;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -24,31 +22,9 @@ import org.junit.jupiter.api.Test;
 /** The modelling pieces, checked on numbers small enough to verify by hand. */
 class ModelTest {
 
-  private static RowCache.Entry entry(final String id, final String outer, final String inner,
-      final double hours) {
-    final Instant t0 = Instant.parse("2015-01-01T00:00:00Z");
-    final Map<Population, String[]> parts = new EnumMap<>(Population.class);
-    parts.put(Population.FIXED, new String[] {outer, inner});
-    return new RowCache.Entry(new IssueUnit(id, "K-" + id, "p", "r", null, t0,
-        t0.plusMillis((long) (hours * 3_600_000)), "Fixed", false),
-        new Row(id, Map.of(), Set.of()), parts);
-  }
-
   @Test
   @DisplayName("the development mode never fits on nor scores an outer test row")
   void innerNeverSeesTheTestRows() {
-    final List<RowCache.Entry> entries = List.of(entry("a", "TRAIN", "TRAIN", 1),
-        entry("b", "TRAIN", "TEST", 2), entry("c", "TEST", "", 3),
-        entry("d", "TRAIN", "CROSSES", 4));
-    final Fitting.Sides inner = Fitting.sides(entries, Fitting.Mode.INNER, Population.FIXED);
-
-    assertEquals(List.of("a"), inner.fitUnits().stream().map(IssueUnit::issueId).toList());
-    assertEquals(List.of("b"), inner.scoreUnits().stream().map(IssueUnit::issueId).toList());
-  }
-
-  @Test
-  @DisplayName("the secondary study's development mode never reaches its outer test rows either")
-  void innerNeverSeesTheTestRowsFromTheStart() {
     final Instant t0 = Instant.parse("2015-01-01T00:00:00Z");
     final List<RowCache.Entry> entries = new ArrayList<>();
     final String[][] parts = {{"TRAIN", "TRAIN"}, {"TRAIN", "TEST"}, {"TEST", ""}};
@@ -63,34 +39,6 @@ class ModelTest {
     assertEquals(List.of("i0"), inner.fitUnits().stream().map(IssueUnit::issueId).toList());
     assertEquals(List.of("i1"), inner.scoreUnits().stream().map(IssueUnit::issueId).toList());
     assertEquals(1.0, inner.observed()[0], 1e-9, "one hour from the In Progress");
-  }
-
-  @Test
-  @DisplayName("a row outside the population is in neither side")
-  void otherPopulationsAreIgnored() {
-    final List<RowCache.Entry> entries = List.of(entry("a", "TRAIN", "TRAIN", 1),
-        entry("b", "TRAIN", "TEST", 2));
-    final Fitting.Sides fixed = Fitting.sides(entries, Fitting.Mode.INNER, Population.FIXED);
-    assertEquals(1, fixed.fitUnits().size());
-    try {
-      Fitting.sides(entries, Fitting.Mode.INNER, Population.BROAD);
-      throw new AssertionError("a population with no rows must be refused");
-    } catch (final IllegalStateException expected) {
-      // nothing to fit
-    }
-  }
-
-  @Test
-  @DisplayName("the range is read, not filtered: its limits are placed as percentiles of the truth")
-  void theWindowReadsTheRange() {
-    final double[] observed = {0.5, 2, 10, 100, 9000};
-    final double[] predicted = {1, 1, 10, 50, 9000};
-    final Window w = Window.of(predicted, observed, Window.ONE_HOUR, Window.ONE_YEAR);
-
-    assertEquals(3, w.n());
-    assertEquals(20.0, w.lowPercentile(), 1e-9, "one of five is shorter than an hour");
-    assertEquals(80.0, w.highPercentile(), 1e-9, "four of five are within a year");
-    assertEquals((1 + 0 + 50) / 3.0, w.mae(), 1e-9);
   }
 
   @Test
@@ -114,32 +62,26 @@ class ModelTest {
     assertTrue(gain.modelBetter());
   }
 
-  private static int size(final Family f, final Scenario s) {
-    return Cell.of(f, s).attributes().size();
+  private static int size(final String label) {
+    return Cell.byLabel(label).attributes().size();
   }
 
   @Test
-  @DisplayName("the grid: eleven cells, and each block holds exactly its own columns")
-  void theGrid() {
-    assertEquals(11, Cell.grid().size());
-    assertEquals(12, size(Family.ALZUBAIDI, Scenario.C1), "12 of Al-Zubaidi's 13");
-    assertEquals(14, size(Family.KIKAS, Scenario.C1), "13 of Kikas's plus K13x");
-    assertEquals(26, size(Family.KIKAS, Scenario.C2), "plus the twelve exposure columns");
-    assertEquals(10, size(Family.OWN, Scenario.C1));
-    assertEquals(22, size(Family.OWN, Scenario.C1_CONTENT));
-    assertEquals(12, size(Family.OWN, Scenario.C1_EXPOSURE));
-    assertEquals(24, size(Family.OWN, Scenario.C2));
-    assertEquals(35, size(Family.UNION, Scenario.C1), "K02 enters the union once, as Z10 + Z12");
-    for (final Cell cell : Cell.grid()) {
+  @DisplayName("the literature sets: each holds its family's columns, the retrospective one adds "
+      + "the twelve observed up to the resolution")
+  void theLiteratureSets() {
+    assertEquals(List.of("ALZUBAIDI / C1", "KIKAS / C1", "KIKAS / C2"),
+        Cell.literature().stream().map(Cell::label).toList());
+    assertEquals(12, size("ALZUBAIDI / C1"), "12 of Al-Zubaidi's 13");
+    assertEquals(14, size("KIKAS / C1"), "13 of Kikas's plus K13x");
+    assertEquals(26, size("KIKAS / C2"), "plus the twelve exposure columns");
+    for (final Cell cell : Cell.literature()) {
       for (final Attribute a : cell.attributes()) {
+        assertEquals(cell.family(), a.family(), cell.label() + " " + a.name());
         assertTrue(a.atCreation() || cell.scenario().admits(a.block()), cell.label() + a.name());
         assertFalse(a.name().equals(Attributes.SENSITIVITY_A15W), "A15w is only a sensitivity");
       }
     }
-    assertTrue(Cell.of(Family.UNION, Scenario.C1_CONTENT).attributes().stream()
-        .noneMatch(a -> a.block() == Scenario.Block.EXPOSURE));
-    assertTrue(Cell.of(Family.UNION, Scenario.C1_EXPOSURE).attributes().stream()
-        .noneMatch(a -> a.block() == Scenario.Block.CONTENT));
   }
 
   @Test

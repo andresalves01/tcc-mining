@@ -42,7 +42,7 @@ public class ParallelSweepTest {
     final List<Attribute> attributes = new ArrayList<>();
     for (int c = 0; c < columns; c++) {
       attributes.add(new Attribute("x" + c, "x" + c, Family.OWN, null, Construct.Kind.NUMERIC,
-          c % 3 == 0 ? Construct.Transform.LOG1P : Construct.Transform.NONE, false, true));
+          c % 3 == 0 ? Construct.Transform.LOG1P : Construct.Transform.NONE, false));
     }
     final List<IssueUnit> fitUnits = new ArrayList<>();
     final List<Row> fitRows = new ArrayList<>();

@@ -10,15 +10,10 @@ import app.cli.commands.FitCommand;
 import app.cli.commands.FitInnerCommand;
 import app.cli.commands.FunnelCommand;
 import app.cli.commands.HarvestJiraCommand;
-import app.cli.commands.IssuesExtractCommand;
-import app.cli.commands.IssuesCheckCommand;
 import app.cli.commands.IssuesDescriptionLanguageCommand;
 import app.cli.commands.IssuesDownloadModelCommand;
-import app.cli.commands.IssuesForestCommand;
-import app.cli.commands.IssuesGridCommand;
 import app.cli.commands.IssuesInProgressExtractCommand;
 import app.cli.commands.IssuesInProgressTeamCommand;
-import app.cli.commands.IssuesReservedCommand;
 import app.cli.commands.IssuesRetrospectiveCommand;
 import app.cli.commands.IssuesSimilarityCommand;
 import app.cli.commands.IssuesSimilarityElasticNetCommand;
@@ -117,24 +112,6 @@ public enum Command {
       references. Hyperparameters are chosen on the inner split only.
       Reads only, writes nothing -- redirect the output. Needs features."""),
 
-  ISSUES_EXTRACT("issues-extract", new IssuesExtractCommand(), """
-      Issue duration: build the three populations (Fixed, the main one;
-      broad; inherited) and every column in both scenarios, and run the
-      gates -- the thesis split and time travel. Writes the cache to
-      CACHE only if every gate passed; records a summary in ISSUES_DB; reads everything else."""),
-
-  ISSUES_GRID("issues-grid", new IssuesGridCommand(), """
-      Issue duration: sweep the eleven cells of each population with
-      Elastic Net on the inner selection. Writes the chosen parameters to
-      PARAMETERS; reads CACHE; records the run in ISSUES_DB. The outer test
-      rows are refused."""),
-
-  ISSUES_CHECK("issues-check", new IssuesCheckCommand(), """
-      Issue duration: every reading of the plan -- references, project-
-      resampled intervals, bands of the true duration, C2 by block, the
-      sensitivities -- on the inner selection with the parameters in
-      PARAMETERS. Optimistic by construction; the outer test is not read."""),
-
   ISSUES_IN_PROGRESS_EXTRACT("issues-in-progress-extract", new IssuesInProgressExtractCommand(), """
       Issue duration from the first In Progress: the FIXED issues read at
       that instant, those of at least one active business day kept (the
@@ -146,21 +123,6 @@ public enum Command {
       and validation; nothing set aside), and time travel. Writes the cache
       to CACHE only if the gate passed; records a summary, with the split's
       rule and seed, in ISSUES_DB; reads everything else."""),
-
-  ISSUES_FOREST("issues-forest", new IssuesForestCommand(), """
-      Issue duration: a random forest beside the Elastic Net, cell by cell, on
-      the inner selection only, with the forest's declared grid and the
-      linear model's PARAMETERS. Reads CACHE; POPULATIONS as issues-grid;
-      records the run in ISSUES_DB. The outer test rows are refused."""),
-
-  ISSUES_RESERVED("issues-reserved", new IssuesReservedCommand(), """
-      Issue duration: the one scoring of the outer test that
-      pre-registration lays out. Refuses unless the matrix and the
-      parameters match their registered SHA-256 and every side has its
-      registered size; then refits each cell on the whole outer
-      training side (lambda scaled by decision 20), prints the weights and
-      scores the test, all three populations. Reads CACHE and PARAMETERS;
-      writes PREDICTIONS; records the run in ISSUES_DB."""),
 
   ISSUES_DESCRIPTION_LANGUAGE("issues-description-language",
       new IssuesDescriptionLanguageCommand(), """

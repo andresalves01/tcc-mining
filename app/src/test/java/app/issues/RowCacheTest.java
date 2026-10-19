@@ -68,8 +68,10 @@ class RowCacheTest {
   @Test
   @DisplayName("a cache without the population's split columns refuses a read by its outer cut")
   void refusesWithoutThePopulation() throws IOException {
-    final Path path = dir.resolve("main.tsv");
-    RowCache.write(path, List.of(entry("a", "TRAIN", "TRAIN")), List.of("A01_desc_length"));
+    final Path path = dir.resolve("unsplit.tsv");
+    Files.writeString(path, "id\tchave\tprojeto\trelator\texecutor\tcriada_em\tresolvida_em"
+        + "\tmotivo\tmovida\tA01_desc_length\n"
+        + "a\tK-1\tp\tr\te\t2016-01-01T00:00:00Z\t2016-01-02T00:00:00Z\tFixed\t0\t1.0\n");
     assertThrows(IOException.class, () -> RowCache.read(path, Population.IN_PROGRESS, "TRAIN"));
   }
 }

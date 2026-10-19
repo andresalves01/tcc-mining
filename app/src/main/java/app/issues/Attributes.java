@@ -39,12 +39,12 @@ public final class Attributes {
   private static Attribute c1(final String id, final String name, final Family family,
       final app.study.Construct.Kind kind, final app.study.Construct.Transform t,
       final boolean absent) {
-    return new Attribute(id, name, family, null, kind, t, absent, true);
+    return new Attribute(id, name, family, null, kind, t, absent);
   }
 
   private static Attribute c2(final String id, final String name, final Family family,
       final Scenario.Block block, final app.study.Construct.Transform t, final boolean absent) {
-    return new Attribute(id, name, family, block, NUMERIC, t, absent, true);
+    return new Attribute(id, name, family, block, NUMERIC, t, absent);
   }
 
   private static List<Attribute> build() {
@@ -61,8 +61,7 @@ public final class Attributes {
     a.add(c1("Z13", "TXT_desc_fog", ALZUBAIDI, NUMERIC, NONE, true));
 
     // ---------------------------------------------------------------- Kikas parcial, C1
-    // K02 is (almost) Z10 + Z12: in the union the construct enters once, as Al-Zubaidi's
-    a.add(new Attribute("K02", "K02_body_len", KIKAS, null, NUMERIC, LOG1P, false, false));
+    a.add(c1("K02", "K02_body_len", KIKAS, NUMERIC, LOG1P, false));
     a.add(c1("K06", "LBL_count_c1", KIKAS, NUMERIC, LOG1P, false));
     a.add(c1("K11", "K11_creator_issues_90d", KIKAS, NUMERIC, LOG1P, true));
     a.add(c1("K12", "K12_creator_issues_closed_90d", KIKAS, NUMERIC, LOG1P, true));
@@ -124,11 +123,6 @@ public final class Attributes {
     return ALL;
   }
 
-  /** The columns of one cell, in registry order. */
-  public static List<Attribute> of(final Family family, final Scenario scenario) {
-    return ALL.stream().filter(a -> a.inCell(family, scenario)).toList();
-  }
-
   /**
    * The executor's columns, which the secondary study reads at t0 for the person known then: they
    * join C1 there (P10), while the rest of the content block stays after the fact.
@@ -147,8 +141,7 @@ public final class Attributes {
    */
   public static List<Attribute> ofInProgress(final Family family, final Scenario scenario) {
     return ALL.stream().filter(a -> {
-      final boolean mine = family == Family.UNION ? a.inUnion() : a.family() == family;
-      if (!mine || a.name().equals(OUT_AT_START)) {
+      if (a.family() != family || a.name().equals(OUT_AT_START)) {
         return false;
       }
       if (a.atCreation() || EXECUTOR_AT_START.contains(a.name())) {

@@ -359,7 +359,7 @@ class ElasticNetSelectionTest {
   }
 
   private static List<String> registered(final String label) {
-    return names(Cell.byLabel(label, Population.IN_PROGRESS));
+    return names(Cell.byLabel(label));
   }
 
   private static List<String> concat(final List<String> a, final List<String> b) {
@@ -561,12 +561,10 @@ class ElasticNetSelectionTest {
   }
 
   @Test
-  @DisplayName("the team size in the own models is the registered column, with its log1p and "
-      + "without a missing indicator, as the registered cell reads it")
-  void teamSizeIsTheRegisteredColumn() {
-    final Attribute registered = Cell.byLabel("OWN / C1", Population.IN_PROGRESS).attributes()
-        .stream().filter(a -> a.name().equals("A03_team_size")).findFirst().orElseThrow();
-    assertEquals(Attributes.byName("A03_team_size"), registered);
+  @DisplayName("the team size in the own models is the registry's column, with its log1p and "
+      + "without a missing indicator")
+  void teamSizeIsTheRegistryColumn() {
+    final Attribute registered = Attributes.byName("A03_team_size");
     assertEquals(app.study.Construct.Transform.LOG1P, registered.transform());
     assertFalse(registered.absenceIndicator());
     for (final Augmentation.Variant v : Augmentation.Variant.values()) {
@@ -804,27 +802,6 @@ class ElasticNetSelectionTest {
 
     row("nan", 10, "TRAIN", "TRAIN", Map.of("TEAM_loc_sd", Double.NaN));
     assertThrows(IllegalArgumentException.class, () -> uncut(counted(entries)));
-  }
-
-  @Test
-  @DisplayName("the two registered cells choose the alpha and lambda the registered grid does")
-  void registeredCellsAsTheGrid() {
-    full();
-    final ElasticNetSelection.Result r = uncut(counted(entries));
-    final app.pipeline.IssuesGridTask.Report grid =
-        new app.pipeline.IssuesGridTask(app.pipeline.port.Progress.silent()).run(counted(entries),
-            Population.IN_PROGRESS);
-    for (final String[] pair : new String[][] {{"alzubaidi_start", "ALZUBAIDI / C1"},
-        {"kikas_start", "KIKAS / C1"}}) {
-      final Fitting.Fitted registered = grid.fits().stream()
-          .map(app.pipeline.IssuesGridTask.Timed::fitted)
-          .filter(f -> f.cell().label().equals(pair[1])).findFirst().orElseThrow();
-      final Fitting.Fitted mine = model(r, pair[0]).fitted();
-      assertEquals(registered.alpha(), mine.alpha(), pair[0]);
-      assertEquals(registered.lambda(), mine.lambda(), pair[0]);
-      assertEquals(registered.columns(), mine.columns(), pair[0]);
-      assertEquals(registered.score().mae(), mine.score().mae(), pair[0]);
-    }
   }
 
   @Test

@@ -28,8 +28,8 @@ class ForestTest {
   private static final String CELL = "ALZUBAIDI / C1";
 
   /**
-   * Six projects; per project 20 inner-fit, 10 inner-selection, 10 test and 2 crossing rows. The
-   * duration rises with the first column's distance from its middle: a shape no line can follow.
+   * Six projects; per project 20 inner-fit, 10 inner-validation, 10 test and 2 rows outside the
+   * population. The duration rises with the first column's distance from its middle: a shape no line can follow.
    */
   private static List<RowCache.Entry> corpus() {
     final Random random = new Random(5);
@@ -41,7 +41,7 @@ class ForestTest {
       for (int k = 0; k < 42; k++) {
         final String[] part = k < 20 ? new String[] {"TRAIN", "TRAIN"}
             : k < 30 ? new String[] {"TRAIN", "TEST"}
-            : k < 40 ? new String[] {"TEST", ""} : new String[] {"CROSSES", ""};
+            : k < 40 ? new String[] {"TEST", ""} : null;
         final Map<String, Double> values = new HashMap<>();
         for (final Attribute a : columns) {
           values.put(a.name(), (double) random.nextInt(9));
@@ -50,7 +50,9 @@ class ForestTest {
         final double hours = 1 + 40 * Math.abs(v - 4) + random.nextDouble() * 5;
         final String id = "i" + (n++);
         final Map<Population, String[]> parts = new EnumMap<>(Population.class);
-        parts.put(Population.FIXED, part);
+        if (part != null) {
+          parts.put(Population.IN_PROGRESS, part);
+        }
         out.add(new RowCache.Entry(new IssueUnit(id, "K-" + id, "p" + p, "r", "e",
             t0, t0.plusMillis((long) (hours * 3_600_000)), "Fixed", false),
             new Row(id, values, Set.of()), parts));
@@ -63,7 +65,7 @@ class ForestTest {
   @DisplayName("the forest sweeps its declared grid on the inner sides and keeps the point that "
       + "errs least there")
   void sweep() {
-    final Fitting.Sides sides = Fitting.sides(corpus(), Fitting.Mode.INNER, Population.FIXED);
+    final Fitting.Sides sides = Fitting.sides(corpus(), Fitting.Mode.INNER, Population.IN_PROGRESS);
     final Forest.Fitted f = Forest.sweep(Cell.byLabel(CELL), sides, 1, 1);
     assertEquals(6 * 10, f.predicted().length, "only the inner selection is scored");
     assertEquals(Forest.MTRY_SHARES.length * Forest.NODE_SIZES.length, f.trials().size());
@@ -88,7 +90,7 @@ class ForestTest {
     assertEquals(1, Forest.chosen(later));
 
     // the sweep keeps the point chosen() picks from its own trials, and records its share
-    final Fitting.Sides sides = Fitting.sides(corpus(), Fitting.Mode.INNER, Population.FIXED);
+    final Fitting.Sides sides = Fitting.sides(corpus(), Fitting.Mode.INNER, Population.IN_PROGRESS);
     final Forest.Fitted f = Forest.sweep(Cell.byLabel(CELL), sides, 1, 1);
     final Forest.Trial kept = f.trials().get(Forest.chosen(f.trials()));
     assertEquals(List.of(kept.share(), (double) kept.mtry(), (double) kept.nodeSize()),

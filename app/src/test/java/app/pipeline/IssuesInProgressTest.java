@@ -8,7 +8,6 @@ import app.issues.Attribute;
 import app.issues.Attributes;
 import app.issues.Corpus;
 import app.issues.Extractor;
-import app.issues.Scenario;
 import app.issues.Universe.Population;
 import app.issues.model.Cell;
 import app.study.Row;
@@ -18,16 +17,14 @@ import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** The secondary study's cells and rules that live outside the extractor. */
+/** The literature sets and the extraction's rules that live outside the extractor. */
 class IssuesInProgressTest {
 
   @Test
-  @DisplayName("eleven cells: the executor's columns join C1, the change's only the content "
-      + "block, the exposure only its own, and D06 nowhere")
+  @DisplayName("the literature sets: what surfaced after the start only in the retrospective one, "
+      + "and D06 nowhere")
   void cells() {
-    final List<Cell> grid = Cell.grid(Population.IN_PROGRESS);
-    assertEquals(11, grid.size());
-    for (final Cell cell : grid) {
+    for (final Cell cell : Cell.literature()) {
       for (final Attribute a : cell.attributes()) {
         assertFalse(a.name().equals(Attributes.OUT_AT_START), cell.label());
         if (a.block() != null && !Attributes.EXECUTOR_AT_START.contains(a.name())) {
@@ -35,21 +32,15 @@ class IssuesInProgressTest {
         }
       }
     }
-    assertFalse(Cell.byLabel("UNION / C1_EXPOSURE", Population.IN_PROGRESS).attributes().stream()
-        .anyMatch(a -> a.name().equals("A15_change_loc")));
-    assertTrue(Cell.byLabel("KIKAS / C2", Population.IN_PROGRESS).attributes().stream()
+    assertTrue(Cell.byLabel("KIKAS / C2").attributes().stream()
         .anyMatch(a -> a.name().equals("K17c2_project_issues_14d_obs")));
-    final Cell own = Cell.byLabel("OWN / C1", Population.IN_PROGRESS);
-    assertTrue(own.attributes().stream().anyMatch(a -> a.name().equals("A13_exec_open_load")));
-    assertFalse(own.attributes().stream().anyMatch(a -> a.name().equals("A15_change_loc")));
-    final Cell content = Cell.byLabel("UNION / C1_CONTENT", Population.IN_PROGRESS);
-    assertTrue(content.attributes().stream().anyMatch(a -> a.name().equals("D08_file_familiarity")));
-    assertEquals(11, Cell.grid(Population.FIXED).size(), "the main grid is untouched");
+    assertFalse(Cell.byLabel("KIKAS / C1").attributes().stream()
+        .anyMatch(a -> a.name().equals("K17c2_project_issues_14d_obs")));
   }
 
   @Test
-  @DisplayName("the revised team columns stay out of the registry, the cells and the rows the "
-      + "registered matrix is written from")
+  @DisplayName("the revised team columns stay out of the registry, the literature sets and the "
+      + "rows the extracted matrix is written from")
   void revisedTeamOutsideRegistered() {
     final Map<String, Double> extracted = new HashMap<>();
     Attributes.all().forEach(a -> extracted.put(a.name(), 1.0));
@@ -60,18 +51,15 @@ class IssuesInProgressTest {
     for (final String column : Extractor.TEAM_REVISED) {
       assertFalse(Attributes.stored().contains(column), column + " would change the matrix");
       assertFalse(row.values().containsKey(column) || row.absent().contains(column), column);
-      for (final Population p : List.of(Population.IN_PROGRESS, Population.FIXED)) {
-        for (final Cell cell : Cell.grid(p)) {
-          assertFalse(cell.attributes().stream().anyMatch(a -> a.name().equals(column)),
-              cell.label() + " " + column);
-        }
+      for (final Cell cell : Cell.literature()) {
+        assertFalse(cell.attributes().stream().anyMatch(a -> a.name().equals(column)),
+            cell.label() + " " + column);
       }
     }
   }
 
   @Test
-  @DisplayName("the cache keeps the start and the partition by column name, and the main layout "
-      + "writes no start column")
+  @DisplayName("the cache keeps the start and the partition by column name")
   void cacheRoundTrip(@org.junit.jupiter.api.io.TempDir final java.nio.file.Path dir)
       throws java.io.IOException {
     final java.time.Instant c = java.time.Instant.parse("2016-01-01T00:00:00Z");
@@ -88,18 +76,6 @@ class IssuesInProgressTest {
     assertEquals(1.0, back.unit().durationHours(), 1e-9, "from the start, not the creation");
     assertEquals("TEST", back.inner(Population.IN_PROGRESS));
     assertEquals(1.0, back.row().values().get("x"));
-
-    final java.nio.file.Path main = dir.resolve("principal.tsv");
-    final java.util.Map<Population, String[]> fixed = new java.util.EnumMap<>(Population.class);
-    fixed.put(Population.FIXED, new String[] {"TEST", ""});
-    app.issues.RowCache.write(main, List.of(new app.issues.RowCache.Entry(new app.issues.IssueUnit(
-        "a", "P-1", "p", "r", null, c, c.plusSeconds(7200), "Fixed", false),
-        new app.study.Row("a", java.util.Map.of("x", 1.0), java.util.Set.of()), fixed)),
-        List.of("x"));
-    assertEquals("id\tchave\tprojeto\trelator\texecutor\tcriada_em\tresolvida_em\tmotivo\tmovida"
-        + "\tfixed_externa\tfixed_interna\tampla_externa\tampla_interna\therdada_externa"
-        + "\therdada_interna\tx", java.nio.file.Files.readAllLines(main).get(0));
-    assertEquals(2.0, app.issues.RowCache.read(main).get(0).unit().durationHours(), 1e-9);
   }
 
   @Test

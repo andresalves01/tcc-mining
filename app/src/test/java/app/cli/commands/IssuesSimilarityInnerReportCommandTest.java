@@ -89,7 +89,7 @@ class IssuesSimilarityInnerReportCommandTest {
         .forEach(a -> retrospective.put(a.name(), a));
     retrospective.put("RETRO_blocker_wait", new Attribute("RETRO_blocker_wait",
         "RETRO_blocker_wait", app.issues.Family.OWN, app.issues.Scenario.Block.EXPOSURE,
-        Construct.Kind.NUMERIC, Construct.Transform.LOG1P, true, true));
+        Construct.Kind.NUMERIC, Construct.Transform.LOG1P, true));
     final Set<Attribute> out = new LinkedHashSet<>();
     for (final Attribute a : drawn) {
       if (a.name().startsWith("RETRO_")) {
@@ -114,9 +114,9 @@ class IssuesSimilarityInnerReportCommandTest {
       out.add(a);
       if (a.name().equals("A13_exec_open_load")) {
         out.add(new Attribute(Pressure.FIX_VERSION, Pressure.FIX_VERSION, Family.OWN, null,
-            Construct.Kind.BINARY, Construct.Transform.NONE, false, true));
+            Construct.Kind.BINARY, Construct.Transform.NONE, false));
         out.add(new Attribute(Pressure.RELEASE_CYCLE, Pressure.RELEASE_CYCLE, Family.OWN, null,
-            Construct.Kind.NUMERIC, Construct.Transform.NONE, true, true));
+            Construct.Kind.NUMERIC, Construct.Transform.NONE, true));
         out.add(pace(Augmentation.Variant.INNER));
       } else if (a.name().equals(Augmentation.reporter(Augmentation.Variant.OUTER))) {
         out.add(pace(Augmentation.Variant.OUTER));
@@ -128,7 +128,7 @@ class IssuesSimilarityInnerReportCommandTest {
   /** The Blocker pace column of the given variant, as the own specification declared it. */
   private static Attribute pace(final Augmentation.Variant v) {
     return new Attribute(Pressure.blockerPace(v), Pressure.blockerPace(v), Family.OWN, null,
-        Construct.Kind.NUMERIC, Construct.Transform.LOG1P, true, true);
+        Construct.Kind.NUMERIC, Construct.Transform.LOG1P, true);
   }
 
   /**

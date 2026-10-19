@@ -9,21 +9,14 @@ import java.util.Set;
  * @param id the identifier of {@code MATRIZ-VIABILIDADE-ISSUES.csv} (K13, Z09, A15, ...); the
  *     registry test checks the two agree in both directions
  * @param name the column name in the extraction, the same the Python specification uses
- * @param block {@code null} for a column known at creation (C1); the C2 block otherwise
- * @param inUnion false only where the union already has the construct under another name
+ * @param block {@code null} for a column known at the start (C1); the C2 block otherwise
  */
 public record Attribute(String id, String name, Family family, Scenario.Block block,
     app.study.Construct.Kind kind, app.study.Construct.Transform transform,
-    boolean absenceIndicator, boolean inUnion) implements Construct {
+    boolean absenceIndicator) implements Construct {
 
   public boolean atCreation() {
     return block == null;
-  }
-
-  /** Whether the column enters a cell of this family under this scenario. */
-  public boolean inCell(final Family cellFamily, final Scenario scenario) {
-    final boolean family = cellFamily == Family.UNION ? inUnion : cellFamily == this.family;
-    return family && (atCreation() || scenario.admits(block));
   }
 
   @Override

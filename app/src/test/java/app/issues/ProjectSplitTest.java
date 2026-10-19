@@ -114,8 +114,6 @@ class ProjectSplitTest {
     assertEquals(Part.TRAIN, parts.outer().get("one-001"));
     assertEquals(Part.TRAIN, parts.inner().get("one-001"), "and wholly inner fitting");
     assertEquals(corpus.keySet(), parts.outer().keySet());
-    assertFalse(parts.outer().containsValue(Part.CROSSES));
-    assertFalse(parts.inner().containsValue(Part.CROSSES));
     // the inner verdicts are exactly the outer training's
     for (final String id : corpus.keySet()) {
       assertEquals(parts.outer().get(id) == Part.TRAIN, parts.inner().containsKey(id), id);

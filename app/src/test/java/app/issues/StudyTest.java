@@ -92,25 +92,20 @@ class StudyTest {
     final Universe u = Universe.of(f.build());
 
     assertEquals(Set.of("a2", "c"), Set.copyOf(u.universe()));
-    assertEquals(List.of("a2"), u.population(Universe.Population.FIXED).stream()
-        .map(Universe.Unit::id).toList());
+    assertEquals("Fixed", u.unit("a2").reason());
     assertEquals("Duplicate", u.unit("c").reason());
-    assertEquals(2, u.population(Universe.Population.BROAD).size());
+    assertEquals(Set.of("a2", "c"), history(u), "both are units of the history");
   }
 
-  @Test
-  @DisplayName("the split: created and resolved before the cut trains, resolved after crosses")
-  void split() {
-    final Fixture f = new Fixture();
-    for (int i = 0; i < 10; i++) {
-      f.issue("i" + i, "P-" + i, T0 + i * D, "r");
-      f.resolve("i" + i, T0 + i * D + (i == 5 ? 10 * D : D / 2), "Fixed");
+  /** The issues with a unit: those every column's history reads. */
+  private static Set<String> history(final Universe u) {
+    final Set<String> out = new java.util.TreeSet<>();
+    for (final String id : u.universe()) {
+      if (u.unit(id) != null) {
+        out.add(id);
+      }
     }
-    final Universe.Split s = Universe.of(f.build()).split(Universe.Population.FIXED, 0.70);
-    assertEquals(T0 + 6 * D, s.cut(), "position int(0.7 * 9) = 6");
-    assertEquals(Universe.Part.CROSSES, s.outer().get("i5"));
-    assertEquals(Universe.Part.TRAIN, s.outer().get("i4"));
-    assertEquals(Universe.Part.TEST, s.outer().get("i6"), "created at the cut is test");
+    return out;
   }
 
   @Test
@@ -147,7 +142,7 @@ class StudyTest {
     final Corpus corpus = f.build();
     final Universe u = Universe.of(corpus);
     final World w = new World(u, corpus);
-    final Extractor e = new Extractor(w, u.studied());
+    final Extractor e = new Extractor(w, history(u));
 
     final Map<String, Double> x = e.row(u.unit("x"), Initial.of(u.issue("x"), u.events("x"),
         null), null);
@@ -176,7 +171,7 @@ class StudyTest {
     f.commit("c2", "dev", T0 + 20 * D, T0 + 20 * D, "a"); // after the resolution
     final Corpus corpus = f.build();
     final Universe u = Universe.of(corpus);
-    final Extractor e = new Extractor(new World(u, corpus), u.studied());
+    final Extractor e = new Extractor(new World(u, corpus), history(u));
     final Map<String, Double> a = e.row(u.unit("a"), Initial.of(u.issue("a"), u.events("a"),
         null), null);
     assertEquals(5.0, a.get("A15_change_loc"));
@@ -204,7 +199,7 @@ class StudyTest {
     final Corpus corpus = f.build();
     final Universe u = Universe.of(corpus);
     final World w = new World(u, corpus);
-    final Extractor e = new Extractor(w, u.studied());
+    final Extractor e = new Extractor(w, history(u));
 
     assertEquals(List.of("c1", "c3"), w.commits().stream().map(World.Commit::id).toList());
     assertEquals(List.of("b", "a"), w.commits().get(0).linked());
@@ -219,8 +214,8 @@ class StudyTest {
   }
 
   @Test
-  @DisplayName("in progress: the first In Progress before the resolution starts the duration and "
-      + "the split cuts on it; one after the resolution does not count")
+  @DisplayName("in progress: the first In Progress before the resolution starts the duration; "
+      + "one after the resolution does not count")
   void inProgressPopulation() {
     final Fixture f = new Fixture();
     for (int i = 0; i < 10; i++) {
@@ -240,11 +235,7 @@ class StudyTest {
     assertEquals(T0 + 3 * D, i3.start());
     assertEquals("dev", i3.startedBy());
     assertEquals(12.0, i3.durationHours(), 1e-9, "from the In Progress, not from the creation");
-    assertEquals(T0, u.unit("i3").start(), "the main study's unit still starts at creation");
-    final Universe.Split s = u.split(Universe.Population.IN_PROGRESS, 0.70);
-    assertEquals(T0 + 6 * D, s.cut(), "cut on the In Progress instants, all created at T0");
-    assertEquals(Universe.Part.CROSSES, s.outer().get("i5"));
-    assertEquals(Universe.Part.TEST, s.outer().get("i6"));
+    assertEquals(T0, u.unit("i3").start(), "the history's unit starts at creation");
   }
 
   @Test

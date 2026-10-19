@@ -16,16 +16,16 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The extraction on disk, so the grid does not re-read the corpus.
+ * The extraction on disk, so the later stages do not re-read the corpus.
  *
- * <p>One line per studied issue, with its outer and inner verdict under each population (empty when
- * the issue is not in it). Absence is an empty field and comes back as absence; a zero is a zero.
+ * <p>One line per issue, with its start and its outer and inner verdicts (the inner one empty on
+ * the outer test). Absence is an empty field and comes back as absence; a zero is a zero.
  */
 public final class RowCache {
 
   private static final String SEP = "\t";
-  // The column names below are the file format: the caches already on disk, and the matrices whose
-  // SHA-256 the pre-registrations froze, were written with them, so they stay as they are.
+  // The column names below are the file format: the matrices already on disk were written with
+  // them, so they stay as they are.
   private static final List<String> BASE = List.of("id", "chave", "projeto", "relator",
       "executor", "criada_em", "resolvida_em", "motivo", "movida");
   private static final String STARTED = "iniciada_em";
@@ -49,9 +49,6 @@ public final class RowCache {
   /** The prefix of a population's two partition columns. */
   static String prefix(final Population p) {
     return switch (p) {
-      case FIXED -> "fixed";
-      case BROAD -> "ampla";
-      case INHERITED -> "herdada";
       case IN_PROGRESS -> "andamento";
     };
   }
@@ -60,15 +57,9 @@ public final class RowCache {
     return s == null ? "" : s;
   }
 
-  /** The main study's cache: the three populations, the duration from creation. */
-  public static void write(final Path path, final List<Entry> entries, final List<String> columns)
-      throws IOException {
-    write(path, entries, columns, Population.MAIN);
-  }
-
   /**
-   * One cache for the given populations. The start instant is written only when a population's
-   * duration does not start at creation, so the main study's file keeps its layout byte for byte.
+   * One cache for the given populations. The start instant is written when a population's duration
+   * does not start at creation, as {@link Population#IN_PROGRESS}'s does not.
    */
   public static void write(final Path path, final List<Entry> entries, final List<String> columns,
       final List<Population> populations) throws IOException {
@@ -108,7 +99,7 @@ public final class RowCache {
     Files.writeString(path, out.toString(), StandardCharsets.UTF_8);
   }
 
-  /** Reads either study's cache: the partitions and the start are found by column name. */
+  /** Reads a cache: the partitions and the start are found by column name. */
   public static List<Entry> read(final Path path) throws IOException {
     return read(path, null, null);
   }

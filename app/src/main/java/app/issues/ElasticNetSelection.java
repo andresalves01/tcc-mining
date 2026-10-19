@@ -868,11 +868,11 @@ public final class ElasticNetSelection {
 
     return List.of(
         new Cell(BEFORE_PRESSURE, Family.OWN, Scenario.C1, start),
-        registered(ALZUBAIDI_START, "ALZUBAIDI / C1"),
-        registered(KIKAS_START, "KIKAS / C1"),
+        literature(ALZUBAIDI_START, "ALZUBAIDI / C1"),
+        literature(KIKAS_START, "KIKAS / C1"),
         new Cell(RETROSPECTIVE, Family.OWN, Scenario.C2, retrospective),
         new Cell(WITH_DISCUSSION, Family.OWN, Scenario.C2, withDiscussion),
-        registered(KIKAS_RETROSPECTIVE, "KIKAS / C2"));
+        literature(KIKAS_RETROSPECTIVE, "KIKAS / C2"));
   }
 
   /**
@@ -901,19 +901,19 @@ public final class ElasticNetSelection {
           Construct.Kind.NUMERIC,
           Retrospective.COUNTS.contains(name) ? Construct.Transform.LOG1P
               : Construct.Transform.NONE,
-          Retrospective.CONTENT.contains(name) || Retrospective.URGENCY.equals(name), true));
+          Retrospective.CONTENT.contains(name) || Retrospective.URGENCY.equals(name)));
     }
     return List.copyOf(out);
   }
 
-  private static Cell registered(final String name, final String label) {
-    final Cell cell = Cell.byLabel(label, P);
+  private static Cell literature(final String name, final String label) {
+    final Cell cell = Cell.byLabel(label);
     return new Cell(name, cell.family(), cell.scenario(), cell.attributes());
   }
 
   /** A column of the new chain: numeric, {@code log1p}, with a missing indicator. */
   private static Attribute revised(final String name) {
     return new Attribute(name, name, Family.OWN, null, Construct.Kind.NUMERIC,
-        Construct.Transform.LOG1P, true, true);
+        Construct.Transform.LOG1P, true);
   }
 }

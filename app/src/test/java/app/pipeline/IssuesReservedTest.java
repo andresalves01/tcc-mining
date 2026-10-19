@@ -5,18 +5,13 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import app.issues.Attribute;
-import app.issues.Attributes;
-import app.issues.Family;
 import app.issues.IssueUnit;
-import app.issues.Registration;
-import app.issues.ProjectSplit;
 import app.issues.RowCache;
-import app.issues.Scenario;
 import app.issues.Universe.Population;
+import app.issues.model.Cell;
 import app.issues.model.Fitting;
 import app.issues.model.ProjectBootstrap;
 import app.study.Row;
-import app.pipeline.port.Progress;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -28,23 +23,26 @@ import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** The reserved run's rules, on a corpus small enough to check by hand. */
+/** The outer test's sides and the paired project interval, on a corpus small enough to check. */
 class IssuesReservedTest {
 
   private static final String CELL = "ALZUBAIDI / C1";
 
-  /** Six projects; per project 20 inner-fit, 10 inner-selection, 10 test and 2 crossing rows. */
+  /**
+   * Six projects; per project 20 inner-fit, 10 inner-validation, 10 test and 2 rows outside the
+   * population.
+   */
   private static List<RowCache.Entry> corpus() {
     final Random random = new Random(7);
     final Instant t0 = Instant.parse("2015-01-01T00:00:00Z");
-    final List<Attribute> columns = Attributes.of(Family.ALZUBAIDI, Scenario.C1);
+    final List<Attribute> columns = Cell.byLabel(CELL).attributes();
     final List<RowCache.Entry> out = new ArrayList<>();
     int n = 0;
     for (int p = 0; p < 6; p++) {
       for (int k = 0; k < 42; k++) {
         final String[] part = k < 20 ? new String[] {"TRAIN", "TRAIN"}
             : k < 30 ? new String[] {"TRAIN", "TEST"}
-            : k < 40 ? new String[] {"TEST", ""} : new String[] {"CROSSES", ""};
+            : k < 40 ? new String[] {"TEST", ""} : null;
         final Map<String, Double> values = new HashMap<>();
         double signal = 0;
         for (final Attribute a : columns) {
@@ -55,7 +53,9 @@ class IssuesReservedTest {
         final double hours = 1 + 10 * p + signal + random.nextDouble() * 20;
         final String id = "i" + (n++);
         final Map<Population, String[]> parts = new EnumMap<>(Population.class);
-        parts.put(Population.FIXED, part);
+        if (part != null) {
+          parts.put(Population.IN_PROGRESS, part);
+        }
         out.add(new RowCache.Entry(new IssueUnit(id, "K-" + id, "p" + p, "r", "e" + (k % 3),
             t0, t0.plusMillis((long) (hours * 3_600_000)), "Fixed", k % 7 == 0),
             new Row(id, values, Set.of()), parts));
@@ -64,42 +64,12 @@ class IssuesReservedTest {
     return out;
   }
 
-  private static final Progress SILENT = Progress.silent();
-
   @Test
   @DisplayName("the reserved mode fits on the whole outer training side and scores only the test")
   void reservedSides() {
-    final Fitting.Sides s = Fitting.sides(corpus(), Fitting.Mode.RESERVED, Population.FIXED);
-    assertEquals(6 * 30, s.fitUnits().size(), "inner fit and inner selection both train");
-    assertEquals(6 * 10, s.scoreUnits().size(), "crossing rows are in neither side");
-  }
-
-  @Test
-  @DisplayName("each cell is refitted with the chosen lambda times the ratio of rows, no "
-      + "recalibration")
-  void reservedRun() {
-    final List<RowCache.Entry> entries = corpus();
-    final IssuesEvaluationTask.Report r = new IssuesEvaluationTask(SILENT).run(entries,
-        List.of(new IssuesEvaluationTask.Frozen(Population.FIXED, CELL, 0.5, 10.0)),
-        Population.FIXED, Fitting.Mode.RESERVED);
-    assertEquals(180, r.fitRows());
-    assertEquals(120, r.innerFitRows());
-    assertEquals(60, r.scoredRows());
-    assertEquals(10.0 * 180 / 120, r.evaluated().get(0).fitted().lambda(), 1e-12);
-    assertTrue(r.recalibrated().isEmpty(), "decision 22");
-    assertTrue(r.unseenProjects().isEmpty());
-  }
-
-  @Test
-  @DisplayName("the main reference is whichever errs less on the inner selection")
-  void mainReference() {
-    assertTrue(new IssuesEvaluationTask.MainReference(772.52, 796.45).constant());
-    assertFalse(new IssuesEvaluationTask.MainReference(800, 796.45).constant());
-    assertEquals("constante", new IssuesEvaluationTask.MainReference(700, 710, 720).name());
-    assertEquals("executor-project pair median",
-        new IssuesEvaluationTask.MainReference(700, 710, 650).name(), "P12: a third candidate");
-    assertEquals("project median",
-        new IssuesEvaluationTask.MainReference(720, 700, 710).name());
+    final Fitting.Sides s = Fitting.sides(corpus(), Fitting.Mode.RESERVED, Population.IN_PROGRESS);
+    assertEquals(6 * 30, s.fitUnits().size(), "inner fit and inner validation both train");
+    assertEquals(6 * 10, s.scoreUnits().size(), "rows outside the population are in neither");
   }
 
   @Test
@@ -122,20 +92,5 @@ class IssuesReservedTest {
     final ProjectBootstrap.Gap even = ProjectBootstrap.compare(projects, "a", a, "c", c);
     assertEquals(0.0, even.gap(), 1e-12);
     assertTrue(even.tied());
-  }
-
-  @Test
-  @DisplayName("the registration refuses a different matrix, parameters or size")
-  void registrationGate() {
-    assertTrue(Registration.differences(Registration.MATRIX_SHA256,
-        Registration.PARAMETERS_SHA256, 33, Registration.SIZES).isEmpty());
-    assertEquals(1, Registration.differences("0", Registration.PARAMETERS_SHA256, 33,
-        Registration.SIZES).size());
-    final Map<Population, Registration.Sizes> off = new EnumMap<>(Registration.SIZES);
-    off.put(Population.BROAD, new Registration.Sizes(105_891, 47_831, 68_832, 31_767));
-    assertEquals(1, Registration.differences(Registration.MATRIX_SHA256,
-        Registration.PARAMETERS_SHA256, 33, off).size());
-    assertEquals(4, Registration.differences(Registration.MATRIX_SHA256,
-        Registration.PARAMETERS_SHA256, 32, Map.of()).size());
   }
 }
