@@ -39,7 +39,7 @@ import java.util.function.Function;
  * each model, as a robustness check, a random forest's column share and leaf, swept on the same
  * rows and columns. The seventh model is the retrospective scenario ({@link Retrospective}), whose
  * ten columns {@code issues-in-progress-retrospective} adds to the matrix; the ninth is the same
- * without ticket 19's five columns.
+ * without ticket 19's five columns; the tenth is Kikas's retrospective cell ({@code KIKAS / C2}).
  *
  * <p><b>Tail cut</b> (ticket 23; {@link TailCut}). Before the models, the fitting k is chosen on
  * the own specification with similarity among 1.5, 3, 5, 10 and no cut, every choice scored on
@@ -160,6 +160,8 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
         Retrospective.SCENARIO);
     System.out.printf("  %s: %s%n", ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE,
         ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE_ROLE);
+    System.out.printf("  %s: %s%n", ElasticNetSelection.KIKAS_RETROSPECTIVE,
+        ElasticNetSelection.KIKAS_RETROSPECTIVE_ROLE);
     System.out.printf("  issues of at least one business day: inner fitting %,d of %,d, inner "
         + "validation %,d of %,d, outer training %,d of %,d%n", population.kept().innerFit(),
         population.all().innerFit(), population.kept().innerSelection(),
@@ -252,6 +254,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     // not in statements(), which the test's record shares
     run.put("retrospective_before_pressure",
         ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE_ROLE);
+    run.put("kikas_retrospective", ElasticNetSelection.KIKAS_RETROSPECTIVE_ROLE);
     run.put("matrix_sha256", matrixSha);
     run.put("parameters_sha256", parametersSha);
     run.put("jaccard_n", Augmentation.JACCARD_N);

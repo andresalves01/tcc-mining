@@ -29,10 +29,11 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * The inner report of the description-similarity chain (ticket 16): twenty-one models -- the
- * nineteen of the test, the three medians, eight Elastic Nets and their eight forests, and the
- * ninth Elastic Net, the retrospective model as before ticket 19, with its forest, which the test
- * does not score (ticket 20) -- refitted on the
+ * The inner report of the description-similarity chain (ticket 16): twenty-three models -- the
+ * nineteen of the test, the three medians, eight Elastic Nets and their eight forests; the ninth
+ * Elastic Net, the retrospective model as before ticket 19 (ticket 20), and the tenth, Kikas's
+ * retrospective model (ticket 26), with their forests, which the test does not score -- refitted
+ * on the
  * inner fitting rows at the choices of the parameters file and scored on the inner validation,
  * by the study's own scoring ({@link SimilarityScoring}, {@link SimilarityScoring.Scope#INNER}),
  * in whole business days on the issues of at least one ({@link BusinessDays}).
@@ -77,7 +78,8 @@ import java.util.function.Function;
  * prediction intervals checked on half B ({@link #INTERVALS}) and the calibration recomputed on
  * both halves for later use ({@link #CALIBRATION}); the paired comparisons of the test, which
  * hold every model against the global and the project median and the retrospective model
- * against the one before ticket 19, Elastic Net and forest, and the side reading of the
+ * against the one before ticket 19 and against Kikas's, Elastic Net and forest, and the side
+ * reading of the
  * retrospective pairs on the issues with and without an implementation commit ({@link
  * #COMPARISONS}); the ordering intervals, a declared measure ({@link #ORDERING}); the Elastic Nets'
  * coefficients and the forests' permutation importance on the inner validation, as the test writes
@@ -382,6 +384,8 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
         + "there): " + r.unseenRows() + " issues, " + r.unseenProjects());
     md.add("- " + ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE + ": "
         + ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE_ROLE);
+    md.add("- " + ElasticNetSelection.KIKAS_RETROSPECTIVE + ": "
+        + ElasticNetSelection.KIKAS_RETROSPECTIVE_ROLE);
     md.add("- the Elastic Nets' coefficients and the forests' permutation importance, in the files "
         + "beside this one, are the main reading's");
     md.add(f("- error bands: %s; here %s business days, of the %d cut inner fitting issues; %s",

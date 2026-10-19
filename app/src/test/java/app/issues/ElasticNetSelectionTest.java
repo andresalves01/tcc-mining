@@ -151,6 +151,37 @@ class ElasticNetSelectionTest {
    */
   private static final String NINTH = "own_retrospective_before_pressure 64e61f67 5d9fca28";
 
+  /** The nine models before ticket 26, in their order. */
+  private static final List<String> NINE_MODELS = List.of("own_without_similarity",
+      "similarity_alone", "own_with_similarity", "alzubaidi_start", "kikas_start", "union_own",
+      "own_retrospective", "own_with_similarity_before_pressure",
+      "own_retrospective_before_pressure");
+
+  /**
+   * The selection of {@link #full} under the tail cut it chooses, as the code made it before
+   * ticket 26: a hash of the rows, the references, the k and its grid, then per model a hash of
+   * its {@link #everything} line (Elastic Net, removed columns, forest). Captured from 6d7edf1
+   * (main after ticket 24).
+   */
+  private static final List<String> NINE_AT_TICKET_24 = List.of(
+      "c591d0f1",
+      "own_without_similarity 4de30521",
+      "similarity_alone b5806bce",
+      "own_with_similarity 25f39608",
+      "alzubaidi_start e7762856",
+      "kikas_start 16b7d500",
+      "union_own 66ffbbb9",
+      "own_retrospective c75450ad",
+      "own_with_similarity_before_pressure 46d6e3a8",
+      "own_retrospective_before_pressure 628c2f1");
+
+  /** Kikas's twelve retrospective columns (item 59), in the registered order. */
+  private static final List<String> KIKAS_RETROSPECTIVE = List.of("K03_comments", "K04_actors",
+      "K05_assignments", "K06_labels_c2", "K07_mentions", "K08_commit_refs",
+      "K10_mean_comment_words", "K17c2_project_issues_14d_obs",
+      "K18c2_project_created_closed_14d_obs", "K19c2_project_commits_14d_obs",
+      "K20_participant_commits", "K21_participant_committers");
+
   private static final List<String> UNTOUCHED =
       List.of("similarity_alone", "alzubaidi_start", "kikas_start");
 
@@ -250,6 +281,25 @@ class ElasticNetSelectionTest {
     return v;
   }
 
+  /**
+   * Kikas's twelve retrospective columns, drawn from their own generator so no other column
+   * moves: the duration with noise, the mean comment words missing on every sixth row, its
+   * indicator beside it.
+   */
+  private static Map<String, Double> kikas(final Random random, final double hours,
+      final int i) {
+    final Map<String, Double> v = new HashMap<>();
+    for (final String column : KIKAS_RETROSPECTIVE) {
+      v.put(column, hours * random.nextDouble());
+    }
+    // the registered matrix stores the indicator beside its column
+    v.put("K10_mean_comment_words_ausente", i % 6 == 1 ? 1.0 : 0.0);
+    if (i % 6 == 1) {
+      v.put("K10_mean_comment_words", null);
+    }
+    return v;
+  }
+
   /** The same entries without the given columns, as values or as absent. */
   private static List<RowCache.Entry> without(final List<RowCache.Entry> entries,
       final List<String> columns) {
@@ -274,11 +324,13 @@ class ElasticNetSelectionTest {
     final Random random = new Random(13);
     final Random retrospective = new Random(41);
     final Random start = new Random(53);
+    final Random kikas = new Random(61);
     for (int i = 0; i < 60; i++) {
       final double hours = Math.exp(1 + 5 * random.nextDouble());
       final Map<String, Double> v = base(random, hours, i);
       v.putAll(retrospective(retrospective, hours, i));
       v.putAll(start(start, hours, i));
+      v.putAll(kikas(kikas, hours, i));
       for (final Augmentation.Variant variant : Augmentation.Variant.values()) {
         for (final int n : Augmentation.JACCARD_N) {
           v.put(Augmentation.jaccard(n, variant), hours * (1 + n / 10.0 * random.nextDouble()));
@@ -303,11 +355,13 @@ class ElasticNetSelectionTest {
     final Random random = new Random(17);
     final Random retrospective = new Random(43);
     final Random start = new Random(59);
+    final Random kikas = new Random(67);
     for (int i = 0; i < 60; i++) {
       final double hours = Math.exp(1 + 5 * random.nextDouble());
       final Map<String, Double> v = base(random, hours, i);
       v.putAll(retrospective(retrospective, hours, i));
       v.putAll(start(start, hours, i));
+      v.putAll(kikas(kikas, hours, i));
       final double jaccard = hours * (1 + random.nextDouble());
       final double embedding = hours * (1 + random.nextDouble());
       final double cluster = hours * (1 + random.nextDouble());
@@ -394,8 +448,8 @@ class ElasticNetSelectionTest {
     final List<Cell> cells = ElasticNetSelection.cells(TEN_FIVE_32, Augmentation.Variant.INNER);
     assertEquals(List.of("own_without_similarity", "similarity_alone", "own_with_similarity",
         "alzubaidi_start", "kikas_start", "union_own", "own_retrospective",
-        "own_with_similarity_before_pressure", "own_retrospective_before_pressure"),
-        cells.stream().map(Cell::label).toList());
+        "own_with_similarity_before_pressure", "own_retrospective_before_pressure",
+        "kikas_retrospective"), cells.stream().map(Cell::label).toList());
     assertEquals(concat(OWN_INNER.subList(0, 10), SIMILARITY_INNER),
         names(cell(cells, "own_with_similarity_before_pressure")));
     assertEquals(ElasticNetSelection.MODELS, cells.stream().map(Cell::label).toList());
@@ -432,7 +486,7 @@ class ElasticNetSelectionTest {
       + "their missing indicators, in both variants and at every combination: no other column "
       + "lost, added or declared otherwise, the order kept")
   void ninthIsTheRetrospectiveWithoutTicket19() {
-    assertEquals(9, ElasticNetSelection.MODELS.size());
+    assertEquals(10, ElasticNetSelection.MODELS.size());
     assertEquals("own_retrospective_before_pressure", ElasticNetSelection.MODELS.get(8));
     assertEquals(ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE,
         ElasticNetSelection.MODELS.get(8));
@@ -811,7 +865,7 @@ class ElasticNetSelectionTest {
     final List<String> data = lines.stream().filter(l -> !l.startsWith("#")).toList();
     assertEquals("elastic-net\tinputs\tmatrix_sha256\tcd34", data.get(0));
     final int tail = 4 + 3 * TailCut.GRID.size();
-    assertEquals(1 + tail + 2 * 9 + 3 * 6 + 3 * 9, data.size());
+    assertEquals(1 + tail + 2 * 10 + 3 * 6 + 3 * 10, data.size());
     // the tail cut after the matrix: the chosen k and fence, the usual flow's, then each k's
     final TailCut.Choice cut = r.cut();
     assertEquals(List.of("tail-cut\tchosen\tk\t" + TailCut.label(cut.k()),
@@ -823,9 +877,9 @@ class ElasticNetSelectionTest {
         "tail-cut\tk_none\tmae_business_days\t" + cut.grid().get(4).mae()),
         data.subList(tail - 2, tail + 1));
     // the Elastic Net lines, as before the forests; then three forest lines per model
-    assertTrue(data.subList(1 + tail, 1 + tail + 2 * 9 + 3 * 6).stream()
+    assertTrue(data.subList(1 + tail, 1 + tail + 2 * 10 + 3 * 6).stream()
         .allMatch(l -> l.startsWith("elastic-net\t")));
-    assertEquals(ElasticNetSelection.MODELS, data.subList(1 + tail + 2 * 9 + 3 * 6, data.size())
+    assertEquals(ElasticNetSelection.MODELS, data.subList(1 + tail + 2 * 10 + 3 * 6, data.size())
         .stream().map(l -> l.split("\t")[1]).distinct().toList());
     assertEquals(cut, ElasticNetSelection.tailCut(ElasticNetSelection.read(lines)));
     final Forest.Fitted ownForest = model(r, "own_with_similarity").forest();
@@ -1159,6 +1213,67 @@ class ElasticNetSelectionTest {
       out.add(fingerprint(m) + " " + m.removed() + " " + forestFingerprint(m.forest()));
     }
     return out;
+  }
+
+  @Test
+  @DisplayName("Kikas's retrospective model is Kikas at the start followed by its twelve "
+      + "retrospective columns and the one missing indicator the matrix has for them, in both "
+      + "variants and at every combination: no similarity median, no own column")
+  void kikasRetrospectiveColumns() {
+    assertEquals(ElasticNetSelection.KIKAS_RETROSPECTIVE, ElasticNetSelection.MODELS.get(9));
+    assertFalse(ElasticNetSelection.WITH_SIMILARITY.contains("kikas_retrospective"));
+    for (final Augmentation.Variant v : Augmentation.Variant.values()) {
+      for (final Combination c : Combination.all()) {
+        final List<Cell> cells = ElasticNetSelection.cells(c, v);
+        final Cell kikas = cell(cells, "kikas_retrospective");
+        assertEquals(concat(names(cell(cells, "kikas_start")), KIKAS_RETROSPECTIVE),
+            names(kikas));
+        assertEquals(Family.KIKAS, kikas.family());
+        assertEquals(Scenario.C2, kikas.scenario());
+        final List<String> indicators = new ArrayList<>(design(kikas));
+        indicators.removeAll(design(cell(cells, "kikas_start")));
+        indicators.removeAll(KIKAS_RETROSPECTIVE);
+        assertEquals(List.of("K10_mean_comment_words_ausente"), indicators);
+        assertTrue(Attributes.stored().containsAll(design(kikas)));
+      }
+    }
+  }
+
+  @Test
+  @DisplayName("Kikas's retrospective model is chosen once, without a combination, reads its "
+      + "twelve columns and their indicator, and has its forest on the same columns")
+  void kikasRetrospectiveChosen() {
+    full();
+    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries), 1);
+    final ElasticNetSelection.Model m = model(r, "kikas_retrospective");
+    assertNull(m.combination());
+    assertEquals(List.of(), m.combinations());
+    final List<String> columns = m.fitted().columns();
+    assertTrue(columns.containsAll(KIKAS_RETROSPECTIVE), columns.toString());
+    assertTrue(columns.contains("K10_mean_comment_words_ausente"), columns.toString());
+    assertEquals(columns, m.forest().columns());
+    // the kept start columns are kikas_start's
+    final List<String> start = new ArrayList<>(columns);
+    start.removeAll(KIKAS_RETROSPECTIVE);
+    start.remove("K10_mean_comment_words_ausente");
+    assertEquals(model(r, "kikas_start").fitted().columns(), start);
+  }
+
+  @Test
+  @DisplayName("the nine models before ticket 26 choose, bit for bit, what they chose at ticket "
+      + "24 under the tail cut chosen: the k, its grid, every Elastic Net and forest")
+  void nineAsAtTicket24() {
+    full();
+    final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries), 1);
+    final List<String> lines = everything(r);
+    final List<String> now = new ArrayList<>(List.of(Integer.toHexString((lines.get(0) + " "
+        + hex(r.cut().k()) + " " + r.cut().grid()).hashCode())));
+    for (final String name : NINE_MODELS) {
+      final ElasticNetSelection.Model m = model(r, name);
+      now.add(name + " " + Integer.toHexString((fingerprint(m) + " " + m.removed() + " "
+          + forestFingerprint(m.forest())).hashCode()));
+    }
+    assertEquals(NINE_AT_TICKET_24, now);
   }
 
   @Test
