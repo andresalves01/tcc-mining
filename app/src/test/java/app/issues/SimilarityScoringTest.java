@@ -132,7 +132,8 @@ class SimilarityScoringTest {
   /**
    * The nineteen models before ticket 22 in the inner scope, as the code scored them on {@link
    * #training} with {@code choices(0.2)} on one thread: per model the error and a hash of every
-   * prediction, as bits. Captured from 8edd07b (main after ticket 21).
+   * prediction, as bits. Captured from 8edd07b (main after ticket 21); the retrospective model and
+   * its forest left out when its columns were revised.
    */
   private static final List<String> INNER_BEFORE_NINTH = List.of(
       "global_median 3ff599999999999a ba75a081",
@@ -144,7 +145,6 @@ class SimilarityScoringTest {
       "alzubaidi_start 3ff783ccc9c612e5 6c6d99d3",
       "kikas_start 3ff599cb67cd5555 2145ca3c",
       "union_own 3fe2dcd5ef91b952 618f3502",
-      "own_retrospective 3fdef1a976fe8dd1 9d80ed7d",
       "own_with_similarity_before_pressure 3fddbe5526d3eb72 5abad1d",
       "own_without_similarity_forest 3ff68da08ce3afa9 ac3397e0",
       "similarity_alone_forest 3fe376882a4672c9 9f0f82ba",
@@ -152,21 +152,25 @@ class SimilarityScoringTest {
       "alzubaidi_start_forest 3ff68d75bff9c77a 43e55399",
       "kikas_start_forest 3ff5dfa9abc1278b 86e19cff",
       "union_own_forest 3ff5d38e960e7a55 c7897c81",
-      "own_retrospective_forest 3ff1fcbec9853410 4fcf0c83",
       "own_with_similarity_before_pressure_forest 3fef018dfd2a94b9 1a143cac");
 
   /**
-   * The same run's comparisons and ordering intervals before ticket 22: their count and a hash of
-   * every gap and interval end as bits, in their order.
+   * The same run's comparisons and ordering intervals before ticket 22, none with an own
+   * retrospective model: their count and a hash of every gap and interval end as bits, in their
+   * order. First captured from 8edd07b (main after ticket 21); recaptured from ef6d555 (ticket 27
+   * with the bot filter) without the pairs of the retrospective model, before its columns were
+   * revised.
    */
-  private static final String PAIRS_BEFORE_NINTH = "80 eb1f0a39";
+  private static final String PAIRS_BEFORE_NINTH = "68 10caa8ff";
 
   /**
-   * The whole inner run of ticket 22, the ninth model and its pairs included: the count of models,
-   * comparisons and ordering intervals and a hash of every one's bits ({@link #innerBits}), in
-   * their order. Captured from 5ff8564 (main after ticket 22), before the tail cut.
+   * The whole inner run of ticket 22 without the own retrospective models and their pairs: the
+   * count of models, comparisons and ordering intervals and a hash of every one's bits ({@link
+   * #innerBits}), in their order. First captured from 5ff8564 (main after ticket 22), before the
+   * tail cut, with them; recaptured from ef6d555 (ticket 27 with the bot filter) without them,
+   * before their columns were revised.
    */
-  private static final String INNER_AT_TICKET_22 = "113 43e66d61";
+  private static final String INNER_AT_TICKET_22 = "85 4d420ec2";
 
   /**
    * The inner run of the fixture with a tail, cut at k = 1.5, as the code scored it before ticket
@@ -752,20 +756,22 @@ class SimilarityScoringTest {
   }
 
   @Test
-  @DisplayName("in the inner scope the nineteen models before the ninth Elastic Net, their "
-      + "comparisons and ordering intervals score, bit for bit, what they scored before it")
+  @DisplayName("in the inner scope the models before the ninth Elastic Net but the retrospective "
+      + "one, their comparisons and ordering intervals score, bit for bit, what they scored before "
+      + "it")
   void innerAsBeforeTheNinth() {
     final Map<String, String> now = innerBits(
         SimilarityScoring.run(training(), choices(0.2), forests(), INNER, 1, 1));
     final List<String> models = new ArrayList<>();
     for (final String name : MODELS) {
-      models.add(name + " " + now.get(name));
+      if (!name.startsWith("own_retrospective")) {
+        models.add(name + " " + now.get(name));
+      }
     }
     assertEquals(INNER_BEFORE_NINTH, models);
     final List<String> pairs = new ArrayList<>();
     now.forEach((k, v) -> {
-      if (k.contains(" | ") && !k.contains("own_retrospective_before_pressure")
-          && !k.contains(TENTH)) {
+      if (k.contains(" | ") && !k.contains("own_retrospective") && !k.contains(TENTH)) {
         pairs.add(k + " " + v);
       }
     });
@@ -1101,13 +1107,14 @@ class SimilarityScoringTest {
 
   @Test
   @DisplayName("tail cut: no cut reproduces ticket 22's inner run bit for bit in the "
-      + "complementary reading, every model, comparison and ordering interval")
+      + "complementary reading, every model, comparison and ordering interval without an own "
+      + "retrospective model")
   void noCutIsTicket22() {
     final SimilarityScoring.Readings r = SimilarityScoring.readings(training(), choices(0.2),
         forests(), TailCut.NO_CUT, INNER, 1, 1);
     final List<String> all = new ArrayList<>();
     innerBits(r.complementary()).forEach((k, v) -> {
-      if (!k.contains(TENTH)) {
+      if (!k.contains(TENTH) && !k.contains("own_retrospective")) {
         all.add(k + " " + v);
       }
     });
