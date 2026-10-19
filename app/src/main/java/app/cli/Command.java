@@ -240,8 +240,14 @@ public enum Command {
       Progress and its first resolution (from a status change to either
       until the next status change; Patch Available kept): time nobody was
       working on it is not counted. They go to the matrix beside the day
-      boundary as the target the later steps read; a past issue of 0
-      enters no history. It also writes three start attributes: whether a
+      boundary, a diagnostic. The target the medians and the later steps
+      read, once per split, is the active business days with recorded
+      activity: a gap of g >= T business days between consecutive records
+      (changelog events, comments, the author and committer dates of the
+      human implementation commits) leaves out its g - 1 whole working
+      days, T = max(2, Q3 + 3 IQR of every gap of the split's training
+      side), drawn after the split; a past issue of 0 enters no history.
+      It also writes three start attributes: whether a
       fix version was set before the first In Progress, the calendar days
       left there in the project's release cycle (the median gap between
       its release tags dated before the start minus the days since the
@@ -278,7 +284,7 @@ public enum Command {
       accounts left out: the comments, the distinct people who commented or
       changed a field (the reporter only if active) and the effective
       changes of assignee. From the links and the tags: the business days,
-      without the time back in Open or Reopened as in the target,
+      with recorded activity at the inner split's T as in the target,
       from the first In Progress to the last first resolution of the
       issues it waited on (is blocked by, depends upon, requires; any
       project), clipped at its own; and urgency, the calendar days from
@@ -299,8 +305,9 @@ public enum Command {
       Issue duration from the first In Progress, description-similarity
       chain, in whole business days (Monday-to-Friday dates reached from the
       first In Progress to the first resolution, at each issue's day
-      boundary, holidays ignored, the time back in Open or Reopened left
-      out), on the issues of at least one business day: chooses alpha and
+      boundary, holidays ignored, the time back in Open or Reopened and
+      the whole working days of silent gaps between records left out),
+      on the issues of at least one business day: chooses alpha and
       lambda on the inner validation, by the registered grid's sweep, for
       ten Elastic Net models: the own specification without similarity
       (description length, team size, the team's median and spread of lines

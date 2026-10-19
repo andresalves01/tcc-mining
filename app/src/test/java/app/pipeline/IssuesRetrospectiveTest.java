@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import app.issues.Augmentation.Variant;
 import app.issues.BusinessDays;
 import app.issues.Corpus;
 import app.issues.IssueUnit;
@@ -65,9 +66,19 @@ class IssuesRetrospectiveTest {
     entries.add(new RowCache.Entry(new IssueUnit(id, "P-" + id, "p", "r", "d",
         Instant.ofEpochMilli(T0), Instant.ofEpochMilli(resolved), "Fixed", false,
         Instant.ofEpochMilli(started)),
-        new Row(id, Map.of("A01_desc_length", 1.0, BusinessDays.BOUNDARY, 4.0,
-            BusinessDays.ACTIVE, (double) BusinessDays.count(started, resolved, 4)), Set.of()),
-        parts));
+        new Row(id, target(started, resolved), Set.of()), parts));
+  }
+
+  /** The matrix's columns of the target: no silent day, the active count in both variants. */
+  private static Map<String, Double> target(final long started, final long resolved) {
+    final double days = BusinessDays.count(started, resolved, 4);
+    final Map<String, Double> out = new HashMap<>(Map.of("A01_desc_length", 1.0,
+        BusinessDays.BOUNDARY, 4.0, BusinessDays.ACTIVE, days));
+    for (final Variant v : Variant.values()) {
+      out.put(BusinessDays.recorded(v), days);
+      out.put(BusinessDays.threshold(v), BusinessDays.LEAST_SILENT);
+    }
+    return out;
   }
 
   private void commit(final String id, final long at, final long java, final String issue) {
