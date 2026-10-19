@@ -2,7 +2,6 @@ package app.cli.commands;
 
 import app.cli.CommandFailedException;
 import app.study.model.Score;
-import app.issues.RegistrationInProgress;
 import app.issues.RowCache;
 import app.issues.Universe.Population;
 import app.pipeline.IssuesEvaluationTask;
@@ -29,37 +28,6 @@ final class IssuesPrinting {
       return RowCache.read(Path.of(cache));
     } catch (final IOException e) {
       throw new CommandFailedException(List.of("  could not read " + cache + ": " + e));
-    }
-  }
-
-  /**
-   * CACHE read only when it is the registered in-progress study's matrix, by SHA-256 ({@link
-   * RegistrationInProgress#MATRIX_SHA256}): the registered grid and check were declared on it, and
-   * since ticket 21 the extraction writes a matrix of another population and split.
-   */
-  static List<RowCache.Entry> registeredCache(final String stage) throws CommandFailedException {
-    final String cache = System.getenv("CACHE");
-    if (cache == null || cache.isBlank()) {
-      throw new CommandFailedException(List.of("  CACHE=<absolute path> is required"));
-    }
-    refuseUnregistered(Path.of(cache), stage);
-    return cache();
-  }
-
-  /** Refuses, before anything else of it is read, a matrix that is not the registered one. */
-  static void refuseUnregistered(final Path cache, final String stage)
-      throws CommandFailedException {
-    final String sha;
-    try {
-      sha = IssuesReservedCommand.sha256(cache);
-    } catch (final IOException e) {
-      throw new CommandFailedException(List.of("  could not read " + cache + ": " + e));
-    }
-    if (!RegistrationInProgress.MATRIX_SHA256.equals(sha)) {
-      throw new CommandFailedException(List.of("  REFUSED, nothing was read, fitted or recorded: "
-          + stage + " reads only the registered in-progress study's matrix (SHA-256 "
-          + RegistrationInProgress.MATRIX_SHA256 + "); " + cache + " has " + sha + ". A matrix "
-          + "of the random split (ticket 21) is the similarity chain's, not this one's"));
     }
   }
 

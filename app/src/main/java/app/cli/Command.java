@@ -16,10 +16,7 @@ import app.cli.commands.IssuesDescriptionLanguageCommand;
 import app.cli.commands.IssuesDownloadModelCommand;
 import app.cli.commands.IssuesForestCommand;
 import app.cli.commands.IssuesGridCommand;
-import app.cli.commands.IssuesInProgressCheckCommand;
 import app.cli.commands.IssuesInProgressExtractCommand;
-import app.cli.commands.IssuesInProgressGridCommand;
-import app.cli.commands.IssuesInProgressReservedCommand;
 import app.cli.commands.IssuesInProgressTeamCommand;
 import app.cli.commands.IssuesReservedCommand;
 import app.cli.commands.IssuesRetrospectiveCommand;
@@ -150,20 +147,6 @@ public enum Command {
       to CACHE only if the gate passed; records a summary, with the split's
       rule and seed, in ISSUES_DB; reads everything else."""),
 
-  ISSUES_IN_PROGRESS_GRID("issues-in-progress-grid", new IssuesInProgressGridCommand(), """
-      Issue duration from the first In Progress: sweep the six cells on the
-      inner selection. Writes PARAMETERS; reads CACHE, refused unless it
-      is the registered study's matrix by SHA-256; records the run in
-      ISSUES_DB. The outer test rows are refused."""),
-
-  ISSUES_IN_PROGRESS_CHECK("issues-in-progress-check", new IssuesInProgressCheckCommand(),
-      """
-      Issue duration from the first In Progress: every reading on the inner
-      selection with the parameters in PARAMETERS, the main reference chosen
-      among three (P12). CACHE is refused unless it is the registered
-      study's matrix by SHA-256. Optimistic by construction; the outer test
-      is not read."""),
-
   ISSUES_FOREST("issues-forest", new IssuesForestCommand(), """
       Issue duration: a random forest beside the Elastic Net, cell by cell, on
       the inner selection only, with the forest's declared grid and the
@@ -178,16 +161,6 @@ public enum Command {
       training side (lambda scaled by decision 20), prints the weights and
       scores the test, all three populations. Reads CACHE and PARAMETERS;
       writes PREDICTIONS; records the run in ISSUES_DB."""),
-
-  ISSUES_IN_PROGRESS_RESERVED("issues-in-progress-reserved",
-      new IssuesInProgressReservedCommand(), """
-      Issue duration from the first In Progress: the one scoring of the outer
-      test that its pre-registration lays out. Refuses unless the matrix and the parameters match their
-      registered SHA-256 and every side has its registered size; then
-      refits the eleven cells on the whole outer training side (lambda
-      scaled by the ratio of rows), prints the weights and scores the test.
-      Reads CACHE and PARAMETERS; writes PREDICTIONS; records the run in
-      ISSUES_DB."""),
 
   ISSUES_DESCRIPTION_LANGUAGE("issues-description-language",
       new IssuesDescriptionLanguageCommand(), """
