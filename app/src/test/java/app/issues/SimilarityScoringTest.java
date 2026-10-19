@@ -688,7 +688,8 @@ class SimilarityScoringTest {
           u.project(), u.reporter(), u.executor(), u.createdAt(), u.startedAt().plusSeconds(3600),
           u.reason(), u.moved(), u.startedAt()), e.row(), e.parts()));
     }
-    final BusinessDays.Population p = BusinessDays.population(BusinessDayFixtures.bounded(raw));
+    final BusinessDays.Population p = BusinessDays.population(BusinessDayFixtures.bounded(raw),
+        Augmentation.Variant.OUTER);
     assertTrue(p.kept().train() < p.all().train(), "some training issues lasted no business day");
     assertTrue(p.kept().test() < p.all().test(), "some test issues lasted no business day");
     assertTrue(p.kept().innerFit() < p.all().innerFit());

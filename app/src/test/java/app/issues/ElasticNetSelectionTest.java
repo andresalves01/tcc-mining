@@ -1143,7 +1143,7 @@ class ElasticNetSelectionTest {
       rowOfDays("zero" + k, 0, "TRAIN", k < 4 ? "TRAIN" : "TEST", base(new Random(k), 5, k));
     }
     final BusinessDays.Population p =
-        BusinessDays.population(BusinessDayFixtures.bounded(entries));
+        BusinessDays.population(BusinessDayFixtures.bounded(entries), Augmentation.Variant.INNER);
     assertEquals(p.all().innerFit() - 4, p.kept().innerFit());
     assertEquals(p.all().innerSelection() - 2, p.kept().innerSelection());
     final ElasticNetSelection.Result r = uncut(p.entries());
