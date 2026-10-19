@@ -146,4 +146,67 @@ class ParallelBootstrapTest {
     }
     return r == 0 ? 0 : 100.0 * (r - m) / r;
   }
+
+  @Test
+  @DisplayName("a vector statistic's intervals read the very draws of whole projects the paired "
+      + "comparisons read: per component, the interval of the same statistic computed alone, "
+      + "bit for bit, on any number of threads")
+  void vectorIntervalsReadTheSameDraws() {
+    final double[] errorsA = new double[ROWS];
+    final double[] errorsB = new double[ROWS];
+    for (int i = 0; i < ROWS; i++) {
+      errorsA[i] = Math.abs(model[i] - observed[i]);
+      errorsB[i] = Math.abs(reference[i] - observed[i]);
+    }
+    final ProjectBootstrap.Gap gap =
+        ProjectBootstrap.compare(projects, "a", errorsA, "b", errorsB, 1);
+    final ProjectBootstrap.Share share = ProjectBootstrap.share(projects, errorsA, 1);
+    for (final int threads : List.of(1, 3, 12)) {
+      final double[][] both = ProjectBootstrap.intervals(projects, 2,
+          sample -> new double[] {gapOf(sample, errorsA, errorsB), mean(sample, errorsA)},
+          threads);
+      assertEquals(bits(gap.low()), bits(both[0][0]), threads + " threads");
+      assertEquals(bits(gap.high()), bits(both[0][1]), threads + " threads");
+      assertEquals(bits(share.low()), bits(both[1][0]), threads + " threads");
+      assertEquals(bits(share.high()), bits(both[1][1]), threads + " threads");
+    }
+  }
+
+  @Test
+  @DisplayName("each draw of a vector statistic holds whole projects: every row of a project drawn "
+      + "as often as the project, none of one not drawn")
+  void vectorDrawsHoldWholeProjects() {
+    final Map<String, Integer> size = new LinkedHashMap<>();
+    projects.forEach(p -> size.merge(p, 1, Integer::sum));
+    final List<List<Integer>> samples = java.util.Collections.synchronizedList(new ArrayList<>());
+    ProjectBootstrap.intervals(projects, 1, sample -> {
+      samples.add(sample);
+      return new double[] {sample.size()};
+    }, 4);
+    assertEquals(ProjectBootstrap.DRAWS, samples.size());
+    for (final List<Integer> sample : samples) {
+      final int[] times = new int[ROWS];
+      sample.forEach(i -> times[i]++);
+      final Map<String, Integer> drawn = new LinkedHashMap<>();
+      for (int i = 0; i < ROWS; i++) {
+        final Integer before = drawn.putIfAbsent(projects.get(i), times[i]);
+        if (before != null) {
+          assertEquals((int) before, times[i], "row " + i + " of " + projects.get(i));
+        }
+      }
+      int projectsDrawn = 0;
+      for (final Map.Entry<String, Integer> e : drawn.entrySet()) {
+        projectsDrawn += e.getValue();
+      }
+      assertEquals(size.size(), projectsDrawn, "as many projects drawn as there are");
+    }
+  }
+
+  private static double mean(final List<Integer> sample, final double[] values) {
+    double sum = 0;
+    for (final int i : sample) {
+      sum += values[i];
+    }
+    return sum / sample.size();
+  }
 }

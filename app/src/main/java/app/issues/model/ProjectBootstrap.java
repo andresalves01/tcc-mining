@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.concurrent.Callable;
+import java.util.function.Function;
 import java.util.function.ToDoubleFunction;
 
 /**
@@ -170,6 +171,22 @@ public final class ProjectBootstrap {
    */
   private static double[] draws(final List<List<Integer>> projects, final int rows,
       final int threads, final ToDoubleFunction<List<Integer>> statistic) {
+    final double[][] each = vectors(projects, rows, threads,
+        sample -> new double[] {statistic.applyAsDouble(sample)});
+    final double[] draws = new double[DRAWS];
+    for (int d = 0; d < DRAWS; d++) {
+      draws[d] = each[d][0];
+    }
+    return draws;
+  }
+
+  /**
+   * Each draw's statistic, a vector, in the order of the draws, picked and evaluated as {@link
+   * #draws} says: the projects of every draw picked first from one {@code Random(SEED)}, then
+   * each draw evaluated alone on one of up to {@code threads} threads.
+   */
+  private static double[][] vectors(final List<List<Integer>> projects, final int rows,
+      final int threads, final Function<List<Integer>, double[]> statistic) {
     final Random random = new Random(SEED);
     final int[][] picks = new int[DRAWS][projects.size()];
     for (int d = 0; d < DRAWS; d++) {
@@ -178,29 +195,63 @@ public final class ProjectBootstrap {
       }
     }
     final int chunks = Math.min(DRAWS, Math.max(1, threads) * 4);
-    final List<Callable<double[]>> jobs = new ArrayList<>(chunks);
+    final List<Callable<double[][]>> jobs = new ArrayList<>(chunks);
     for (int c = 0; c < chunks; c++) {
       final int from = (int) ((long) c * DRAWS / chunks);
       final int to = (int) ((long) (c + 1) * DRAWS / chunks);
       jobs.add(() -> {
-        final double[] out = new double[to - from];
+        final double[][] out = new double[to - from][];
         for (int d = from; d < to; d++) {
           final List<Integer> sample = new ArrayList<>(rows);
           for (final int pick : picks[d]) {
             sample.addAll(projects.get(pick));
           }
-          out[d - from] = statistic.applyAsDouble(sample);
+          out[d - from] = statistic.apply(sample);
         }
         return out;
       });
     }
-    final double[] draws = new double[DRAWS];
+    final double[][] draws = new double[DRAWS][];
     int at = 0;
-    for (final double[] part : Parallel.map(threads, jobs)) {
+    for (final double[][] part : Parallel.map(threads, jobs)) {
       System.arraycopy(part, 0, draws, at, part.length);
       at += part.length;
     }
     return draws;
+  }
+
+  /**
+   * Per component of a statistic that gives {@code width} numbers -- the coefficients of a model
+   * refitted on the drawn rows, as the relevance section reads them -- its 95% interval from the
+   * same {@link #DRAWS} draws of whole projects (seed {@link #SEED}) every interval here reads, a
+   * project drawn twice counted twice: per component the 2.5th and 97.5th percentiles of the
+   * draws, read as {@link #compare} reads them. Evaluated on up to {@code threads} threads, the
+   * same bits on any number.
+   *
+   * @param projectOfRow the project of each row the statistic may draw
+   * @return per component, its low and high end
+   */
+  public static double[][] intervals(final List<String> projectOfRow, final int width,
+      final Function<List<Integer>, double[]> statistic, final int threads) {
+    final double[][] each = vectors(clusters(projectOfRow), projectOfRow.size(), threads,
+        sample -> {
+          final double[] v = statistic.apply(sample);
+          if (v.length != width) {
+            throw new IllegalArgumentException("a draw gave " + v.length + " numbers, not "
+                + width);
+          }
+          return v;
+        });
+    final double[][] out = new double[width][];
+    for (int c = 0; c < width; c++) {
+      final double[] column = new double[DRAWS];
+      for (int d = 0; d < DRAWS; d++) {
+        column[d] = each[d][c];
+      }
+      Arrays.sort(column);
+      out[c] = new double[] {column[(int) (0.025 * DRAWS)], column[(int) (0.975 * DRAWS) - 1]};
+    }
+    return out;
   }
 
   private static List<List<Integer>> clusters(final List<String> projectOfRow) {

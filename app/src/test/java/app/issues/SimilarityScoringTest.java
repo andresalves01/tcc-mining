@@ -35,161 +35,80 @@ class SimilarityScoringTest {
 
   /** Each model with the similarity medians at a combination of its own. */
   private static final Map<String, ElasticNetSelection.Combination> COMBINATIONS = Map.of(
-      "similarity_alone", new ElasticNetSelection.Combination(5, 20, 8),
-      "own_with_similarity", new ElasticNetSelection.Combination(10, 5, 32),
-      "union_own", new ElasticNetSelection.Combination(20, 10, 16),
       "own_retrospective", new ElasticNetSelection.Combination(5, 10, 32),
       "own_with_similarity_before_pressure", new ElasticNetSelection.Combination(10, 10, 16),
-      "own_retrospective_before_pressure", new ElasticNetSelection.Combination(20, 5, 8),
       "own_retrospective_with_discussion", new ElasticNetSelection.Combination(10, 20, 16));
 
-  /** The ninth Elastic Net model, the main retrospective reading without urgency (ticket 20). */
-  private static final String NINTH = "own_retrospective_before_pressure";
+  /** The own start model. */
+  private static final String OWN = "own_with_similarity_before_pressure";
 
-  /** The tenth Elastic Net model, Kikas's retrospective one (ticket 26). */
-  private static final String TENTH = "kikas_retrospective";
+  /** Kikas's retrospective model. */
+  private static final String KIKAS_RETRO = "kikas_retrospective";
+
+  /** The ceiling, the retrospective model with the comments and the participants. */
+  private static final String CEILING = "own_retrospective_with_discussion";
+
+  /** The six Elastic Net models, in their order. */
+  private static final List<String> ELASTIC_NET = List.of(OWN, "alzubaidi_start", "kikas_start",
+      "own_retrospective", CEILING, KIKAS_RETRO);
+
+  /** The references and the Elastic Nets. */
+  private static final List<String> LINEAR = concat(List.of("global_median", "project_median"),
+      ELASTIC_NET);
+
+  private static final List<String> FORESTS = ELASTIC_NET.stream().map(m -> m + "_forest")
+      .toList();
+
+  /** The models the fourteen leave out, with their forests. */
+  private static final List<String> LEFT_OUT = List.of("own_without_similarity",
+      "similarity_alone", "own_with_similarity", "union_own",
+      "own_retrospective_before_pressure", "executor_project_median");
+
+  /** The Elastic Net models the parameters hold: the six. */
+  private static final List<String> CHOSEN = ELASTIC_NET;
 
   /**
-   * The eleventh Elastic Net model, the retrospective one with the comments and the participants,
-   * a ceiling.
+   * The index each model had among the eleven before the fourteen were settled, which picks its
+   * forest's point in {@link #forests}, so every model is refitted at the point it was pinned at.
    */
-  private static final String ELEVENTH = "own_retrospective_with_discussion";
-
-  private static final List<String> ELASTIC_NET = List.of("own_without_similarity",
-      "similarity_alone", "own_with_similarity", "alzubaidi_start", "kikas_start", "union_own",
-      "own_retrospective", "own_with_similarity_before_pressure");
-
-  private static final List<String> LINEAR = List.of("global_median", "project_median",
-      "executor_project_median", "own_without_similarity", "similarity_alone",
-      "own_with_similarity", "alzubaidi_start", "kikas_start", "union_own", "own_retrospective",
-      "own_with_similarity_before_pressure");
-
-  private static final List<String> FORESTS = List.of("own_without_similarity_forest",
-      "similarity_alone_forest", "own_with_similarity_forest", "alzubaidi_start_forest",
-      "kikas_start_forest", "union_own_forest", "own_retrospective_forest",
-      "own_with_similarity_before_pressure_forest");
-
-  /**
-   * The eleven Elastic Net models the parameters hold: the eight the outer test scores, then the
-   * ninth, the tenth and the eleventh, which only the inner report scores.
-   */
-  private static final List<String> CHOSEN =
-      concat(ELASTIC_NET, List.of(NINTH, TENTH, ELEVENTH));
-
-  /** The references and Elastic Nets before the retrospective model (ticket 15). */
-  private static final List<String> LINEAR_BEFORE = LINEAR.subList(0, 9);
-
-  /** The sixteen comparisons before the forests, in their order then. */
-  private static final List<String> SIXTEEN = sixteen();
-
-  private static List<String> sixteen() {
-    final List<String> out = new ArrayList<>(List.of("own_with_similarity | own_without_similarity"));
-    for (final String m : LINEAR_BEFORE.subList(1, 9)) {
-      out.add(m + " | global_median");
-    }
-    for (final String m : LINEAR_BEFORE.subList(2, 9)) {
-      out.add(m + " | project_median");
-    }
-    return List.copyOf(out);
-  }
+  private static final Map<String, Integer> INDEX_BEFORE = Map.of("alzubaidi_start", 3,
+      "kikas_start", 4, "own_retrospective", 6, OWN, 7, KIKAS_RETRO, 9, CEILING, 10);
 
   /** The references, the Elastic Nets, then the forests. */
   private static final List<String> MODELS = concat(LINEAR, FORESTS);
 
   /**
-   * Every model and comparison before ticket 13, as the code scored them on {@link #corpus} with
-   * {@code choices(0.2)} on one thread: per model the error and a hash of every prediction, per
-   * comparison the gap and both ends of its interval, as bits. First captured from 0869f6d on the
-   * hours; regenerated once by ticket 17, when the corpus moved onto business days through the
-   * population, by the code of 11d6710 (main after ticket 15).
+   * Every model and comparison before ticket 13 that the fourteen keep, as the code scored them on
+   * {@link #corpus} with {@code choices(0.2)} on one thread: per model the error and a hash of
+   * every prediction, per comparison the gap and both ends of its interval, as bits. First
+   * captured from 0869f6d on the hours; regenerated once by ticket 17, when the corpus moved
+   * onto business days through the population, by the code of 11d6710 (main after ticket 15).
    */
   private static final List<String> BEFORE_FORESTS = List.of(
       "global_median 3ff6aaaaaaaaaaab ba75a081",
       "project_median 3ff6666666666666 a8f5a081",
-      "executor_project_median 3ff5777777777777 4895a081",
-      "own_without_similarity 3ff8b6cb1fa33d36 c863f421",
-      "similarity_alone 3fdb7bf10daba907 62e6de30",
-      "own_with_similarity 3fde701f48adf5c4 50a389ec",
       "alzubaidi_start 3ff7870131e7d2b6 a779127f",
       "kikas_start 3ff6a80b84fdcf1d 4e0d4d23",
-      "union_own 3fdf3db62c91d402 2c09e86c",
-      "own_with_similarity | own_without_similarity bff11ac34d77bfc3 bff5dac062e4f37f "
-          + "bfe79271db5996fd",
       "project_median | global_median bf91111111111111 bfb999999999999a 3fb1111111111111",
-      "executor_project_median | global_median bfb3333333333333 bfcbbbbbbbbbbbbc "
-          + "3fb5555555555555",
-      "own_without_similarity | global_median 3fc06103a7c4944d 3fb2be9df7d6207d "
-          + "3fc98c63609558ca",
-      "similarity_alone | global_median bfef975cce7f80cf bff3fc0b009fd83e bfe5da4ea7a27d21",
-      "own_with_similarity | global_median bfee1d45b0fe5a76 bff4885cdfc628ad "
-          + "bfe21ff4cfb8fa80",
       "alzubaidi_start | global_median 3fab8ad0e7a50107 3f51c0787b242b55 3fbb43cf05b8705b",
       "kikas_start | global_median bf44f92d66dc7377 bfaec40b253451e6 3fae1c41b9fd6e4b",
-      "union_own | global_median bfedb67a3f0c6b57 bff3c52db5871d1e bfe1f8578e52ae43",
-      "executor_project_median | project_median bfadddddddddddde bfc1111111111111 "
-          + "3f9999999999999a",
-      "own_without_similarity | project_median 3fc28325c9e6b66f 3fb0ff8774291bb8 "
-          + "3fcd3d6f0813b7fa",
-      "similarity_alone | project_median bfef0ed445f6f846 bff402fc8207e68a bfe4c93d96916c11",
-      "own_with_similarity | project_median bfed94bd2875d1ee bff4ba80d0c32e0e "
-          + "bfe151c3a6e80bfa",
       "alzubaidi_start | project_median 3fb209acb816c4c7 bfa08e7f23ac8e2d 3fc6e03f9097c2c5",
-      "kikas_start | project_median 3f906947a5da2d75 bfb4e35018b6d15a 3fbbc13abb7c51a9",
-      "union_own | project_median bfed2df1b683e2cf bff44db63e0fa5a6 bfe1435843f4b887");
+      "kikas_start | project_median 3f906947a5da2d75 bfb4e35018b6d15a 3fbbc13abb7c51a9");
 
   /**
-   * The nineteen models before ticket 22 in the inner scope, as the code scored them on {@link
-   * #training} with {@code choices(0.2)} on one thread: per model the error and a hash of every
-   * prediction, as bits. Captured from 8edd07b (main after ticket 21); the retrospective model and
-   * its forest left out when its columns were revised.
+   * The start models before ticket 22 in the inner scope that the fourteen keep, as the code
+   * scored them on {@link #training} with {@code choices(0.2)} on one thread: per model the error
+   * and a hash of every prediction, as bits. Captured from 8edd07b (main after ticket 21).
    */
   private static final List<String> INNER_BEFORE_NINTH = List.of(
       "global_median 3ff599999999999a ba75a081",
       "project_median 3ff7bbbbbbbbbbbc 9c75a081",
-      "executor_project_median 3ff8444444444444 a05da081",
-      "own_without_similarity 3ff8a39085886969 e389fb37",
-      "similarity_alone 3fdd80296c8e73f3 2cb71f02",
-      "own_with_similarity 3fddab6c2285810d 70b285c8",
       "alzubaidi_start 3ff783ccc9c612e5 6c6d99d3",
       "kikas_start 3ff599cb67cd5555 2145ca3c",
-      "union_own 3fe2dcd5ef91b952 618f3502",
       "own_with_similarity_before_pressure 3fddbe5526d3eb72 5abad1d",
-      "own_without_similarity_forest 3ff68da08ce3afa9 ac3397e0",
-      "similarity_alone_forest 3fe376882a4672c9 9f0f82ba",
-      "own_with_similarity_forest 3ff5d38e960e7a55 c7897c81",
       "alzubaidi_start_forest 3ff68d75bff9c77a 43e55399",
       "kikas_start_forest 3ff5dfa9abc1278b 86e19cff",
-      "union_own_forest 3ff5d38e960e7a55 c7897c81",
       "own_with_similarity_before_pressure_forest 3fef018dfd2a94b9 1a143cac");
-
-  /**
-   * The same run's comparisons and ordering intervals before ticket 22, none with an own
-   * retrospective model: their count and a hash of every gap and interval end as bits, in their
-   * order. First captured from 8edd07b (main after ticket 21); recaptured from ef6d555 (ticket 27
-   * with the bot filter) without the pairs of the retrospective model, before its columns were
-   * revised.
-   */
-  private static final String PAIRS_BEFORE_NINTH = "68 10caa8ff";
-
-  /**
-   * The whole inner run of ticket 22 without the own retrospective models and their pairs: the
-   * count of models, comparisons and ordering intervals and a hash of every one's bits ({@link
-   * #innerBits}), in their order. First captured from 5ff8564 (main after ticket 22), before the
-   * tail cut, with them; recaptured from ef6d555 (ticket 27 with the bot filter) without them,
-   * before their columns were revised.
-   */
-  private static final String INNER_AT_TICKET_22 = "85 4d420ec2";
-
-  /**
-   * The fixture with a tail, cut at k = 1.5, as the code scored it before the blocking wait, the
-   * comments and the participants left the main retrospective model: per scope (inner, then
-   * outer) and reading (main, then complementary) the count of models, comparisons and ordering
-   * intervals and a hash of every one's bits ({@link #innerBits}) and of the fences and band
-   * limits, in their order, none of an own retrospective model's or of a pair with one. Captured
-   * from ef6d555 (ticket 27 with the bot filter).
-   */
-  private static final List<String> START_AT_TICKET_27 =
-      List.of("96 4f3faac3", "96 57a5fc8", "86 d2900f5c", "86 d2900f5c");
 
   private static List<String> concat(final List<String> a, final List<String> b) {
     final List<String> out = new ArrayList<>(a);
@@ -197,11 +116,15 @@ class SimilarityScoringTest {
     return List.copyOf(out);
   }
 
-  /** Each model's forest at a point of the declared grid, the leaves differing. */
+  /**
+   * Each model's forest at a point of the declared grid, the leaves differing, picked by the
+   * model's index among the eleven before the fourteen ({@link #INDEX_BEFORE}).
+   */
   private static Map<String, Forest.Choice> forests() {
     final Map<String, Forest.Choice> out = new LinkedHashMap<>();
-    for (int m = 0; m < CHOSEN.size(); m++) {
-      out.put(CHOSEN.get(m), new Forest.Choice(Forest.MTRY_SHARES[m % 3], 1 + m % 3,
+    for (final String name : CHOSEN) {
+      final int m = INDEX_BEFORE.get(name);
+      out.put(name, new Forest.Choice(Forest.MTRY_SHARES[m % 3], 1 + m % 3,
           Forest.NODE_SIZES[m % 3]));
     }
     return out;
@@ -330,8 +253,7 @@ class SimilarityScoringTest {
     // the parameters are used, not searched over: another lambda gives other predictions
     final SimilarityScoring.Report other =
         SimilarityScoring.run(corpus(), choices(0.0001), forests(), RESERVED);
-    assertNotEquals(model(r, "own_with_similarity").predicted()[0],
-        model(other, "own_with_similarity").predicted()[0]);
+    assertNotEquals(model(r, OWN).predicted()[0], model(other, OWN).predicted()[0]);
   }
 
   @Test
@@ -339,7 +261,7 @@ class SimilarityScoringTest {
       + "the similarity medians without its combination or one without them given one, refuses")
   void refusesIncompleteParameters() {
     final Map<String, ElasticNetSelection.Choice> missing = new LinkedHashMap<>(choices(0.2));
-    missing.remove("own_with_similarity");
+    missing.remove(OWN);
     assertThrows(IllegalArgumentException.class,
         () -> SimilarityScoring.run(corpus(), missing, forests(), RESERVED));
     final Map<String, ElasticNetSelection.Choice> extra = new LinkedHashMap<>(choices(0.2));
@@ -348,14 +270,23 @@ class SimilarityScoringTest {
         () -> SimilarityScoring.run(corpus(), extra, forests(), RESERVED));
     final Map<String, ElasticNetSelection.Choice> noCombination =
         new LinkedHashMap<>(choices(0.2));
-    noCombination.put("own_with_similarity", new ElasticNetSelection.Choice(0.5, 0.2, null));
+    noCombination.put(OWN, new ElasticNetSelection.Choice(0.5, 0.2, null));
     assertThrows(IllegalArgumentException.class,
         () -> SimilarityScoring.run(corpus(), noCombination, forests(), RESERVED));
     final Map<String, ElasticNetSelection.Choice> oneTooMany = new LinkedHashMap<>(choices(0.2));
-    oneTooMany.put("own_without_similarity", new ElasticNetSelection.Choice(0.5, 0.2,
+    oneTooMany.put("kikas_start", new ElasticNetSelection.Choice(0.5, 0.2,
         new ElasticNetSelection.Combination(5, 5, 8)));
     assertThrows(IllegalArgumentException.class,
         () -> SimilarityScoring.run(corpus(), oneTooMany, forests(), RESERVED));
+    // a parameters file of the eleven models before the fourteen: refused, in both scopes
+    for (final String name : LEFT_OUT.subList(0, 5)) {
+      final Map<String, ElasticNetSelection.Choice> old = new LinkedHashMap<>(choices(0.2));
+      old.put(name, new ElasticNetSelection.Choice(0.5, 0.2, null));
+      for (final SimilarityScoring.Scope scope : SimilarityScoring.Scope.values()) {
+        assertThrows(IllegalArgumentException.class,
+            () -> SimilarityScoring.run(corpus(), old, forests(), scope), name);
+      }
+    }
   }
 
   @Test
@@ -371,8 +302,7 @@ class SimilarityScoringTest {
       assertEquals(java.util.Arrays.toString(model(r, name).predicted()),
           java.util.Arrays.toString(model(inner, name).predicted()), name);
     }
-    assertTrue(model(r, "own_with_similarity").fitted().columns()
-        .contains("jaccard_median_10_outer"));
+    assertTrue(model(r, OWN).fitted().columns().contains("jaccard_median_10_outer"));
   }
 
   @Test
@@ -381,15 +311,13 @@ class SimilarityScoringTest {
   void eachModelAtItsOwnCombination() {
     final SimilarityScoring.Report r =
         SimilarityScoring.run(corpus(), choices(0.2), forests(), RESERVED);
-    assertEquals(List.of("jaccard_median_5_outer", "embedding_median_20_outer",
-        "cluster_median_8_outer"), model(r, "similarity_alone").fitted().columns().stream()
-            .filter(c -> !c.endsWith("_ausente")).toList());
-    assertTrue(model(r, "own_with_similarity").fitted().columns().containsAll(List.of(
-        "jaccard_median_10_outer", "embedding_median_5_outer", "cluster_median_32_outer")));
-    assertTrue(model(r, "union_own").fitted().columns().containsAll(List.of(
-        "jaccard_median_20_outer", "embedding_median_10_outer", "cluster_median_16_outer")));
-    for (final String name : List.of("own_without_similarity", "alzubaidi_start",
-        "kikas_start")) {
+    assertTrue(model(r, OWN).fitted().columns().containsAll(List.of(
+        "jaccard_median_10_outer", "embedding_median_10_outer", "cluster_median_16_outer")));
+    assertTrue(model(r, "own_retrospective").fitted().columns().containsAll(List.of(
+        "jaccard_median_5_outer", "embedding_median_10_outer", "cluster_median_32_outer")));
+    assertTrue(model(r, CEILING).fitted().columns().containsAll(List.of(
+        "jaccard_median_10_outer", "embedding_median_20_outer", "cluster_median_16_outer")));
+    for (final String name : List.of("alzubaidi_start", "kikas_start", KIKAS_RETRO)) {
       assertTrue(model(r, name).fitted().columns().stream().noneMatch(c ->
           c.startsWith("jaccard_") || c.startsWith("embedding_") || c.startsWith("cluster_")),
           name);
@@ -417,74 +345,115 @@ class SimilarityScoringTest {
     }
   }
 
-  @Test
-  @DisplayName("exactly the agreed comparisons, none of a similarity median alone as a prediction: "
-      + "the sixteen before the forests, the retrospective main reading vs the own start model, "
-      + "the own specification with similarity vs the own start model, then each forest vs its "
-      + "Elastic Net, the forests of the same pairs, and every forest vs the global and the "
-      + "project median")
-  void exactlyTheAgreedPairs() {
-    final SimilarityScoring.Report r =
-        SimilarityScoring.run(corpus(), choices(0.2), forests(), RESERVED);
-    final List<String> expected = new ArrayList<>(List.of(
-        "own_with_similarity | own_without_similarity",
-        "own_retrospective | own_with_similarity_before_pressure",
-        "own_with_similarity | own_with_similarity_before_pressure"));
+  /**
+   * The agreed comparisons, in their order: the pairs of the six Elastic Nets, each model against
+   * the global median, each but the global median against the project median; then the forests
+   * of the same pairs, each forest against the global median, each against the project median.
+   */
+  private static List<String> agreedPairs() {
+    final List<String[]> six = List.of(new String[] {OWN, "alzubaidi_start"},
+        new String[] {OWN, "kikas_start"}, new String[] {"own_retrospective", OWN},
+        new String[] {CEILING, "own_retrospective"}, new String[] {CEILING, KIKAS_RETRO},
+        new String[] {"own_retrospective", KIKAS_RETRO});
+    final List<String> out = new ArrayList<>();
+    six.forEach(p -> out.add(p[0] + " | " + p[1]));
     for (final String m : LINEAR) {
       if (!m.equals("global_median")) {
-        expected.add(m + " | global_median");
+        out.add(m + " | global_median");
       }
     }
     for (final String m : LINEAR) {
       if (!m.equals("global_median") && !m.equals("project_median")) {
-        expected.add(m + " | project_median");
+        out.add(m + " | project_median");
       }
     }
-    assertEquals(16 + 1 + 1 + 2 + 2, expected.size());
-    assertTrue(expected.containsAll(SIXTEEN));
-    for (final String m : ELASTIC_NET) {
-      expected.add(m + "_forest | " + m);
-    }
-    expected.add("own_with_similarity_forest | own_without_similarity_forest");
-    expected.add("own_retrospective_forest | own_with_similarity_before_pressure_forest");
-    expected.add("own_with_similarity_forest | own_with_similarity_before_pressure_forest");
+    six.forEach(p -> out.add(p[0] + "_forest | " + p[1] + "_forest"));
     for (final String f : FORESTS) {
-      expected.add(f + " | global_median");
+      out.add(f + " | global_median");
     }
     for (final String f : FORESTS) {
-      expected.add(f + " | project_median");
+      out.add(f + " | project_median");
     }
-    assertEquals(expected,
-        r.comparisons().stream().map(g -> g.a() + " | " + g.b()).toList());
-    assertEquals(22 + 8 + 3 + 8 + 8, new HashSet<>(expected).size());
-    assertEquals(19, MODELS.size());
-    // the outer test scores the nineteen it scored before the ninth Elastic Net (ticket 20)
-    assertEquals(MODELS, r.models().stream().map(SimilarityScoring.Scored::name).toList());
-    for (final var g : r.comparisons()) {
-      assertTrue(g.low() <= g.gap() && g.gap() <= g.high(), g.toString());
-    }
+    return List.copyOf(out);
   }
 
   @Test
-  @DisplayName("every model and comparison that existed before the forests scores, bit for bit, "
-      + "what it scored before ticket 13, the retrospective model and columns beside them, when "
-      + "the matrix lacks ticket 19's start columns: error, predictions, gap and interval")
+  @DisplayName("both scopes score exactly the fourteen models, in their order, and exactly the "
+      + "agreed comparisons and ordering intervals, Elastic Net and forest, with and without a "
+      + "tail cut, in both readings; no model the fourteen leave out, nor its name in a pair")
+  void exactlyTheFourteenAndTheAgreedPairs() {
+    final List<String> pairs = agreedPairs();
+    assertEquals(6 + 7 + 6 + 6 + 6 + 6, pairs.size());
+    assertEquals(pairs.size(), new HashSet<>(pairs).size());
+    final List<String> ordering = pairs.stream().filter(p -> !p.endsWith(" | global_median"))
+        .toList();
+    assertEquals(14, MODELS.size());
+    final List<SimilarityScoring.Report> reports = new ArrayList<>();
+    for (final SimilarityScoring.Scope scope : SimilarityScoring.Scope.values()) {
+      final List<RowCache.Entry> entries = scope == INNER ? training() : corpus();
+      reports.add(SimilarityScoring.run(entries, choices(0.2), forests(), scope, 1, 1));
+      final SimilarityScoring.Readings cut = SimilarityScoring.readings(withTail(entries),
+          choices(0.2), forests(), 1.5, scope, 1, 1);
+      reports.add(cut.main());
+      reports.add(cut.complementary());
+    }
+    for (final SimilarityScoring.Report r : reports) {
+      final String where = r.scope() + " " + r.reading();
+      assertEquals(MODELS, r.models().stream().map(SimilarityScoring.Scored::name).toList(),
+          where);
+      assertEquals(pairs, r.comparisons().stream().map(g -> g.a() + " | " + g.b()).toList(),
+          where);
+      assertEquals(ordering, r.orderings().stream().map(o -> o.a() + " | " + o.b()).toList(),
+          where);
+      for (final var g : r.comparisons()) {
+        assertTrue(g.low() <= g.gap() && g.gap() <= g.high(), g.toString());
+      }
+      for (final String name : LEFT_OUT) {
+        for (final String n : List.of(name, name + "_forest")) {
+          assertTrue(r.models().stream().noneMatch(m -> m.name().equals(n)), where + n);
+          assertTrue(r.comparisons().stream().noneMatch(g -> g.a().equals(n)
+              || g.b().equals(n)), where + n);
+          assertTrue(r.orderings().stream().noneMatch(o -> o.a().equals(n)
+              || o.b().equals(n)), where + n);
+        }
+      }
+      assertEquals(List.of("own_retrospective | " + OWN,
+          "own_retrospective_forest | " + OWN + "_forest"),
+          r.withCommits().stream().map(g -> g.a() + " | " + g.b()).toList(), where);
+    }
+    // the outer predictions file names exactly the fourteen
+    final List<String> header = List.of(SimilarityScoring.predictions(reports.get(3)).get(0)
+        .split("\t"));
+    assertEquals(MODELS, header.subList(4, header.size()));
+  }
+
+  @Test
+  @DisplayName("Al-Zubaidi and Kikas at the start and their comparisons with the references score, "
+      + "bit for bit, what they scored before ticket 13, when the matrix lacks the start "
+      + "pressure columns: error, predictions, gap and interval")
   void unchangedModelsAsBefore() {
     final SimilarityScoring.Report r = SimilarityScoring.run(without(corpus(), Pressure.COLUMNS),
         choices(0.2), forests(), RESERVED, 1, 1);
     final List<String> now = new ArrayList<>();
-    for (final String name : LINEAR_BEFORE) {
+    for (final String name : List.of("global_median", "project_median", "alzubaidi_start",
+        "kikas_start")) {
       final SimilarityScoring.Scored m = model(r, name);
       now.add(m.name() + " " + hex(m.score().mae()) + " "
           + Integer.toHexString(java.util.Arrays.hashCode(m.predicted())));
     }
-    for (final String pair : SIXTEEN) {
+    for (final String pair : List.of("project_median | global_median",
+        "alzubaidi_start | global_median", "kikas_start | global_median",
+        "alzubaidi_start | project_median", "kikas_start | project_median")) {
       final var g = r.comparisons().stream().filter(x -> (x.a() + " | " + x.b()).equals(pair))
           .findFirst().orElseThrow();
       now.add(g.a() + " | " + g.b() + " " + hex(g.gap()) + " " + hex(g.low()) + " "
           + hex(g.high()));
     }
     assertEquals(BEFORE_FORESTS, now);
+    // no model reads the start pressure columns: with them, every figure the same
+    final SimilarityScoring.Report with =
+        SimilarityScoring.run(corpus(), choices(0.2), forests(), RESERVED, 1, 1);
+    assertEquals(innerBits(r), innerBits(with));
   }
 
   @Test
@@ -566,23 +535,125 @@ class SimilarityScoringTest {
       assertEquals(given.get(name).nodeSize(), forest.forest().nodeSize(), name);
       assertEquals(given.get(name).mtry(), forest.forest().mtry(), name);
       assertEquals(60, forest.predicted().length);
-      assertEquals(forest.forest().columns(), forest.forest().importance().stream()
-          .map(Forest.Importance::column).toList(), name);
-      forest.forest().importance().forEach(i ->
-          assertEquals(Forest.PERMUTATION_REPEATS, i.increases().length));
+      // no permutation importance on the outer test: it would read its labels
+      assertEquals(List.of(), forest.forest().importance(), name);
     }
-    assertTrue(model(r, "own_with_similarity_forest").forest().columns()
-        .contains("jaccard_median_10_outer"));
+    assertTrue(model(r, OWN + "_forest").forest().columns().contains("jaccard_median_10_outer"));
     // the leaf is used, not ignored: another one gives other predictions
     final Map<String, Forest.Choice> other = new LinkedHashMap<>(given);
-    assertEquals(100, given.get("own_with_similarity").nodeSize());
-    other.put("own_with_similarity", new Forest.Choice(given.get("own_with_similarity").share(),
-        given.get("own_with_similarity").mtry(), 5));
-    assertNotEquals(java.util.Arrays.toString(
-        model(r, "own_with_similarity_forest").predicted()), java.util.Arrays.toString(
-        model(SimilarityScoring.run(corpus(),
-            choices(0.2), other, RESERVED), "own_with_similarity_forest")
-            .predicted()));
+    assertEquals(25, given.get(OWN).nodeSize());
+    other.put(OWN, new Forest.Choice(given.get(OWN).share(), given.get(OWN).mtry(), 5));
+    assertNotEquals(java.util.Arrays.toString(model(r, OWN + "_forest").predicted()),
+        java.util.Arrays.toString(model(SimilarityScoring.run(corpus(), choices(0.2), other,
+            RESERVED), OWN + "_forest").predicted()));
+    // the inner report reads it: per forest, each design column's, every repeat
+    final SimilarityScoring.Report inner =
+        SimilarityScoring.run(training(), choices(0.2), given, INNER, 1, 1);
+    for (final String name : ELASTIC_NET) {
+      final Forest.Frozen f = model(inner, name + "_forest").forest();
+      assertEquals(f.columns(), f.importance().stream().map(Forest.Importance::column).toList(),
+          name);
+      f.importance().forEach(i -> assertEquals(Forest.PERMUTATION_REPEATS,
+          i.increases().length));
+    }
+  }
+
+  @Test
+  @DisplayName("the outer test reads no forest's permutation importance: its scores are, bit for "
+      + "bit, the same whatever the outer test's labels say beyond the scores themselves")
+  void noImportanceOnTheOuterTest() {
+    for (final SimilarityScoring.Scope scope : SimilarityScoring.Scope.values()) {
+      assertEquals(scope == INNER, scope.importance(), scope.toString());
+    }
+    final SimilarityScoring.Readings r = SimilarityScoring.readings(corpus(), choices(0.2),
+        forests(), 3, RESERVED, 1, 1);
+    for (final SimilarityScoring.Report reading : List.of(r.main(), r.complementary())) {
+      for (final SimilarityScoring.Scored m : reading.models()) {
+        if (m.forest() != null) {
+          assertEquals(List.of(), m.forest().importance(), m.name());
+        }
+      }
+    }
+  }
+
+  @Test
+  @DisplayName("relevance, in both scopes: per Elastic Net model in its order, each standardised "
+      + "column of the refit the scores read, its coefficient and selection bit for bit, and its "
+      + "interval from resampling the fitting side's whole projects; the same on any number of "
+      + "threads, and nothing of it moves with the outer test's durations")
+  void relevance() {
+    for (final SimilarityScoring.Scope scope : SimilarityScoring.Scope.values()) {
+      final List<RowCache.Entry> entries = withTail(scope == INNER ? training() : corpus());
+      final SimilarityScoring.Report main = SimilarityScoring.readings(entries, choices(0.2),
+          forests(), 1.5, scope, 1, 1).main();
+      final List<SimilarityScoring.Relevance> relevance =
+          SimilarityScoring.relevance(entries, choices(0.2), 1.5, scope, 1);
+      assertEquals(ELASTIC_NET, relevance.stream().map(SimilarityScoring.Relevance::model)
+          .toList(), scope.toString());
+      boolean spread = false;
+      for (final SimilarityScoring.Relevance r : relevance) {
+        final Fitting.Fitted f = model(main, r.model()).fitted();
+        assertEquals(main.fitRows(), r.fitRows(), r.model());
+        assertEquals(6, r.projects(), r.model());
+        assertEquals(f.columns(), r.coefficients().stream()
+            .map(SimilarityScoring.Coefficient::column).toList(), r.model());
+        for (int j = 0; j < f.columns().size(); j++) {
+          final Fitting.Contribution x = f.contributions().get(j);
+          final SimilarityScoring.Coefficient c = r.coefficients().get(j);
+          assertEquals(hex(x.coefficient()), hex(c.coefficient()), r.model() + " " + x.column());
+          assertEquals(x.selected(), c.selected(), r.model() + " " + x.column());
+          assertTrue(c.low() <= c.high(), c.toString());
+          spread |= c.low() < c.high();
+        }
+      }
+      assertTrue(spread, "the draws move some coefficient");
+      assertEquals(relevance, SimilarityScoring.relevance(entries, choices(0.2), 1.5, scope, 4));
+      if (scope == RESERVED) {
+        assertEquals(relevance, SimilarityScoring.relevance(longer(entries,
+            e -> "TEST".equals(e.outer(Population.IN_PROGRESS))), choices(0.2), 1.5, scope, 1));
+      }
+    }
+  }
+
+  @Test
+  @DisplayName("relevance resamples whole projects: renaming every project moves nothing; one "
+      + "project's rows split into two projects moves the intervals, the draws now picking the "
+      + "halves apart, but not the refit's coefficients")
+  void relevanceDrawsWholeProjects() {
+    final List<RowCache.Entry> entries = training();
+    final List<SimilarityScoring.Relevance> once =
+        SimilarityScoring.relevance(entries, choices(0.2), TailCut.NO_CUT, INNER, 1);
+    // every project renamed, its rows kept together: nothing the draws pick changes
+    final List<RowCache.Entry> renamed = new ArrayList<>();
+    for (final RowCache.Entry e : entries) {
+      final IssueUnit u = e.unit();
+      renamed.add(new RowCache.Entry(new IssueUnit(u.issueId(), u.key(), "renamed-" + u.project(),
+          u.reporter(), u.executor(), u.createdAt(), u.resolvedAt(), u.reason(), u.moved(),
+          u.startedAt()).withBusinessDays(u.businessDays()), e.row(), e.parts()));
+    }
+    assertEquals(once, SimilarityScoring.relevance(renamed, choices(0.2), TailCut.NO_CUT, INNER,
+        1));
+    // one project split in two by its rows: the draws now pick its halves apart, and the
+    // intervals move
+    final List<RowCache.Entry> split = new ArrayList<>();
+    for (int i = 0; i < entries.size(); i++) {
+      final RowCache.Entry e = entries.get(i);
+      final IssueUnit u = e.unit();
+      split.add(!u.project().equals("p0") || i % 2 == 0 ? e : new RowCache.Entry(new IssueUnit(
+          u.issueId(), u.key(), "p0-half", u.reporter(), u.executor(), u.createdAt(),
+          u.resolvedAt(), u.reason(), u.moved(), u.startedAt()).withBusinessDays(
+              u.businessDays()), e.row(), e.parts()));
+    }
+    final List<SimilarityScoring.Relevance> halves =
+        SimilarityScoring.relevance(split, choices(0.2), TailCut.NO_CUT, INNER, 1);
+    assertEquals(7, halves.get(0).projects());
+    assertNotEquals(once, halves);
+    for (int m = 0; m < once.size(); m++) {
+      for (int j = 0; j < once.get(m).coefficients().size(); j++) {
+        assertEquals(hex(once.get(m).coefficients().get(j).coefficient()),
+            hex(halves.get(m).coefficients().get(j).coefficient()), "the refit is the same");
+      }
+    }
   }
 
   @Test
@@ -590,16 +661,20 @@ class SimilarityScoringTest {
       + "refuse the run")
   void refusesIncompleteForests() {
     final Map<String, Forest.Choice> missing = new LinkedHashMap<>(forests());
-    missing.remove("union_own");
+    missing.remove(CEILING);
     assertThrows(IllegalArgumentException.class,
         () -> SimilarityScoring.run(corpus(), choices(0.2), missing, RESERVED));
     final Map<String, Forest.Choice> extra = new LinkedHashMap<>(forests());
     extra.put("previous_own_start", new Forest.Choice(1.0 / 3, 1, 5));
     assertThrows(IllegalArgumentException.class,
         () -> SimilarityScoring.run(corpus(), choices(0.2), extra, RESERVED));
+    final Map<String, Forest.Choice> old = new LinkedHashMap<>(forests());
+    old.put("union_own", new Forest.Choice(1.0 / 3, 1, 5));
+    assertThrows(IllegalArgumentException.class,
+        () -> SimilarityScoring.run(corpus(), choices(0.2), old, INNER));
     // more columns per split than the outer design has refuses rather than being cut down
     final Map<String, Forest.Choice> wide = new LinkedHashMap<>(forests());
-    wide.put("similarity_alone", new Forest.Choice(2.0 / 3, 40, 5));
+    wide.put("kikas_start", new Forest.Choice(2.0 / 3, 40, 5));
     assertThrows(IllegalArgumentException.class,
         () -> SimilarityScoring.run(corpus(), choices(0.2), wide, RESERVED));
   }
@@ -756,26 +831,17 @@ class SimilarityScoringTest {
   }
 
   @Test
-  @DisplayName("in the inner scope the models before the ninth Elastic Net but the retrospective "
-      + "one, their comparisons and ordering intervals score, bit for bit, what they scored before "
-      + "it")
+  @DisplayName("in the inner scope the start models and the references score, bit for bit, what "
+      + "they scored before the main reading without urgency was added")
   void innerAsBeforeTheNinth() {
     final Map<String, String> now = innerBits(
         SimilarityScoring.run(training(), choices(0.2), forests(), INNER, 1, 1));
     final List<String> models = new ArrayList<>();
-    for (final String name : MODELS) {
-      if (!name.startsWith("own_retrospective")) {
-        models.add(name + " " + now.get(name));
-      }
+    for (final String line : INNER_BEFORE_NINTH) {
+      final String name = line.substring(0, line.indexOf(' '));
+      models.add(name + " " + now.get(name));
     }
     assertEquals(INNER_BEFORE_NINTH, models);
-    final List<String> pairs = new ArrayList<>();
-    now.forEach((k, v) -> {
-      if (k.contains(" | ") && !k.contains("own_retrospective") && !k.contains(TENTH)) {
-        pairs.add(k + " " + v);
-      }
-    });
-    assertEquals(PAIRS_BEFORE_NINTH, pairs.size() + " " + Integer.toHexString(pairs.hashCode()));
   }
 
   @Test
@@ -802,9 +868,8 @@ class SimilarityScoringTest {
       assertEquals(Double.doubleToRawLongBits(0.2), Double.doubleToRawLongBits(f.lambda()), name);
       assertTrue(f.columns().stream().noneMatch(c -> c.endsWith("_outer")), name);
     }
-    assertTrue(model(r, "own_with_similarity").fitted().columns()
-        .contains("jaccard_median_10_inner"));
-    assertTrue(model(r, "own_with_similarity").removed().stream()
+    assertTrue(model(r, OWN).fitted().columns().contains("jaccard_median_10_inner"));
+    assertTrue(model(r, OWN).removed().stream()
         .allMatch(x -> x.reason().contains("inner fitting")));
     // the outer test given or not, and the outer variant changed, every prediction is the same
     final SimilarityScoring.Report all = SimilarityScoring.run(
@@ -840,100 +905,35 @@ class SimilarityScoringTest {
   }
 
   @Test
-  @DisplayName("the inner report scores the ninth, the tenth and the eleventh Elastic Net and "
-      + "their forests beside the others: the main reading against the own start model, against itself "
-      + "without urgency and against Kikas's; the ceiling against the main reading and against "
-      + "Kikas's; each against the global and the project median, in the error comparisons and "
-      + "the ordering intervals")
-  void ninthTenthAndEleventhInTheInnerScope() {
-    final SimilarityScoring.Report r =
-        SimilarityScoring.run(training(), choices(0.2), forests(), INNER, 1, 1);
-    final List<String> linear = new ArrayList<>(LINEAR);
-    linear.add(NINTH);
-    linear.add(TENTH);
-    linear.add(ELEVENTH);
-    final List<String> trees = new ArrayList<>(FORESTS);
-    trees.add(NINTH + "_forest");
-    trees.add(TENTH + "_forest");
-    trees.add(ELEVENTH + "_forest");
-    assertEquals(concat(linear, trees),
-        r.models().stream().map(SimilarityScoring.Scored::name).toList());
-    final List<String> expected = new ArrayList<>(List.of(
-        "own_with_similarity | own_without_similarity",
-        "own_retrospective | own_with_similarity_before_pressure",
-        "own_with_similarity | own_with_similarity_before_pressure",
-        "own_retrospective | own_retrospective_before_pressure",
-        "own_retrospective | kikas_retrospective",
-        "own_retrospective_with_discussion | own_retrospective",
-        "own_retrospective_with_discussion | kikas_retrospective"));
-    for (final String m : linear) {
-      if (!m.equals("global_median")) {
-        expected.add(m + " | global_median");
+  @DisplayName("in both scopes the retrospective models read their own columns: Kikas's only "
+      + "Kikas's, the main reading urgency but no comments, participants, blocking wait or start "
+      + "pressure column, the ceiling the main reading's and the comments and the participants; "
+      + "each forest its Elastic Net's")
+  void retrospectiveModelsInBothScopes() {
+    for (final SimilarityScoring.Scope scope : SimilarityScoring.Scope.values()) {
+      final SimilarityScoring.Report r = SimilarityScoring.run(scope == INNER ? training()
+          : corpus(), choices(0.2), forests(), scope, 1, 1);
+      final List<String> kikas = model(r, KIKAS_RETRO).fitted().columns();
+      assertTrue(kikas.stream().allMatch(c -> c.startsWith("K") || c.startsWith("LBL_")),
+          kikas.toString());
+      assertTrue(kikas.containsAll(List.of("K03_comments", "K10_mean_comment_words",
+          "K21_participant_committers")), kikas.toString());
+      assertEquals(kikas, model(r, KIKAS_RETRO + "_forest").forest().columns());
+      final List<String> main = model(r, "own_retrospective").fitted().columns();
+      assertTrue(main.contains("RETRO_urgency_days"), main.toString());
+      assertTrue(main.stream().noneMatch(c -> c.startsWith("START_")
+          || c.startsWith("RETRO_blocker_wait") || c.startsWith("RETRO_comments")
+          || c.startsWith("RETRO_participants")), main.toString());
+      final List<String> ceiling = new ArrayList<>(main.stream()
+          .filter(c -> c.startsWith("RETRO_")).toList());
+      ceiling.addAll(List.of("RETRO_comments", "RETRO_participants"));
+      assertEquals(ceiling, model(r, CEILING).fitted().columns().stream()
+          .filter(c -> c.startsWith("RETRO_")).toList());
+      for (final String name : ELASTIC_NET) {
+        assertEquals(model(r, name).fitted().columns(),
+            model(r, name + "_forest").forest().columns(), name);
       }
     }
-    for (final String m : linear) {
-      if (!m.equals("global_median") && !m.equals("project_median")) {
-        expected.add(m + " | project_median");
-      }
-    }
-    for (final String m : CHOSEN) {
-      expected.add(m + "_forest | " + m);
-    }
-    expected.add("own_with_similarity_forest | own_without_similarity_forest");
-    expected.add("own_retrospective_forest | own_with_similarity_before_pressure_forest");
-    expected.add("own_with_similarity_forest | own_with_similarity_before_pressure_forest");
-    expected.add("own_retrospective_forest | own_retrospective_before_pressure_forest");
-    expected.add("own_retrospective_forest | kikas_retrospective_forest");
-    expected.add("own_retrospective_with_discussion_forest | own_retrospective_forest");
-    expected.add("own_retrospective_with_discussion_forest | kikas_retrospective_forest");
-    for (final String f : trees) {
-      expected.add(f + " | global_median");
-    }
-    for (final String f : trees) {
-      expected.add(f + " | project_median");
-    }
-    assertEquals(expected, r.comparisons().stream().map(g -> g.a() + " | " + g.b()).toList());
-    assertEquals(expected.stream().filter(p -> !p.endsWith(" | global_median")).toList(),
-        r.orderings().stream().map(o -> o.a() + " | " + o.b()).toList());
-    assertTrue(r.orderings().stream().anyMatch(o -> o.a().equals("own_retrospective_forest")
-        && o.b().equals(NINTH + "_forest")));
-    assertTrue(r.orderings().stream().anyMatch(o -> o.a().equals("own_retrospective")
-        && o.b().equals(TENTH)));
-    // the tenth reads Kikas's columns only: no similarity median, no own column
-    assertTrue(model(r, TENTH).fitted().columns().stream().allMatch(c -> c.startsWith("K")
-        || c.startsWith("LBL_")), model(r, TENTH).fitted().columns().toString());
-    assertTrue(model(r, TENTH).fitted().columns().containsAll(List.of("K03_comments",
-        "K10_mean_comment_words", "K21_participant_committers")),
-        model(r, TENTH).fitted().columns().toString());
-    assertEquals(model(r, TENTH).fitted().columns(), model(r, TENTH + "_forest").forest()
-        .columns());
-    // the ninth reads no pressure attribute, of either variant, nor their indicators; the main
-    // reading urgency alone of them; neither the blocking wait, the comments or the participants
-    final List<String> pressure = List.of("START_fix_version", "START_release_cycle_days",
-        "START_blocker_pace_days", "RETRO_blocker_wait", "RETRO_urgency_days");
-    assertTrue(model(r, NINTH).fitted().columns().stream().noneMatch(c -> pressure.stream()
-        .anyMatch(c::startsWith)), model(r, NINTH).fitted().columns().toString());
-    final List<String> main = model(r, "own_retrospective").fitted().columns();
-    assertTrue(main.contains("RETRO_urgency_days"), main.toString());
-    assertTrue(main.stream().noneMatch(c -> c.startsWith("START_")
-        || c.startsWith("RETRO_blocker_wait") || c.startsWith("RETRO_comments")
-        || c.startsWith("RETRO_participants")), main.toString());
-    assertEquals(model(r, NINTH).fitted().columns(), model(r, NINTH + "_forest").forest()
-        .columns());
-    // the ceiling reads the main reading's retrospective columns and the comments and the
-    // participants (its similarity medians at a combination of its own)
-    final List<String> ceiling = new ArrayList<>(main.stream()
-        .filter(c -> c.startsWith("RETRO_")).toList());
-    ceiling.addAll(List.of("RETRO_comments", "RETRO_participants"));
-    assertEquals(ceiling, model(r, ELEVENTH).fitted().columns().stream()
-        .filter(c -> c.startsWith("RETRO_")).toList());
-    assertEquals(model(r, ELEVENTH).fitted().columns(),
-        model(r, ELEVENTH + "_forest").forest().columns());
-    // the test scores every model but the ninth, the tenth and the eleventh, the inner report
-    // every one
-    assertEquals(ELASTIC_NET,
-        CHOSEN.stream().filter(SimilarityScoring.Scope.RESERVED::scores).toList());
-    assertEquals(CHOSEN, CHOSEN.stream().filter(INNER::scores).toList());
   }
 
   @Test
@@ -945,7 +945,8 @@ class SimilarityScoringTest {
     final List<String> expected = r.comparisons().stream()
         .filter(g -> !g.b().equals("global_median")).map(g -> g.a() + " | " + g.b()).toList();
     assertEquals(expected, r.orderings().stream().map(o -> o.a() + " | " + o.b()).toList());
-    assertTrue(expected.contains("own_with_similarity | own_without_similarity"));
+    assertTrue(expected.contains("own_with_similarity_before_pressure | alzubaidi_start"));
+    assertTrue(expected.contains("own_retrospective_with_discussion | kikas_retrospective"));
     assertTrue(expected.contains("own_retrospective_forest | project_median"));
     final List<String> projects = r.scoredUnits().stream().map(IssueUnit::project).toList();
     for (final var o : r.orderings()) {
@@ -1125,48 +1126,6 @@ class SimilarityScoringTest {
     assertNotEquals(innerBits(r.complementary()), innerBits(r.main()));
   }
 
-  @Test
-  @DisplayName("tail cut: no cut reproduces ticket 22's inner run bit for bit in the "
-      + "complementary reading, every model, comparison and ordering interval without an own "
-      + "retrospective model")
-  void noCutIsTicket22() {
-    final SimilarityScoring.Readings r = SimilarityScoring.readings(training(), choices(0.2),
-        forests(), TailCut.NO_CUT, INNER, 1, 1);
-    final List<String> all = new ArrayList<>();
-    innerBits(r.complementary()).forEach((k, v) -> {
-      if (!k.contains(TENTH) && !k.contains("own_retrospective")) {
-        all.add(k + " " + v);
-      }
-    });
-    assertEquals(INNER_AT_TICKET_22, all.size() + " " + Integer.toHexString(all.hashCode()));
-    assertEquals(6 * 20, r.complementary().fitRows());
-  }
-
-  @Test
-  @DisplayName("tail cut: in both scopes and readings every model, comparison and ordering "
-      + "interval without an own retrospective model scores bit for bit what it scored at ticket "
-      + "27, the fences and bands too")
-  void startAsAtTicket27() {
-    final List<String> now = new ArrayList<>();
-    for (final SimilarityScoring.Readings r : List.of(
-        SimilarityScoring.readings(withTail(training()), choices(0.2), forests(), 1.5, INNER, 1,
-            1),
-        SimilarityScoring.readings(withTail(corpus()), choices(0.2), forests(), 1.5, RESERVED, 1,
-            1))) {
-      for (final SimilarityScoring.Report reading : List.of(r.main(), r.complementary())) {
-        final List<String> all = new ArrayList<>();
-        innerBits(reading).forEach((k, v) -> {
-          if (!k.contains("own_retrospective")) {
-            all.add(k + " " + v);
-          }
-        });
-        all.add(reading.fences() + " " + java.util.Arrays.toString(reading.bandTops()));
-        now.add(all.size() + " " + Integer.toHexString(all.hashCode()));
-      }
-    }
-    assertEquals(START_AT_TICKET_27, now);
-  }
-
   /**
    * The six attribute sets the scope of fourteen models keeps, each with its forest beside it:
    * the own start model, Al-Zubaidi and Kikas at the start, both readings of the own
@@ -1239,7 +1198,9 @@ class SimilarityScoringTest {
    * The fourteen models as the code scored them before they were settled: per scope (inner, then
    * outer), with a tail cut at k = 1.5 in each reading (main, then complementary), then without a
    * cut on every scored issue, inner then outer, {@link #fourteenBits}. Captured from e67f85f
-   * (ticket 29).
+   * (ticket 29), where the pins of the inner run without a cut (ticket 22) and of the fixture
+   * with a tail (ticket 27), which named models the fourteen leave out, held: it carries them for
+   * the fourteen.
    */
   private static final List<String> FOURTEEN_AT_TICKET_29 = List.of("72 8a61ae68",
       "72 77f3d859", "44 d8d7924d", "44 d8d7924d", "72 97fa0fdb", "44 b9607449");
@@ -1316,10 +1277,7 @@ class SimilarityScoringTest {
     assertEquals(INNER, c.scope());
     assertEquals(TailCut.Reading.USUAL_FLOW, c.reading());
     assertEquals(inner.main().scoredUnits(), c.scoredUnits());
-    assertEquals(concat(concat(LINEAR, List.of(NINTH, TENTH, ELEVENTH)), concat(FORESTS,
-        List.of(SimilarityScoring.forest(NINTH), SimilarityScoring.forest(TENTH),
-            SimilarityScoring.forest(ELEVENTH)))),
-        c.models().stream().map(SimilarityScoring.Scored::name).toList());
+    assertEquals(MODELS, c.models().stream().map(SimilarityScoring.Scored::name).toList());
     for (final SimilarityScoring.Scored m : c.models()) {
       assertEquals(java.util.Arrays.toString(model(inner.main(), m.name()).predicted()),
           java.util.Arrays.toString(m.predicted()), m.name());
@@ -1347,6 +1305,8 @@ class SimilarityScoringTest {
     final Map<String, PredictionIntervals.Calibration> calibrated =
         PredictionIntervals.calibrated(PredictionIntervals.Sample.of(
             SimilarityScoring.calibration(entries, choices(0.2), forests(), 1.5)));
+    // the calibration covers exactly the fourteen models the outer test scores
+    assertEquals(Set.copyOf(MODELS), calibrated.keySet());
     // the constant global median gets a finite factor at every level, inner
     for (final double factor : calibrated.get(SimilarityScoring.GLOBAL).factors()) {
       assertTrue(Double.isFinite(factor), Double.toString(factor));
@@ -1355,6 +1315,8 @@ class SimilarityScoringTest {
         PredictionIntervals.Sample.of(outer.main()),
         PredictionIntervals.Sample.of(outer.complementary()), 1);
     assertEquals(2 * MODELS.size() * PredictionIntervals.LEVELS.size(), reads.size());
+    assertEquals(Set.copyOf(MODELS), reads.stream().map(PredictionIntervals.Read::model)
+        .collect(java.util.stream.Collectors.toSet()));
     for (final PredictionIntervals.Read r : reads) {
       final int n = r.reading() == TailCut.Reading.USUAL_FLOW ? outer.main().scoredRows()
           : outer.complementary().scoredRows();

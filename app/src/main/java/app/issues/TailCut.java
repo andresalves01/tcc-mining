@@ -49,7 +49,8 @@ public final class TailCut {
       + "of the split (inner: the inner fitting set; outer: the outer training set), never of "
       + "validation or test labels; the fitting rows above the chosen k's fence leave every "
       + "model's, forest's and reference's fitting rows, the histories keep them; k chosen once "
-      + "on own_with_similarity among 1.5, 3, 5, 10 and no cut by its error on the usual-flow "
+      + "on the own start model (own_with_similarity_before_pressure) among 1.5, 3, 5, 10 and no "
+      + "cut by its error on the usual-flow "
       + "validation issues, ties to the larger k; usual flow: the issues at or below the k = 3 "
       + "fence; every choice of the selection (alpha, lambda, the medians' n and k, each forest's "
       + "point, k) is scored on the usual-flow validation issues";

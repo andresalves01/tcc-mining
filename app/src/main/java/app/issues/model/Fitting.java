@@ -275,6 +275,33 @@ public final class Fitting {
         sides.observed(), baselineMae, constantMae, -1, List.of());
   }
 
+  /**
+   * The coefficients, on the standardised columns, of one fit with given parameters on the given
+   * rows, as {@link #frozen} fits them: the design matrix learned on these rows (the medians that
+   * fill a gap, the means and spreads that standardise), the target {@code log1p}. A column
+   * constant on these rows is dropped by the design matrix and given no coefficient here: the
+   * caller reads it as carrying nothing. Scores nothing.
+   *
+   * @param rows the rows fitted, {@code units} their outcomes, in the same order; a row may come
+   *     twice, as a resampling draws it
+   * @return per column kept, by name, its coefficient
+   */
+  public static java.util.Map<String, Double> coefficients(final Cell cell, final List<Row> rows,
+      final List<IssueUnit> units, final double alpha, final double lambda) {
+    final DesignMatrix matrix = DesignMatrix.fittedOn(rows, cell.attributes());
+    final java.util.Map<String, Double> out = new java.util.LinkedHashMap<>();
+    if (matrix.columns().isEmpty()) {
+      return out;
+    }
+    final ElasticNetModel model = ElasticNetModel.fit(matrix.applyAll(rows), target(units),
+        matrix.columns(), alpha, lambda);
+    final double[] weights = model.coefficients();
+    for (int c = 0; c < weights.length; c++) {
+      out.put(matrix.columns().get(c), weights[c]);
+    }
+    return out;
+  }
+
   private static Fitted result(final Cell cell, final DesignMatrix matrix, final double[][] x,
       final double[] y, final double[][] xs, final ElasticNetModel model, final double[] observed,
       final double baselineMae, final double constantMae, final int step,

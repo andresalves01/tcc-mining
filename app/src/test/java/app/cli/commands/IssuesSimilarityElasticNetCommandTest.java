@@ -18,18 +18,19 @@ class IssuesSimilarityElasticNetCommandTest {
   @Test
   @DisplayName("only a file of this step's own choices in its current format is overwritten: not "
       + "the registered chain's, not one in the format before ticket 11, not one naming the "
-      + "models before ticket 12, not one of the six models before the retrospective one")
+      + "models before ticket 12, not one of the six models before the retrospective one, not "
+      + "one of the eleven models before the fourteen")
   void overwritesOnlyItsOwnFile() {
     final List<String> own = List.of(ElasticNetSelection.HEADER,
         "# step\tname\tparameter\tvalue",
         "elastic-net\tinputs\tmatrix_sha256\tab12",
-        "elastic-net\town_with_similarity\talpha\t0.5",
-        "elastic-net\town_with_similarity\tlambda\t0.1",
-        "elastic-net\town_with_similarity\tjaccard_n\t10");
+        "elastic-net\town_with_similarity_before_pressure\talpha\t0.5",
+        "elastic-net\town_with_similarity_before_pressure\tlambda\t0.1",
+        "elastic-net\town_with_similarity_before_pressure\tjaccard_n\t10");
     assertTrue(IssuesSimilarityElasticNetCommand.onlyThisStep(own));
     final List<String> withForest = new ArrayList<>(own);
-    withForest.add("forest\town_with_similarity\tmtry_share\t0.3333333333333333");
-    withForest.add("forest\town_with_similarity\tnode_size\t25");
+    withForest.add("forest\town_with_similarity_before_pressure\tmtry_share\t0.3333333333333333");
+    withForest.add("forest\town_with_similarity_before_pressure\tnode_size\t25");
     assertTrue(IssuesSimilarityElasticNetCommand.onlyThisStep(withForest));
     final List<String> foreignForest = new ArrayList<>(own);
     foreignForest.add("forest\tprevious_own_start\tnode_size\t25");
@@ -59,13 +60,27 @@ class IssuesSimilarityElasticNetCommandTest {
     }
     assertFalse(IssuesSimilarityElasticNetCommand.onlyThisStep(List.of(
         "# Elastic Net alpha and lambda chosen on the inner validation only; the outer test was "
-            + "not read", "elastic-net\town_with_similarity\talpha\t0.5")));
+            + "not read", "elastic-net\town_with_similarity_before_pressure\talpha\t0.5")));
     assertFalse(IssuesSimilarityElasticNetCommand.onlyThisStep(List.of(
         "# chosen on the inner validation only; the outer test was not read",
         "# step\tname\tparameter\tvalue", "direct\tjaccard_median\tcandidate\t10")));
     assertFalse(IssuesSimilarityElasticNetCommand.onlyThisStep(List.of(
         "# population\tcell\talpha\tlambda -- written by issues-grid on the inner selection",
         "IN_PROGRESS\tOWN / C1\t0.5\t0.01")));
+    // ticket 29's file, the eleven models before the fourteen, under its header then
+    final List<String> eleven = new ArrayList<>(own);
+    eleven.set(0, IssuesSimilarityTestCommandTest.ELEVEN_HEADER);
+    assertFalse(IssuesSimilarityElasticNetCommand.onlyThisStep(eleven));
+    // today's header with a model the fourteen leave out: not this step's file either
+    for (final String leftOut : List.of("own_without_similarity", "similarity_alone",
+        "own_with_similarity", "union_own", "own_retrospective_before_pressure")) {
+      final List<String> old = new ArrayList<>(own);
+      old.add("elastic-net\t" + leftOut + "\talpha\t0.5");
+      assertFalse(IssuesSimilarityElasticNetCommand.onlyThisStep(old), leftOut);
+      final List<String> oldForest = new ArrayList<>(own);
+      oldForest.add("forest\t" + leftOut + "\tnode_size\t25");
+      assertFalse(IssuesSimilarityElasticNetCommand.onlyThisStep(oldForest), leftOut);
+    }
     final List<String> appended = new ArrayList<>(own);
     appended.add("direct\tjaccard_median\tcandidate\t10");
     assertFalse(IssuesSimilarityElasticNetCommand.onlyThisStep(appended));
@@ -112,7 +127,7 @@ class IssuesSimilarityElasticNetCommandTest {
     columns.addAll(app.issues.Extractor.TEAM_REVISED);
     columns.addAll(app.pipeline.IssuesSimilarityTask.columns());
     final List<Cell> every = ElasticNetSelection.everyCell(Augmentation.Variant.INNER);
-    assertEquals(27 * 11, every.size());
+    assertEquals(27 * 6, every.size());
     // the similarity stage's matrix lacks the retrospective columns, named in the models' order:
     // the main reading's, then the comments and the participants the ceiling adds
     assertEquals(List.of("RETRO_java_lines", "RETRO_mean_mccc", "RETRO_mean_nesting",

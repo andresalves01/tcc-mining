@@ -178,6 +178,17 @@ public final class Forest {
    */
   public static Frozen frozen(final Cell cell, final Fitting.Sides sides, final Choice choice,
       final double baselineMae, final double constantMae) {
+    return frozen(cell, sides, choice, baselineMae, constantMae, true);
+  }
+
+  /**
+   * {@link #frozen(Cell, Fitting.Sides, Choice, double, double)}, its permutation importance
+   * read only when {@code importance}: without it the list is empty and the scored side's
+   * outcomes are read for the error alone. The outer test reads none, since shuffling a column
+   * among its issues and reading the rise in error would read its labels column by column.
+   */
+  public static Frozen frozen(final Cell cell, final Fitting.Sides sides, final Choice choice,
+      final double baselineMae, final double constantMae, final boolean importance) {
     final DesignMatrix matrix = DesignMatrix.fittedOn(sides.fitRows(), cell.attributes());
     if (choice.mtry() > matrix.columns().size()) {
       throw new IllegalArgumentException(cell.label() + "'s forest draws " + choice.mtry()
@@ -191,7 +202,8 @@ public final class Forest {
     return new Frozen(cell, choice.share(), choice.mtry(), choice.nodeSize(), matrix.columns(),
         matrix.dropped(), hours,
         Score.of(cell.label(), hours, sides.observed(), baselineMae, constantMae),
-        permutationImportance(model, matrix.columns(), xs, hours, sides.observed()));
+        importance ? permutationImportance(model, matrix.columns(), xs, hours, sides.observed())
+            : List.of());
   }
 
   /**

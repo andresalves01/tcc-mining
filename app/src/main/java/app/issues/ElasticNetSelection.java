@@ -20,52 +20,44 @@ import java.util.concurrent.Callable;
 /**
  * The Elastic Net models of the description-similarity chain, and the choice on the inner
  * validation only of each one's alpha and lambda, by the registered chain's own sweep, and, for
- * the seven models reading the similarity medians, of the Jaccard n, embedding n and cluster k
+ * the three models reading the similarity medians, of the Jaccard n, embedding n and cluster k
  * they read.
  *
- * <p><b>Models.</b> Eleven, each a {@link Cell}. Two are the registered in-progress cells read as
- * they are: Al-Zubaidi at the start ({@code ALZUBAIDI / C1}) and Kikas at the start ({@code
- * KIKAS / C1}). The own specification with similarity, the study's own contribution, is
- * description length and team size, the registered {@code A01} and {@code A03}; the team's median
- * and spread of lines of code and of cyclomatic complexity; the corrected reporter median; the
- * executor's lines of code, cyclomatic complexity and open workload, the registered {@code A09},
- * {@code A10} and {@code A13}; the fix version set before the start, the days left in the
- * project's release cycle and the pace of its other Blocker issues ({@link Pressure}, ticket 19);
- * and the Jaccard, embedding and cluster medians, sixteen in all. The own specification without
- * similarity, its control, is the same thirteen without the three medians; the similarity block
- * alone is the three medians; the union is the literature families as the registered union reads
- * them, Kikas's body length entering once as Al-Zubaidi's word counts, followed by the own
- * specification with similarity. The eighth is the own specification with similarity without
- * the pressure attributes, the start columns of {@link Pressure} (item 36): the ten and the three
- * medians, the own start model chosen (item 49). The seventh, the retrospective scenario in its
- * main reading, is that own start model followed by what was observed between the first In
- * Progress and the first resolution ({@link Retrospective}) except the comments and the
- * participants: the five content attributes, the assignee changes and urgency, twenty in all. The
- * eleventh, the same reading with the comments and the participants added, twenty-two in all, is
- * a ceiling, not a competitor: those two count the very records the target is made of ({@link
- * Retrospective#DISCUSSION}). The ninth is the main reading without the pressure attribute left
- * in it, urgency (item 43), nineteen in all: it adds no attribute and only measures what urgency
- * does to the retrospective model. The tenth is the registered Kikas cell of the retrospective
- * scenario ({@code KIKAS / C2}, item 59): Kikas at the start followed by Kikas's whole
- * retrospective set as adapted, the twelve counts observed up to the resolution and the missing
- * indicator the matrix has for them, the literature counterpart of the retrospective model; no
- * similarity median, no own column. The wait on blocking issues is in no model: it equalled the
- * target in about half of the issues that had one.
+ * <p><b>Models.</b> Six attribute sets, each a {@link Cell}, each with a random forest beside it
+ * on the same grid: the study measures each set's attributes, not its source's method. At the
+ * start, three. The own start model ({@link #BEFORE_PRESSURE}), the study's own contribution:
+ * description length and team size, the registered {@code A01} and {@code A03}; the team's
+ * median and spread of lines of code and of cyclomatic complexity; the corrected reporter median;
+ * the executor's lines of code, cyclomatic complexity and open workload, the registered {@code
+ * A09}, {@code A10} and {@code A13}; and the Jaccard, embedding and cluster medians, thirteen in
+ * all. Al-Zubaidi at the start and Kikas at the start, the registered in-progress cells read as
+ * they are ({@code ALZUBAIDI / C1}, {@code KIKAS / C1}). After the resolution, three. The own
+ * retrospective model in its main reading ({@link #RETROSPECTIVE}): the own start model followed
+ * by what was observed between the first In Progress and the first resolution ({@link
+ * Retrospective}) except the comments and the participants: the five content attributes, the
+ * assignee changes and urgency, twenty in all. The same with the comments and the participants
+ * ({@link #WITH_DISCUSSION}), twenty-two in all, a ceiling, not a competitor: those two count the
+ * very records the target is made of ({@link Retrospective#DISCUSSION}). Kikas's retrospective
+ * model, the registered Kikas cell of the retrospective scenario ({@code KIKAS / C2}): Kikas at
+ * the start followed by Kikas's whole retrospective set as adapted, the twelve counts observed up
+ * to the resolution and the missing indicator the matrix has for them; no similarity median, no
+ * own column. The wait on blocking issues is in no model: it equalled the target in about half
+ * of the issues that had one. Neither is the release-cycle pressure of the start (the fix
+ * version, the release cycle and the Blocker pace of {@link Pressure}): the own start model is
+ * the own specification without them, as the inner validation decided.
  *
- * <p><b>Ticket 15.</b> The retrospective model ({@code own_retrospective}) reads what was observed
- * up to the resolution, and its counts grow with the duration itself: a gain over the own start
- * model is association with the duration, not a prediction available during the work. It reads
- * the similarity medians, so it is swept over the 27 combinations as the other models with them
- * are; its forest follows as for every model. The six models before it are
- * declared, read and chosen as they were; the retrospective columns are new names, beside the
+ * <p>The retrospective models read what was observed up to the resolution, and their counts grow
+ * with the duration itself: a gain over the start is association with the duration, not a
+ * prediction available during the work. The retrospective columns are new names, beside the
  * registered columns of the same constructs, which keep their meaning.
  *
- * <p><b>Ticket 12.</b> The previous own specification ({@code OWN / C1}) is no longer a model of
- * this chain, and the team size returns to the own specification. The registered in-progress
- * chain, its cell and its outputs, are untouched.
+ * <p>Left out, their decisions kept by the earlier runs' reports: the own specification without
+ * the similarity medians, the medians alone, the own specification with the pressure attributes
+ * and the union of the families, at the start; the main reading without urgency, after the
+ * resolution.
  *
  * <p><b>Similarity medians as attributes</b> (ticket 11, reversing ticket 08's choice by each
- * median's error read alone as a prediction). The seven models with the medians ({@link
+ * median's error read alone as a prediction). The three models with the medians ({@link
  * #WITH_SIMILARITY}) are swept once per {@link Combination} of a Jaccard n, an embedding n and a
  * cluster k among the values the similarity stage computes, 27 in all, each sweep the registered
  * alpha by lambda grid, and keep the combination whose chosen point errs least on the inner
@@ -76,7 +68,7 @@ import java.util.concurrent.Callable;
  * the smaller k. No tolerance: the sweep has none. The three models without the medians are swept
  * once.
  *
- * <p><b>Columns.</b> The reporter median, the Blocker pace and the three similarity medians depend
+ * <p><b>Columns.</b> The reporter median and the three similarity medians depend
  * on the split, each reading the durations of its training side only (ticket 21); each model
  * reads them in the variant of its mode, {@code _inner} here. The three similarity
  * medians enter as {@code log1p} before standardisation, as the spec says; the reporter median and
@@ -103,9 +95,9 @@ import java.util.concurrent.Callable;
  * #FOREST_STEP}.
  *
  * <p><b>Tail cut</b> (ticket 23, item 50). Before anything else, the k of the fitting cut is
- * chosen on the own specification with similarity alone ({@link #run(List, int)}); every model,
+ * chosen on the own start model alone ({@link #run(List, int)}); every model,
  * forest and reference is then fitted on the inner fitting rows at or below that k's fence
- * ({@link TailCut}). The similarity medians, the reporter median and the Blocker pace are columns
+ * ({@link TailCut}). The similarity medians and the reporter median are columns
  * of the matrix, written from every training-side issue, and are read as they are. Every choice,
  * the k included, is scored on the usual-flow validation issues only.
  *
@@ -119,13 +111,27 @@ import java.util.concurrent.Callable;
 public final class ElasticNetSelection {
 
   /**
-   * The retrospective scenario's model in its main reading (ticket 15), the seventh of {@link
-   * #MODELS}: the own start model ({@link #BEFORE_PRESSURE}) followed by the five content
-   * attributes, the assignee changes and urgency, without the comments and the participants.
+   * The own start model, the own specification with similarity without the pressure attributes,
+   * the first of {@link #MODELS}: the start model the SPSP would use, which both readings of the
+   * retrospective model build on and the tail cut's k is chosen on alone, then reaching every
+   * model.
+   */
+  public static final String BEFORE_PRESSURE = "own_with_similarity_before_pressure";
+
+  /** Al-Zubaidi at the start, the registered cell {@code ALZUBAIDI / C1}. */
+  public static final String ALZUBAIDI_START = "alzubaidi_start";
+
+  /** Kikas at the start, the registered cell {@code KIKAS / C1}. */
+  public static final String KIKAS_START = "kikas_start";
+
+  /**
+   * The retrospective scenario's model in its main reading, the fourth of {@link #MODELS}: the
+   * own start model followed by the five content attributes, the assignee changes and urgency,
+   * without the comments and the participants.
    */
   public static final String RETROSPECTIVE = "own_retrospective";
 
-  /** What the main reading is, for the selection step's output and record and the inner report. */
+  /** What the main reading is, for the selection step's output and record and both reports. */
   public static final String RETROSPECTIVE_ROLE = "the main reading of the retrospective model: "
       + "the own start model followed by the five content attributes (Java lines, files, mean "
       + "complexity, mean nesting, familiarity), the assignee changes and urgency, with their "
@@ -133,81 +139,46 @@ public final class ElasticNetSelection {
       + "target is made of";
 
   /**
-   * The retrospective model with the comments and the participants, the last of {@link #MODELS}:
-   * {@link #RETROSPECTIVE} followed by those two and nothing else.
+   * The retrospective model with the comments and the participants, the fifth of {@link
+   * #MODELS}: {@link #RETROSPECTIVE} followed by those two and nothing else.
    */
   public static final String WITH_DISCUSSION = "own_retrospective_with_discussion";
 
-  /**
-   * What the reading with the discussion is, for the selection step's output and record and the
-   * inner report; the test does not score it.
-   */
+  /** What the reading with the discussion is, for the selection step's output and record and both reports. */
   public static final String WITH_DISCUSSION_ROLE = "a CEILING, not a competitor: the main "
       + "reading of the retrospective model followed by the comments and the participants, which "
       + "count the very records the target is made of, so part of any gain is mechanical; it "
-      + "compares fairly with Kikas's retrospective set, which counts comments too; only the "
-      + "inner report scores it";
+      + "compares fairly with Kikas's retrospective set, which counts comments too";
 
   /**
-   * The own specification with similarity without the pressure attributes, the three start
-   * columns of {@link Pressure} (item 36), the eighth of {@link #MODELS}: the own start model
-   * chosen (item 49), which both readings of the retrospective model build on.
-   */
-  public static final String BEFORE_PRESSURE = "own_with_similarity_before_pressure";
-
-  /**
-   * The own specification with similarity, the start model the SPSP would use: the tail cut's k
-   * is chosen on it alone, then reaches every model (item 50 iv).
-   */
-  public static final String OWN_WITH_SIMILARITY = "own_with_similarity";
-
-  /**
-   * The main reading of the retrospective model without the pressure attribute left in it,
-   * urgency and its missing indicator (item 43), the ninth of {@link #MODELS}: compared with the
-   * main reading on the same run, it measures what urgency does to it and nothing else.
-   */
-  public static final String RETROSPECTIVE_BEFORE_PRESSURE = "own_retrospective_before_pressure";
-
-  /**
-   * What the ninth model is, for the selection step's output and record and the inner report;
-   * never the test's, which does not score it (ticket 22).
-   */
-  public static final String RETROSPECTIVE_BEFORE_PRESSURE_ROLE = "the main reading of the "
-      + "retrospective model without the pressure attributes (the three start ones, already out "
-      + "of the own start model it builds on, and urgency) and their missing indicators; it adds "
-      + "no attribute and only measures what they do to the retrospective model; only the inner "
-      + "report scores it";
-
-  /**
-   * Kikas's retrospective model (item 59), the tenth of {@link #MODELS}: the registered Kikas cell
-   * of the retrospective scenario, the literature counterpart of {@link #RETROSPECTIVE}.
+   * Kikas's retrospective model, the last of {@link #MODELS}: the registered Kikas cell of the
+   * retrospective scenario, the literature counterpart of {@link #RETROSPECTIVE}.
    */
   public static final String KIKAS_RETROSPECTIVE = "kikas_retrospective";
 
-  /**
-   * What the tenth model is, for the selection step's output and record and the inner report;
-   * never the test's, which does not score it yet (ticket 26).
-   */
+  /** What Kikas's retrospective model is, for the selection step's output and record and both reports. */
   public static final String KIKAS_RETROSPECTIVE_ROLE = "Kikas at the start followed by Kikas's "
       + "retrospective set as adapted, the twelve counts observed up to the resolution and their "
       + "missing indicator (KIKAS / C2), the literature counterpart of the retrospective model; "
-      + "it counts comments, which the main reading of the own retrospective model does not; "
-      + "only the inner report scores it";
+      + "it counts comments, which the main reading of the own retrospective model does not";
 
   /**
-   * The eleven models, in their order: the six of the start, the retrospective one's main
-   * reading, the own start model without the pressure attributes, the main reading without
-   * urgency, Kikas's retrospective one, then the retrospective one with the discussion, the
-   * ceiling.
+   * The six attribute sets, in their order: the three of the start, the own one first, then the
+   * three after the resolution, the main reading, the ceiling and Kikas's. Each has its forest,
+   * and the global and project medians stand beside them: fourteen models in the inner report
+   * and the outer test alike.
    */
-  public static final List<String> MODELS = List.of("own_without_similarity", "similarity_alone",
-      OWN_WITH_SIMILARITY, "alzubaidi_start", "kikas_start", "union_own", RETROSPECTIVE,
-      BEFORE_PRESSURE, RETROSPECTIVE_BEFORE_PRESSURE, KIKAS_RETROSPECTIVE, WITH_DISCUSSION);
+  public static final List<String> MODELS = List.of(BEFORE_PRESSURE, ALZUBAIDI_START,
+      KIKAS_START, RETROSPECTIVE, WITH_DISCUSSION, KIKAS_RETROSPECTIVE);
 
   /** The models that read the similarity medians, whose n, n and k are chosen with them. */
-  public static final List<String> WITH_SIMILARITY = List.of("similarity_alone",
-      "own_with_similarity", "union_own", RETROSPECTIVE, BEFORE_PRESSURE,
-      RETROSPECTIVE_BEFORE_PRESSURE, WITH_DISCUSSION);
+  public static final List<String> WITH_SIMILARITY = List.of(BEFORE_PRESSURE, RETROSPECTIVE,
+      WITH_DISCUSSION);
+
+  /** Where the tail cut's k is chosen, in words, for the help, the run records and the reports. */
+  public static final String TAIL_CUT_MODEL = "the k is chosen on the own start model ("
+      + BEFORE_PRESSURE + ") alone, the start model the SPSP would use, and then reaches every "
+      + "model, forest and reference";
 
   private static final Population P = Population.IN_PROGRESS;
 
@@ -315,16 +286,17 @@ public final class ElasticNetSelection {
   public record Parameter(String step, String name, String parameter, String value) {}
 
   /**
-   * The first line of every parameters file this step writes; one without the tail cut, written
-   * before ticket 23, has another.
+   * The first line of every parameters file this step writes; one written for other models, as
+   * the eleven before the fourteen were settled, or without the tail cut, before ticket 23, has
+   * another, and is refused and never overwritten.
    */
-  public static final String HEADER = "# the tail cut's k and fences, Elastic Net alpha and "
-      + "lambda, the similarity medians' n, n and k, and each random forest's column share and "
-      + "leaf, chosen on the usual flow of the inner validation only, the target in whole "
-      + "business days on the issues of at least one, for eleven models with the retrospective "
-      + "one with and without the comments and participants, the own and retrospective ones "
-      + "without the pressure attributes and Kikas's retrospective one; the outer test was not "
-      + "read";
+  public static final String HEADER = "# the tail cut's k and fences, the k chosen on the own "
+      + "start model, Elastic Net alpha and lambda, the similarity medians' n, n and k, and each "
+      + "random forest's column share and leaf, chosen on the usual flow of the inner validation "
+      + "only, the target in whole business days on the issues of at least one, for six "
+      + "attribute sets: the own, Al-Zubaidi's and Kikas's at the start, the own retrospective "
+      + "one without and with the comments and participants and Kikas's retrospective one; the "
+      + "outer test was not read";
 
   /** The step of the tail cut's lines in the parameters file (ticket 23). */
   public static final String TAIL_STEP = "tail-cut";
@@ -612,12 +584,12 @@ public final class ElasticNetSelection {
    * validation: the usual flow's at {@link TailCut#USUAL_FLOW_K} and each candidate's. Every
    * choice -- alpha, lambda, the medians' n and k, each forest's point and the k itself -- is
    * scored on the usual-flow validation issues, those at or below the usual flow's fence (André,
-   * 18/10/2026). For each k of {@link TailCut#GRID}, {@link #OWN_WITH_SIMILARITY} is chosen as
+   * 18/10/2026). For each k of {@link TailCut#GRID}, {@link #BEFORE_PRESSURE} is chosen as
    * below on the inner fitting rows at or below its fence, and its chosen point's error is the
    * k's; the lowest wins. <b>Ties</b>: the grid is read from the larger k down and a k is kept
    * only when its error is strictly lower, the sweep's own rule, so of errors exactly equal the
    * larger k, the smaller cut, wins. Every model and forest is then chosen on the rows of that k,
-   * the own specification with similarity's choice there reused as it is; the references learn
+   * the own start model's choice there reused as it is; the references learn
    * on the same rows.
    *
    * <p>Every sweep -- one per model without the medians, one per model and combination with them
@@ -669,7 +641,7 @@ public final class ElasticNetSelection {
     for (final double k : grid) {
       final double fence = TailCut.fence(sides.fitUnits(), k);
       final Fitting.Sides cut = TailCut.cut(sides, fence);
-      final Model m = choose(List.of(OWN_WITH_SIMILARITY), every, cut, threads).get(0);
+      final Model m = choose(List.of(BEFORE_PRESSURE), every, cut, threads).get(0);
       own.put(k, m);
       trials.add(new TailCut.Trial(k, fence, cut.fitUnits().size(),
           TailCut.mae(m.fitted().predicted(), cut.observed(), usualFence)));
@@ -682,11 +654,11 @@ public final class ElasticNetSelection {
     final double projectMae = Fitting.mae(refs.projectMedian(cut.scoreUnits()), observed);
 
     final List<String> others =
-        MODELS.stream().filter(name -> !name.equals(OWN_WITH_SIMILARITY)).toList();
+        MODELS.stream().filter(name -> !name.equals(BEFORE_PRESSURE)).toList();
     final List<Model> rest = choose(others, every, cut, threads);
     final List<Model> chosen = new ArrayList<>(MODELS.size());
     for (final String name : MODELS) {
-      chosen.add(name.equals(OWN_WITH_SIMILARITY) ? own.get(best.k())
+      chosen.add(name.equals(BEFORE_PRESSURE) ? own.get(best.k())
           : rest.get(others.indexOf(name)));
     }
 
@@ -833,7 +805,7 @@ public final class ElasticNetSelection {
 
   /**
    * Every model at every combination, in the given variant: the combinations in {@link
-   * Combination#all}'s order, the eleven models of each in theirs. What the selection may read.
+   * Combination#all}'s order, the six models of each in theirs. What the selection may read.
    */
   public static List<Cell> everyCell(final Augmentation.Variant variant) {
     final List<Cell> out = new ArrayList<>();
@@ -844,7 +816,7 @@ public final class ElasticNetSelection {
   }
 
   /**
-   * The eleven models in their order, reading the split-dependent columns of the given variant,
+   * The six models in their order, reading the split-dependent columns of the given variant,
    * each with the similarity medians at its own combination.
    *
    * @param combinations per model of {@link #WITH_SIMILARITY}, the values it reads the medians
@@ -867,65 +839,40 @@ public final class ElasticNetSelection {
   }
 
   /**
-   * The eleven models in their order, reading the split-dependent columns of the given variant,
-   * the seven with the similarity medians at {@code c}; the other four do not depend on it.
+   * The six models in their order, reading the split-dependent columns of the given variant,
+   * the three with the similarity medians at {@code c}; the other three do not depend on it.
    */
   public static List<Cell> cells(final Combination c, final Augmentation.Variant variant) {
-    final List<Attribute> without = new ArrayList<>();
-    without.add(Attributes.byName("A01_desc_length"));
-    without.add(Attributes.byName("A03_team_size"));
+    // the own start model: the ten of the own specification, then the three medians
+    final List<Attribute> start = new ArrayList<>();
+    start.add(Attributes.byName("A01_desc_length"));
+    start.add(Attributes.byName("A03_team_size"));
     for (final String team : Extractor.TEAM_REVISED) {
-      without.add(revised(team));
+      start.add(revised(team));
     }
-    without.add(revised(Augmentation.reporter(variant)));
+    start.add(revised(Augmentation.reporter(variant)));
     for (final String executor : List.of("A09_exec_loc_tot", "A10_exec_mccc_tot",
         "A13_exec_open_load")) {
-      without.add(Attributes.byName(executor));
+      start.add(Attributes.byName(executor));
     }
-    final List<Attribute> similarity = List.of(
-        revised(Augmentation.jaccard(c.jaccardN(), variant)),
-        revised(Augmentation.embedding(c.embeddingN(), variant)),
-        revised(Augmentation.cluster(c.clusterK(), variant)));
-    // the own start model, without the pressure attributes: the ten, then the three medians
-    final List<Attribute> beforePressure = new ArrayList<>(without);
-    beforePressure.addAll(similarity);
-    without.addAll(pressure(variant));
-    final List<Attribute> with = new ArrayList<>(without);
-    with.addAll(similarity);
-
-    final List<Attribute> union = new ArrayList<>();
-    for (final Attribute a : Attributes.ofInProgress(Family.UNION, Scenario.C1)) {
-      if (a.family() == Family.ALZUBAIDI || a.family() == Family.KIKAS) {
-        union.add(a);
-      }
-    }
-    union.addAll(with);
+    start.add(revised(Augmentation.jaccard(c.jaccardN(), variant)));
+    start.add(revised(Augmentation.embedding(c.embeddingN(), variant)));
+    start.add(revised(Augmentation.cluster(c.clusterK(), variant)));
 
     // the main reading: the own start model, then content, assignee changes and urgency
-    final List<Attribute> retrospective = new ArrayList<>(beforePressure);
+    final List<Attribute> retrospective = new ArrayList<>(start);
     retrospective.addAll(retrospective(MAIN_READING));
     // the ceiling: the main reading, then the comments and the participants, nothing else
     final List<Attribute> withDiscussion = new ArrayList<>(retrospective);
     withDiscussion.addAll(retrospective(Retrospective.DISCUSSION));
-    // the main reading without the pressure attribute it still holds, urgency
-    final List<Attribute> retrospectiveBeforePressure = new ArrayList<>(beforePressure);
-    retrospective(MAIN_READING).stream()
-        .filter(a -> !a.name().equals(Retrospective.URGENCY))
-        .forEach(retrospectiveBeforePressure::add);
 
     return List.of(
-        new Cell(MODELS.get(0), Family.OWN, Scenario.C1, without),
-        new Cell(MODELS.get(1), Family.OWN, Scenario.C1, similarity),
-        new Cell(MODELS.get(2), Family.OWN, Scenario.C1, with),
-        registered(MODELS.get(3), "ALZUBAIDI / C1"),
-        registered(MODELS.get(4), "KIKAS / C1"),
-        new Cell(MODELS.get(5), Family.UNION, Scenario.C1, union),
+        new Cell(BEFORE_PRESSURE, Family.OWN, Scenario.C1, start),
+        registered(ALZUBAIDI_START, "ALZUBAIDI / C1"),
+        registered(KIKAS_START, "KIKAS / C1"),
         new Cell(RETROSPECTIVE, Family.OWN, Scenario.C2, retrospective),
-        new Cell(BEFORE_PRESSURE, Family.OWN, Scenario.C1, beforePressure),
-        new Cell(RETROSPECTIVE_BEFORE_PRESSURE, Family.OWN, Scenario.C2,
-            retrospectiveBeforePressure),
-        registered(KIKAS_RETROSPECTIVE, "KIKAS / C2"),
-        new Cell(WITH_DISCUSSION, Family.OWN, Scenario.C2, withDiscussion));
+        new Cell(WITH_DISCUSSION, Family.OWN, Scenario.C2, withDiscussion),
+        registered(KIKAS_RETROSPECTIVE, "KIKAS / C2"));
   }
 
   /**
@@ -957,22 +904,6 @@ public final class ElasticNetSelection {
           Retrospective.CONTENT.contains(name) || Retrospective.URGENCY.equals(name), true));
     }
     return List.copyOf(out);
-  }
-
-  /**
-   * The start model's three attributes of ticket 19 ({@link Pressure}), in its order: the fix
-   * version flag a binary never missing; the release cycle raw, being signed, and the Blocker pace
-   * {@code log1p}, each with a missing indicator. No block. The flag and the cycle are known at the
-   * start and split-independent; the Blocker pace reads the training side's durations (ticket 21),
-   * so it is read in the given variant, as the similarity medians are.
-   */
-  static List<Attribute> pressure(final Augmentation.Variant variant) {
-    return List.of(
-        new Attribute(Pressure.FIX_VERSION, Pressure.FIX_VERSION, Family.OWN, null,
-            Construct.Kind.BINARY, Construct.Transform.NONE, false, true),
-        new Attribute(Pressure.RELEASE_CYCLE, Pressure.RELEASE_CYCLE, Family.OWN, null,
-            Construct.Kind.NUMERIC, Construct.Transform.NONE, true, true),
-        revised(Pressure.blockerPace(variant)));
   }
 
   private static Cell registered(final String name, final String label) {

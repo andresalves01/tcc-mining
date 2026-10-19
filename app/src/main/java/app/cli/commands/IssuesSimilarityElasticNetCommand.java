@@ -32,22 +32,23 @@ import java.util.Set;
 import java.util.function.Function;
 
 /**
- * The selection step of the description-similarity chain, inner mode only: each Elastic Net
- * model's alpha and lambda, by the registered chain's sweep on the inner validation, and, for the
- * seven models reading the similarity medians, the Jaccard n, embedding n and cluster k they read,
- * the combination of the 27 whose sweep errs least (see {@link ElasticNetSelection}); and beside
- * each model, as a robustness check, a random forest's column share and leaf, swept on the same
- * rows and columns. The seventh model is the retrospective scenario's main reading ({@link
- * Retrospective}), whose columns {@code issues-in-progress-retrospective} adds to the matrix, on
- * the own start model and without the comments and the participants; the ninth is the same
- * without urgency; the tenth is Kikas's retrospective cell ({@code KIKAS / C2}); the eleventh is
- * the main reading with the comments and the participants, a ceiling, not a competitor.
+ * The selection step of the description-similarity chain, inner mode only: for the six attribute
+ * sets of {@link ElasticNetSelection#MODELS}, each Elastic Net model's alpha and lambda, by the
+ * registered chain's sweep on the inner validation, and, for the three models reading the
+ * similarity medians, the Jaccard n, embedding n and cluster k they read, the combination of the
+ * 27 whose sweep errs least (see {@link ElasticNetSelection}); and beside each model, as a
+ * robustness check, a random forest's column share and leaf, swept on the same rows and columns.
+ * At the start: the own start model, Al-Zubaidi and Kikas. After the resolution: the
+ * retrospective scenario's main reading ({@link Retrospective}), whose columns {@code
+ * issues-in-progress-retrospective} adds to the matrix, on the own start model and without the
+ * comments and the participants; the same with them, a ceiling, not a competitor; and Kikas's
+ * retrospective cell ({@code KIKAS / C2}).
  *
  * <p><b>Tail cut</b> (ticket 23; {@link TailCut}). Before the models, the fitting k is chosen on
- * the own specification with similarity among 1.5, 3, 5, 10 and no cut, every choice scored on
- * the usual-flow validation issues; every model, forest and reference is then chosen on the inner
- * fitting rows at or below that k's fence. The chosen k, both fences and every k's error are
- * printed, written to the parameters file and recorded.
+ * the own start model among 1.5, 3, 5, 10 and no cut, every choice scored on the usual-flow
+ * validation issues; every model, forest and reference is then chosen on the inner fitting rows
+ * at or below that k's fence. The chosen k, the model it was chosen on, both fences and every
+ * k's error are printed, written to the parameters file and recorded.
  *
  * <p>The target is whole business days, on the issues of at least one ({@link BusinessDays}):
  * the outer training rows are read with each one's day boundary from the matrix, any of 0
@@ -165,8 +166,6 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
         ElasticNetSelection.RETROSPECTIVE_ROLE);
     System.out.printf("  %s: %s%n", ElasticNetSelection.WITH_DISCUSSION,
         ElasticNetSelection.WITH_DISCUSSION_ROLE);
-    System.out.printf("  %s: %s%n", ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE,
-        ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE_ROLE);
     System.out.printf("  %s: %s%n", ElasticNetSelection.KIKAS_RETROSPECTIVE,
         ElasticNetSelection.KIKAS_RETROSPECTIVE_ROLE);
     System.out.printf("  issues of at least one business day: inner fitting %,d of %,d, inner "
@@ -175,9 +174,11 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
         population.all().innerSelection(), population.kept().train(), population.all().train());
     final TailCut.Choice cut = r.cut();
     System.out.printf("  tail cut: %s; %s%n", TailCut.RULE, TailCut.QUANTILES);
+    System.out.printf("  %s%n", ElasticNetSelection.TAIL_CUT_MODEL);
     System.out.printf("  usual-flow fence (k %s) %.3f bd on the inner fitting set; each k's "
-        + "own_with_similarity on the usual-flow validation issues (k: fence bd, fitting rows, "
-        + "MAE bd)%n", TailCut.label(TailCut.USUAL_FLOW_K), cut.usualFence());
+        + "%s on the usual-flow validation issues (k: fence bd, fitting rows, MAE bd)%n",
+        TailCut.label(TailCut.USUAL_FLOW_K), cut.usualFence(),
+        ElasticNetSelection.BEFORE_PRESSURE);
     for (final TailCut.Trial t : cut.grid()) {
       System.out.printf("    %-5s %10.3f %,8d %.3f%s%n", TailCut.label(t.k()), t.fence(),
           t.fitRows(), t.mae(), t.k() == cut.k() ? "  chosen" : "");
@@ -259,11 +260,6 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     run.put("population_rows", populationRows(population));
     run.put("silence", population.silence());
     run.put("models", ElasticNetSelection.MODELS);
-    // not in statements(), which the test's record shares
-    run.put("retrospective_before_pressure",
-        ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE_ROLE);
-    run.put("kikas_retrospective", ElasticNetSelection.KIKAS_RETROSPECTIVE_ROLE);
-    run.put("own_retrospective_with_discussion", ElasticNetSelection.WITH_DISCUSSION_ROLE);
     run.put("matrix_sha256", matrixSha);
     run.put("parameters_sha256", parametersSha);
     run.put("jaccard_n", Augmentation.JACCARD_N);
@@ -299,8 +295,9 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
       throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
           + parameters + " exists and is not a file of this step's choices in its current "
           + "format, for the models " + ElasticNetSelection.MODELS + "; it may be the registered "
-          + "chain's, or this step's from an earlier format, without the forests or for the "
-          + "models before ticket 12, and is never overwritten"));
+          + "chain's, or this step's from an earlier format, for the eleven models before the "
+          + "fourteen were settled, without the tail cut or the forests, or for the models "
+          + "before ticket 12, and is never overwritten"));
     }
   }
 
@@ -375,6 +372,8 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     out.put("forest_role", FOREST_ROLE);
     out.put("retrospective_scenario", Retrospective.SCENARIO);
     out.put("own_retrospective", ElasticNetSelection.RETROSPECTIVE_ROLE);
+    out.put("own_retrospective_with_discussion", ElasticNetSelection.WITH_DISCUSSION_ROLE);
+    out.put("kikas_retrospective", ElasticNetSelection.KIKAS_RETROSPECTIVE_ROLE);
     return out;
   }
 
@@ -390,11 +389,16 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     return out;
   }
 
-  /** The tail cut as a document: its rule, the chosen k, both fences and every k swept. */
+  /**
+   * The tail cut as a document: its rule, the model the k is chosen on, the chosen k, both fences
+   * and every k swept.
+   */
   static Map<String, Object> tailCut(final TailCut.Choice cut) {
     final Map<String, Object> out = new LinkedHashMap<>();
     out.put("rule", TailCut.RULE);
     out.put("quantiles", TailCut.QUANTILES);
+    out.put("chosen_on", ElasticNetSelection.BEFORE_PRESSURE);
+    out.put("chosen_on_rule", ElasticNetSelection.TAIL_CUT_MODEL);
     out.put("k", TailCut.label(cut.k()));
     out.put("fence_business_days", cut.fence());
     out.put("usual_flow_k", TailCut.label(TailCut.USUAL_FLOW_K));
@@ -453,11 +457,11 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
    * A file this step wrote and nothing appended to: its header and its own lines only, every one
    * of them an Elastic Net line for the matrix's inputs or for one of {@link
    * ElasticNetSelection#MODELS}, a forest line for one of those models, or a tail cut line (which
-   * {@link ElasticNetSelection#tailCut} reads whole or refuses). A file written before ticket 23,
-   * without the tail cut, has another header, as has one written before ticket 13, without the
-   * forests, or one of ticket 14's six models, without the retrospective one; one of the
-   * models before ticket 12 ({@code previous_own_start}, {@code revised_nine}, ...) is told
-   * apart by its model names.
+   * {@link ElasticNetSelection#tailCut} reads whole or refuses). A file written for the eleven
+   * models before the fourteen were settled has another header, as has one written before ticket
+   * 23, without the tail cut, one written before ticket 13, without the forests, or one of ticket
+   * 14's six models, without the retrospective one; one of the models before ticket 12 ({@code
+   * previous_own_start}, {@code revised_nine}, ...) is told apart by its model names.
    */
   static boolean onlyThisStep(final List<String> lines) {
     if (lines.isEmpty() || !ElasticNetSelection.HEADER.equals(lines.get(0))) {

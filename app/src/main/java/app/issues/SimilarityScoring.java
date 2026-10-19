@@ -29,22 +29,15 @@ import java.util.concurrent.Callable;
  * outer training and the outer test are the inner fitting and the inner validation in the inner
  * scope.
  *
- * <p><b>Models</b>, twenty-five in the inner report, in this order: the three references learned
- * on the outer training set -- the global median, the project median and the executor-project
- * median, as the registered chain learns them; the eleven Elastic Net models of {@link
- * ElasticNetSelection#cells(Map, Augmentation.Variant)}, in the outer variant, each model with the
- * similarity medians reading them at the Jaccard n, embedding n and cluster k chosen for it, the
- * retrospective one's main reading seventh (ticket 15), the own start model, without the pressure
- * attributes, eighth (items 36 and 49), the main reading without urgency ninth (item 43), Kikas's
- * retrospective one tenth (item 59) and the retrospective one with the comments and the
- * participants, a ceiling and not a competitor, last; and the eleven random forests beside them
- * ({@link #forest(String)}), a robustness check (ticket 13). The test scores nineteen, all but the
- * ninth, the tenth and the eleventh Elastic Net and their forests ({@link Scope#scores}): ticket
- * 20 added the ninth to the inner report only, and which models the outer test reads is not
- * decided (item 39); ticket 26 the tenth, which ticket 25 adds to the outer test; the ceiling is
- * the inner report's until the models of the outer test are settled again.
- * A similarity median is an attribute of the models that read it and is never
- * scored alone (ticket 11).
+ * <p><b>Models</b>, fourteen, the same in both scopes, in this order: the two references learned
+ * on the fitting side -- the global median and the project median, as the registered chain
+ * learns them; the six Elastic Net models of {@link ElasticNetSelection#cells(Map,
+ * Augmentation.Variant)}, in the scope's variant, each model with the similarity medians reading
+ * them at the Jaccard n, embedding n and cluster k chosen for it: the own start model, Al-Zubaidi
+ * and Kikas at the start, the main reading of the own retrospective model, the same with the
+ * comments and the participants, a ceiling and not a competitor, and Kikas's retrospective one;
+ * and the six random forests beside them ({@link #forest(String)}), a robustness check. A
+ * similarity median is an attribute of the models that read it and is never scored alone.
  *
  * <p><b>Refit.</b> As the registered reserved run does it: the alpha given, the lambda given
  * times the ratio of the outer training rows to the inner fitting rows ({@link
@@ -55,9 +48,16 @@ import java.util.concurrent.Callable;
  *
  * <p><b>Forests.</b> Each on the rows, columns, missing indicators and removals of its Elastic Net
  * twin (every column it kept, weighted or not), at the point of the grid the selection chose
- * ({@link Forest#frozen}): the same count of columns drawn at each split and the same leaf. Per
- * forest, the permutation importance of each design column on the outer test is kept, a
- * diagnostic.
+ * ({@link Forest#frozen}): the same count of columns drawn at each split and the same leaf. In
+ * the inner report only, per forest, the permutation importance of each design column on the
+ * scored issues is kept; the outer test reads none, which would read its labels column by
+ * column.
+ *
+ * <p><b>Relevance</b> ({@link #relevance}). Per Elastic Net model, each standardised column's
+ * coefficient in the refit, with its 95% interval from resampling whole projects of the fitting
+ * side: on each of the same draws the comparisons read, the model refitted as above on the drawn
+ * projects' fitting rows. The same in both scopes; on the outer test it reads the outer training
+ * set alone.
  *
  * <p><b>Readings.</b> Per model: the error, Spearman and pairwise ordering ({@link Score}), the
  * error's distribution with the slowest tenth left out ({@link Breakdown#errors}) and the error by
@@ -99,20 +99,32 @@ public final class SimilarityScoring {
 
   public static final String GLOBAL = "global_median";
   public static final String PROJECT = "project_median";
-  public static final String PAIR = "executor_project_median";
 
   private static final String RETROSPECTIVE = ElasticNetSelection.RETROSPECTIVE;
 
-  private static final String WITH_SIMILARITY = "own_with_similarity";
-
   private static final String BEFORE_PRESSURE = ElasticNetSelection.BEFORE_PRESSURE;
-
-  private static final String RETROSPECTIVE_BEFORE_PRESSURE =
-      ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE;
 
   private static final String KIKAS_RETROSPECTIVE = ElasticNetSelection.KIKAS_RETROSPECTIVE;
 
   private static final String WITH_DISCUSSION = ElasticNetSelection.WITH_DISCUSSION;
+
+  /**
+   * The agreed comparisons of two Elastic Net models, {@code a} against {@code b}, in their order;
+   * the forests compare in the same pairs. The own start model against Al-Zubaidi and against
+   * Kikas at the start, the own attributes against the literature's; the main reading of the
+   * retrospective model against the own start model it builds on, what the structure of the
+   * change observed up to the resolution adds to the start; the ceiling against the main reading,
+   * what the comments and the participants add; the ceiling against Kikas's retrospective model,
+   * both counting comments, the fair literature comparison; the main reading against Kikas's,
+   * Kikas's counting comments and the main reading not.
+   */
+  public static final List<String[]> AGREED = List.of(
+      new String[] {BEFORE_PRESSURE, ElasticNetSelection.ALZUBAIDI_START},
+      new String[] {BEFORE_PRESSURE, ElasticNetSelection.KIKAS_START},
+      new String[] {RETROSPECTIVE, BEFORE_PRESSURE},
+      new String[] {WITH_DISCUSSION, RETROSPECTIVE},
+      new String[] {WITH_DISCUSSION, KIKAS_RETROSPECTIVE},
+      new String[] {RETROSPECTIVE, KIKAS_RETROSPECTIVE});
 
   /**
    * The comparisons of the side reading on the scored issues with an implementation commit: the
@@ -120,8 +132,9 @@ public final class SimilarityScoring {
    * Net and forest.
    */
   public static final List<String[]> WITH_COMMITS = List.of(
-      new String[] {RETROSPECTIVE, BEFORE_PRESSURE},
-      new String[] {forest(RETROSPECTIVE), forest(BEFORE_PRESSURE)});
+      new String[] {ElasticNetSelection.RETROSPECTIVE, ElasticNetSelection.BEFORE_PRESSURE},
+      new String[] {forest(ElasticNetSelection.RETROSPECTIVE),
+          forest(ElasticNetSelection.BEFORE_PRESSURE)});
 
   private static final Population P = Population.IN_PROGRESS;
 
@@ -167,17 +180,11 @@ public final class SimilarityScoring {
     }
 
     /**
-     * Whether this scope refits and scores the given Elastic Net model and its forest: the inner
-     * report every one; the test all but {@link
-     * ElasticNetSelection#RETROSPECTIVE_BEFORE_PRESSURE}, which ticket 20 added to the inner
-     * report only, so the test scores what it scored before (item 39 decides what it reads),
-     * {@link ElasticNetSelection#KIKAS_RETROSPECTIVE}, which ticket 26 added to the inner report
-     * and ticket 25 adds to the test, and {@link ElasticNetSelection#WITH_DISCUSSION}, the
-     * ceiling, which the inner report reads until the models of the outer test are settled again.
+     * Whether the forests' permutation importance is read on the scored issues: in the inner
+     * report only. On the outer test it would read the test's labels column by column.
      */
-    public boolean scores(final String model) {
-      return this == INNER || !model.equals(RETROSPECTIVE_BEFORE_PRESSURE)
-          && !model.equals(KIKAS_RETROSPECTIVE) && !model.equals(WITH_DISCUSSION);
+    public boolean importance() {
+      return this == INNER;
     }
   }
 
@@ -207,6 +214,25 @@ public final class SimilarityScoring {
    */
   public record Fences(double k, double fence, double usualFence, int uncutFitRows,
       int usualRows, int allRows) {}
+
+  /**
+   * One standardised column of an Elastic Net model: its coefficient in the refit, whether the
+   * estimator kept it, and the 95% interval of its coefficient from resampling whole projects of
+   * the fitting side, the model refitted on each draw (a column constant on a draw's rows carries
+   * nothing there, zero).
+   */
+  public record Coefficient(String column, double coefficient, boolean selected, double low,
+      double high) {}
+
+  /**
+   * One Elastic Net model's relevance: per standardised column of its refit, in the design's
+   * order, its {@link Coefficient}.
+   *
+   * @param fitRows the fitting rows of the refit, whose projects the draws resample
+   * @param projects how many projects those rows hold
+   */
+  public record Relevance(String model, int fitRows, int projects,
+      List<Coefficient> coefficients) {}
 
   /** Both readings of one fit: the usual flow, the main one, and every scored issue. */
   public record Readings(Report main, Report complementary) {}
@@ -343,8 +369,7 @@ public final class SimilarityScoring {
     }
     BusinessDays.counted(entries);
     final List<Cell> cells =
-        ElasticNetSelection.cells(ElasticNetSelection.combinations(choices), scope.variant())
-            .stream().filter(c -> scope.scores(c.label())).toList();
+        ElasticNetSelection.cells(ElasticNetSelection.combinations(choices), scope.variant());
     final Fitting.Sides whole = ElasticNetSelection.flagged(
         Fitting.sides(entries, scope.mode(), P), cells);
     final double fence = TailCut.fence(whole.fitUnits(), k);
@@ -355,10 +380,7 @@ public final class SimilarityScoring {
     final Fences fences = new Fences(k, fence, usualFence, whole.fitUnits().size(),
         TailCut.usualFlow(cut, usualFence).scoreUnits().size(), cut.scoreUnits().size());
     // the rows the lambdas were chosen on: the inner fitting set cut at its own fence of this k
-    final List<IssueUnit> innerFit = Fitting.sides(entries, Fitting.Mode.INNER, P).fitUnits();
-    final double innerFence = TailCut.fence(innerFit, k);
-    final int innerFitRows = (int) innerFit.stream().filter(u -> u.duration() <= innerFence)
-        .count();
+    final int innerFitRows = innerFitRows(entries, k);
     final int fitRows = sides.fitUnits().size();
     final double[] observed = sides.observed();
     final List<String> projects = sides.projects();
@@ -375,8 +397,6 @@ public final class SimilarityScoring {
     final List<Scored> models = new ArrayList<>();
     models.add(given(GLOBAL, globalMedian, observed, projectMae, constantMae, tops));
     models.add(given(PROJECT, projectMedian, observed, projectMae, constantMae, tops));
-    models.add(given(PAIR, refs.pairMedian(sides.scoreUnits()), observed, projectMae,
-        constantMae, tops));
 
     final List<Callable<Scored>> refits = new ArrayList<>(cells.size());
     for (final Cell cell : cells) {
@@ -403,7 +423,7 @@ public final class SimilarityScoring {
             ElasticNetSelection.kept(cell, sides.fitRows(), scope.fittingSet());
         final String name = forest(cell.label());
         final Forest.Frozen f = Forest.frozen(new Cell(name, cell.family(), cell.scenario(),
-            kept.cell().attributes()), sides, c, projectMae, constantMae);
+            kept.cell().attributes()), sides, c, projectMae, constantMae, scope.importance());
         return new Scored(name, "forest", f.predicted(), f.score(),
             Breakdown.errors(f.predicted(), observed),
             BusinessDays.bands(f.predicted(), observed, tops), null, kept.removed(), f);
@@ -455,6 +475,102 @@ public final class SimilarityScoring {
         unseen, unseenRows, withCommit.size(), side, commit, contrast, List.copyOf(orderings));
   }
 
+  /**
+   * The relevance section ({@link Relevance}), on the threads {@link Parallel} asks for: per
+   * Elastic Net model, in {@link ElasticNetSelection#MODELS}' order, each standardised column's
+   * coefficient in the refit of {@link #readings} at {@code k} and its 95% interval from
+   * resampling whole projects of the scope's fitting side.
+   */
+  public static List<Relevance> relevance(final List<RowCache.Entry> entries,
+      final Map<String, ElasticNetSelection.Choice> choices, final double k, final Scope scope) {
+    return relevance(entries, choices, k, scope, Parallel.threads(Parallel.BOOTSTRAP_THREADS));
+  }
+
+  /**
+   * {@link #relevance(List, Map, double, Scope)} with each model's draws evaluated on up to
+   * {@code drawThreads} threads, the same bits on any number.
+   *
+   * <p>The refit is the one the scores read: the fitting rows at or below the fence of {@code k},
+   * taken on the scope's fitting side, the declared columns missing on every one of them
+   * removed, the alpha given and the lambda as the scores fit it. Each draw takes the projects of
+   * the fitting rows with replacement, from the same {@link ProjectBootstrap#DRAWS} draws and seed
+   * every interval reads, keeps every fitting row of each project drawn (a project drawn twice
+   * counted twice), and refits the model on them as the refit was made: the design matrix
+   * learned on the drawn rows -- the medians that fill a gap and the means and spreads that
+   * standardise --, the same alpha, and the lambda times the drawn rows over the fitting rows,
+   * since the estimator sums the squared error over rows, as the outer refit scales it. A column
+   * constant on a draw's rows carries nothing there and counts as zero. Reads no scored issue.
+   */
+  public static List<Relevance> relevance(final List<RowCache.Entry> entries,
+      final Map<String, ElasticNetSelection.Choice> choices, final double k, final Scope scope,
+      final int drawThreads) {
+    if (!new LinkedHashSet<>(ElasticNetSelection.MODELS).equals(choices.keySet())) {
+      throw new IllegalArgumentException("the parameters hold alpha and lambda for "
+          + choices.keySet() + "; the models are " + ElasticNetSelection.MODELS);
+    }
+    BusinessDays.counted(entries);
+    final List<Cell> cells =
+        ElasticNetSelection.cells(ElasticNetSelection.combinations(choices), scope.variant());
+    final Fitting.Sides whole = ElasticNetSelection.flagged(
+        Fitting.sides(entries, scope.mode(), P), cells);
+    final Fitting.Sides cut = TailCut.cut(whole, TailCut.fence(whole.fitUnits(), k));
+    final int fitRows = cut.fitUnits().size();
+    final int innerFitRows = innerFitRows(entries, k);
+    final List<String> projects = cut.fitUnits().stream().map(IssueUnit::project).toList();
+    final int projectCount = new HashSet<>(projects).size();
+    final List<Relevance> out = new ArrayList<>(cells.size());
+    for (final Cell cell : cells) {
+      final ElasticNetSelection.Choice c = choices.get(cell.label());
+      final ElasticNetSelection.Kept kept =
+          ElasticNetSelection.kept(cell, cut.fitRows(), scope.fittingSet());
+      final double lambda = scope == Scope.INNER ? c.lambda()
+          : Fitting.finalLambda(c.lambda(), fitRows, innerFitRows);
+      // the refit the scores read, on the fitting rows alone: the same coefficients bit for bit
+      final Map<String, Double> point = Fitting.coefficients(kept.cell(), cut.fitRows(),
+          cut.fitUnits(), c.alpha(), lambda);
+      final List<String> columns = List.copyOf(point.keySet());
+      final double[][] spread = ProjectBootstrap.intervals(projects, columns.size(), sample -> {
+        final List<app.study.Row> rows = new ArrayList<>(sample.size());
+        final List<IssueUnit> units = new ArrayList<>(sample.size());
+        for (final int i : sample) {
+          rows.add(cut.fitRows().get(i));
+          units.add(cut.fitUnits().get(i));
+        }
+        final Map<String, Double> w = Fitting.coefficients(kept.cell(), rows, units, c.alpha(),
+            lambda * sample.size() / fitRows);
+        final double[] v = new double[columns.size()];
+        for (int j = 0; j < v.length; j++) {
+          v[j] = w.getOrDefault(columns.get(j), 0.0);
+        }
+        return v;
+      }, drawThreads);
+      // kept by the estimator as the scores' refit reads it: against the declared threshold
+      double largest = 0;
+      for (final double w : point.values()) {
+        largest = Math.max(largest, Math.abs(w));
+      }
+      final List<Coefficient> coefficients = new ArrayList<>(columns.size());
+      for (int j = 0; j < columns.size(); j++) {
+        final double w = point.get(columns.get(j));
+        coefficients.add(new Coefficient(columns.get(j), w, largest > 0
+            && Math.abs(w) / largest >= app.model.ElasticNetModel.SELECTION_THRESHOLD,
+            spread[j][0], spread[j][1]));
+      }
+      out.add(new Relevance(cell.label(), fitRows, projectCount, List.copyOf(coefficients)));
+    }
+    return List.copyOf(out);
+  }
+
+  /**
+   * The rows the given lambdas were chosen on: the inner fitting set cut at its own fence of
+   * {@code k}, which the final lambda scales by in the reserved scope.
+   */
+  private static int innerFitRows(final List<RowCache.Entry> entries, final double k) {
+    final List<IssueUnit> innerFit = Fitting.sides(entries, Fitting.Mode.INNER, P).fitUnits();
+    final double innerFence = TailCut.fence(innerFit, k);
+    return (int) innerFit.stream().filter(u -> u.duration() <= innerFence).count();
+  }
+
   /** The pairs of {@link #WITH_COMMITS} on the given scored rows only, resampling their projects. */
   private static List<ProjectBootstrap.Gap> side(final List<Integer> rows,
       final List<String> projects, final Map<String, double[]> errors, final int drawThreads) {
@@ -487,21 +603,11 @@ public final class SimilarityScoring {
 
   /**
    * The paired comparisons, {@code a} against {@code b}, and only these. First, of the references
-   * and Elastic Net models: the own specification with similarity against the same without the
-   * similarity medians, what similarity adds beside the other attributes; the main reading of the
-   * retrospective model against the own start model it builds on, what the structure of the
-   * change observed up to the resolution adds to the start (ticket 15); the own specification
-   * with similarity against the same without the pressure attributes, what the three start
-   * columns add (items 29 i and 36); the main reading against the same without urgency, what
-   * urgency adds to it (item 43); the main reading against Kikas's retrospective model, the own
-   * against the literature's retrospective set, Kikas's counting comments and the main reading
-   * not (item 59); the reading with the comments and the participants, the ceiling, against the
-   * main reading, what those two add; the ceiling against Kikas's, both counting comments, the
-   * fair literature comparison; then each of them against the global median, and each but the
-   * global median against the project median, so the two references are compared once. Then, of
-   * the forests (ticket 13), in the order of {@code models}: each forest against its Elastic Net;
-   * then the forests of the same pairs as the Elastic Nets', in the same order; each forest
-   * against the global median; each forest against the project median.
+   * and Elastic Net models: the pairs of {@link #AGREED}; then each of them against the global
+   * median, and each but the global median against the project median, so the two references are
+   * compared once. Then, of the forests, in the order of {@code models}: the forests of the same
+   * agreed pairs, in the same order; each forest against the global median; each forest against
+   * the project median. A pair is drawn only when both its models are among {@code models}.
    */
   public static List<String[]> pairs(final List<String> models) {
     final List<String> forests = new ArrayList<>();
@@ -510,25 +616,11 @@ public final class SimilarityScoring {
     }
     final List<String> linear = models.stream().filter(m -> !forests.contains(m)).toList();
     final List<String> trees = models.stream().filter(forests::contains).toList();
-    final List<String[]> out = new ArrayList<>(List.<String[]>of(
-        new String[] {"own_with_similarity", "own_without_similarity"}));
-    if (linear.containsAll(List.of(RETROSPECTIVE, BEFORE_PRESSURE))) {
-      out.add(WITH_COMMITS.get(0));
-    }
-    if (linear.containsAll(List.of(WITH_SIMILARITY, BEFORE_PRESSURE))) {
-      out.add(new String[] {WITH_SIMILARITY, BEFORE_PRESSURE});
-    }
-    if (linear.containsAll(List.of(RETROSPECTIVE, RETROSPECTIVE_BEFORE_PRESSURE))) {
-      out.add(new String[] {RETROSPECTIVE, RETROSPECTIVE_BEFORE_PRESSURE});
-    }
-    if (linear.containsAll(List.of(RETROSPECTIVE, KIKAS_RETROSPECTIVE))) {
-      out.add(new String[] {RETROSPECTIVE, KIKAS_RETROSPECTIVE});
-    }
-    if (linear.containsAll(List.of(WITH_DISCUSSION, RETROSPECTIVE))) {
-      out.add(new String[] {WITH_DISCUSSION, RETROSPECTIVE});
-    }
-    if (linear.containsAll(List.of(WITH_DISCUSSION, KIKAS_RETROSPECTIVE))) {
-      out.add(new String[] {WITH_DISCUSSION, KIKAS_RETROSPECTIVE});
+    final List<String[]> out = new ArrayList<>();
+    for (final String[] pair : AGREED) {
+      if (linear.containsAll(List.of(pair))) {
+        out.add(pair);
+      }
     }
     for (final String m : linear) {
       if (!m.equals(GLOBAL)) {
@@ -540,34 +632,10 @@ public final class SimilarityScoring {
         out.add(new String[] {m, PROJECT});
       }
     }
-    if (trees.isEmpty()) {
-      return List.copyOf(out);
-    }
-    for (final String f : trees) {
-      out.add(new String[] {f, f.substring(0, f.length() - forest("").length())});
-    }
-    if (trees.containsAll(List.of(forest("own_with_similarity"),
-        forest("own_without_similarity")))) {
-      out.add(new String[] {forest("own_with_similarity"), forest("own_without_similarity")});
-    }
-    if (trees.containsAll(List.of(forest(RETROSPECTIVE), forest(BEFORE_PRESSURE)))) {
-      out.add(WITH_COMMITS.get(1));
-    }
-    if (trees.containsAll(List.of(forest(WITH_SIMILARITY), forest(BEFORE_PRESSURE)))) {
-      out.add(new String[] {forest(WITH_SIMILARITY), forest(BEFORE_PRESSURE)});
-    }
-    if (trees.containsAll(List.of(forest(RETROSPECTIVE),
-        forest(RETROSPECTIVE_BEFORE_PRESSURE)))) {
-      out.add(new String[] {forest(RETROSPECTIVE), forest(RETROSPECTIVE_BEFORE_PRESSURE)});
-    }
-    if (trees.containsAll(List.of(forest(RETROSPECTIVE), forest(KIKAS_RETROSPECTIVE)))) {
-      out.add(new String[] {forest(RETROSPECTIVE), forest(KIKAS_RETROSPECTIVE)});
-    }
-    if (trees.containsAll(List.of(forest(WITH_DISCUSSION), forest(RETROSPECTIVE)))) {
-      out.add(new String[] {forest(WITH_DISCUSSION), forest(RETROSPECTIVE)});
-    }
-    if (trees.containsAll(List.of(forest(WITH_DISCUSSION), forest(KIKAS_RETROSPECTIVE)))) {
-      out.add(new String[] {forest(WITH_DISCUSSION), forest(KIKAS_RETROSPECTIVE)});
+    for (final String[] pair : AGREED) {
+      if (trees.containsAll(List.of(forest(pair[0]), forest(pair[1])))) {
+        out.add(new String[] {forest(pair[0]), forest(pair[1])});
+      }
     }
     for (final String f : trees) {
       out.add(new String[] {f, GLOBAL});

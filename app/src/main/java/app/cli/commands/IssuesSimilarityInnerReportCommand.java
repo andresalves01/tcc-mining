@@ -14,6 +14,7 @@ import app.issues.RowCache;
 import app.issues.SimilarityScoring;
 import app.issues.TailCut;
 import app.issues.Universe.Population;
+import app.issues.model.Forest;
 import app.issues.model.ProjectBootstrap;
 import app.model.Parallel;
 import app.study.model.Breakdown;
@@ -29,15 +30,12 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * The inner report of the description-similarity chain (ticket 16): twenty-five models -- the
- * nineteen of the test, the three medians, eight Elastic Nets and their eight forests; the ninth
- * Elastic Net, the main reading of the retrospective model without urgency (ticket 20), the
- * tenth, Kikas's retrospective model (ticket 26), and the eleventh, the retrospective model with
- * the comments and the participants, a ceiling and not a competitor, with their forests, which
- * the test does not score -- refitted on the inner fitting rows at the choices of the parameters
- * file and scored on the inner validation, by the study's own scoring ({@link
- * SimilarityScoring}, {@link SimilarityScoring.Scope#INNER}),
- * in whole business days on the issues of at least one ({@link BusinessDays}).
+ * The inner report of the description-similarity chain (ticket 16): the fourteen models the
+ * outer test scores -- the global and project medians, the six Elastic Nets of {@link
+ * ElasticNetSelection#MODELS} and their forests -- refitted on the inner fitting rows at the
+ * choices of the parameters file and scored on the inner validation, by the study's own scoring
+ * ({@link SimilarityScoring}, {@link SimilarityScoring.Scope#INNER}), in whole business days on
+ * the issues of at least one ({@link BusinessDays}).
  *
  * <p><b>Tail cut and two readings</b> (ticket 23; {@link TailCut}). The models are fitted on the
  * inner fitting rows at or below the fence of the k the parameters file records, the fences taken
@@ -49,6 +47,12 @@ import java.util.function.Function;
  * and how many issues each reading holds; each file's first column names the reading. The
  * predictions file holds every validation issue, with whether it is of the usual flow; the
  * coefficients and the permutation importance are the main reading's.
+ *
+ * <p><b>Relevance</b> ({@link SimilarityScoring#relevance}). Per Elastic Net model, each
+ * standardised column's coefficient with its 95% interval from resampling whole projects of the
+ * inner fitting set ({@link #RELEVANCE}); per forest, the ten columns of the largest permutation
+ * importance on the usual-flow validation issues, each with the spread of its repeats. A reading
+ * of which attributes carry the models, not a choice of any.
  *
  * <p><b>Prediction intervals</b> (ticket 24; {@link PredictionIntervals}). Calibrated on the
  * usual-flow validation issues of half A, one factor per model and level, checked on half B in
@@ -77,15 +81,15 @@ import java.util.function.Function;
  * ordering and the error's quantiles ({@link #MODELS}); the error by band of the true business
  * days, the bands at the quartiles of the cut fitting rows ({@link #BANDS}, ticket 24); the
  * prediction intervals checked on half B ({@link #INTERVALS}) and the calibration recomputed on
- * both halves for later use ({@link #CALIBRATION}); the paired comparisons of the test, which
- * hold every model against the global and the project median, the main reading of the
- * retrospective model against the own start model, against itself without urgency and against
+ * both halves for later use ({@link #CALIBRATION}); the paired comparisons of the test ({@link SimilarityScoring#pairs}), which hold every model
+ * against the global and the project median, the own start model against Al-Zubaidi and Kikas at
+ * the start, the main reading of the retrospective model against the own start model and against
  * Kikas's, and the ceiling against the main reading and against Kikas's, Elastic Net and forest,
  * and the side reading of the main reading's pair with the own start model on the issues with and
- * without an implementation commit ({@link
- * #COMPARISONS}); the ordering intervals, a declared measure ({@link #ORDERING}); the Elastic Nets'
- * coefficients and the forests' permutation importance on the inner validation, as the test writes
- * them ({@link #DIAGNOSTICS}, {@link #IMPORTANCE}).
+ * without an implementation commit ({@link #COMPARISONS}); the ordering intervals, a declared
+ * measure ({@link #ORDERING}); the Elastic Nets' coefficients as the test writes them ({@link
+ * #DIAGNOSTICS}) and with their intervals ({@link #RELEVANCE}); the forests' permutation
+ * importance on the inner validation ({@link #IMPORTANCE}).
  */
 public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
 
@@ -101,9 +105,13 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
   public static final String IMPORTANCE = "similarity-inner-forest-importance.tsv";
   public static final String INTERVALS = "similarity-inner-intervals.tsv";
   public static final String CALIBRATION = "similarity-inner-calibration.tsv";
+  public static final String RELEVANCE = "similarity-inner-relevance.tsv";
 
   private static final List<String> OUTPUTS = List.of(REPORT, PREDICTIONS, MODELS, BANDS,
-      COMPARISONS, ORDERING, DIAGNOSTICS, IMPORTANCE, INTERVALS, CALIBRATION);
+      COMPARISONS, ORDERING, DIAGNOSTICS, IMPORTANCE, INTERVALS, CALIBRATION, RELEVANCE);
+
+  /** How many columns of each forest the relevance section names, the largest importance first. */
+  static final int TOP_IMPORTANCE = 10;
 
   /** What the report states first. */
   static final String OPTIMISTIC = "every figure here is optimistic: the settings (alpha, "
@@ -190,6 +198,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     }
     final BusinessDays.Population population;
     final SimilarityScoring.Readings readings;
+    final List<SimilarityScoring.Relevance> relevance;
     try {
       population = BusinessDays.population(training, Augmentation.Variant.INNER);
       // the same inner fitting set as the selection's, by the matrix's hash: the same fences,
@@ -206,6 +215,8 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
       }
       readings = SimilarityScoring.readings(population.entries(), chosen.choices(),
           chosen.forests(), chosen.cut().k(), SimilarityScoring.Scope.INNER);
+      relevance = SimilarityScoring.relevance(population.entries(), chosen.choices(),
+          chosen.cut().k(), SimilarityScoring.Scope.INNER);
     } catch (final IllegalArgumentException e) {
       throw refused(e.getMessage());
     }
@@ -216,7 +227,8 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
         PredictionIntervals.Sample.of(readings.complementary()),
         Parallel.threads(Parallel.BOOTSTRAP_THREADS));
     final Map<String, List<String>> files = new LinkedHashMap<>();
-    files.put(REPORT, report(readings, intervals, population, chosen, matrix, elasticNet));
+    files.put(REPORT, report(readings, intervals, relevance, population, chosen, matrix,
+        elasticNet));
     files.put(PREDICTIONS, predictions(readings));
     files.put(MODELS, models(readings));
     files.put(BANDS, bands(readings));
@@ -226,6 +238,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     files.put(IMPORTANCE, IssuesSimilarityTestCommand.importance(main));
     files.put(INTERVALS, intervals(intervals, main.bandTops()));
     files.put(CALIBRATION, calibration(intervals));
+    files.put(RELEVANCE, IssuesSimilarityTestCommand.relevance(relevance));
     files.get(REPORT).forEach(line -> System.out.println("  " + line));
     try {
       Files.createDirectories(reports);
@@ -348,7 +361,8 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
    * validation issue.
    */
   static List<String> report(final SimilarityScoring.Readings readings,
-      final PredictionIntervals.Inner intervals, final BusinessDays.Population population,
+      final PredictionIntervals.Inner intervals,
+      final List<SimilarityScoring.Relevance> relevance, final BusinessDays.Population population,
       final IssuesSimilarityTestCommand.Chosen chosen, final Path matrix,
       final Path elasticNet) {
     final SimilarityScoring.Report r = readings.complementary();
@@ -378,7 +392,9 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     md.add(f("- readings: main, %s: %d inner validation issues; complementary, %s: %d",
         TailCut.Reading.USUAL_FLOW.description(), readings.main().scoredRows(),
         TailCut.Reading.ALL.description(), r.scoredRows()));
-    md.add("- each k on own_with_similarity, its error on the usual-flow validation issues: "
+    md.add("- " + ElasticNetSelection.TAIL_CUT_MODEL);
+    md.add("- each k on " + ElasticNetSelection.BEFORE_PRESSURE + ", its error on the usual-flow "
+        + "validation issues: "
         + String.join("; ", chosen.cut().grid().stream().map(t -> f("k %s, fence %s, %d "
             + "fitting issues, MAE %.3f%s", TailCut.label(t.k()), t.fence(), t.fitRows(),
             t.mae(), t.k() == fences.k() ? " (chosen)" : "")).toList()));
@@ -391,12 +407,10 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
         + ElasticNetSelection.RETROSPECTIVE_ROLE);
     md.add("- " + ElasticNetSelection.WITH_DISCUSSION + ": "
         + ElasticNetSelection.WITH_DISCUSSION_ROLE);
-    md.add("- " + ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE + ": "
-        + ElasticNetSelection.RETROSPECTIVE_BEFORE_PRESSURE_ROLE);
     md.add("- " + ElasticNetSelection.KIKAS_RETROSPECTIVE + ": "
         + ElasticNetSelection.KIKAS_RETROSPECTIVE_ROLE);
-    md.add("- the Elastic Nets' coefficients and the forests' permutation importance, in the files "
-        + "beside this one, are the main reading's");
+    md.add("- the Elastic Nets' coefficients and the forests' permutation importance, here and in "
+        + "the files beside this one, are the main reading's");
     md.add(f("- error bands: %s; here %s business days, of the %d cut inner fitting issues; %s",
         BusinessDays.BANDS, BusinessDays.bandLimits(r.bandTops()), r.fitRows(),
         TailCut.QUANTILES));
@@ -416,6 +430,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     md.add("");
     section(md, readings.main(), intervals, "Main reading: the usual flow");
     section(md, r, intervals, "Complementary reading: all issues");
+    relevance(md, relevance, readings.main());
     md.add("Files beside this one: " + String.join(", ", OUTPUTS.subList(1, OUTPUTS.size()))
         + ".");
     return md;
@@ -484,6 +499,64 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     }
     md.add("");
     intervalTable(md, r, intervals);
+  }
+
+  /**
+   * The relevance section: per Elastic Net model, every standardised column's coefficient with
+   * its interval resampling whole projects; per forest, the {@link #TOP_IMPORTANCE} columns of
+   * the largest mean permutation importance on the usual-flow validation issues, each with the
+   * smallest and largest of its repeats.
+   */
+  private static void relevance(final List<String> md,
+      final List<SimilarityScoring.Relevance> relevance, final SimilarityScoring.Report main) {
+    md.add("## Attribute relevance");
+    md.add("");
+    md.add("Which attributes carry each model; a reading, nothing here chooses a model or a "
+        + "column.");
+    md.add("");
+    md.add("### Elastic Net: standardised coefficients");
+    md.add("");
+    md.add(IssuesSimilarityTestCommand.RELEVANCE_RULE + ". The scale is log1p of the business "
+        + "days per standard deviation of the column; a column not kept has a weight the "
+        + "estimator leaves near zero.");
+    md.add("");
+    for (final SimilarityScoring.Relevance m : relevance) {
+      md.add(f("#### %s (%d fitting issues, %d projects)", m.model(), m.fitRows(),
+          m.projects()));
+      md.add("");
+      md.add("| column | coefficient [95%] | kept |");
+      md.add("|---|---|---|");
+      for (final SimilarityScoring.Coefficient c : m.coefficients()) {
+        md.add(f("| %s | %+.4f [%+.4f, %+.4f] | %s |", c.column(), c.coefficient(), c.low(),
+            c.high(), c.selected() ? "yes" : "no"));
+      }
+      md.add("");
+    }
+    md.add(f("### Random forest: permutation importance, the %d largest", TOP_IMPORTANCE));
+    md.add("");
+    md.add(f("The rise in MAE, in business days, when one column's values are shuffled among the "
+        + "%d usual-flow validation issues: the mean of %d repeats, and the smallest and largest "
+        + "repeat. Every column is in %s.", main.scoredRows(), Forest.PERMUTATION_REPEATS,
+        IMPORTANCE));
+    md.add("");
+    for (final SimilarityScoring.Scored m : main.models()) {
+      if (m.forest() == null) {
+        continue;
+      }
+      md.add("#### " + m.name());
+      md.add("");
+      md.add("| column | mean rise | smallest, largest repeat |");
+      md.add("|---|---:|---|");
+      m.forest().importance().stream()
+          .sorted((a, b) -> Double.compare(b.meanIncrease(), a.meanIncrease()))
+          .limit(TOP_IMPORTANCE).forEach(i -> {
+            final double[] sorted = i.increases().clone();
+            java.util.Arrays.sort(sorted);
+            md.add(f("| %s | %+.4f | %+.4f, %+.4f |", i.column(), i.meanIncrease(), sorted[0],
+                sorted[sorted.length - 1]));
+          });
+      md.add("");
+    }
   }
 
   /** How many issues of half B the check reads in {@code reading}. */

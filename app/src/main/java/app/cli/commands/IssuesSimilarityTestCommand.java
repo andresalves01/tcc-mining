@@ -35,25 +35,32 @@ import java.util.function.Function;
 
 /**
  * The test step of the description-similarity chain, outer mode only (see {@link
- * SimilarityScoring}): nineteen models -- the global, project and executor-project medians, the
- * first eight Elastic Nets, the retrospective scenario's main reading seventh ({@link
- * Retrospective}), without the comments and the participants, and the own start model, without
- * the pressure attributes, last, and, as a
- * robustness check, the random forest beside each -- refitted on the outer training set with the
- * parameters the selection step wrote, the outer test scored once, every agreed comparison, and
- * the side reading of the retrospective comparison on the issues with an implementation commit. The target is whole business days, on the issues of at least one
- * ({@link BusinessDays}): every row is read with its day boundary from the matrix and any of 0
- * business days is dropped from the outer training and the outer test before anything is fitted
- * (none since ticket 21, the split being drawn over the issues of at least one);
- * every error, band and comparison is in business days.
+ * SimilarityScoring}): the fourteen models the inner report scores -- the global and project
+ * medians, the six Elastic Nets of {@link ElasticNetSelection#MODELS} (the own start model,
+ * Al-Zubaidi and Kikas at the start; the retrospective scenario's main reading ({@link
+ * Retrospective}), without the comments and the participants, the same with them, a ceiling and
+ * not a competitor, and Kikas's retrospective one) and, as a robustness check, the random forest
+ * beside each -- refitted on the outer training set with the parameters the selection step
+ * wrote, the outer test scored once, every agreed comparison, and the side reading of the
+ * retrospective comparison on the issues with an implementation commit. The target is whole
+ * business days, on the issues of at least one ({@link BusinessDays}): every row is read with its
+ * day boundary from the matrix and any of 0 business days is dropped from the outer training and
+ * the outer test before anything is fitted (none since ticket 21, the split being drawn over the
+ * issues of at least one); every error, band and comparison is in business days.
  *
  * <p><b>Tail cut</b> (ticket 23; {@link TailCut}). Every model, forest and reference is refitted
  * on the outer training rows at or below the fence of the k the parameters file records, both
  * fences taken on the outer training set, never on the outer test. Every table is printed and
  * recorded twice, each document with its {@code reading}: on the outer test issues at or below
  * the usual flow's fence, the main reading, and on every one, the complementary reading. The
- * predictions file holds every scored issue; the diagnostics and the forests' permutation
- * importance are the main reading's.
+ * predictions file holds every scored issue; the diagnostics are the main reading's.
+ *
+ * <p><b>Relevance</b> ({@link SimilarityScoring#relevance}). Per Elastic Net model, each
+ * standardised column's coefficient in the refit on the outer training set, with its 95%
+ * interval from resampling whole projects of the outer training set, printed, written ({@link
+ * #RELEVANCE}) and recorded. No forest's permutation importance: shuffling a column among the
+ * outer test's issues and reading the rise in error would read the test's labels column by
+ * column.
  *
  * <p><b>Prediction intervals</b> (ticket 24; {@link PredictionIntervals}). The inner models are
  * refitted as the inner report fits them and calibrated on the whole usual-flow inner validation
@@ -64,21 +71,16 @@ import java.util.function.Function;
  * bands', are cut at the quartiles of the outer training rows fitted.
  *
  * <p>Reads MATRIX and ELASTIC_NET_PARAMETERS, which gives per model its alpha and lambda, for
- * the seven with the similarity medians the Jaccard n, embedding n and cluster k they read, and
- * its forest's column share and leaf; it chooses nothing. The ninth model, the main reading
- * without urgency, the tenth, Kikas's retrospective one (ticket 26), and the eleventh, the
- * retrospective one with the comments and the participants, the ceiling, are in the parameters
- * file but not scored here, nor named in the run record: only the inner report scores them
- * ({@link SimilarityScoring.Scope#scores}). A parameters file
- * without a forest for
- * every model is refused. Refuses, scoring, writing and recording nothing, unless the parameters file
+ * the three with the similarity medians the Jaccard n, embedding n and cluster k they read, and
+ * its forest's column share and leaf; it chooses nothing. A parameters file without a forest for
+ * every model, or written for other models, is refused. Refuses, scoring, writing and recording nothing, unless the parameters file
  * exists and is the step's own, its choices were made on this very matrix (by SHA-256), every
  * row's split is the one its rule draws ({@link ProjectSplit}), and the matrix has every column
  * the models read.
  * Beside the error comparisons, the ordering intervals, a declared measure stated before the
  * outer test was opened ({@link #ORDERING}, {@link ProjectBootstrap#ordering}), printed and
- * recorded. Writes the per-issue predictions, the models' diagnostics and the forests' permutation
- * importance to REPORT_DIR; records the run,
+ * recorded. Writes the per-issue predictions, the models' diagnostics and the relevance to
+ * REPORT_DIR; records the run,
  * with the SHA-256 of every input and output, the time taken, the hardware and the versions, in
  * ISSUES_DB under its own stage name.
  */
@@ -93,10 +95,10 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
   public static final String DIAGNOSTICS = "similarity-test-diagnostics.tsv";
 
   /**
-   * Per forest, each design column's permutation importance on the outer test: the rise in mean
-   * absolute error, in business days, when its values are shuffled. A diagnostic.
+   * Per Elastic Net model, each standardised column's coefficient in the refit on the outer
+   * training set, with its 95% interval from resampling whole projects of the outer training set.
    */
-  public static final String IMPORTANCE = "similarity-test-forest-importance.tsv";
+  public static final String RELEVANCE = "similarity-test-relevance.tsv";
 
   /**
    * The SHA-256 of the two inputs the predictions beside it came from: a rerun is compared with
@@ -107,12 +109,10 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
   /** What the outer test is, a sentence of its own (André, 17/10/2026). */
   static final String EXAMINED = "the outer test is a new draw of 30% per project, seed 1738.";
 
-  private static final String EFFORT = "selection effort differs between families: the two "
-      + "registered cells (Al-Zubaidi, Kikas) chose only alpha and lambda on the 3 x 12 grid; the "
-      + "own specification without similarity chose the same; the "
-      // those this step scores: the ninth and the eleventh models are the inner report's only
-      + ElasticNetSelection.WITH_SIMILARITY.stream()
-          .filter(SimilarityScoring.Scope.RESERVED::scores).count() + " models reading the "
+  private static final String EFFORT = "selection effort differs between families: the three "
+      + "registered cells (Al-Zubaidi and Kikas at the start, Kikas's retrospective one) chose "
+      + "only alpha and lambda on the 3 x 12 grid; the "
+      + ElasticNetSelection.WITH_SIMILARITY.size() + " models reading the "
       + "similarity medians chose also their Jaccard n, embedding n and cluster k among "
       + ElasticNetSelection.Combination.all().size() + " "
       + "combinations, each swept on the same grid; each forest chose its column share and leaf "
@@ -155,9 +155,9 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final Path predictionsFile = reports.resolve(PREDICTIONS);
     final Path diagnosticsFile = reports.resolve(DIAGNOSTICS);
     final Path inputsFile = reports.resolve(INPUTS);
-    final Path importanceFile = reports.resolve(IMPORTANCE);
+    final Path relevanceFile = reports.resolve(RELEVANCE);
     final long began = System.nanoTime();
-    for (final Path out : List.of(predictionsFile, diagnosticsFile, inputsFile, importanceFile)) {
+    for (final Path out : List.of(predictionsFile, diagnosticsFile, inputsFile, relevanceFile)) {
       for (final Path in : List.of(matrix, elasticNet)) {
         if (same(out, in)) {
           throw new CommandFailedException(List.of("  REFUSED, nothing was scored, written or "
@@ -235,8 +235,13 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final long fitting = System.nanoTime();
     final SimilarityScoring.Readings readings;
     final List<PredictionIntervals.Read> intervals;
+    final List<SimilarityScoring.Relevance> relevance;
     try {
       readings = SimilarityScoring.readings(population.entries(), choices, forests, cut.k(),
+          SimilarityScoring.Scope.RESERVED);
+      // the coefficients of the refit on the outer training set, resampling its projects; no
+      // forest's permutation importance, which would read the outer test's labels
+      relevance = SimilarityScoring.relevance(population.entries(), choices, cut.k(),
           SimilarityScoring.Scope.RESERVED);
       // the prediction intervals (ticket 24, item 53 viii): the inner models refitted and
       // calibrated on the whole usual-flow inner validation, applied to the outer models
@@ -287,12 +292,13 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       of.forEach(row -> row.put("reading", name));
       rows.addAll(of);
     }
+    printRelevance(relevance, rows);
 
     final List<String> predictions = SimilarityScoring.predictions(r);
     final Double rerun;
     final String predictionsSha;
     final String diagnosticsSha;
-    final String importanceSha;
+    final String relevanceSha;
     try {
       Files.createDirectories(reports);
       final List<String> inputs = List.of("matrix_sha256\t" + matrixSha,
@@ -301,10 +307,10 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       write(inputsFile, inputs);
       write(predictionsFile, predictions);
       write(diagnosticsFile, diagnostics(main));
-      write(importanceFile, importance(main));
+      write(relevanceFile, relevance(relevance));
       predictionsSha = IssuesReservedCommand.sha256(predictionsFile);
       diagnosticsSha = IssuesReservedCommand.sha256(diagnosticsFile);
-      importanceSha = IssuesReservedCommand.sha256(importanceFile);
+      relevanceSha = IssuesReservedCommand.sha256(relevanceFile);
     } catch (final IOException e) {
       throw new CommandFailedException(List.of("  could not write to " + reports + ": " + e));
     }
@@ -312,8 +318,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         predictionsSha);
     System.out.printf("  diagnostics written to %s  sha256 %s%n", diagnosticsFile,
         diagnosticsSha);
-    System.out.printf("  forests' permutation importance written to %s  sha256 %s%n",
-        importanceFile, importanceSha);
+    System.out.printf("  relevance written to %s  sha256 %s%n", relevanceFile, relevanceSha);
     if (rerun != null) {
       System.out.printf("  against the predictions of the previous run there: largest "
           + "difference %.3g business days, tolerance %.0e: %s%n", rerun,
@@ -333,9 +338,10 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     run.put("elastic_net_parameters_sha256", elasticNetSha);
     run.put("predictions_sha256", predictionsSha);
     run.put("diagnostics_sha256", diagnosticsSha);
-    run.put("forest_importance_sha256", importanceSha);
+    run.put("relevance_sha256", relevanceSha);
+    run.put("relevance", RELEVANCE_RULE);
     run.put("forest_grid", IssuesSimilarityElasticNetCommand.forestGrid());
-    run.put("forest_permutation_repeats", Forest.PERMUTATION_REPEATS);
+    run.put("forest_permutation_importance", "not read: it would read the outer test's labels");
     run.put("candidates", candidates(choices));
     run.put("tail_cut", tailCut(r.fences()));
     run.put("error_bands", BusinessDays.BANDS);
@@ -505,9 +511,9 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
   }
 
   /**
-   * Per forest, each design column's permutation importance on the outer test: the mean rise in
-   * mean absolute error, in business days, over the repeats, then each repeat's, as Java prints
-   * a double.
+   * Per forest, each design column's permutation importance on the scored issues: the mean rise
+   * in mean absolute error, in business days, over the repeats, then each repeat's, as Java
+   * prints a double. The inner report's only: the outer test reads none.
    */
   static List<String> importance(final SimilarityScoring.Report r) {
     final List<String> out = new ArrayList<>();
@@ -532,30 +538,70 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     return out;
   }
 
-  /**
-   * The run record's Jaccard n, embedding n and cluster k, per model this step scores ({@link
-   * SimilarityScoring.Scope#scores}): the ninth model's choice is in the parameters file, but
-   * only the inner report reads it.
-   */
+  /** The run record's Jaccard n, embedding n and cluster k, per model with the medians. */
   static Map<String, Object> candidates(final Map<String, ElasticNetSelection.Choice> choices) {
     final Map<String, Object> out = new LinkedHashMap<>();
-    ElasticNetSelection.combinations(choices).forEach((name, c) -> {
-      if (SimilarityScoring.Scope.RESERVED.scores(name)) {
-        out.put(name, combination(c));
+    ElasticNetSelection.combinations(choices).forEach((name, c) -> out.put(name, combination(c)));
+    return out;
+  }
+
+  /** The printed line naming the parameters file, with the count of Elastic Net models. */
+  static String choicesLine(final Path elasticNet, final String sha) {
+    return String.format("  Elastic Net choices %s  sha256 %s (%d models)", elasticNet, sha,
+        ElasticNetSelection.MODELS.size());
+  }
+
+  /** What the relevance is, in words, for the run record and the inner report. */
+  static final String RELEVANCE_RULE = "per Elastic Net model, each standardised column's "
+      + "coefficient in the refit, with its 95% interval from resampling whole projects of the "
+      + "fitting side (" + ProjectBootstrap.DRAWS + " draws, seed " + ProjectBootstrap.SEED
+      + ", a project drawn twice counted twice): on each draw the model is refitted as the refit "
+      + "was made, the design matrix learned on the drawn rows, the same alpha and the lambda "
+      + "times the drawn rows over the fitting rows; a column constant on a draw's rows counts "
+      + "as zero there; the coefficients are on standardised columns, so they compare with each "
+      + "other within a model";
+
+  /**
+   * Per model and standardised column, its coefficient, whether the estimator kept it and its
+   * interval: the relevance file of both steps.
+   */
+  static List<String> relevance(final List<SimilarityScoring.Relevance> relevance) {
+    final List<String> out = new ArrayList<>();
+    out.add("model\tfit_rows\tprojects\tcolumn\tcoefficient\tselected\tci_low\tci_high");
+    for (final SimilarityScoring.Relevance r : relevance) {
+      for (final SimilarityScoring.Coefficient c : r.coefficients()) {
+        out.add(String.join("\t", r.model(), Integer.toString(r.fitRows()),
+            Integer.toString(r.projects()), c.column(), Double.toString(c.coefficient()),
+            Boolean.toString(c.selected()), Double.toString(c.low()),
+            Double.toString(c.high())));
       }
-    });
+    }
     return out;
   }
 
   /**
-   * The printed line naming the parameters file, with the count of Elastic Net models this step
-   * scores ({@link SimilarityScoring.Scope#scores}), not of those the file holds: the ninth
-   * model leaves no trace here.
+   * The relevance, printed per model and column, each coefficient's document added to {@code
+   * rows}.
    */
-  static String choicesLine(final Path elasticNet, final String sha) {
-    return String.format("  Elastic Net choices %s  sha256 %s (%d models)", elasticNet, sha,
-        ElasticNetSelection.MODELS.stream().filter(SimilarityScoring.Scope.RESERVED::scores)
-            .count());
+  static void printRelevance(final List<SimilarityScoring.Relevance> relevance,
+      final List<Map<String, Object>> rows) {
+    System.out.printf("%n  RELEVANCE: %s%n", RELEVANCE_RULE);
+    for (final SimilarityScoring.Relevance r : relevance) {
+      System.out.printf("  %s (%,d fitting rows, %d projects)%n", r.model(), r.fitRows(),
+          r.projects());
+      for (final SimilarityScoring.Coefficient c : r.coefficients()) {
+        System.out.printf(java.util.Locale.ROOT, "    %-40s %+9.4f [%+9.4f, %+9.4f]%s%n",
+            c.column(), c.coefficient(), c.low(), c.high(), c.selected() ? "" : "  not kept");
+        final Map<String, Object> row = new LinkedHashMap<>();
+        row.put("kind", "coefficient");
+        row.put("model", r.model());
+        row.put("column", c.column());
+        row.put("coefficient", c.coefficient());
+        row.put("selected", c.selected());
+        row.put("ci_projects", List.of(c.low(), c.high()));
+        rows.add(row);
+      }
+    }
   }
 
   /** A combination as a document, its fields in a fixed order. */
@@ -700,7 +746,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
    *
    * @param tops the bands' limits, the error bands' of the outer training rows fitted
    */
-  private static void printIntervals(final List<PredictionIntervals.Read> reads,
+  static void printIntervals(final List<PredictionIntervals.Read> reads,
       final double[] tops, final List<Map<String, Object>> rows) {
     System.out.printf("%n  prediction intervals, the inner calibration applied (an approximation):"
         + " coverage [95%% interval resampling whole projects], median width in business days, "

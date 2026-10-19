@@ -309,32 +309,25 @@ public enum Command {
       the whole working days of silent gaps between records left out),
       on the issues of at least one business day: chooses alpha and
       lambda on the inner validation, by the registered grid's sweep, for
-      eleven Elastic Net models: the own specification without similarity
-      (description length, team size, the team's median and spread of lines
-      of code and complexity, the corrected reporter median, the executor's
-      lines of code, complexity and open workload, the fix version set
-      before the start, the days left in the release cycle and the pace of
-      the other Blocker issues), the similarity medians alone, the own
-      specification with similarity (those thirteen and the three medians),
-      Al-Zubaidi and Kikas at the start (the registered cells), and the
-      literature families with the own specification with similarity; the
-      own start model, the own specification with similarity without the
-      three pressure attributes (fix version, release cycle, Blocker pace);
-      the retrospective scenario in its main reading: the own start model
-      and, of the attributes issues-in-progress-retrospective adds,
-      observed up to the resolution, the five of the implementation
+      six Elastic Net models, six attribute sets. At the start: the own
+      start model (description length, team size, the team's median and
+      spread of lines of code and complexity, the corrected reporter
+      median, the executor's lines of code, complexity and open workload,
+      and the Jaccard, embedding and cluster similarity medians), and
+      Al-Zubaidi and Kikas at the start (the registered cells). After the
+      resolution: the retrospective scenario in its main reading, the own
+      start model and, of the attributes issues-in-progress-retrospective
+      adds, observed up to the resolution, the five of the implementation
       content, the assignee changes and urgency, without the comments and
-      the participants, which count the records the target is made of;
-      the same without urgency, which adds nothing and only measures what
-      urgency does to the retrospective model; Kikas's retrospective
+      the participants, which count the records the target is made of; the
+      same with the comments and the participants, a CEILING, not a
+      competitor: part of its gain is mechanical; and Kikas's retrospective
       scenario, the registered Kikas cell of it (Kikas at the start and the
       twelve counts observed up to the resolution, with their missing
       indicator), the literature counterpart of the retrospective model,
-      which counts comments; and the main reading with the comments and
-      the participants, a CEILING, not a competitor: part of its gain is
-      mechanical. The seven models with the similarity medians are
-      swept once for each of the 27 combinations of Jaccard n (5, 10, 20),
-      embedding n (5, 10, 20) and cluster k (8, 16, 32), and keep the
+      which counts comments. The three models with the similarity medians
+      are swept once for each of the 27 combinations of Jaccard n (5, 10,
+      20), embedding n (5, 10, 20) and cluster k (8, 16, 32), and keep the
       combination whose sweep errs least; exact ties go to the smaller
       Jaccard n, then embedding n, then cluster k. As a robustness check,
       not a new contribution, a random forest is swept beside each model on
@@ -342,30 +335,29 @@ public enum Command {
       the similarity medians at the chosen n and k (300 trees, depth 20,
       column share 1/6, 1/3 or 2/3, leaf 5, 25 or 100, seed 20260927); the
       lowest inner validation error is kept, exact ties going to the first
-      point of the grid. Prints each model's choice and, for those seven, the
-      best error of every combination, and each forest's grid. The
+      point of the grid. Prints each model's choice and, for those three,
+      the best error of every combination, and each forest's grid. The
       split-dependent columns are read in their inner variant; a column
       missing on every inner fitting row is removed from its models and
       reported. Refuses unless every row's split is the one its rule draws
       and the matrix has every declared column, the day boundary and the
       active business days. Reads MATRIX; writes ELASTIC_NET_PARAMETERS, the
       forests' column share and leaf among them, never over a file holding
-      more than its own choices, one naming other models, as one written
-      before the own specification took the team size back and left the
-      previous one out, or one written before the forests or for the hours;
-      records the run in ISSUES_DB. The outer test rows are not read.
-      Tail cut: the fence is Q3 + k IQR of the business days of the inner
-      fitting set (quartiles by linear interpolation, R's and numpy's
+      more than its own choices or written for other models, as the eleven
+      before these six were settled, or before the forests or for the
+      hours; records the run in ISSUES_DB. The outer test rows are not
+      read. Tail cut: the fence is Q3 + k IQR of the business days of the
+      inner fitting set (quartiles by linear interpolation, R's and numpy's
       default), never of the validation; the usual flow is the issues at or
       below the k = 3 fence, and every choice above, alpha, lambda, n and k
       and each forest's point, is scored on the usual-flow validation
       issues. First the fitting k is chosen on the grid 1.5, 3, 5, 10 and
-      no cut: own_with_similarity, chosen as above on the inner fitting
-      rows at or below each k's fence, keeps the k of its lowest error,
-      exact ties going to the larger k; then every model, forest and
-      reference fits on the rows of that k. The similarity medians, the
-      reporter median and the Blocker pace keep reading every training
-      issue. The parameters file records the chosen k, both fences in
+      no cut, on the own start model alone: chosen as above on the inner
+      fitting rows at or below each k's fence, it keeps the k of its lowest
+      error, exact ties going to the larger k; then every model, forest and
+      reference fits on the rows of that k. The similarity medians and the
+      reporter median keep reading every training issue. The parameters
+      file records the chosen k, the model it was chosen on, both fences in
       business days and every k's error; one without them is refused."""),
 
   ISSUES_SIMILARITY_TEST("issues-in-progress-similarity-test",
@@ -381,45 +373,47 @@ public enum Command {
       on the usual flow, the outer test issues at or below the k = 3 fence of
       the outer training set, the main reading, and on all issues, the
       complementary one. Reads MATRIX and ELASTIC_NET_PARAMETERS and chooses
-      nothing: refits every Elastic Net model but the retrospective main
-      reading without urgency, Kikas's retrospective one and the
-      retrospective one with the comments and the participants, which only
-      the inner report scores, on the outer
-      training set with its chosen alpha and the chosen lambda times the
-      ratio of rows, as the registered reserved run does, the similarity
-      medians at the Jaccard n, embedding n and cluster k chosen for each
-      model; refits beside each, as a robustness check, its random forest
-      with the chosen count of columns per split and leaf; and with the
-      global, project and executor-project medians scores the outer test:
-      error in business days, with the slowest 10% left out too, Spearman,
+      nothing. Scores the fourteen models the inner report scores: refits
+      the six Elastic Net models (the own start model, Al-Zubaidi and Kikas
+      at the start; the retrospective main reading, the same with the
+      comments and the participants, a ceiling, and Kikas's retrospective
+      one) on the outer training set with its chosen alpha and the chosen
+      lambda times the ratio of rows, as the registered reserved run does,
+      the similarity medians at the Jaccard n, embedding n and cluster k
+      chosen for each model; refits beside each, as a robustness check, its
+      random forest with the chosen count of columns per split and leaf;
+      and with the global and project medians scores the outer test: error
+      in business days, with the slowest 10% left out too, Spearman,
       pairwise ordering, error by band of the true business days (at the
       quartiles of the outer training rows fitted; nothing clipped),
       prediction intervals at 80% and 95% (split conformal on the log1p
       scale, one factor per model and level, the factors the inner models
       calibrated on the usual-flow inner validation applied to the outer
-      models, an approximation; read overall and per error band),
-      and the agreed paired comparisons with
-      intervals resampling whole projects: the own specification with
-      similarity against the same without, every model against the global
-      median and every model but the global median against the project
-      median, the own specification with similarity against the same
-      without the pressure attributes, and the retrospective scenario
-      against the own start model; each forest against its Elastic Net,
-      the forests of the same pairs, and every forest against the global
-      and the project median. As a side reading, the two
-      retrospective comparisons again on the issues with an implementation
-      commit only. Refuses unless the parameters file exists and is for
+      models, an approximation; read overall and per error band), and the
+      agreed paired comparisons with intervals resampling whole projects:
+      the own start model against Al-Zubaidi and against Kikas at the
+      start; the retrospective main reading against the own start model;
+      the ceiling against the main reading and against Kikas's
+      retrospective model; the main reading against Kikas's; every model
+      against the global median and every model but the global median
+      against the project median; the forests in the same pairs. As a side
+      reading, the main reading against the own start model again on the
+      issues with an implementation commit only. Relevance: each Elastic
+      Net's standardised coefficients in the refit on the outer training
+      set, with intervals resampling whole projects of the outer training
+      set; no forest's permutation importance, which would read the outer
+      test's labels. Refuses unless the parameters file exists and is for
       these models with a forest for each, its choices were made on that
       matrix, every row's split is the one its rule draws and every column
-      is present. Writes the per-issue predictions, the diagnostics and each
-      forest's permutation importance to REPORT_DIR; records the run in
-      ISSUES_DB. States that the outer test is a new draw of 30% per
-      project, seed 1738. Ordering intervals, a declared measure stated
-      before the outer test was opened: for every agreed pair and every
-      model against the project median (the global median orders nothing),
-      the paired difference in Spearman and in pairwise ordering, each with
-      its interval from the same draws of whole projects as the error
-      comparisons; printed and recorded."""),
+      is present. Writes the per-issue predictions, the diagnostics and the
+      relevance to REPORT_DIR; records the run in ISSUES_DB. States that the
+      outer test is a new draw of 30% per project, seed 1738. Ordering
+      intervals, a declared measure stated before the outer test was
+      opened: for every agreed pair and every model against the project
+      median (the global median orders nothing), the paired difference in
+      Spearman and in pairwise ordering, each with its interval from the
+      same draws of whole projects as the error comparisons; printed and
+      recorded."""),
 
   ISSUES_SIMILARITY_INNER_REPORT("issues-in-progress-similarity-inner-report",
       new IssuesSimilarityInnerReportCommand(), """
@@ -430,28 +424,23 @@ public enum Command {
       only the outer training rows, the others left behind on their split
       field, never parsed beyond it; drops the issues of 0 business days
       (the time back in Open or Reopened left out, as the similarity stage
-      wrote them); refits the twenty-five models (the nineteen of the test:
-      the global, project and executor-project medians, eight Elastic Nets
-      at their chosen alpha and lambda, unscaled, and n and k, and their
-      eight forests at their chosen column share and leaf; the ninth
-      Elastic Net, the retrospective main reading without urgency, the
-      tenth, Kikas's retrospective scenario, and the eleventh, the
-      retrospective scenario with the comments and the participants, a
-      ceiling, with their forests, which the test does not score) on the
-      inner fitting rows and
-      scores the inner validation, in whole business days, by the test's own
-      scoring, fitted on the inner fitting rows at or below the fence of the
-      chosen k. Every table, models, bands, paired comparisons and ordering
-      intervals, is read twice: on the usual flow, the validation issues at
-      or below the k = 3 fence of the inner fitting set, the main reading,
-      and on all issues, the complementary one, marked as such; the report's
-      header states the chosen k, both fences and each reading's issues.
-      Writes to REPORT_DIR: the report; the per-issue predictions with
-      whether the issue is of the usual flow and whether it has an
-      implementation commit; per reading and model the
-      error, the gains over the global and the project median, Spearman,
-      pairwise ordering and the error's quantiles; the error by band of the
-      true business days, at the quartiles of the cut fitting rows; the
+      wrote them); refits the fourteen models the test scores (the global
+      and project medians, the six Elastic Nets at their chosen alpha and
+      lambda, unscaled, and n and k, and their six forests at their chosen
+      column share and leaf) on the inner fitting rows and scores the inner
+      validation, in whole business days, by the test's own scoring, fitted
+      on the inner fitting rows at or below the fence of the chosen k. Every
+      table, models, bands, paired comparisons and ordering intervals, is
+      read twice: on the usual flow, the validation issues at or below the
+      k = 3 fence of the inner fitting set, the main reading, and on all
+      issues, the complementary one, marked as such; the report's header
+      states the chosen k, the model it was chosen on, both fences and each
+      reading's issues. Writes to REPORT_DIR: the report; the per-issue
+      predictions with whether the issue is of the usual flow and whether
+      it has an implementation commit; per reading and model the error, the
+      gains over the global and the project median, Spearman, pairwise
+      ordering and the error's quantiles; the error by band of the true
+      business days, at the quartiles of the cut fitting rows; the
       prediction intervals at 80% and 95% (split conformal on the log1p
       scale, symmetric, the lower end at least 1 business day, one factor
       per model and level), calibrated on half A of the usual-flow
@@ -460,22 +449,19 @@ public enum Command {
       observed duration (read after the fact), the coverage with its
       interval resampling whole projects, the median width, the width over
       the global median's and the MAE; the factors recomputed on both
-      halves for later use; the paired
-      comparisons of the test, every model against the global and the
-      project median among them; the retrospective main reading against
-      the own start model, against itself without urgency and against
-      Kikas's (which counts comments, the main reading not); the ceiling,
-      the main reading with the comments and the participants, against the
-      main reading and against Kikas's, the fair literature comparison,
-      Elastic Net and forest, with intervals resampling whole projects; the
-      main reading against the own start model on the issues with and
-      without an implementation commit; the ordering intervals; the
-      Elastic Nets' coefficients and the forests' permutation importance.
-      Refuses unless the parameters file is
-      the selection step's own for these models, its choices were made on
-      that matrix, every outer training row is inner fitting or inner
-      validation and every column is present. Writes nothing to the database
-      and records no run."""),
+      halves for later use; the paired comparisons of the test, with
+      intervals resampling whole projects; the main reading against the own
+      start model on the issues with and without an implementation commit;
+      the ordering intervals; the Elastic Nets' coefficients; and the
+      relevance section: each Elastic Net's standardised coefficients with
+      intervals resampling whole projects of the inner fitting set, and
+      each forest's ten largest permutation importances on the usual-flow
+      validation issues with the spread of their repeats, every column's in
+      its own file. Refuses unless the parameters file is the selection
+      step's own for these models, its choices were made on that matrix,
+      every outer training row is inner fitting or inner validation and
+      every column is present. Writes nothing to the database and records
+      no run."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both
