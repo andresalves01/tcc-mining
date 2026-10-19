@@ -97,7 +97,7 @@ class IssuesSimilarityElasticNetCommandTest {
     final java.util.Map<String, String> settings = java.util.Map.of("MATRIX", matrix.toString(),
         "ELASTIC_NET_PARAMETERS", parameters.toString());
     final app.cli.Context context = new app.cli.Context(null, null, null, null, null, null, null,
-        null, null, null, null, null, null, null, app.pipeline.port.Progress.silent(), null,
+        null, null, null, null, app.pipeline.port.Progress.silent(), null,
         (run, rows) -> {
           throw new AssertionError("recorded " + run);
         }, null);

@@ -32,6 +32,26 @@ import java.util.Set;
  */
 public final class BuildComplexityTask {
 
+  /** Thrown when there are no labels, so no commit could ever be asked about. */
+  public static final class LabelsEmptyException extends RuntimeException {
+
+    private static final long serialVersionUID = 1L;
+
+    LabelsEmptyException(final String store) {
+      super(store + " holds no labels -- run funnel first");
+    }
+  }
+
+  /** Thrown when the ledger is empty, so there is no commit to read. */
+  public static final class LedgerEmptyException extends RuntimeException {
+
+    private static final long serialVersionUID = 1L;
+
+    LedgerEmptyException(final String ledger) {
+      super(ledger + " holds no contributions -- run build-ledger first");
+    }
+  }
+
   /** Flushed often enough that a run killed near the end keeps almost all of its work. */
   private static final int FLUSH_EVERY = 5_000;
 
@@ -62,7 +82,7 @@ public final class BuildComplexityTask {
     progress.phase(1, 4, "reading the labels back from %s", labels.describe());
     final List<IssueLabel> stored = labels.readAll();
     if (stored.isEmpty()) {
-      throw new SplitTask.LabelsEmptyException(labels.describe());
+      throw new LabelsEmptyException(labels.describe());
     }
     final Set<String> pairs = new HashSet<>(1 << 12);
     for (final IssueLabel label : stored) {
@@ -74,7 +94,7 @@ public final class BuildComplexityTask {
         ledger.describe());
     final List<Contribution> contributions = ledger.readAll();
     if (contributions.isEmpty()) {
-      throw new BuildFeaturesTask.LedgerEmptyException(ledger.describe());
+      throw new LedgerEmptyException(ledger.describe());
     }
     final List<String> targeted = new ArrayList<>(1 << 18);
     for (final Contribution c : contributions) {

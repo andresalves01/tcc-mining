@@ -53,10 +53,6 @@ public final class Help {
           VOLUME            JAVA | ALL          which lines count as developer volume
           COST_MIN          1.0                 C_min, reporting only -- never stored
           COST_RATIO        1.7283              C_max / C_min, reporting only
-          TRAIN_SHARE       0.70                split: the quantile of issue creation to cut at
-          MIN_RESOLVED      5                   split: resolutions a (dev, project) needs first
-                                                0 turns the rule off -- every pair is eligible
-          TEAM_WINDOW_DAYS  90                  features: how far back the active team is read
           PILOT             (unset)             ledger and funnel: restrict to matching projects
           REPORT_DIR        (unset)             issues-description-language,
                                                 issues-in-progress-similarity,

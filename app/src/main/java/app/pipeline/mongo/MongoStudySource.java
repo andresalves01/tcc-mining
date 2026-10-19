@@ -304,8 +304,7 @@ public final class MongoStudySource implements StudySource {
       labels.put(id(l.get("_id")), new Corpus.Label(l.getString("project"),
           l.getDate("created_at").getTime(), l.getDate("resolved_at").getTime(),
           id(l.get("canonical_id")), l.getDate("first_commit_at").getTime(),
-          ((Number) l.get("mean_mccc")).doubleValue(), ((Number) l.get("mean_nl")).doubleValue(),
-          l.getString("split")));
+          ((Number) l.get("mean_mccc")).doubleValue(), ((Number) l.get("mean_nl")).doubleValue()));
     }
     return new Corpus(issues, events, comments, mentions, commits, homeKeys, prMerge, people,
         contributions, complexity, labels, files, tags);

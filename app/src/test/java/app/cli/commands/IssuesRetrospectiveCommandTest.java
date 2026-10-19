@@ -46,8 +46,8 @@ class IssuesRetrospectiveCommandTest {
 
   /** A context with nothing to read and a result store that fails the test if anything is recorded. */
   private static Context context() {
-    return new Context(null, null, null, null, null, null, null, null, null, null, null, null,
-        null, null, Progress.silent(), null, (run, rows) -> {
+    return new Context(null, null, null, null, null, null, null, null, null, null, null,
+        Progress.silent(), null, (run, rows) -> {
           throw new AssertionError("recorded " + run);
         }, null);
   }

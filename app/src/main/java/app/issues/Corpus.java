@@ -125,9 +125,9 @@ public record Corpus(
   /** The ledger's Java volume of one commit. */
   public record Contribution(boolean bot, int javaFiles, long javaAdded, long javaDeleted) {}
 
-  /** One label of the previous study's population, for the inherited population. */
+  /** One label of the labelled funnel ({@code issue_label}); its issue joins the history. */
   public record Label(String project, long created, long resolved, String canonical,
-      long firstCommit, double meanMccc, double meanNl, String split) {}
+      long firstCommit, double meanMccc, double meanNl) {}
 
   /** The text an issue carries now and the changes to it, read only for the population. */
   public record Text(String title, String description, List<Event> changes) {}

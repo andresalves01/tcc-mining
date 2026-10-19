@@ -1,4 +1,4 @@
-package app.pipeline;
+package app.issues.model;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -29,8 +29,8 @@ class LargestPenaltyTest {
       four[i][0] = one[i % 4][0];
       y4[i] = y1[i % 4];
     }
-    final double small = FitModelTask.largestPenalty(one, y1);
-    final double large = FitModelTask.largestPenalty(four, y4);
+    final double small = Fitting.largestPenalty(one, y1);
+    final double large = Fitting.largestPenalty(four, y4);
     assertEquals(4.0, large / small, 1e-9,
         "four times the rows must give four times the anchor; dividing by n would give one");
   }
@@ -42,7 +42,7 @@ class LargestPenaltyTest {
     final double[][] x = {{2, 1}, {-2, 1}, {2, 1}, {-2, 1}};
     final double[] y = {10, -10, 10, -10};
     // column 0: sum(x*y) = 2*10 + -2*-10 + 2*10 + -2*-10 = 80; column 1: sum = 0
-    assertEquals(80.0, FitModelTask.largestPenalty(x, y), 1e-9);
+    assertEquals(80.0, Fitting.largestPenalty(x, y), 1e-9);
   }
 
   @Test
@@ -50,7 +50,7 @@ class LargestPenaltyTest {
   void staysPositiveOnAFlatOutcome() {
     final double[][] x = {{1, 2}, {3, 4}, {5, 6}};
     final double[] y = {7, 7, 7};
-    assertTrue(FitModelTask.largestPenalty(x, y) >= 0,
+    assertTrue(Fitting.largestPenalty(x, y) >= 0,
         "a flat outcome gives no signal, and the anchor must not go negative");
   }
 }

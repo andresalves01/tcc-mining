@@ -41,8 +41,8 @@ class IssuesSimilarityTestCommandTest {
 
   /** A context whose result store fails the test if anything is recorded. */
   private static Context context() {
-    return new Context(null, null, null, null, null, null, null, null, null, null, null, null,
-        null, null, Progress.silent(), null, (run, rows) -> {
+    return new Context(null, null, null, null, null, null, null, null, null, null, null,
+        Progress.silent(), null, (run, rows) -> {
           throw new AssertionError("recorded " + run);
         }, null);
   }

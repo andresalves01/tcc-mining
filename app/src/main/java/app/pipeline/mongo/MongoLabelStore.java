@@ -3,8 +3,6 @@ package app.pipeline.mongo;
 import app.labels.ChangedMethod;
 import app.labels.ExamOrigin;
 import app.labels.IssueLabel;
-import app.labels.SplitPart;
-import app.labels.TemporalSplit;
 import app.labels.port.LabelStore;
 import com.mongodb.bulk.BulkWriteResult;
 import com.mongodb.client.MongoClient;
@@ -13,14 +11,11 @@ import com.mongodb.client.model.IndexOptions;
 import com.mongodb.client.model.Indexes;
 import com.mongodb.client.model.ReplaceOneModel;
 import com.mongodb.client.model.ReplaceOptions;
-import com.mongodb.client.model.UpdateOneModel;
-import com.mongodb.client.model.Updates;
 import com.mongodb.client.model.WriteModel;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import org.bson.Document;
 import org.bson.types.ObjectId;
@@ -37,10 +32,6 @@ import org.bson.types.ObjectId;
 public final class MongoLabelStore implements LabelStore {
 
   public static final String ISSUE_LABEL = "issue_label";
-  public static final String SPLIT_META = "split_meta";
-
-  /** The inner verdict's field name on a label; the outer one is plain {@code split}. */
-  private static final String SPLIT_INNER = "split_inner";
 
   private static final int BATCH_SIZE = 2_000;
 
@@ -91,9 +82,8 @@ public final class MongoLabelStore implements LabelStore {
         .append("mean_mccc", label.meanMccc().orElseThrow())
         .append("mean_nl", label.meanNl().orElseThrow())
         .append("methods", methods);
-    // Absent is absent: a label with no external examination gets no field here, and
-    // MongoObservations leaves the row out of the target that would need it instead of inventing a
-    // zero for it.
+    // Absent is absent: a label with no external examination gets no field here rather than a
+    // zero.
     label.examinedAt().ifPresent(at -> doc.append("examined_at", Date.from(at)));
     label.examOrigin().ifPresent(origin -> doc.append("exam_origin", origin.name()));
     label.waitDays().ifPresent(days -> doc.append("ttc_espera", days));
@@ -136,65 +126,6 @@ public final class MongoLabelStore implements LabelStore {
           Optional.ofNullable(doc.getString("exam_origin")).map(ExamOrigin::valueOf)));
     }
     return labels;
-  }
-
-  @Override
-  public long saveSplit(final TemporalSplit.Split split, final double trainShare,
-      final int minResolved) {
-
-    target.getCollection(SPLIT_META).replaceOne(new Document("_id", "current"),
-        meta(split, trainShare, minResolved), new ReplaceOptions().upsert(true));
-
-    final Map<String, SplitPart> parts = split.parts();
-    final Map<String, SplitPart> innerParts = split.innerParts();
-    final List<WriteModel<Document>> batch = new ArrayList<>(BATCH_SIZE);
-    long written = 0;
-    for (final Map.Entry<String, SplitPart> entry : parts.entrySet()) {
-      // Both verdicts go on the row, so a consumer selects a partition by field rather than by
-      // re-deriving a cut date. A label off the outer training side carries no inner verdict at
-      // all: absent says "never reached the inner cut", which a fifth enum value would blur.
-      final SplitPart innerPart = innerParts.get(entry.getKey());
-      batch.add(new UpdateOneModel<>(new Document("_id", new ObjectId(entry.getKey())),
-          innerPart == null
-              ? Updates.combine(Updates.set("split", entry.getValue().name()),
-                  Updates.unset(SPLIT_INNER))
-              : Updates.combine(Updates.set("split", entry.getValue().name()),
-                  Updates.set(SPLIT_INNER, innerPart.name()))));
-      if (batch.size() == BATCH_SIZE) {
-        written += flush(batch);
-      }
-    }
-    written += flush(batch);
-    target.getCollection(ISSUE_LABEL)
-        .createIndex(Indexes.ascending("split"), new IndexOptions().background(true));
-    target.getCollection(ISSUE_LABEL)
-        .createIndex(Indexes.ascending(SPLIT_INNER), new IndexOptions().background(true));
-    return written;
-  }
-
-  /** One document describing the run, so no consumer has to hardcode a cut date to read it back. */
-  private static Document meta(final TemporalSplit.Split split, final double trainShare,
-      final int minResolved) {
-
-    return new Document("_id", "current")
-        .append("computed_at", new Date())
-        .append("train_share", trainShare)
-        .append("min_resolved", minResolved)
-        .append("outer", side(split.outer()))
-        .append("inner", side(split.inner()));
-  }
-
-  private static Document side(final TemporalSplit.Side s) {
-    return new Document("cut", Date.from(s.cut()))
-        .append("eligible_pairs", s.eligiblePairs())
-        .append("eligible_developers", s.eligibleDevelopers())
-        .append("past", s.past().size())
-        .append("future", s.future().size())
-        .append("crossing", s.crossing().size())
-        .append("insufficient_past", s.insufficientPast().size())
-        .append("insufficient_future", s.insufficientFuture().size())
-        .append("projects_past", TemporalSplit.Side.projects(s.past()))
-        .append("projects_future", TemporalSplit.Side.projects(s.future()));
   }
 
   @Override

@@ -11,7 +11,6 @@ import app.features.port.CommitComplexitySource;
 import app.features.port.CommitComplexityStore;
 import app.labels.ChangedMethod;
 import app.labels.IssueLabel;
-import app.labels.TemporalSplit;
 import app.labels.port.LabelStore;
 import app.pipeline.port.Progress;
 import java.time.Instant;
@@ -63,11 +62,6 @@ class ComplexityPipelineTest {
     @Override
     public List<IssueLabel> readAll() {
       return rows;
-    }
-
-    @Override
-    public long saveSplit(final TemporalSplit.Split split, final double share, final int min) {
-      throw new AssertionError("this stage never touches the split");
     }
 
     @Override
@@ -214,8 +208,8 @@ class ComplexityPipelineTest {
         new Ledger(commit("aaaaaaaaaaaaaaaaaaaaaaa1", "alice", "lucene", 2)),
         new RecordingSource(), new Store(), SILENT);
 
-    final SplitTask.LabelsEmptyException refusal =
-        assertThrows(SplitTask.LabelsEmptyException.class, task::run);
+    final BuildComplexityTask.LabelsEmptyException refusal =
+        assertThrows(BuildComplexityTask.LabelsEmptyException.class, task::run);
 
     assertTrue(refusal.getMessage().contains("funnel"), "the refusal names the missing stage");
   }
@@ -227,8 +221,8 @@ class ComplexityPipelineTest {
         new Labels(label("i1", "alice", "lucene")), new Ledger(),
         new RecordingSource(), new Store(), SILENT);
 
-    final BuildFeaturesTask.LedgerEmptyException refusal =
-        assertThrows(BuildFeaturesTask.LedgerEmptyException.class, task::run);
+    final BuildComplexityTask.LedgerEmptyException refusal =
+        assertThrows(BuildComplexityTask.LedgerEmptyException.class, task::run);
 
     assertTrue(refusal.getMessage().contains("build-ledger"), "and names the stage that fills it");
   }

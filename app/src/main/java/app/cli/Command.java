@@ -4,10 +4,6 @@ import app.cli.commands.BuildLedgerCommand;
 import app.cli.commands.CanonicalizeCommand;
 import app.cli.commands.CheckCommand;
 import app.cli.commands.ComplexityCommand;
-import app.cli.commands.FeaturesCommand;
-import app.cli.commands.ExperimentsCommand;
-import app.cli.commands.FitCommand;
-import app.cli.commands.FitInnerCommand;
 import app.cli.commands.FunnelCommand;
 import app.cli.commands.HarvestJiraCommand;
 import app.cli.commands.IssuesDescriptionLanguageCommand;
@@ -21,7 +17,6 @@ import app.cli.commands.IssuesSimilarityInnerReportCommand;
 import app.cli.commands.IssuesSimilarityTestCommand;
 import app.cli.commands.ReconstructPeopleCommand;
 import app.cli.commands.SeniorityCommand;
-import app.cli.commands.SplitCommand;
 import app.cli.commands.StatsCommand;
 import app.pipeline.port.Corpus;
 import java.util.Arrays;
@@ -72,45 +67,13 @@ public enum Command {
       Needs build-ledger to have run first.""",
       Corpus.Stage.FUNNEL),
 
-  SPLIT("split", new SplitCommand(), """
-      Cut the labels into past and future at the TRAIN_SHARE quantile of
-      issue creation, with an inner split inside the training side for
-      choosing regularisation. Records the assignment on each label."""),
-
   COMPLEXITY("complexity", new ComplexityCommand(), """
       Build `commit_complexity` -- the McCC and NL a commit's changed methods
       carry, summed once per commit. This is the expensive stage: three
       collections per commit over about 250,000 of them. Resumable, so an
       interrupted run continues rather than restarting. Needs funnel and
-      build-ledger first; run `features` again afterwards.""",
+      build-ledger first.""",
       Corpus.Stage.COMPLEXITY),
-
-  FEATURES("features", new FeaturesCommand(), """
-      Build `issue_features` -- one predictor row per label, every quantity
-      read as of the issue's creation. Reads the labels and the ledger back,
-      so it is cheap to re-run when a definition changes. Needs funnel and
-      build-ledger to have run first.""",
-      Corpus.Stage.FEATURES),
-
-  FIT_INNER("fit-inner", new FitInnerCommand(), """
-      Fit and score against the inner selection only -- never calls
-      FitModelTask.heldOut, no code path to it at all. For changing a
-      definition and re-scoring freely while a specification is still
-      being worked out. Needs features first."""),
-
-  FIT("fit", new FitCommand(), """
-      Fit the Elastic Net on the training side and score it against the
-      references the study names. Chooses alpha and lambda on the inner
-      split. Reads only, writes nothing. Reaches the held-out set every
-      time it runs -- nothing in this command or in FitModelTask stops a
-      second invocation with a changed definition upstream of it from
-      opening it again under different terms. Needs features first."""),
-
-  EXPERIMENTS("experiments", new ExperimentsCommand(), """
-      Print one row per held-out observation, per population, with the
-      Elastic Net and gradient-boosting predictions and the three
-      references. Hyperparameters are chosen on the inner split only.
-      Reads only, writes nothing -- redirect the output. Needs features."""),
 
   ISSUES_IN_PROGRESS_EXTRACT("issues-in-progress-extract", new IssuesInProgressExtractCommand(), """
       Issue duration from the first In Progress: the FIXED issues read at

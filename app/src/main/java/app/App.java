@@ -15,11 +15,8 @@ import app.pipeline.mongo.MongoContributionSource;
 import app.pipeline.mongo.MongoCommitComplexity;
 import app.pipeline.mongo.MongoCommitComplexityStore;
 import app.pipeline.mongo.MongoCorpusCheck;
-import app.pipeline.mongo.MongoFeatureStore;
-import app.pipeline.mongo.MongoIssueAttributes;
 import app.pipeline.mongo.MongoLabelSource;
 import app.pipeline.mongo.MongoLabelStore;
-import app.pipeline.mongo.MongoObservations;
 import app.pipeline.mongo.MongoPersonRegistry;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
@@ -118,11 +115,8 @@ public final class App {
         new MongoContributionLedger(client, config.targetDb()),
         new MongoLabelSource(client, config.sourceDb(), config.targetDb(), progress),
         new MongoLabelStore(client, config.targetDb()),
-        new MongoIssueAttributes(client, config.sourceDb()),
-        new MongoFeatureStore(client, config.targetDb()),
         new MongoCommitComplexity(client, config.sourceDb(), progress),
         new MongoCommitComplexityStore(client, config.targetDb()),
-        new MongoObservations(client, config.targetDb()),
         new MongoCorpusCheck(client, config.sourceDb()),
         progress,
         new app.pipeline.mongo.MongoStudySource(client, config.sourceDb(), config.targetDb(),

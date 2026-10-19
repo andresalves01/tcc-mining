@@ -4,8 +4,6 @@ import app.cli.CommandFailedException;
 import app.cli.CommandRunner;
 import app.cli.Context;
 import app.pipeline.BuildComplexityTask;
-import app.pipeline.BuildFeaturesTask;
-import app.pipeline.SplitTask;
 import java.util.List;
 
 /** Reads each relevant commit's changed methods and sums their complexity, once per commit. */
@@ -20,7 +18,8 @@ public final class ComplexityCommand implements CommandRunner {
     final BuildComplexityTask.Report report;
     try {
       report = task.run();
-    } catch (final SplitTask.LabelsEmptyException | BuildFeaturesTask.LedgerEmptyException e) {
+    } catch (final BuildComplexityTask.LabelsEmptyException
+        | BuildComplexityTask.LedgerEmptyException e) {
       throw new CommandFailedException(List.of("  " + e.getMessage()));
     }
 
@@ -41,7 +40,6 @@ public final class ComplexityCommand implements CommandRunner {
     System.out.printf("    (they do not enter the sum and are not zero -- it is coverage, and it is reported)%n");
     System.out.printf("%n  wrote %,d rows to %s%n", report.written(),
         context.complexityStore().describe());
-    System.out.printf("  run `features` again so that McCC_tot, mu_M and s_M are no longer missing%n");
   }
 
   private static double share(final long part, final long total) {

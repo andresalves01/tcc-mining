@@ -5,14 +5,11 @@ import app.cost.port.ContributionLedger;
 import app.cost.port.ContributionSource;
 import app.features.port.CommitComplexitySource;
 import app.features.port.CommitComplexityStore;
-import app.features.port.FeatureStore;
-import app.features.port.IssueAttributeSource;
 import app.identity.port.GitIdentitySource;
 import app.identity.port.JiraIdentitySource;
 import app.identity.port.PersonRegistry;
 import app.labels.port.LabelSource;
 import app.labels.port.LabelStore;
-import app.model.port.ObservationSource;
 import app.pipeline.port.Corpus;
 import app.pipeline.port.Progress;
 
@@ -41,11 +38,8 @@ public record Context(
     ContributionLedger ledger,
     LabelSource labels,
     LabelStore labelStore,
-    IssueAttributeSource issueAttributes,
-    FeatureStore featureStore,
     CommitComplexitySource commitComplexity,
     CommitComplexityStore complexityStore,
-    ObservationSource observations,
     Corpus corpus,
     Progress progress,
     app.issues.port.StudySource study,
