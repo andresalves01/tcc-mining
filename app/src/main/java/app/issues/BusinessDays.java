@@ -503,31 +503,41 @@ public final class BusinessDays {
 
   /**
    * Every issue's record instants, as the target with recorded activity reads them ({@link
-   * #gaps}): its changelog events and its comments with an instant, and the author and committer
-   * dates of its implementation commits ({@link World#implementation}: human, linked, visible
-   * before its first resolution). Nothing is clipped here; {@link #gaps} keeps what falls inside.
+   * #gaps}): its changelog events and its comments with an instant, bot accounts' left out ({@link
+   * DayBoundaries#bots}, as the day boundaries leave them out), and the author and committer dates
+   * of its implementation commits ({@link World#implementation}: human, linked, visible before its
+   * first resolution). Records are human activity. Nothing is clipped here; {@link #gaps} keeps
+   * what falls inside.
    */
   public static final class Records {
 
     private final Universe universe;
     private final World world;
     private final Map<String, Long> committed;
+    private final Set<String> bots;
 
     private Records(final Universe universe, final World world,
-        final Map<String, Long> committed) {
+        final Map<String, Long> committed, final Set<String> bots) {
       this.universe = universe;
       this.world = world;
       this.committed = committed;
+      this.bots = bots;
     }
 
-    public static Records of(final Corpus corpus, final Universe universe, final World world) {
+    /** {@code bots}: the raw accounts whose events and comments are not records. */
+    public static Records of(final Corpus corpus, final Universe universe, final World world,
+        final Set<String> bots) {
       final Map<String, Long> committed = new HashMap<>();
       for (final Corpus.Commit c : corpus.commits()) {
         if (c.committedAt() != null) {
           committed.put(c.id(), c.committedAt());
         }
       }
-      return new Records(universe, world, committed);
+      return new Records(universe, world, committed, Set.copyOf(bots));
+    }
+
+    private boolean bot(final String author) {
+      return author != null && bots.contains(author);
     }
 
     /** The records of In-Progress issue {@code id}, in no particular order. */
@@ -537,10 +547,10 @@ public final class BusinessDays {
         throw new IllegalArgumentException(id + " is not an In-Progress issue of the corpus");
       }
       final List<Long> out = new ArrayList<>();
-      universe.events(id).stream().map(Corpus.Event::at).filter(java.util.Objects::nonNull)
-          .forEach(out::add);
-      world.comments(id).stream().map(Corpus.Comment::at).filter(java.util.Objects::nonNull)
-          .forEach(out::add);
+      universe.events(id).stream().filter(e -> !bot(e.author())).map(Corpus.Event::at)
+          .filter(java.util.Objects::nonNull).forEach(out::add);
+      world.comments(id).stream().filter(c -> !bot(c.author()))
+          .map(Corpus.Comment::at).filter(java.util.Objects::nonNull).forEach(out::add);
       for (final World.Commit c : world.implementation(id, u.resolved())) {
         out.add(c.authoredAt());
         final Long at = committed.get(c.id());

@@ -184,7 +184,7 @@ public final class IssuesSimilarityTask {
     final Map<String, String[]> parts = new HashMap<>(entries.size() * 2);
     entries.forEach(e -> parts.put(e.unit().issueId(), new String[] {e.outer(P), e.inner(P)}));
     final BusinessDays.Records records =
-        BusinessDays.Records.of(corpus, universe, new World(universe, corpus));
+        BusinessDays.Records.of(corpus, universe, new World(universe, corpus), counted.bots());
     final Map<String, int[]> gaps = new HashMap<>(entries.size() * 2);
     for (final RowCache.Entry e : entries) {
       final String id = e.unit().issueId();

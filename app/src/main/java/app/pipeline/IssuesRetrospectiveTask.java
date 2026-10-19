@@ -130,7 +130,7 @@ public final class IssuesRetrospectiveTask {
     final Set<String> bots = Set.copyOf(DayBoundaries.bots(corpus.comments(),
         new HashSet<>(universe.universe())));
     final Retrospective retrospective = new Retrospective(world, bots, Releases.of(corpus));
-    final BusinessDays.Records records = BusinessDays.Records.of(corpus, universe, world);
+    final BusinessDays.Records records = BusinessDays.Records.of(corpus, universe, world, bots);
     final String threshold = BusinessDays.threshold(Augmentation.Variant.INNER);
     final Set<String> commits = new TreeSet<>();
     for (final RowCache.Entry e : entries) {
