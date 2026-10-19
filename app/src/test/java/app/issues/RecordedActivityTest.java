@@ -59,8 +59,8 @@ class RecordedActivityTest {
     assertEquals(1, BusinessDays.recorded(List.of(), records, MONDAY, end, 0, 2));
     assertEquals(3, BusinessDays.recorded(List.of(), records, MONDAY, end, 0, 4),
         "below a threshold of 4 the gap is kept whole");
-    assertEquals(2, BusinessDays.recorded(List.of(), records("2024-01-03T10:00:00Z"), MONDAY, end, 0,
-        2), "2 then 1: the gap of 2 keeps 1, the overnight one 1");
+    assertEquals(2, BusinessDays.recorded(List.of(), records("2024-01-03T10:00:00Z"), MONDAY,
+        end, 0, 2), "2 then 1: the gap of 2 keeps 1, the overnight one 1");
   }
 
   @Test

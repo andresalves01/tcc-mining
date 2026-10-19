@@ -12,9 +12,10 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The in-progress similarity chain's target (tickets 14 and 18): whole business days from the first
- * In Progress to the first resolution, without the time the issue was sent back to Open or
- * Reopened in between.
+ * The in-progress similarity chain's target (tickets 14, 18 and 27): whole business days from the
+ * first In Progress to the first resolution, without the time the issue was sent back to Open or
+ * Reopened in between, and without the whole working days inside the silent gaps between its
+ * records: the active business days with recorded activity.
  *
  * <p><b>Counting.</b> Each date runs from the issue's day boundary, an hour of the day in UTC
  * ({@link DayBoundaries}), to the same hour the next day. The count is the number of
@@ -28,7 +29,18 @@ import java.util.Set;
  * stretch are summed ({@link #active}). Time in Patch Available, waiting for review, stays: review
  * is part of getting the change done. Reopenings after the first resolution never counted. The
  * similarity stage, which reads the changelog, writes each issue's count to the matrix ({@link
- * #ACTIVE}); every later step reads it from there.
+ * #ACTIVE}): it decides the population and is kept as a diagnostic no model reads.
+ *
+ * <p><b>Recorded activity</b> (ticket 27, item 62 of the retrospective decisions). The records
+ * are the issue's changelog events, comments and human implementation commits' author and
+ * committer dates ({@link Records}); a gap between consecutive ones of g active business days
+ * ({@link #gaps}) is silent when g reaches the threshold T and leaves out its g - 1 whole working
+ * days ({@link #recorded}). T is read once per variant from the gaps of its fitting side alone
+ * ({@link #thresholds}), after the split is drawn; at least one day always stays, so the
+ * population and the split are those of the active count. The similarity stage writes the target
+ * and T of each variant ({@link #recorded(Augmentation.Variant)}, {@link
+ * #threshold(Augmentation.Variant)}); every later step reads the target of its side from there
+ * ({@link #population}): the inner chain the inner one, the sealed test the outer one.
  *
  * <p><b>Population.</b> Only issues of at least one business day are studied: the model is
  * conditional, predicting how long an issue takes given that it lasts past its start's working
