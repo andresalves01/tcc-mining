@@ -116,7 +116,8 @@ The median duration of the reporter's other issues in the same project, from the
 
 **Pressure attributes**:
 The four attributes about releases and Blocker issues: the fix-version flag, the release cycle and
-the Blocker pace at the start; the urgency in retrospect.
+the Blocker pace at the start; the urgency in retrospect. The three start ones are still computed but
+no model reads them: the inner validation found them not useful at the start.
 
 **Fix-version flag**:
 Whether the issue had a fix version before its start.
@@ -136,23 +137,19 @@ The calendar days from the first resolution to the release of the issue's fix ve
 
 **Own specification** (especificação própria):
 The start attributes the author brought to the study, as opposed to those taken from the literature
-families; the three similarity medians and the three start pressure attributes among them.
+families: description length, team size, the team's code size and complexity, the reporter median,
+the executor's code size, complexity and open workload, and the three similarity medians.
 _Avoid_: revised specification, C1
 
-**Own specification without similarity**:
-The own specification minus the three similarity medians; a control showing what similarity adds.
-
-**Similarity-alone model**:
-A model that reads only the three similarity medians.
+**Own start model**:
+The start model fitted on the own specification, the one a scheduler would use when the work starts;
+the fitting cut's k is chosen on it alone, and the retrospective model builds on it.
+_Avoid_: own specification with similarity (the earlier model that also read the start pressure
+attributes)
 
 **Start model**:
-Any model that reads only start attributes: the own specification's (with and without similarity),
-the similarity-alone model, the literature families' and their union.
-
-**Own specification model**:
-The start model fitted on the own specification, on which the fitting cut is chosen. Without its
-three start pressure attributes it is the **own start model**, the one chosen for the study, which a
-scheduler would use when the work starts and on which the retrospective model builds.
+Any model that reads only start attributes: the own start model and the literature families' start
+models.
 
 **Retrospective model**:
 The own start model plus the retrospective attributes, read twice. Its **main reading** leaves out
@@ -163,16 +160,25 @@ neither: counted in the target's own unit, it equalled the target in about half 
 had one.
 _Avoid_: reading the ceiling's gain as a result of its own
 
-**Before pressure**:
-Said of a model without the pressure attributes, compared with the same model with them.
-
 **Literature families**:
-The attribute sets taken from Al-Zubaidi and from Kikas (partial), read at the start; their
-**union** with the own specification is a model too.
+The attribute sets taken from Al-Zubaidi (at the start) and from Kikas (at the start, and
+retrospective: Kikas's start set plus its counts observed up to the resolution). Each is measured as
+an attribute set on the study's own estimators, not as its source's method.
+_Avoid_: union (the families are no longer read together with the own specification)
+
+**Attribute set**:
+One of the six sets the study compares, each fitted by an Elastic Net (the main reading) and by a
+random forest (the robustness check): at the start, the own start model, Al-Zubaidi and Kikas; after
+the resolution, the retrospective model's main reading, its ceiling and Kikas's retrospective set.
+With the two reference medians they make the fourteen models of both the inner report and the outer
+test.
+
+**Before pressure**:
+Said of a model without the start pressure attributes; the own start model is the own specification
+before pressure.
 
 **Reference median**:
-A constant estimate learned on the fitting rows: the **global median**, the **project median** or
-the **executor-project median**.
+A constant estimate learned on the fitting rows: the **global median** or the **project median**.
 _Avoid_: baseline
 
 ### Evaluation
@@ -189,7 +195,15 @@ projects.
 
 **Useful**:
 Said of the pressure attributes in one model when the paired comparison with its before-pressure
-version lowers the error, or improves the ordering without raising the error.
+version lowers the error, or improves the ordering without raising the error; the rule by which the
+earlier runs left them out of the start.
+
+**Attribute relevance**:
+Which attributes carry a model: the Elastic Net's coefficients on standardised columns, each with a
+95% interval from resampling whole projects of the fitting rows and refitting on each draw; in the
+inner report also the forest's permutation importance, the rise in error when one column is shuffled
+among the validation issues, which the outer test does not read since it would read the test's
+labels.
 
 **Prediction interval**:
 The range around an estimate that holds a stated share of such issues (80% or 95%), calibrated on
