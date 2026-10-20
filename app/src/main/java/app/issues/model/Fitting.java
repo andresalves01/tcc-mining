@@ -183,9 +183,9 @@ public final class Fitting {
    * the threads {@link Parallel#ELASTIC_NET_THREADS} asks for (see {@link #sweep(Cell, Sides,
    * double, double, int)}).
    */
-  public static Fitted sweep(final Cell cell, final Sides sides, final double baselineMae,
+  public static Fitted sweep(final Cell cell, final Sides sides, final double referenceMae,
       final double constantMae) {
-    return sweep(cell, sides, baselineMae, constantMae,
+    return sweep(cell, sides, referenceMae, constantMae,
         Parallel.threads(Parallel.ELASTIC_NET_THREADS));
   }
 
@@ -196,7 +196,7 @@ public final class Fitting {
    * penalty, and keeps a point only when its error is strictly lower, so a tie keeps the earlier
    * point. One thread is the sequential sweep, and any number gives its result bit for bit.
    */
-  public static Fitted sweep(final Cell cell, final Sides sides, final double baselineMae,
+  public static Fitted sweep(final Cell cell, final Sides sides, final double referenceMae,
       final double constantMae, final int threads) {
 
     final DesignMatrix matrix = DesignMatrix.fittedOn(sides.fitRows(), cell.attributes());
@@ -237,7 +237,7 @@ public final class Fitting {
         bestStep = p.step();
       }
     }
-    return result(cell, matrix, x, y, xs, best, sides.observed(), baselineMae, constantMae,
+    return result(cell, matrix, x, y, xs, best, sides.observed(), referenceMae, constantMae,
         bestStep, List.copyOf(trials));
   }
 
@@ -265,14 +265,14 @@ public final class Fitting {
 
   /** One fit with given parameters: what the check and the reserved run do. Searches nothing. */
   public static Fitted frozen(final Cell cell, final Sides sides, final double alpha,
-      final double lambda, final double baselineMae, final double constantMae) {
+      final double lambda, final double referenceMae, final double constantMae) {
 
     final DesignMatrix matrix = DesignMatrix.fittedOn(sides.fitRows(), cell.attributes());
     final double[][] x = matrix.applyAll(sides.fitRows());
     final double[] y = target(sides.fitUnits());
     final ElasticNetModel model = ElasticNetModel.fit(x, y, matrix.columns(), alpha, lambda);
     return result(cell, matrix, x, y, matrix.applyAll(sides.scoreRows()), model,
-        sides.observed(), baselineMae, constantMae, -1, List.of());
+        sides.observed(), referenceMae, constantMae, -1, List.of());
   }
 
   /**
@@ -304,7 +304,7 @@ public final class Fitting {
 
   private static Fitted result(final Cell cell, final DesignMatrix matrix, final double[][] x,
       final double[] y, final double[][] xs, final ElasticNetModel model, final double[] observed,
-      final double baselineMae, final double constantMae, final int step,
+      final double referenceMae, final double constantMae, final int step,
       final List<Trial> trials) {
 
     final double[] weights = model.coefficients();
@@ -323,7 +323,7 @@ public final class Fitting {
     }
     return new Fitted(cell, model.alpha(), model.lambda(), matrix.columns(), matrix.dropped(),
         List.copyOf(contributions), model.selectedCount(), predicted,
-        Score.of(cell.label(), predicted, observed, baselineMae, constantMae), step, trials,
+        Score.of(cell.label(), predicted, observed, referenceMae, constantMae), step, trials,
         recalibrate(model, x, y, xs));
   }
 

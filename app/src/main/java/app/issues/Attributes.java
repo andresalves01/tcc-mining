@@ -120,8 +120,8 @@ public final class Attributes {
   }
 
   /**
-   * The executor's columns, which the secondary study reads at t0 for the person known then: they
-   * join C1 there (P10), while the rest of the content block stays after the fact.
+   * The executor's columns, read at t0 for the person known then: they join C1 (P10), while the
+   * rest of the content block stays after the fact.
    */
   public static final Set<String> EXECUTOR_AT_START = Set.of("A09_exec_loc_tot",
       "A10_exec_mccc_tot", "A10c_exec_mccc_coverage", "A11_exec_commits", "A12_exec_tenure_days",
@@ -131,9 +131,9 @@ public final class Attributes {
   public static final String OUT_AT_START = "D06_first_interaction_h";
 
   /**
-   * The columns of one cell of the secondary study: C1 plus the executor at t0, and the blocks the
-   * scenario admits (P19), the content block without the executor's columns, the exposure block
-   * without D06 (P20).
+   * The columns of one family under one scenario, read at the first In Progress: C1 plus the
+   * executor at t0, and the blocks the scenario admits (P19), the content block without the
+   * executor's columns, the exposure block without D06 (P20).
    */
   public static List<Attribute> ofInProgress(final Family family, final Scenario scenario) {
     return ALL.stream().filter(a -> {

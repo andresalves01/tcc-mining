@@ -15,12 +15,11 @@ import java.util.Set;
 
 /**
  * The revised team columns ({@link Extractor#TEAM_REVISED}) on their own file, one line per issue
- * keyed by id, for the description-similarity chain.
+ * keyed by id, for the study.
  *
- * <p>Apart from the extracted matrix so that the registered in-progress matrix is written byte for
- * byte as before, under the SHA-256 its registration froze. The similarity stage joins this file
- * into the matrix it writes, so the chain downstream still reads one matrix. Absence is an empty
- * field and comes back as absence.
+ * <p>Apart from the extracted matrix so the extraction and the team calculation remain separate.
+ * The similarity stage joins this file into the matrix it writes, so downstream stages still read
+ * one matrix. Absence is an empty field and comes back as absence.
  */
 public final class TeamColumns {
 
@@ -31,7 +30,7 @@ public final class TeamColumns {
 
   /**
    * Per issue id, the four columns; a missing value is a null or an absent key. Refuses to replace
-   * a file that is not a team file, so a misdirected path cannot destroy the registered matrix.
+   * a file that is not a team file, so a misdirected path cannot destroy the extracted matrix.
    */
   public static void write(final Path path, final Map<String, Map<String, Double>> values)
       throws IOException {

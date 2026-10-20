@@ -11,7 +11,7 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * Every column of one issue, in both scenarios.
+ * Every extracted column of one issue.
  *
  * <p>The Java twin of the Python column script, which the extraction is
  * checked against column by column, plus what the Python did not compute: the team's open load
@@ -23,9 +23,9 @@ import java.util.Set;
  * {@code [t0, t1)}, where t1 is the first resolution -- always new columns, never a C1 value
  * replaced. A value that cannot be computed is {@code null}, never zero.
  *
- * <p>The in-progress study reads the same columns at
- * another instant, given by {@link At}: t0 is the first In Progress, the executor is the person
- * known then, and the participants are those who took part before it. Only t0 moves (P11); the
+ * <p>The study reads the columns at the instant given by {@link At}: t0 is the first In Progress,
+ * the executor is the person known then, and the participants are those who took part before it.
+ * Only t0 moves (P11); the
  * executor's columns are that person's (P10), A13 counts the issues assigned to them (P14), and
  * K20c1/K21c1 sum over the participants (P13).
  */
@@ -41,7 +41,7 @@ public final class Extractor {
    * across the members of each one's history in the project, on the original scale. A member
    * with Java commits none of which has McCC is left out of the complexity, never read as zero,
    * and a team with nobody left has the values missing; partial coverage stays in A06c. Not in {@link Attributes}: the matrices the extraction
-   * writes, and the SHA-256 the pre-registrations froze, carry only the registry's columns.
+   * writes carry only the registry's columns.
    */
   public static final String TEAM_LOC_MEDIAN = "TEAM_loc_median";
   public static final String TEAM_LOC_SD = "TEAM_loc_sd";
@@ -62,7 +62,7 @@ public final class Extractor {
   private final Map<String, List<Object[]>> ownAssigned = new HashMap<>();
 
   /**
-   * Where a row of the secondary study is read.
+   * Where a row is read: the start of the work.
    *
    * @param executor the canonical person known at t0 (P8), or null
    * @param participants the canonical people who took part in the issue before t0 (P13)
@@ -262,8 +262,8 @@ public final class Extractor {
   }
 
   /**
-   * Every column of one issue, at its creation when {@code at} is null (the main study) and at
-   * {@code at.t0()} otherwise, with {@code init} read at that same instant.
+   * Every column of one issue, at {@code at.t0()}, or at its creation when {@code at} is null,
+   * with {@code init} read at that same instant.
    */
   public Map<String, Double> row(final Universe.Unit u, final Initial.Values init,
       final Corpus.Label label, final At at) {
@@ -474,8 +474,8 @@ public final class Extractor {
     final List<World.Commit> exCommits = world.implementation(u.id(), t1);
     final String ex = exCommits.isEmpty() ? null : exCommits.get(0).who();
     v.put("EXE_known", bool(ex != null));
-    // the person the executor's columns describe: the retrospective one in the main study, the one
-    // known at t0 in the secondary study, where the change's columns stay retrospective (P10)
+    // the person the executor's columns describe: the one known at t0, where the change's columns
+    // stay retrospective (P10); the retrospective one when the row is read at the creation
     final String person = at == null ? ex : at.executor();
     boolean personKnown = person != null;
     if (at != null) {

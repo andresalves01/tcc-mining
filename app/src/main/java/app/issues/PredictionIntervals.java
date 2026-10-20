@@ -13,7 +13,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 /**
- * The prediction intervals of the description-similarity chain (ticket 24, items 53 and 54): how
+ * The study's prediction intervals (ticket 24, items 53 and 54): how
  * far a model's estimate of one issue can be trusted, beside the mean absolute error, which says
  * only how much it misses on average. Descriptive: nothing here chooses a model, k or column.
  *

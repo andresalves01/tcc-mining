@@ -13,12 +13,11 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The revised team columns of the description-similarity chain, on their own file. Runs the
- * in-progress extraction as {@code issues-in-progress-extract} does and writes only the four
- * columns per issue to TEAM_COLUMNS, so the registered matrix is never rewritten; refuses, as the
- * extraction does, when its time-travel gate fails. That gate recomputes the registered columns
- * only, not these four. Never replaces a file that is not a team file. Records the run, with the
- * file's SHA-256, in ISSUES_DB.
+ * The revised team columns, on their own file. Runs the extraction as {@code
+ * issues-in-progress-extract} does and writes only the four columns per issue to TEAM_COLUMNS, so
+ * the extracted matrix is never rewritten; refuses, as the extraction does, when its time-travel
+ * gate fails. That gate recomputes the extracted columns only, not these four. Never replaces a
+ * file that is not a team file. Records the run, with the file's SHA-256, in ISSUES_DB.
  */
 public final class IssuesInProgressTeamCommand implements CommandRunner {
 
@@ -36,7 +35,7 @@ public final class IssuesInProgressTeamCommand implements CommandRunner {
         new IssuesInProgressExtractTask(context.study(), context.progress()).run();
 
     System.out.printf("%n  DURATION FROM IN PROGRESS -- REVISED TEAM COLUMNS%n");
-    System.out.printf("    %,d issues  time-travel gate (registered columns) %s%n",
+    System.out.printf("    %,d issues  time-travel gate (the registry's columns) %s%n",
         r.team().size(), r.travelPassed() ? "passed" : "FAILED");
     if (!r.passed()) {
       throw new CommandFailedException(List.of("", "  REFUSED: the time-travel gate failed -- "

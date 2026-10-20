@@ -27,7 +27,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /**
- * The Elastic Net models of the description-similarity chain, each one's alpha and lambda and,
+ * The study's Elastic Net models, each one's alpha and lambda and,
  * for the three reading the similarity medians, their n, n and k, chosen on the inner validation.
  */
 class ElasticNetSelectionTest {
@@ -265,7 +265,7 @@ class ElasticNetSelectionTest {
     for (final String column : KIKAS_RETROSPECTIVE) {
       v.put(column, hours * random.nextDouble());
     }
-    // the registered matrix stores the indicator beside its column
+    // the extracted matrix stores the indicator beside its column
     v.put("K10_mean_comment_words_ausente", i % 6 == 1 ? 1.0 : 0.0);
     if (i % 6 == 1) {
       v.put("K10_mean_comment_words", null);

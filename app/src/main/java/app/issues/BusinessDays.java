@@ -99,7 +99,7 @@ public final class BusinessDays {
     final List<String> missing = COLUMNS.stream().filter(c -> !columns.contains(c)).toList();
     return missing.isEmpty() ? null : "the matrix has no " + String.join(", ", missing)
         + "; it was written before business days or before the time back in Open or Reopened "
-        + "was taken out of them or before the days with recorded activity (ticket 27), run "
+        + "was taken out of them or before the days with recorded activity, run "
         + "issues-in-progress-similarity again";
   }
 
@@ -254,8 +254,8 @@ public final class BusinessDays {
       final Double t = e.row().values().get(bound);
       if (recorded == null || t == null) {
         throw new IllegalArgumentException(e.unit().issueId() + " has no " + target + " or "
-            + bound + "; the matrix was written before the days with recorded activity "
-            + "(ticket 27), run issues-in-progress-similarity again");
+            + bound + "; the matrix was written before the days with recorded activity, run "
+            + "issues-in-progress-similarity again");
       }
       if (threshold == null) {
         threshold = t;
@@ -295,7 +295,7 @@ public final class BusinessDays {
     for (final RowCache.Entry e : entries) {
       if (e.unit().businessDays() == null) {
         throw new IllegalArgumentException(e.unit().issueId() + " has no business days set: the "
-            + "entries of the in-progress similarity chain are BusinessDays.population's");
+            + "entries the models read are BusinessDays.population's");
       }
     }
     return entries;

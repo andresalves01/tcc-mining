@@ -23,7 +23,7 @@ import java.util.TreeMap;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** The in-progress study's random split, stratified by project (ticket 21, item 44). */
+/** The study's random split, stratified by project (ticket 21, item 44). */
 class ProjectSplitTest {
 
   /** Projects of 1, 2, 3, 5, 10 and 23 issues, their ids given out of order. */

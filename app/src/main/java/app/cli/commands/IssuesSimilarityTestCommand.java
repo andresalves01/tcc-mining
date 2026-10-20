@@ -33,7 +33,7 @@ import java.util.Set;
 import java.util.function.Function;
 
 /**
- * The test step of the description-similarity chain, outer mode only (see {@link
+ * The study's test step, outer mode only (see {@link
  * SimilarityScoring}): the fourteen models the inner report scores -- the global and project
  * medians, the six Elastic Nets of {@link ElasticNetSelection#MODELS} (the own start model,
  * Al-Zubaidi and Kikas at the start; the retrospective scenario's main reading ({@link
@@ -109,7 +109,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
   static final String EXAMINED = "the outer test is a new draw of 30% per project, seed 1738.";
 
   private static final String EFFORT = "selection effort differs between families: the three "
-      + "registered cells (Al-Zubaidi and Kikas at the start, Kikas's retrospective one) chose "
+      + "literature sets (Al-Zubaidi and Kikas at the start, Kikas's retrospective one) chose "
       + "only alpha and lambda on the 3 x 12 grid; the "
       + ElasticNetSelection.WITH_SIMILARITY.size() + " models reading the "
       + "similarity medians chose also their Jaccard n, embedding n and cluster k among "
@@ -402,7 +402,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     if (!IssuesSimilarityElasticNetCommand.onlyThisStep(elasticNetLines)) {
       throw new IllegalArgumentException(elasticNet + " is not the Elastic Net step's parameters "
           + "file for the models " + ElasticNetSelection.MODELS + "; it may be another step's, "
-          + "or one written in an earlier format or for the models before ticket 12");
+          + "or one written in an earlier format or for other models");
     }
     final List<ElasticNetSelection.Parameter> enParameters = ElasticNetSelection.read(
         elasticNetLines);

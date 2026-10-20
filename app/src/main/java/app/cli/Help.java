@@ -25,13 +25,13 @@ public final class Help {
 
   public static void print() {
     System.out.println("""
-        Non-intrusive mining for team formation, over the SmartSHARK 2.2 corpus.
+        Issue duration from In Progress, over the SmartSHARK 2.2 corpus.
 
-        Builds the labelled sample that team compositions are compared on: one label per issue,
-        tying it to the developer who resolved it, to its creation and resolution, to the
-        time-to-code, and to the methods its change touched. The stages run in the order listed
-        below, each writing what the next one reads -- identity first, because every later stage
-        keys on the canonical author.
+        Estimates how many active business days an issue of an Apache Java project takes from the
+        start of the work (its first In Progress) to its first resolution. The stages run in the
+        order listed below, each writing what the next one reads: identity first, because every
+        later stage keys on the canonical author; then the contribution ledger, the labelled
+        funnel and the per-commit complexity the extraction reads; then the issue stages.
 
         Usage: app <command>
         """);
@@ -45,7 +45,9 @@ public final class Help {
           MONGO_URI         mongodb://127.0.0.1:27017
           SOURCE_DB         smartshark_2_2      read-only
           TARGET_DB         smartshark_tcc      written to; must differ from SOURCE_DB
-          ISSUES_DB         smartshark_issues   duracao de issues: written to; its own
+          ISSUES_DB         smartshark_issues   the issue stages' run records: written to; its own
+          CACHE             (unset)             issues-in-progress-extract: the matrix written;
+                                                issues-in-progress-similarity: the one it reads
           WORK_DIR          build/identity-work
           JIRA_CACHE_DIR    build/jira-cache
           JIRA_DELAY_MS     250                 pause between issue-tracker requests
@@ -92,7 +94,7 @@ public final class Help {
                                                 n, embedding n and cluster k of the three
                                                 models with the similarity medians, and the tail
                                                 cut's k, chosen on the own start model, both
-                                                fences and each k's error; never PARAMETERS;
+                                                fences and each k's error;
                                                 issues-in-progress-similarity-test and
                                                 -inner-report read it
         """);

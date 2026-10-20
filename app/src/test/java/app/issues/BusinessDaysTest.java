@@ -310,7 +310,8 @@ class BusinessDaysTest {
     target(1, INNER, null, 2);
     final IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
         () -> BusinessDays.population(entries, INNER));
-    assertTrue(e.getMessage().contains("ticket 27"), e.getMessage());
+    assertTrue(e.getMessage().contains("before the days with recorded activity"),
+        e.getMessage());
     for (final double wrong : new double[] {0, 6, 2.5}) {
       target(1, INNER, wrong, 2);
       assertThrows(IllegalArgumentException.class, () -> BusinessDays.population(entries, INNER),
@@ -348,7 +349,7 @@ class BusinessDaysTest {
     all.remove(BusinessDays.recorded(Augmentation.Variant.OUTER));
     final String before27 = BusinessDays.unwritten(all);
     assertTrue(before27.contains(BusinessDays.recorded(Augmentation.Variant.OUTER))
-        && before27.contains("ticket 27"), before27);
+        && before27.contains("before the days with recorded activity"), before27);
     final String old = BusinessDays.unwritten(List.of("x", BusinessDays.BOUNDARY));
     assertTrue(old.contains(BusinessDays.ACTIVE) && !old.contains(BusinessDays.BOUNDARY)
         && old.contains("issues-in-progress-similarity"), old);

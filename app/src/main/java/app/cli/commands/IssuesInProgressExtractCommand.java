@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * The in-progress study's extraction: the FIXED issues read at their first In Progress, those of
+ * The study's extraction: the issues resolved as Fixed read at their first In Progress, those of
  * at least one active business day kept, the split drawn over them at random and stratified by
  * project ({@link ProjectSplit}), and time travel at the first In Progress. Writes the cache to
  * CACHE only when the gate passed; records a summary, with the split's rule and seed, in

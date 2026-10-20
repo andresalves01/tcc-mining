@@ -11,7 +11,7 @@ import java.util.HexFormat;
 import java.util.List;
 
 /**
- * The sentence-embedding model the description-similarity chain reads, pinned: all-MiniLM-L6-v2 at
+ * The sentence-embedding model the study reads, pinned: all-MiniLM-L6-v2 at
  * one Hugging Face revision, its weights, its configuration and the tokenizer files, each with
  * its SHA-256.
  *

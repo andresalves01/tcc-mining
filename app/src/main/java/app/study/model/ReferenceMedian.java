@@ -18,22 +18,23 @@ import java.util.Map;
  *
  * <p>A project with no training row falls back to the global training median. Under this study's
  * frozen population that happens for six test rows: the inherited-history rule is off, so projects
- * appear in the test side that never appear in training. It affects the baseline alone -- no model
- * here receives a project identifier as a predictor.
+ * appear in the test side that never appear in training. It affects the project median alone --
+ * no model here receives a project identifier as an attribute.
  */
-public final class Baseline {
+public final class ReferenceMedian {
 
   private final Map<String, Double> byProject;
   private final double global;
   private final int projects;
 
-  private Baseline(final Map<String, Double> byProject, final double global, final int projects) {
+  private ReferenceMedian(final Map<String, Double> byProject, final double global,
+      final int projects) {
     this.byProject = Map.copyOf(byProject);
     this.global = global;
     this.projects = projects;
   }
 
-  public static Baseline learnedOn(final List<? extends Outcome> fit) {
+  public static ReferenceMedian learnedOn(final List<? extends Outcome> fit) {
     final Map<String, List<Double>> hours = new HashMap<>();
     final List<Double> all = new ArrayList<>(fit.size());
     for (final Outcome unit : fit) {
@@ -43,7 +44,7 @@ public final class Baseline {
     }
     final Map<String, Double> medians = new HashMap<>(hours.size() * 2);
     hours.forEach((project, values) -> medians.put(project, median(values)));
-    return new Baseline(medians, median(all), medians.size());
+    return new ReferenceMedian(medians, median(all), medians.size());
   }
 
   /**
@@ -52,9 +53,9 @@ public final class Baseline {
    * <p>The median and not the mean, because the metric is absolute error: the sum of absolute
    * deviations is minimised by the median. On a target whose mean is four times its median --
    * 229 hours against 56 -- predicting the mean is far worse than predicting the median, and worse
-   * than the mandatory baseline.
+   * than the mandatory project median.
    *
-   * <p>Reported as a second reference because on this data it <b>beats</b> the mandatory baseline:
+   * <p>Reported as a second reference because on this data it <b>beats</b> the project median:
    * the per-project median loses twenty-two hours to a single number. A gain measured only against
    * the mandatory reference therefore credits a model for the reference's weakness.
    */

@@ -21,11 +21,11 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * The retrospective stage of the description-similarity chain (ticket 15), after the similarity
+ * The study's retrospective stage (ticket 15), after the similarity
  * stage: the nine {@link Retrospective} attributes observed between the first In Progress and
  * the first resolution, added to the similarity stage's matrix, every earlier column copied as it
- * is. A separate stage and a separate file, so neither the registered matrix nor the similarity
- * stage's is rewritten, and the similarity stage need not run again.
+ * is. A separate stage and a separate file, so neither the extracted matrix nor the similarity
+ * matrix is rewritten, and the similarity stage need not run again.
  *
  * <p>Reads MATRIX (the similarity stage's), the corpus and the methods each implementation commit
  * changed; refuses, writing and recording nothing, unless MATRIX has the similarity stage's columns

@@ -17,7 +17,7 @@ class IssuesSimilarityElasticNetCommandTest {
 
   @Test
   @DisplayName("only a file of this step's own choices in its current format is overwritten: not "
-      + "the registered chain's, not one in the format before ticket 11, not one naming the "
+      + "another step's, not one in the format before ticket 11, not one naming the "
       + "models before ticket 12, not one of the six models before the retrospective one, not "
       + "one of the eleven models before the fourteen")
   void overwritesOnlyItsOwnFile() {
@@ -65,7 +65,7 @@ class IssuesSimilarityElasticNetCommandTest {
         "# chosen on the inner validation only; the outer test was not read",
         "# step\tname\tparameter\tvalue", "direct\tjaccard_median\tcandidate\t10")));
     assertFalse(IssuesSimilarityElasticNetCommand.onlyThisStep(List.of(
-        "# population\tcell\talpha\tlambda -- written by issues-grid on the inner selection",
+        "# population\tcell\talpha\tlambda -- written by another selection step",
         "IN_PROGRESS\tOWN / C1\t0.5\t0.01")));
     // ticket 29's file, the eleven models before the fourteen, under its header then
     final List<String> eleven = new ArrayList<>(own);

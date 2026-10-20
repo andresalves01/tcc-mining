@@ -175,7 +175,7 @@ public final class IssuesSimilarityTask {
     if (!zero.isEmpty()) {
       return new Report(List.of(String.format("%,d issues of the matrix have 0 active business "
           + "days, the first %s; the extraction draws the split over the issues of at least one, "
-          + "so the matrix was extracted before ticket 21", zero.size(), zero.get(0))), found,
+          + "so the matrix was extracted before that rule", zero.size(), zero.get(0))), found,
           List.of(), null, 0, Map.of(), Set.of());
     }
 

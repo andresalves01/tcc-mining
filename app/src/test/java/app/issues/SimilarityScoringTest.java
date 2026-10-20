@@ -30,7 +30,7 @@ import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-/** The test run of the description-similarity chain, on a synthetic corpus checked by hand. */
+/** The study's test run, on a synthetic corpus checked by hand. */
 class SimilarityScoringTest {
 
   /** Each model with the similarity medians at a combination of its own. */
@@ -236,7 +236,7 @@ class SimilarityScoringTest {
 
   @Test
   @DisplayName("every model is refitted with the alpha and lambda it was given, the lambda scaled "
-      + "by the ratio of rows as the registered chain does; nothing is swept or chosen")
+      + "by the ratio of rows declared by the study; nothing is swept or chosen")
   void readsParametersAndNeverSelects() {
     final SimilarityScoring.Report r =
         SimilarityScoring.run(corpus(), choices(0.2), forests(), RESERVED);

@@ -52,9 +52,9 @@ public final class Initial {
 
   /**
    * What the issue said about itself at {@code t0}, in strict t0: only the changes stamped at or
-   * after {@code t0} are undone. The secondary study reads this at the first In Progress. The main
-   * study keeps {@link #of}, which undoes every change -- one event of the corpus is stamped before
-   * its issue's creation, and {@code of} must stay what it was when the main matrix was frozen.
+   * after {@code t0} are undone. The extraction reads this at the first In Progress. {@link #of},
+   * the reading at the creation, undoes every change instead: one event of the corpus is stamped
+   * before its issue's creation.
    */
   public static Values at(final Corpus.Issue issue, final List<Corpus.Event> events,
       final Corpus.Text text, final long t0) {

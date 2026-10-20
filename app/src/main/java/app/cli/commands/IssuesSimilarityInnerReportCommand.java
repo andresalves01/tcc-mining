@@ -29,7 +29,7 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
- * The inner report of the description-similarity chain (ticket 16): the fourteen models the
+ * The study's inner report (ticket 16): the fourteen models the
  * outer test scores -- the global and project medians, the six Elastic Nets of {@link
  * ElasticNetSelection#MODELS} and their forests -- refitted on the inner fitting rows at the
  * choices of the parameters file and scored on the inner validation, by the study's own scoring
@@ -40,8 +40,8 @@ import java.util.function.Function;
  * inner fitting rows at or below the fence of the k the parameters file records, the fences taken
  * on the inner fitting set; a fence that is not the one the selection recorded refuses. Every
  * table -- models, bands, paired comparisons, ordering intervals -- is read twice: on the
- * usual-flow validation issues, those at or below the k = 3 fence, the main reading, which item
- * 49's decision on ticket 19's columns reads; and on every validation issue, the complementary
+ * usual-flow validation issues, those at or below the k = 3 fence, the main reading used to judge
+ * the pressure attributes; and on every validation issue, the complementary
  * reading, marked as such. The report's header states the chosen k, both fences, each k's error
  * and how many issues each reading holds; each file's first column names the reading. The
  * predictions file holds every validation issue, with whether it is of the usual flow; the
@@ -367,7 +367,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     final SimilarityScoring.Report r = readings.complementary();
     final SimilarityScoring.Fences fences = r.fences();
     final List<String> md = new ArrayList<>();
-    md.add("# Description-similarity chain: inner report");
+    md.add("# Issue duration from In Progress: inner report");
     md.add("");
     md.add("**NOTE: " + OPTIMISTIC + ".**");
     md.add("");

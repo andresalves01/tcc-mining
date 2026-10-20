@@ -20,20 +20,20 @@ import java.util.Set;
  * not a prediction available during the work.
  *
  * <p><b>Implementation commits</b> ({@link World#implementation}, the executor's commits of the
- * registered columns): the issue's linked commits by a human author (not a bot commit, {@link
+ * extracted columns): the issue's linked commits by a human author (not a bot commit, {@link
  * World.Commit#bot}) visible before t1, those before t0 included; nothing visible at or after t1.
  * Without one, the five content attributes are missing, never zero.
  *
  * <ol>
  *   <li>{@link #LINES}: the sum over those commits of their Java lines added and removed, each
- *       commit's split evenly among the issues it cites ({@link World#change}, as the registered
+ *       commit's split evenly among the issues it cites ({@link World#change}, as extracted
  *       {@code A15}); 0 when they changed no Java.
  *   <li>{@link #MCCC} and {@link #NESTING}: the mean cyclomatic complexity and nesting of the
  *       methods those commits changed, by the funnel's rule for which methods a commit changed,
  *       each method once at its latest state ({@link MethodDeduplication#byLatestChange}); no
  *       single-author requirement. Missing when no method was recovered.
  *   <li>{@link #FILES}: the distinct files of any type those commits touched; missing when the
- *       corpus records none, as the registered {@code D07} is.
+ *       corpus records none, as the extracted {@code D07} is.
  *   <li>{@link #FAMILIARITY}: the share of those files that at least one of those commits'
  *       authors had touched in the issue's project in a commit visible strictly before t0; no
  *       commit linked to the issue counts in that history.
@@ -67,9 +67,9 @@ import java.util.Set;
  * very records the target is built from, so the main retrospective model leaves them out and only
  * its ceiling reads them ({@link #DISCUSSION}).
  *
- * <p>Separate from the registered columns of {@link Extractor}: {@code A15}, {@code A16}, {@code
+ * <p>Separate from the extracted columns of {@link Extractor}: {@code A15}, {@code A16}, {@code
  * A17}, {@code D07}, {@code D08}, {@code K03}, {@code K04} and {@code K05} keep their meaning in the
- * registered matrix, and these are new columns under new names.
+ * extracted matrix, and these are new columns under new names.
  */
 public final class Retrospective {
 

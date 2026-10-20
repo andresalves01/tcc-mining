@@ -11,8 +11,8 @@ import java.util.Random;
 import java.util.TreeMap;
 
 /**
- * The in-progress study's split (ticket 21, item 44 of the retrospective decisions): random,
- * stratified by project, in place of the temporal cut, which compared different units -- an issue
+ * The study's split (ticket 21, item 44 of the retrospective decisions): random, stratified by
+ * project, in place of the temporal cut it replaced, which compared different units -- an issue
  * entered a part only once started and resolved before that part's cut, so the inner validation
  * could last at most about sixteen months while the fitting set spanned twelve years.
  *
@@ -28,8 +28,6 @@ import java.util.TreeMap;
  * BusinessDays#active}), the target's own rule, which the extraction counts before drawing; the
  * issues of 0 are never drawn.
  *
- * <p>The main study's split ({@link Universe#split}) and {@code app.labels.TemporalSplit} are not
- * this one and do not change.
  */
 public final class ProjectSplit {
 

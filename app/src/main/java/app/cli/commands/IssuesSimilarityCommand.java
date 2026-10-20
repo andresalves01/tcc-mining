@@ -33,9 +33,8 @@ import java.util.TreeMap;
 import java.util.function.Function;
 
 /**
- * The similarity stage of the description-similarity chain, after the in-progress extraction.
- * Separate from the registered in-progress chain: it reads that chain's matrix and changes nothing
- * of it.
+ * The similarity stage, after the extraction. It reads the extracted matrix and writes the
+ * augmented matrix separately, without changing its input.
  *
  * <p>Before anything else of the model is used, it must reproduce the sentence-transformers
  * reference ({@link ReferenceCheck}); otherwise the run is refused.

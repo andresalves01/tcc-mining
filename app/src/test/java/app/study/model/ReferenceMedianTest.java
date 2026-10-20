@@ -9,7 +9,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 /** The mandatory reference, and the four things section 9.1 forbids it from doing. */
-class BaselineTest {
+class ReferenceMedianTest {
 
   private record Done(String id, String project, double durationHours) implements Outcome {
 
@@ -26,36 +26,36 @@ class BaselineTest {
   @Test
   @DisplayName("it predicts the project's own median, learned on the fit side")
   void theProjectMedian() {
-    final Baseline baseline = Baseline.learnedOn(List.of(
+    final ReferenceMedian reference = ReferenceMedian.learnedOn(List.of(
         unit("a", "p", 10), unit("b", "p", 20), unit("c", "p", 60),
         unit("d", "q", 5)));
 
-    assertEquals(20.0, baseline.predictHours(unit("x", "p", 999)),
+    assertEquals(20.0, reference.predictHours(unit("x", "p", 999)),
         "the median of 10, 20 and 60 is 20 -- and the scored row's own 999 hours is not consulted");
-    assertEquals(5.0, baseline.predictHours(unit("y", "q", 1)));
-    assertEquals(2, baseline.projects());
+    assertEquals(5.0, reference.predictHours(unit("y", "q", 1)));
+    assertEquals(2, reference.projects());
   }
 
   @Test
   @DisplayName("a project absent from the fit side falls back to the global median, and is counted")
   void theGlobalFallback() {
-    final Baseline baseline = Baseline.learnedOn(List.of(
+    final ReferenceMedian reference = ReferenceMedian.learnedOn(List.of(
         unit("a", "p", 10), unit("b", "p", 20), unit("c", "q", 30)));
 
     final Done unseen = unit("z", "novo", 1);
-    assertEquals(20.0, baseline.predictHours(unseen),
+    assertEquals(20.0, reference.predictHours(unseen),
         "the median of all three training rows");
-    assertEquals(1, baseline.fellBackOn(List.of(unseen, unit("w", "p", 1))),
+    assertEquals(1, reference.fellBackOn(List.of(unseen, unit("w", "p", 1))),
         "and the count is reported, because it is a property of the population");
   }
 
   @Test
   @DisplayName("an even number of rows takes the mean of the two middle values")
   void medianOfAnEvenCount() {
-    final Baseline baseline =
-        Baseline.learnedOn(List.of(unit("a", "p", 10), unit("b", "p", 20)));
+    final ReferenceMedian reference =
+        ReferenceMedian.learnedOn(List.of(unit("a", "p", 10), unit("b", "p", 20)));
 
-    assertEquals(15.0, baseline.predictHours(unit("x", "p", 1)));
+    assertEquals(15.0, reference.predictHours(unit("x", "p", 1)));
   }
 
   @Test
@@ -80,7 +80,7 @@ class BaselineTest {
     // The case this study is actually in: the mandatory reference is worse than a single number, so
     // the same model looks much better against one than against the other.
     final Score score = Score.of("x", new double[] {100, 100}, new double[] {0, 0},
-        /* mandatory baseline MAE */ 200.0, /* best constant MAE */ 110.0);
+        /* mandatory reference MAE */ 200.0, /* best constant MAE */ 110.0);
 
     assertEquals(100.0, score.mae(), 1e-12);
     assertEquals(50.0, score.gainPercent(), 1e-9, "half the mandatory reference's error");

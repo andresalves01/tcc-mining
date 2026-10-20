@@ -12,7 +12,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 /**
- * Downloads the pinned sentence-embedding model of the description-similarity chain into MODEL_DIR,
+ * Downloads the study's pinned sentence-embedding model into MODEL_DIR,
  * each file checked by SHA-256 before it takes its place. Reads neither the corpus nor Mongo and
  * records nothing; a file already there with the pinned hash is not fetched again.
  */

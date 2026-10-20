@@ -31,9 +31,9 @@ import java.util.Set;
 import java.util.function.Function;
 
 /**
- * The selection step of the description-similarity chain, inner mode only: for the six attribute
- * sets of {@link ElasticNetSelection#MODELS}, each Elastic Net model's alpha and lambda, by the
- * registered chain's sweep on the inner validation, and, for the three models reading the
+ * The study's selection step, inner mode only: for the six attribute sets of {@link
+ * ElasticNetSelection#MODELS}, each Elastic Net model's alpha and lambda, by the declared sweep on
+ * the inner validation, and, for the three models reading the
  * similarity medians, the Jaccard n, embedding n and cluster k they read, the combination of the
  * 27 whose sweep errs least (see {@link ElasticNetSelection}); and beside each model, as a
  * robustness check, a random forest's column share and leaf, swept on the same rows and columns.
@@ -59,7 +59,7 @@ import java.util.function.Function;
  * rule draws ({@link ProjectSplit}) and the matrix has the day boundary and every column the
  * models declare at every combination. Of the outer test only the ids, the projects and the split
  * labels are read, to count it and to check the split. Writes the choices to
- * ELASTIC_NET_PARAMETERS -- never the registered PARAMETERS, and never over a file holding
+ * ELASTIC_NET_PARAMETERS, never over a file holding
  * anything but this step's own lines under its own header, a check made before anything is fitted
  * -- and records the run, with the SHA-256 of the matrix and of the parameters file, in ISSUES_DB.
  */
@@ -96,16 +96,9 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     final Path matrix = path("MATRIX");
     final Path parameters = path("ELASTIC_NET_PARAMETERS");
     final long began = System.nanoTime();
-    final List<Path> others = new ArrayList<>(List.of(matrix));
-    final String registered = env("PARAMETERS");
-    if (registered != null) {
-      others.add(Path.of(registered));
-    }
-    for (final Path other : others) {
-      if (same(other, parameters)) {
-        throw new CommandFailedException(List.of("  REFUSED: ELASTIC_NET_PARAMETERS is " + other
-            + ", which this step never writes"));
-      }
+    if (same(matrix, parameters)) {
+      throw new CommandFailedException(List.of("  REFUSED: ELASTIC_NET_PARAMETERS is " + matrix
+          + ", which this step never writes"));
     }
 
     final String matrixSha;
@@ -285,18 +278,17 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
 
   /**
    * Refuses when {@code parameters} exists and is not a file of this step's own choices: it may
-   * be the registered chain's, or one written in an earlier format or for the models before
-   * ticket 12, and is never overwritten.
+   * belong to another step, or have an earlier format or another model set, and is never
+   * overwritten.
    */
   private static void refuseForeign(final Path parameters)
       throws IOException, CommandFailedException {
     if (Files.exists(parameters) && !onlyThisStep(Files.readAllLines(parameters))) {
       throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
           + parameters + " exists and is not a file of this step's choices in its current "
-          + "format, for the models " + ElasticNetSelection.MODELS + "; it may be the registered "
-          + "chain's, or this step's from an earlier format, for the eleven models before the "
-          + "fourteen were settled, without the tail cut or the forests, or for the models "
-          + "before ticket 12, and is never overwritten"));
+          + "format, for the models " + ElasticNetSelection.MODELS + "; it may be another "
+          + "step's, or this step's from an earlier format, for other models or without the "
+          + "tail cut or the forests, and is never overwritten"));
     }
   }
 

@@ -175,7 +175,7 @@ class IssuesSimilarityInnerReportCommandTest {
               : a.kind() == Construct.Kind.CATEGORICAL ? random.nextInt(3)
               : random.nextInt(40));
           if (Attributes.all().contains(a)) {
-            // the registered matrix stores the missing indicator beside its own columns
+            // the extracted matrix stores the missing indicator beside its own columns
             values.put(a.name() + "_ausente", 0.0);
           }
         }

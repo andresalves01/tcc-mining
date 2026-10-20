@@ -18,7 +18,7 @@ import java.util.Random;
  * forest ran; the point with the smallest mean absolute error on the scored side is kept, as the
  * linear sweep keeps its own.
  *
- * <p>The description-similarity chain (ticket 13, 15/10/2026) uses the same grid as a robustness
+ * <p>The study (ticket 13, 15/10/2026) uses the same grid as a robustness
  * check beside each of its Elastic Net models: swept on the inner sides with the columns that
  * Elastic Net kept, weighted or not ({@link #sweep}), refitted once on the outer training set at
  * the chosen point ({@link #frozen}), and read on the scored side by permutation importance
@@ -112,7 +112,7 @@ public final class Forest {
    * scored side ({@link #chosen}). A share that gives a count already tried is skipped. Only ever
    * called with {@link Fitting.Mode#INNER} sides.
    */
-  public static Fitted sweep(final Cell cell, final Fitting.Sides sides, final double baselineMae,
+  public static Fitted sweep(final Cell cell, final Fitting.Sides sides, final double referenceMae,
       final double constantMae) {
     final DesignMatrix matrix = DesignMatrix.fittedOn(sides.fitRows(), cell.attributes());
     final double[][] x = matrix.applyAll(sides.fitRows());
@@ -149,7 +149,7 @@ public final class Forest {
     }
     return new Fitted(cell, bestShare, best.mtry(), best.nodeSize(), matrix.columns(),
         matrix.dropped(), best.importance(), bestHours,
-        Score.of(cell.label() + " [floresta]", bestHours, sides.observed(), baselineMae,
+        Score.of(cell.label() + " [floresta]", bestHours, sides.observed(), referenceMae,
             constantMae), List.copyOf(trials));
   }
 
@@ -177,8 +177,8 @@ public final class Forest {
    * split, the point the selection validated; a count larger than this fit's columns refuses.
    */
   public static Frozen frozen(final Cell cell, final Fitting.Sides sides, final Choice choice,
-      final double baselineMae, final double constantMae) {
-    return frozen(cell, sides, choice, baselineMae, constantMae, true);
+      final double referenceMae, final double constantMae) {
+    return frozen(cell, sides, choice, referenceMae, constantMae, true);
   }
 
   /**
@@ -188,7 +188,7 @@ public final class Forest {
    * among its issues and reading the rise in error would read its labels column by column.
    */
   public static Frozen frozen(final Cell cell, final Fitting.Sides sides, final Choice choice,
-      final double baselineMae, final double constantMae, final boolean importance) {
+      final double referenceMae, final double constantMae, final boolean importance) {
     final DesignMatrix matrix = DesignMatrix.fittedOn(sides.fitRows(), cell.attributes());
     if (choice.mtry() > matrix.columns().size()) {
       throw new IllegalArgumentException(cell.label() + "'s forest draws " + choice.mtry()
@@ -201,7 +201,7 @@ public final class Forest {
     final double[] hours = hours(model.predict(xs));
     return new Frozen(cell, choice.share(), choice.mtry(), choice.nodeSize(), matrix.columns(),
         matrix.dropped(), hours,
-        Score.of(cell.label(), hours, sides.observed(), baselineMae, constantMae),
+        Score.of(cell.label(), hours, sides.observed(), referenceMae, constantMae),
         importance ? permutationImportance(model, matrix.columns(), xs, hours, sides.observed())
             : List.of());
   }

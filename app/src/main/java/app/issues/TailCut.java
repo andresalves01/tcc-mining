@@ -7,7 +7,7 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * The tail cut of the description-similarity chain (ticket 23, item 50): the issues of extreme
+ * The study's tail cut (ticket 23, item 50): the issues of extreme
  * duration leave the fitting rows, and the validation is read on the usual flow.
  *
  * <p><b>Fence.</b> {@code Q3 + k * IQR} of the business days ({@link BusinessDays#ACTIVE}, the

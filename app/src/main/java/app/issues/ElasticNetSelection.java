@@ -18,19 +18,19 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 
 /**
- * The Elastic Net models of the description-similarity chain, and the choice on the inner
- * validation only of each one's alpha and lambda, by the registered chain's own sweep, and, for
+ * The study's Elastic Net models, and the choice on the inner validation only of each one's alpha
+ * and lambda, by its declared sweep, and, for
  * the three models reading the similarity medians, of the Jaccard n, embedding n and cluster k
  * they read.
  *
  * <p><b>Models.</b> Six attribute sets, each a {@link Cell}, each with a random forest beside it
  * on the same grid: the study measures each set's attributes, not its source's method. At the
  * start, three. The own start model ({@link #BEFORE_PRESSURE}), the study's own contribution:
- * description length and team size, the registered {@code A01} and {@code A03}; the team's
+ * description length and team size, the extracted {@code A01} and {@code A03}; the team's
  * median and spread of lines of code and of cyclomatic complexity; the corrected reporter median;
- * the executor's lines of code, cyclomatic complexity and open workload, the registered {@code
+ * the executor's lines of code, cyclomatic complexity and open workload, the extracted {@code
  * A09}, {@code A10} and {@code A13}; and the Jaccard, embedding and cluster medians, thirteen in
- * all. Al-Zubaidi at the start and Kikas at the start, the registered in-progress cells read as
+ * all. Al-Zubaidi at the start and Kikas at the start, the literature sets read as
  * they are ({@code ALZUBAIDI / C1}, {@code KIKAS / C1}). After the resolution, three. The own
  * retrospective model in its main reading ({@link #RETROSPECTIVE}): the own start model followed
  * by what was observed between the first In Progress and the first resolution ({@link
@@ -38,7 +38,7 @@ import java.util.concurrent.Callable;
  * assignee changes and urgency, twenty in all. The same with the comments and the participants
  * ({@link #WITH_DISCUSSION}), twenty-two in all, a ceiling, not a competitor: those two count the
  * very records the target is made of ({@link Retrospective#DISCUSSION}). Kikas's retrospective
- * model, the registered Kikas cell of the retrospective scenario ({@code KIKAS / C2}): Kikas at
+ * model, Kikas's retrospective literature set ({@code KIKAS / C2}): Kikas at
  * the start followed by Kikas's whole retrospective set as adapted, the twelve counts observed up
  * to the resolution and the missing indicator the matrix has for them; no similarity median, no
  * own column. The wait on blocking issues is in no model: it equalled the target in about half
@@ -49,7 +49,7 @@ import java.util.concurrent.Callable;
  * <p>The retrospective models read what was observed up to the resolution, and their counts grow
  * with the duration itself: a gain over the start is association with the duration, not a
  * prediction available during the work. The retrospective columns are new names, beside the
- * registered columns of the same constructs, which keep their meaning.
+ * extracted columns of the same constructs, which keep their meaning.
  *
  * <p>Left out, their decisions kept by the earlier runs' reports: the own specification without
  * the similarity medians, the medians alone, the own specification with the pressure attributes
@@ -59,7 +59,7 @@ import java.util.concurrent.Callable;
  * <p><b>Similarity medians as attributes</b> (ticket 11, reversing ticket 08's choice by each
  * median's error read alone as a prediction). The three models with the medians ({@link
  * #WITH_SIMILARITY}) are swept once per {@link Combination} of a Jaccard n, an embedding n and a
- * cluster k among the values the similarity stage computes, 27 in all, each sweep the registered
+ * cluster k among the values the similarity stage computes, 27 in all, each sweep the declared
  * alpha by lambda grid, and keep the combination whose chosen point errs least on the inner
  * validation. <b>Ties</b>: within a combination the sweep's own rule holds (a point is kept only
  * when its error is strictly lower, so the earlier point of the grid wins); across combinations
@@ -74,14 +74,14 @@ import java.util.concurrent.Callable;
  * medians enter as {@code log1p} before standardisation, as the spec says; the reporter median
  * takes the transform of the registry's column it revises ({@code D05}), and the four team columns
  * that of the registry's volumes, both {@code log1p}. Every new column carries a missing
- * indicator: a missing value is handed to the registered preparation as missing, filled there by
+ * indicator: a missing value is handed to the design preparation as missing, filled there by
  * the fitting set's median. The retrospective columns are declared as {@link
  * #retrospective} says: the three counts of the discussion are never missing and carry none. The
- * registered columns ({@code A01}, {@code A03}, {@code A09}, {@code A10}, {@code A13}) keep their
+ * extracted columns ({@code A01}, {@code A03}, {@code A09}, {@code A10}, {@code A13}) keep their
  * own transform and missing-indicator setting. A declared
  * column missing on every inner fitting row is removed from the model before the sweep, with the
- * reason recorded, never filled from the validation rows. The registered preparation, sweep and
- * grid are reused as they are.
+ * reason recorded, never filled from the validation rows. The design preparation, sweep and grid
+ * are reused as they are.
  *
  * <p><b>Random forest</b> (ticket 13, a robustness check, not a new contribution). Beside each
  * model, once its Elastic Net is chosen, the declared {@link Forest} grid is swept on the same
@@ -118,10 +118,10 @@ public final class ElasticNetSelection {
    */
   public static final String BEFORE_PRESSURE = "own_with_similarity_before_pressure";
 
-  /** Al-Zubaidi at the start, the registered cell {@code ALZUBAIDI / C1}. */
+  /** Al-Zubaidi at the start, the literature set {@code ALZUBAIDI / C1}. */
   public static final String ALZUBAIDI_START = "alzubaidi_start";
 
-  /** Kikas at the start, the registered cell {@code KIKAS / C1}. */
+  /** Kikas at the start, the literature set {@code KIKAS / C1}. */
   public static final String KIKAS_START = "kikas_start";
 
   /**
@@ -151,7 +151,7 @@ public final class ElasticNetSelection {
       + "compares fairly with Kikas's retrospective set, which counts comments too";
 
   /**
-   * Kikas's retrospective model, the last of {@link #MODELS}: the registered Kikas cell of the
+   * Kikas's retrospective model, the last of {@link #MODELS}: Kikas's literature set for the
    * retrospective scenario, the literature counterpart of {@link #RETROSPECTIVE}.
    */
   public static final String KIKAS_RETROSPECTIVE = "kikas_retrospective";
@@ -185,7 +185,7 @@ public final class ElasticNetSelection {
   private static final String TRAIN = "TRAIN";
   private static final String TEST = "TEST";
 
-  /** The suffix of a missing indicator, as the registered matrix names its own. */
+  /** The suffix of a missing indicator, as the extracted matrix names its own. */
   private static final String ABSENT = "_ausente";
 
   /**
@@ -260,8 +260,8 @@ public final class ElasticNetSelection {
       List<Removed> removed, List<Swept> combinations, Forest.Fitted forest) {}
 
   /**
-   * @param projectMae the project median's error on the inner validation, the sweep's
-   *     baseline as in the registered grid
+   * @param projectMae the project median's error on the inner validation, the reference median
+   *     the sweep's gains are measured against
    * @param constantMae the inner fitting median's error there
    * @param fitRows the inner fitting rows at or below the chosen k's fence, every model's
    * @param cut the tail cut: the chosen k, its fence, the usual flow's and every k swept
@@ -539,7 +539,7 @@ public final class ElasticNetSelection {
       if (!v.keySet().equals(e.getValue())) {
         throw new IllegalArgumentException("the parameters file has not the tail cut's "
             + e.getKey() + " " + e.getValue() + " but " + v.keySet() + "; one written before "
-            + "ticket 23 has none: run issues-in-progress-similarity-elastic-net again");
+            + "the tail cut has none: run issues-in-progress-similarity-elastic-net again");
       }
     }
     if (!byName.keySet().equals(expected.keySet())) {
@@ -573,7 +573,7 @@ public final class ElasticNetSelection {
   }
 
   /**
-   * Chooses the tail cut's k ({@link TailCut}, ticket 23), then, by the registered sweep ({@link
+   * Chooses the tail cut's k ({@link TailCut}, ticket 23), then, by the declared sweep ({@link
    * Fitting#sweep}) on the inner fitting rows that cut leaves scored on the usual-flow inner
    * validation issues, alpha and lambda for every model, and for each of {@link
    * #WITH_SIMILARITY} the combination too. The outer test rows are dropped before anything is
@@ -765,7 +765,7 @@ public final class ElasticNetSelection {
   }
 
   /**
-   * Both sides with a missing indicator beside every column of {@code cells} the registered matrix
+   * Both sides with a missing indicator beside every column of {@code cells} the extracted matrix
    * does not hold (see {@link #flagged(List, Set)}).
    */
   public static Fitting.Sides flagged(final Fitting.Sides raw, final List<Cell> cells) {
@@ -783,7 +783,7 @@ public final class ElasticNetSelection {
 
   /**
    * The rows with a missing indicator beside each new column, one where the value is missing and
-   * zero where it is observed, as the registered matrix stores beside its own columns; the value
+   * zero where it is observed, as the extracted matrix stores beside its own columns; the value
    * itself stays missing for the preparation to fill. A value that is not a finite number refuses.
    */
   private static List<Row> flagged(final List<Row> rows, final Set<String> added) {

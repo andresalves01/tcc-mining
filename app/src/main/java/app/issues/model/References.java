@@ -1,6 +1,6 @@
 package app.issues.model;
 
-import app.study.model.Baseline;
+import app.study.model.ReferenceMedian;
 import app.issues.IssueUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -11,7 +11,7 @@ import java.util.Map;
  * The three references every model is read against, all learned on the fitting side.
  *
  * <ul>
- *   <li>the <b>project median</b>, the mandatory one ({@code app.study.model.Baseline});
+ *   <li>the <b>project median</b>, the mandatory one ({@link ReferenceMedian});
  *   <li>the <b>constant</b>: one number, the median of the fitting side. Among constants the median
  *       minimises absolute error, and it can beat the mandatory reference -- so a gain is always
  *       shown against both;
@@ -23,10 +23,10 @@ import java.util.Map;
  */
 public final class References {
 
-  public final Baseline project;
+  public final ReferenceMedian project;
   private final Map<String, Double> pair;
 
-  private References(final Baseline project, final Map<String, Double> pair) {
+  private References(final ReferenceMedian project, final Map<String, Double> pair) {
     this.project = project;
     this.pair = pair;
   }
@@ -41,7 +41,7 @@ public final class References {
     }
     final Map<String, Double> medians = new HashMap<>(hours.size() * 2);
     hours.forEach((k, v) -> medians.put(k, median(v)));
-    return new References(Baseline.learnedOn(fit), medians);
+    return new References(ReferenceMedian.learnedOn(fit), medians);
   }
 
   public double constantMedian() {

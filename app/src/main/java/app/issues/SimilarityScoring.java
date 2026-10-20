@@ -21,7 +21,7 @@ import java.util.TreeSet;
 import java.util.concurrent.Callable;
 
 /**
- * The scoring of the description-similarity chain, in one of two {@link Scope}s. The test, {@link
+ * The study's scoring, in one of two {@link Scope}s. The test, {@link
  * Scope#RESERVED}: every model refitted on the outer training set with the parameters the
  * selection step wrote, and the outer test scored once. The inner report, {@link Scope#INNER}
  * (ticket 16): the same models refitted on the inner fitting rows at those parameters and the
@@ -30,8 +30,8 @@ import java.util.concurrent.Callable;
  * scope.
  *
  * <p><b>Models</b>, fourteen, the same in both scopes, in this order: the two references learned
- * on the fitting side -- the global median and the project median, as the registered chain
- * learns them; the six Elastic Net models of {@link ElasticNetSelection#cells(Map,
+ * on the fitting side -- the global median and the project median; the six Elastic Net models of
+ * {@link ElasticNetSelection#cells(Map,
  * Augmentation.Variant)}, in the scope's variant, each model with the similarity medians reading
  * them at the Jaccard n, embedding n and cluster k chosen for it: the own start model, Al-Zubaidi
  * and Kikas at the start, the main reading of the own retrospective model, the same with the
@@ -39,8 +39,8 @@ import java.util.concurrent.Callable;
  * and the six random forests beside them ({@link #forest(String)}), a robustness check. A
  * similarity median is an attribute of the models that read it and is never scored alone.
  *
- * <p><b>Refit.</b> As the registered reserved run does it: the alpha given, the lambda given
- * times the ratio of the outer training rows to the inner fitting rows ({@link
+ * <p><b>Refit.</b> The alpha is kept and the lambda is multiplied by the ratio of the outer
+ * training rows to the inner fitting rows ({@link
  * Fitting#finalLambda}), one fit by {@link Fitting#frozen}, no recalibration. The new columns get
  * their missing indicators as in selection; a declared column missing on every outer training row
  * is removed, with the reason recorded, as selection removes one missing on every inner fitting

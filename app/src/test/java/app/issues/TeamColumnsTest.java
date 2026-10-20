@@ -21,7 +21,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** The revised team columns, kept apart from the registered matrix and joined by issue id. */
+/** The revised team columns, kept apart from the extracted matrix and joined by issue id. */
 class TeamColumnsTest {
 
   private static RowCache.Entry entry(final String id) {

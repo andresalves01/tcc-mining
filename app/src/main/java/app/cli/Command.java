@@ -76,8 +76,9 @@ public enum Command {
       Corpus.Stage.COMPLEXITY),
 
   ISSUES_IN_PROGRESS_EXTRACT("issues-in-progress-extract", new IssuesInProgressExtractCommand(), """
-      Issue duration from the first In Progress: the FIXED issues read at
-      that instant, those of at least one active business day kept (the
+      Issue duration from the first In Progress: the issues resolved as
+      Fixed read at that instant, those of at least one active business day
+      kept (the
       target's own count), the split drawn over them at random and
       stratified by project (per project in order of name, its issues by
       id shuffled with one java.util.Random(1738) shared across projects,
@@ -97,17 +98,17 @@ public enum Command {
       the corpus; records nothing in Mongo, so it may run at any time."""),
 
   ISSUES_IN_PROGRESS_TEAM("issues-in-progress-team", new IssuesInProgressTeamCommand(), """
-      Issue duration from the first In Progress, description-similarity
-      chain: runs the in-progress extraction and writes only the revised team
-      columns (median and spread of lines of code and of cyclomatic
-      complexity across the team) to TEAM_COLUMNS, one line per issue, so the
-      registered matrix is never rewritten. Refuses when the extraction's
-      time-travel gate fails; that gate checks the registered columns, not
-      these four. Records the run in ISSUES_DB; reads everything else."""),
+      Issue duration from the first In Progress: runs the extraction and
+      writes only the revised team columns (median and spread of lines of
+      code and of cyclomatic complexity across the team) to TEAM_COLUMNS,
+      one line per issue, which issues-in-progress-similarity joins to the
+      extracted matrix. Refuses when the extraction's time-travel gate
+      fails; that gate does not check these four. Records the run in
+      ISSUES_DB; reads everything else."""),
 
   ISSUES_DOWNLOAD_MODEL("issues-download-model", new IssuesDownloadModelCommand(), """
-      Issue duration from the first In Progress, description-similarity
-      chain: downloads the sentence-embedding model, all-MiniLM-L6-v2 at
+      Issue duration from the first In Progress: downloads the
+      sentence-embedding model, all-MiniLM-L6-v2 at
       its pinned Hugging Face revision (the safetensors weights, the
       configuration and the tokenizer files), into MODEL_DIR, and refuses
       any file whose SHA-256 is not the pinned one. The embedder, plain
@@ -116,8 +117,8 @@ public enum Command {
       nor Mongo and records nothing, so it may run at any time."""),
 
   ISSUES_SIMILARITY("issues-in-progress-similarity", new IssuesSimilarityCommand(), """
-      Issue duration from the first In Progress, description-similarity
-      chain: adds to the extracted matrix the revised team columns from
+      Issue duration from the first In Progress: adds to the extracted
+      matrix the revised team columns from
       TEAM_COLUMNS, each issue's day boundary (the UTC hour its working
       dates turn at: the middle of the quietest eight hours of the person
       who moved it to In Progress, read from their tracker activity before
@@ -160,11 +161,10 @@ public enum Command {
       Reads CACHE, TEAM_COLUMNS, the model and the corpus; keeps the
       embeddings in EMBEDDING_CACHE;
       writes MATRIX and the diagnostics to REPORT_DIR; records the run in
-      ISSUES_DB. Leaves the registered in-progress chain untouched."""),
+      ISSUES_DB."""),
 
   ISSUES_RETROSPECTIVE("issues-in-progress-retrospective", new IssuesRetrospectiveCommand(), """
-      Issue duration from the first In Progress, description-similarity
-      chain, RETROSPECTIVE SCENARIO: adds to the similarity stage's matrix
+      Issue duration from the first In Progress, RETROSPECTIVE SCENARIO: adds to the similarity stage's matrix
       nine attributes observed between the first In Progress and the
       first resolution. They describe the work as it was done, and the
       counts grow with the duration itself: a gain from them is association
@@ -200,19 +200,20 @@ public enum Command {
 
   ISSUES_SIMILARITY_ELASTIC_NET("issues-in-progress-similarity-elastic-net",
       new IssuesSimilarityElasticNetCommand(), """
-      Issue duration from the first In Progress, description-similarity
-      chain, in whole business days (Monday-to-Friday dates reached from the
+      Issue duration from the first In Progress, in whole business days (Monday-to-Friday dates reached from the
       first In Progress to the first resolution, at each issue's day
       boundary, holidays ignored, the time back in Open or Reopened and
       the whole working days of silent gaps between records left out),
       on the issues of at least one business day: chooses alpha and
-      lambda on the inner validation, by the registered grid's sweep, for
-      six Elastic Net models, six attribute sets. At the start: the own
+      lambda on the inner validation, by the Elastic Net sweep (alpha
+      0.10, 0.50 or 0.95; twelve lambdas over four decades down from the
+      penalty that zeroes every coefficient), for six Elastic Net models,
+      six attribute sets. At the start: the own
       start model (description length, team size, the team's median and
       spread of lines of code and complexity, the corrected reporter
       median, the executor's lines of code, complexity and open workload,
       and the Jaccard, embedding and cluster similarity medians), and
-      Al-Zubaidi and Kikas at the start (the registered cells). After the
+      Al-Zubaidi and Kikas at the start (the literature sets). After the
       resolution: the retrospective scenario in its main reading, the own
       start model and, of the attributes issues-in-progress-retrospective
       adds, observed up to the resolution, the five of the implementation
@@ -220,7 +221,7 @@ public enum Command {
       the participants, which count the records the target is made of; the
       same with the comments and the participants, a CEILING, not a
       competitor: part of its gain is mechanical; and Kikas's retrospective
-      scenario, the registered Kikas cell of it (Kikas at the start and the
+      scenario, Kikas's retrospective set (Kikas at the start and the
       twelve counts observed up to the resolution, with their missing
       indicator), the literature counterpart of the retrospective model,
       which counts comments. The three models with the similarity medians
@@ -241,9 +242,8 @@ public enum Command {
       and the matrix has every declared column, the day boundary and the
       active business days. Reads MATRIX; writes ELASTIC_NET_PARAMETERS, the
       forests' column share and leaf among them, never over a file holding
-      more than its own choices or written for other models, as the eleven
-      before these six were settled, or before the forests or for the
-      hours; records the run in ISSUES_DB. The outer test rows are not
+      more than its own choices, written for other models or in an earlier
+      format; records the run in ISSUES_DB. The outer test rows are not
       read. Tail cut: the fence is Q3 + k IQR of the business days of the
       inner fitting set (quartiles by linear interpolation, R's and numpy's
       default), never of the validation; the usual flow is the issues at or
@@ -260,8 +260,7 @@ public enum Command {
 
   ISSUES_SIMILARITY_TEST("issues-in-progress-similarity-test",
       new IssuesSimilarityTestCommand(), """
-      Issue duration from the first In Progress, description-similarity
-      chain, outer mode only: SCORES THE OUTER TEST, in whole business days
+      Issue duration from the first In Progress, outer mode only: SCORES THE OUTER TEST, in whole business days
       (Monday-to-Friday dates reached, at each issue's day boundary,
       holidays ignored, the time back in Open or Reopened left out) on the
       issues of at least one business day, those of 0 dropped from the outer
@@ -276,7 +275,7 @@ public enum Command {
       at the start; the retrospective main reading, the same with the
       comments and the participants, a ceiling, and Kikas's retrospective
       one) on the outer training set with its chosen alpha and the chosen
-      lambda times the ratio of rows, as the registered reserved run does,
+      lambda times the ratio of rows,
       the similarity medians at the Jaccard n, embedding n and cluster k
       chosen for each model; refits beside each, as a robustness check, its
       random forest with the chosen count of columns per split and leaf;
@@ -315,8 +314,7 @@ public enum Command {
 
   ISSUES_SIMILARITY_INNER_REPORT("issues-in-progress-similarity-inner-report",
       new IssuesSimilarityInnerReportCommand(), """
-      Issue duration from the first In Progress, description-similarity
-      chain, INNER REPORT, read-only: every figure is optimistic, the
+      Issue duration from the first In Progress, INNER REPORT, read-only: every figure is optimistic, the
       settings having been chosen on this same inner validation. Reads
       MATRIX (the retrospective matrix) and ELASTIC_NET_PARAMETERS; keeps
       only the outer training rows, the others left behind on their split

@@ -16,17 +16,18 @@ import java.util.List;
  * is never read.
  *
  * <p>So this type carries the mean absolute error in the target's unit, the same number divided by
- * 24 ({@code maeDays}, meaningful only when the unit is hours), the gap against the baseline in both absolute and
- * relative terms, and Spearman as the secondary question of whether the ordering is right.
+ * 24 ({@code maeDays}, meaningful only when the unit is hours), the gap against the project
+ * reference median in both absolute and relative terms, and Spearman as the complementary question
+ * of whether the ordering is right.
  *
  * @param mae the formal metric
- * @param gain baseline minus this, so a positive number is an improvement
- * @param gainPercent the same as a share of the baseline
+ * @param gain project reference median minus this, so a positive number is an improvement
+ * @param gainPercent the same as a share of the project reference median
  * @param gainOverConstantPercent the gain over predicting one number for every row -- the global
  *     median of the fit side. Reported beside the mandatory gain because on this data the mandatory
- *     baseline is <b>worse</b> than that constant, so a gain measured only against it flatters every
- *     model in the table. The specification names the project median as the reference; it does not
- *     forbid saying what the reference is worth
+ *     project median is <b>worse</b> than that constant, so a gain measured only against it
+ *     flatters every model in the table. The specification names the project median as the
+ *     reference; it does not forbid saying what the reference is worth
  * @param spearman correlation between predicted and observed duration. Secondary, and never
  *     compared with the developer ordering of the previous paper, which measures something else
  * @param pairwise the share of pairs of units the model orders correctly: of every two rows
@@ -42,10 +43,10 @@ public record Score(String label, int n, double mae, double maeDays,
   /**
    * @param predicted one prediction per row, in the target's unit, on the original scale
    * @param observed the truth, same order
-   * @param baselineMae what the mandatory reference scored on the same rows
+   * @param referenceMae what the mandatory reference scored on the same rows
    */
   public static Score of(final String label, final double[] predicted,
-      final double[] observed, final double baselineMae, final double constantMae) {
+      final double[] observed, final double referenceMae, final double constantMae) {
 
     if (predicted.length != observed.length) {
       throw new IllegalArgumentException("predictions and truths must line up row for row");
@@ -56,8 +57,8 @@ public record Score(String label, int n, double mae, double maeDays,
     }
     final double mae = sum / predicted.length;
     return new Score(label, predicted.length, mae, mae / 24.0,
-        baselineMae - mae,
-        baselineMae == 0 ? 0 : 100.0 * (baselineMae - mae) / baselineMae,
+        referenceMae - mae,
+        referenceMae == 0 ? 0 : 100.0 * (referenceMae - mae) / referenceMae,
         constantMae == 0 ? 0 : 100.0 * (constantMae - mae) / constantMae,
         // Reused rather than reimplemented: the same ranking correlation the previous paper used,
         // so that a difference between the two studies is never an artefact of two tie rules.

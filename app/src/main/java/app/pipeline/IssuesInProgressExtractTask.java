@@ -28,11 +28,11 @@ import java.util.Set;
 import java.util.TreeSet;
 
 /**
- * The in-progress study's population and columns: FIXED issues read at their first In Progress,
- * the split drawn over those of at least one active business day, and the gate before anything is
- * fitted.
+ * The study's population and columns: the issues resolved as Fixed read at their first In
+ * Progress, the split drawn over those of at least one active business day, and the gate before
+ * anything is fitted.
  *
- * <p>Every column is the main study's, read at t0 = the first In Progress (P11): the changelog is
+ * <p>Every column of the registry is read at t0 = the first In Progress (P11): the changelog is
  * undone from t0 on ({@link Initial#at}), the executor is the assignee at t0 or else whoever made
  * the change (P8), and the participants are the reporter and whoever commented on or changed the
  * issue before t0 (P13). The gate, which must pass for the cache to be written: time travel at t0.
@@ -64,7 +64,7 @@ public final class IssuesInProgressExtractTask {
   /**
    * @param entries the rows of the cache, its columns only
    * @param team per issue id, the revised team columns ({@link Extractor#TEAM_REVISED}), absent
-   *     when missing; never in {@code entries}, so the cache is written as it was registered
+   *     when missing; never in {@code entries}, so the cache contains only extracted columns
    */
   public record Report(Split split, List<TimeTravel.Check> travel,
       Map<String, Integer> executors, List<RowCache.Entry> entries, List<String> columns,
@@ -166,7 +166,7 @@ public final class IssuesInProgressExtractTask {
         columns, team);
   }
 
-  /** The cache row: every registered column, its absence flag, and the sensitivity A15w. */
+  /** The cache row: every extracted column, its absence flag, and the sensitivity A15w. */
   static Row row(final String id, final Map<String, Double> v) {
     final Map<String, Double> values = new LinkedHashMap<>();
     final Set<String> absent = new HashSet<>();
