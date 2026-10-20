@@ -115,9 +115,10 @@ _Avoid_: direct predictor, similarity score
 The median duration of the reporter's other issues in the same project, from the history.
 
 **Pressure attributes**:
-The four attributes about releases and Blocker issues: the fix-version flag, the release cycle and
-the Blocker pace at the start; the urgency in retrospect. The three start ones are still computed but
-no model reads them: the inner validation found them not useful at the start.
+The former start attributes about releases and Blocker issues—the fix-version flag, the release
+cycle and Blocker pace—and the retrospective urgency. The three start attributes were tried in
+earlier runs but are no longer written or read by a current model; urgency remains in the
+retrospective models.
 
 **Fix-version flag**:
 Whether the issue had a fix version before its start.
@@ -194,9 +195,9 @@ The difference between two models on the same issues, with a 95% interval from r
 projects.
 
 **Useful**:
-Said of the pressure attributes in one model when the paired comparison with its before-pressure
-version lowers the error, or improves the ordering without raising the error; the rule by which the
-earlier runs left them out of the start.
+Said of the pressure attributes in the earlier comparisons when their addition lowered the error,
+or improved the ordering without raising the error; the rule by which the earlier runs left the
+three start attributes out of the current model.
 
 **Attribute relevance**:
 Which attributes carry a model: the Elastic Net's coefficients on standardised columns, each with a

@@ -11,9 +11,7 @@ import app.issues.ElasticNetSelection;
 import app.issues.FixVersions;
 import app.issues.Embedder;
 import app.issues.Initial;
-import app.issues.Pressure;
 import app.issues.ProjectSplit;
-import app.issues.Releases;
 import app.issues.RowCache;
 import app.issues.Universe;
 import app.issues.Universe.Population;
@@ -59,11 +57,9 @@ import java.util.function.Function;
  * {@link Augmentation} of each variant read, and what the later steps take. The active count stays
  * as a diagnostic no model reads.
  *
- * <p>The own start model's three attributes of ticket 19 ({@link Pressure}: a fix version set
- * before the start, the days left in the project's release cycle, the pace of its other Blocker
- * issues) are written beside them: the first two read from the corpus at each issue's first In
- * Progress, the Blocker pace from the training side of each variant of the split, as the
- * similarity medians are (ticket 21).
+ * <p>The former start-pressure attributes are no longer written: none of the six current
+ * attribute sets reads them. The fix-version changelog fidelity remains a diagnostic of the
+ * source corpus, not a model input.
  */
 public final class IssuesSimilarityTask {
 
@@ -75,7 +71,7 @@ public final class IssuesSimilarityTask {
    * @param described rows with a description at their first In Progress
    * @param boundaries per issue id, its day boundary
    * @param bots the raw accounts recognised as bots and left out of every boundary's history
-   * @param fixVersions how far the changelog explains the fix versions the start columns read
+   * @param fixVersions how far the changelog explains the fix versions in the corpus
    *     ({@link FixVersions#fidelity}), on the outer training rows only; null when refused
    * @param thresholds each variant's threshold T of the silent gaps ({@link
    *     BusinessDays#thresholds}); empty when refused
@@ -205,14 +201,12 @@ public final class IssuesSimilarityTask {
         Augmentation.run(issues(entries, descriptions, target), embedder, dimension, clusterer);
 
     progress.phase(4, 4, "adding %d columns", Augmentation.columns().size()
-        + BusinessDays.COLUMNS.size() + Pressure.COLUMNS.size());
-    final Pressure pressure = Pressure.of(universe, Releases.of(corpus), parts);
+        + BusinessDays.COLUMNS.size());
     final List<RowCache.Entry> out = new ArrayList<>(entries.size());
     for (final RowCache.Entry e : entries) {
       final Map<String, Double> values = new HashMap<>(e.row().values());
       final Set<String> absent = new HashSet<>(e.row().absent());
       final Map<String, Double> added = new HashMap<>(result.columns().get(e.unit().issueId()));
-      added.putAll(pressure.row(universe.unit(P, e.unit().issueId())));
       values.put(BusinessDays.BOUNDARY, (double) boundaries.get(e.unit().issueId()).hour());
       values.put(BusinessDays.ACTIVE, (double) active.get(e.unit().issueId()));
       for (final Variant v : Variant.values()) {
@@ -238,12 +232,10 @@ public final class IssuesSimilarityTask {
 
   /**
    * The columns this stage adds besides the day boundary and the active business days, a missing
-   * one recorded as absent: the {@link Augmentation} columns, then the {@link Pressure} ones.
+   * one recorded as absent: the {@link Augmentation} columns.
    */
   public static List<String> columns() {
-    final List<String> out = new ArrayList<>(Augmentation.columns());
-    out.addAll(Pressure.COLUMNS);
-    return List.copyOf(out);
+    return Augmentation.columns();
   }
 
   /** The rows as the augmentation reads them, each with its target in each variant. */

@@ -146,15 +146,7 @@ public enum Command {
       human implementation commits) leaves out its g - 1 whole working
       days, T = max(2, Q3 + 3 IQR of every gap of the split's training
       side), drawn after the split; a past issue of 0 enters no history.
-      It also writes three start attributes: whether a
-      fix version was set before the first In Progress, the calendar days
-      left there in the project's release cycle (the median gap between
-      its release tags dated before the start minus the days since the
-      last one, negative when overdue, missing with fewer than three) and,
-      once per split like the medians, the median calendar days from
-      creation to first resolution of the project's other Blocker-priority
-      issues of the training side, whatever the dates (missing with fewer
-      than three). Refuses unless every row's split is the one its rule
+      Refuses unless every row's split is the one its rule
       draws and TEAM_COLUMNS holds exactly the matrix's issues, and unless
       the model in MODEL_DIR
       reproduces the sentence-transformers reference on six sentences.

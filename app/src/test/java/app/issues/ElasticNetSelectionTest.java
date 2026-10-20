@@ -468,7 +468,7 @@ class ElasticNetSelectionTest {
   void noModelReadsThePressureColumns() {
     for (final Augmentation.Variant v : Augmentation.Variant.values()) {
       final List<String> pressure = List.of("START_fix_version", "START_release_cycle_days",
-          Pressure.blockerPace(v));
+          "START_blocker_pace_days" + v.suffix());
       for (final Combination c : Combination.all()) {
         for (final Cell cell : ElasticNetSelection.cells(c, v)) {
           assertTrue(design(cell).stream().noneMatch(n -> pressure.stream()

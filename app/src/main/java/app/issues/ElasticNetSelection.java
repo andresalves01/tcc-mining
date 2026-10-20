@@ -19,8 +19,8 @@ import java.util.concurrent.Callable;
 
 /**
  * The study's Elastic Net models, and the choice on the inner validation only of each one's alpha
- * and lambda, by its declared sweep, and, for
- * the three models reading the similarity medians, of the Jaccard n, embedding n and cluster k
+ * and lambda by its declared sweep, and, for the three models reading the similarity medians, of
+ * the Jaccard n, embedding n and cluster k
  * they read.
  *
  * <p><b>Models.</b> Six attribute sets, each a {@link Cell}, each with a random forest beside it
@@ -43,7 +43,7 @@ import java.util.concurrent.Callable;
  * to the resolution and the missing indicator the matrix has for them; no similarity median, no
  * own column. The wait on blocking issues is in no model: it equalled the target in about half
  * of the issues that had one. Neither is the release-cycle pressure of the start (the fix
- * version, the release cycle and the Blocker pace of {@link Pressure}): the own start model is
+ * version, the release cycle and the Blocker pace): the own start model is
  * the own specification without them, as the inner validation decided.
  *
  * <p>The retrospective models read what was observed up to the resolution, and their counts grow

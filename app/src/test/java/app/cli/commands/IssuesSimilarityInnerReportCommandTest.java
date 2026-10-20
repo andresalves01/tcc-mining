@@ -13,7 +13,6 @@ import app.issues.Augmentation;
 import app.issues.BusinessDays;
 import app.issues.ElasticNetSelection;
 import app.issues.Family;
-import app.issues.Pressure;
 import app.issues.IssueUnit;
 import app.issues.RowCache;
 import app.issues.SimilarityScoring;
@@ -113,9 +112,9 @@ class IssuesSimilarityInnerReportCommandTest {
     for (final Attribute a : drawn) {
       out.add(a);
       if (a.name().equals("A13_exec_open_load")) {
-        out.add(new Attribute(Pressure.FIX_VERSION, Pressure.FIX_VERSION, Family.OWN, null,
+        out.add(new Attribute("START_fix_version", "START_fix_version", Family.OWN, null,
             Construct.Kind.BINARY, Construct.Transform.NONE, false));
-        out.add(new Attribute(Pressure.RELEASE_CYCLE, Pressure.RELEASE_CYCLE, Family.OWN, null,
+        out.add(new Attribute("START_release_cycle_days", "START_release_cycle_days", Family.OWN, null,
             Construct.Kind.NUMERIC, Construct.Transform.NONE, true));
         out.add(pace(Augmentation.Variant.INNER));
       } else if (a.name().equals(Augmentation.reporter(Augmentation.Variant.OUTER))) {
@@ -127,7 +126,8 @@ class IssuesSimilarityInnerReportCommandTest {
 
   /** The Blocker pace column of the given variant, as the own specification declared it. */
   private static Attribute pace(final Augmentation.Variant v) {
-    return new Attribute(Pressure.blockerPace(v), Pressure.blockerPace(v), Family.OWN, null,
+    final String name = "START_blocker_pace_days" + v.suffix();
+    return new Attribute(name, name, Family.OWN, null,
         Construct.Kind.NUMERIC, Construct.Transform.LOG1P, true);
   }
 

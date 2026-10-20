@@ -25,8 +25,8 @@ import java.util.Set;
  * commits are checked too; without {@code at}, the creation.
  *
  * <p>The in-progress columns that read other issues' durations from the training side of the
- * split, whatever their dates -- the similarity medians, the clusters, the reporter median and the
- * Blocker pace ({@link Augmentation}, {@link Pressure}; ticket 21) -- are not known at t0 by
+ * split, whatever their dates -- the similarity medians, the clusters and the reporter median
+ * ({@link Augmentation}; ticket 21) -- are not known at t0 by
  * design, so they are outside this gate: what bounds them is that no label of the other side
  * enters them. Every column the gate checks stays as known at t0.
  */

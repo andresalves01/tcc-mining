@@ -13,7 +13,6 @@ import app.issues.DayBoundaries;
 import app.issues.Embedder;
 import app.issues.Initial;
 import app.issues.IssueUnit;
-import app.issues.Pressure;
 import app.issues.ProjectSplit;
 import app.issues.RowCache;
 import app.issues.Universe;
@@ -210,17 +209,10 @@ class IssuesSimilarityTest {
     assertEquals(List.of(), r.refused());
     final Map<String, Row> rows = new HashMap<>();
     r.entries().forEach(e -> rows.put(e.unit().issueId(), e.row()));
-    assertEquals(1.0, rows.get("a").values().get(Pressure.FIX_VERSION));
-    assertEquals(0.0, rows.get("b").values().get(Pressure.FIX_VERSION), "set at the start");
-    // a: two releases before its start, missing; v: gaps 10 and 30, median 20, 10 days since
-    assertTrue(rows.get("a").absent().contains(Pressure.RELEASE_CYCLE));
-    assertFalse(rows.get("a").values().containsKey(Pressure.RELEASE_CYCLE));
-    assertEquals(10.0, rows.get("v").values().get(Pressure.RELEASE_CYCLE), 1e-9);
+    // The old start-pressure attributes are no longer written by this stage.
     for (final Row row : rows.values()) {
-      for (final Variant variant : Variant.values()) {
-        assertTrue(row.absent().contains(Pressure.blockerPace(variant)),
-            "no Blocker issue in the corpus");
-      }
+      assertFalse(row.values().keySet().stream().anyMatch(n -> n.startsWith("START_")));
+      assertFalse(row.absent().stream().anyMatch(n -> n.startsWith("START_")));
     }
     // the fix versions' fidelity, on the outer training rows a, b and v only: the record lacks
     // the version a and b got, so neither chain is explained, and t is not counted

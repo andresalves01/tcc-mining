@@ -432,7 +432,7 @@ class SimilarityScoringTest {
       + "bit for bit, what they scored before ticket 13, when the matrix lacks the start "
       + "pressure columns: error, predictions, gap and interval")
   void unchangedModelsAsBefore() {
-    final SimilarityScoring.Report r = SimilarityScoring.run(without(corpus(), Pressure.COLUMNS),
+    final SimilarityScoring.Report r = SimilarityScoring.run(corpus(),
         choices(0.2), forests(), RESERVED, 1, 1);
     final List<String> now = new ArrayList<>();
     for (final String name : List.of("global_median", "project_median", "alzubaidi_start",
