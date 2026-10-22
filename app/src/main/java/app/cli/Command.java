@@ -34,6 +34,13 @@ import java.util.stream.Stream;
  */
 public enum Command {
 
+  ISSUES_ADJUSTED_DURATION("issues-in-progress-adjusted-duration",
+      new app.cli.commands.IssuesAdjustedDurationCommand(), """
+      Build a versioned two-phase target on frozen outer training rows only.
+      Requires MATRIX, ADJUSTED_DIR, BOT_ACCOUNTS, START_DESCRIPTIONS and EMBEDDING_CACHE.
+      ADJUSTED_STEP: evidence, audit, matrix, select, report, models, baseline-select or baseline-report.
+      Preserves original partitions and target; no outer-test outcomes or database writes."""),
+
   CHECK("check", new CheckCommand(), """
       Report what the source corpus holds before a stage spends an hour on it:
       the collections each command reads, whether they are populated, and
@@ -137,15 +144,10 @@ public enum Command {
       the start's date, holidays ignored. An issue's business days leave
       out the time it was back in Open or Reopened between its first In
       Progress and its first resolution (from a status change to either
-      until the next status change; Patch Available kept): time nobody was
-      working on it is not counted. They go to the matrix beside the day
-      boundary, a diagnostic. The target the medians and the later steps
-      read, once per split, is the active business days with recorded
-      activity: a gap of g >= T business days between consecutive records
-      (changelog events, comments, the author and committer dates of the
-      human implementation commits) leaves out its g - 1 whole working
-      days, T = max(2, Q3 + 3 IQR of every gap of the split's training
-      side), drawn after the split; a past issue of 0 enters no history.
+      until the next status change; Patch Available kept). Days without
+      recorded activity are retained. This same duration goes to the
+      matrix beside the day boundary and is read by every duration median
+      and every later model. A past issue of 0 enters no history.
       Refuses unless every row's split is the one its rule
       draws and TEAM_COLUMNS holds exactly the matrix's issues, and unless
       the model in MODEL_DIR
@@ -173,9 +175,8 @@ public enum Command {
       implementation commit. In [first In Progress, first resolution), bot
       accounts left out: the comments, the distinct people who commented or
       changed a field (the reporter only if active) and the effective
-      changes of assignee; the comments and the people count the records
-      the target is built from, so only the ceiling reading of the
-      retrospective model reads them. From the tags: urgency, the calendar
+      changes of assignee; the declared main specification leaves comments
+      and participants to its ceiling reading. From the tags: urgency, the calendar
       days from the first resolution to the release of its fix version, a
       tag matched to the version's name, measured after the fact, missing
       without one. The wait on blocking issues is no longer written: it
@@ -209,10 +210,10 @@ public enum Command {
       resolution: the retrospective scenario in its main reading, the own
       start model and, of the attributes issues-in-progress-retrospective
       adds, observed up to the resolution, the five of the implementation
-      content, the assignee changes and urgency, without the comments and
-      the participants, which count the records the target is made of; the
+      content and assignee changes, without release lag, comments or
+      the participants, preserving the declared attribute specification; the
       same with the comments and the participants, a CEILING, not a
-      competitor: part of its gain is mechanical; and Kikas's retrospective
+      competitor: its counts accumulate during the work; and Kikas's retrospective
       scenario, Kikas's retrospective set (Kikas at the start and the
       twelve counts observed up to the resolution, with their missing
       indicator), the literature counterpart of the retrospective model,
@@ -295,8 +296,13 @@ public enum Command {
       these models with a forest for each, its choices were made on that
       matrix, every row's split is the one its rule draws and every column
       is present. Writes the per-issue predictions, the diagnostics and the
-      relevance to REPORT_DIR; records the run in ISSUES_DB. States that the
-      outer test is a new draw of 30% per project, seed 1738. Ordering
+      relevance to REPORT_DIR; records the run in ISSUES_DB. The
+      uncertainty TSV and Markdown report add relative bias, pooled SD and
+      shares within +/-25/50/100%, with project-bootstrap confidence
+      intervals, overall, by observed-duration band and start-description
+      availability. Prediction percentile illustrations use the existing
+      inner factors. SPSP scenarios provide context only, no acceptance rule.
+      The outer test is a new draw of 30% per project, seed 1738. Ordering
       intervals, a declared measure stated before the outer test was
       opened: for every agreed pair and every model against the project
       median (the global median orders nothing), the paired difference in
@@ -349,7 +355,13 @@ public enum Command {
       step's own for these models, its choices were made on that matrix,
       every outer training row is inner fitting or inner validation and
       every column is present. Writes nothing to the database and records
-      no run."""),
+      no run. Also writes relative-error uncertainty and prediction-percentile
+      TSVs: bias, pooled SD, shares within +/-25/50/100% and subgroup MAE,
+      with project-bootstrap confidence intervals, overall, by observed
+      duration and start-description availability; P25/P50/P75/P90/P95
+      estimates with existing pooled prediction intervals. The report's
+      separate SPSP section gives cited uncertainty context, not a scheduling
+      acceptance threshold. These additions choose or refit no settings."""),
 
   SENIORITY("seniority", new SeniorityCommand(), """
       Report seniority `q` and the cost curve over the ledger, under both

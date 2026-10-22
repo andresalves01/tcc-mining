@@ -15,7 +15,6 @@ import app.issues.ProjectSplit;
 import app.issues.RowCache;
 import app.issues.Universe;
 import app.issues.Universe.Population;
-import app.issues.World;
 import app.issues.port.StudySource;
 import app.pipeline.embedding.EmbeddingModel;
 import app.pipeline.port.Progress;
@@ -48,14 +47,8 @@ import java.util.function.Function;
  * BusinessDays#ACTIVE}, counted as the extraction counted them to draw the split ({@link
  * BusinessDays#of}); a row of 0 refuses the run, as a matrix extracted before ticket 21 holds.
  *
- * <p><b>Target</b> (ticket 27). Only then, the split drawn and unchanged, each variant's threshold
- * T is read from the gaps between the records of its fitting side's issues alone ({@link
- * BusinessDays#thresholds}: the inner fitting set, the outer training), and every row's active
- * business days with recorded activity at each T ({@link BusinessDays#recorded}) are written as
- * {@link BusinessDays#recorded(Augmentation.Variant)}, each T beside them as {@link
- * BusinessDays#threshold(Augmentation.Variant)}. They are the target: what the medians of the
- * {@link Augmentation} of each variant read, and what the later steps take. The active count stays
- * as a diagnostic no model reads.
+ * <p>The status-adjusted active count is the target in both split variants. Every duration
+ * median reads that same count; no gap threshold or recorded-activity discount is applied.
  *
  * <p>The former start-pressure attributes are no longer written: none of the six current
  * attribute sets reads them. The fix-version changelog fidelity remains a diagnostic of the
@@ -73,19 +66,17 @@ public final class IssuesSimilarityTask {
    * @param bots the raw accounts recognised as bots and left out of every boundary's history
    * @param fixVersions how far the changelog explains the fix versions in the corpus
    *     ({@link FixVersions#fidelity}), on the outer training rows only; null when refused
-   * @param thresholds each variant's threshold T of the silent gaps ({@link
-   *     BusinessDays#thresholds}); empty when refused
    */
   public record Report(List<String> refused, ProjectSplit.Sizes sizes,
       List<RowCache.Entry> entries, Augmentation.Result result, int described,
       Map<String, DayBoundaries.Boundary> boundaries, Set<String> bots,
-      Initial.Fidelity fixVersions, Map<Augmentation.Variant, Double> thresholds) {
+      Initial.Fidelity fixVersions) {
 
-    /** A report without the fix versions' fidelity or the thresholds, as a refusal has. */
+    /** A report without the fix versions' fidelity, as a refusal has. */
     public Report(final List<String> refused, final ProjectSplit.Sizes sizes,
         final List<RowCache.Entry> entries, final Augmentation.Result result, final int described,
         final Map<String, DayBoundaries.Boundary> boundaries, final Set<String> bots) {
-      this(refused, sizes, entries, result, described, boundaries, bots, null, Map.of());
+      this(refused, sizes, entries, result, described, boundaries, bots, null);
     }
   }
 
@@ -175,24 +166,9 @@ public final class IssuesSimilarityTask {
           List.of(), null, 0, Map.of(), Set.of());
     }
 
-    // the target, once the split is drawn: each variant's T from its fitting side's gaps alone
-    final Map<String, String[]> parts = new HashMap<>(entries.size() * 2);
-    entries.forEach(e -> parts.put(e.unit().issueId(), new String[] {e.outer(P), e.inner(P)}));
-    final BusinessDays.Records records =
-        BusinessDays.Records.of(corpus, universe, new World(universe, corpus), counted.bots());
-    final Map<String, int[]> gaps = new HashMap<>(entries.size() * 2);
-    for (final RowCache.Entry e : entries) {
-      final String id = e.unit().issueId();
-      gaps.put(id, BusinessDays.gaps(universe.events(id), records.of(id),
-          e.unit().startedAt().toEpochMilli(), e.unit().resolvedAt().toEpochMilli(),
-          boundaries.get(id).hour()));
-    }
-    final Map<Variant, Double> thresholds = BusinessDays.thresholds(gaps, parts);
     final Map<Variant, Map<String, Integer>> target = new EnumMap<>(Variant.class);
     for (final Variant v : Variant.values()) {
-      final Map<String, Integer> days = new HashMap<>(entries.size() * 2);
-      gaps.forEach((id, g) -> days.put(id, BusinessDays.recorded(g, thresholds.get(v))));
-      target.put(v, days);
+      target.put(v, active);
     }
 
     progress.phase(3, 4, "Jaccard and embedding neighbours, K-means clusters and reporter medians "
@@ -209,10 +185,8 @@ public final class IssuesSimilarityTask {
       final Map<String, Double> added = new HashMap<>(result.columns().get(e.unit().issueId()));
       values.put(BusinessDays.BOUNDARY, (double) boundaries.get(e.unit().issueId()).hour());
       values.put(BusinessDays.ACTIVE, (double) active.get(e.unit().issueId()));
-      for (final Variant v : Variant.values()) {
-        values.put(BusinessDays.recorded(v), (double) target.get(v).get(e.unit().issueId()));
-        values.put(BusinessDays.threshold(v), thresholds.get(v));
-      }
+      BusinessDays.LEGACY_RECORDED_COLUMNS.forEach(values::remove);
+      absent.removeAll(BusinessDays.LEGACY_RECORDED_COLUMNS);
       for (final String column : columns()) {
         final Double v = added.get(column);
         if (v == null) {
@@ -227,7 +201,7 @@ public final class IssuesSimilarityTask {
     final List<String> training = entries.stream().filter(e -> "TRAIN".equals(e.outer(P)))
         .map(e -> e.unit().issueId()).toList();
     return new Report(refused, found, out, result, descriptions.size(), boundaries,
-        counted.bots(), FixVersions.fidelity(universe, training), Map.copyOf(thresholds));
+        counted.bots(), FixVersions.fidelity(universe, training));
   }
 
   /**

@@ -3,6 +3,7 @@ package app.issues;
 import static app.issues.SimilarityScoring.Scope.INNER;
 import static app.issues.SimilarityScoring.Scope.RESERVED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -832,7 +833,7 @@ class SimilarityScoringTest {
 
   @Test
   @DisplayName("in the inner scope the start models and the references score, bit for bit, what "
-      + "they scored before the main reading without urgency was added")
+      + "they scored before the final retrospective specification")
   void innerAsBeforeTheNinth() {
     final Map<String, String> now = innerBits(
         SimilarityScoring.run(training(), choices(0.2), forests(), INNER, 1, 1));
@@ -906,7 +907,7 @@ class SimilarityScoringTest {
 
   @Test
   @DisplayName("in both scopes the retrospective models read their own columns: Kikas's only "
-      + "Kikas's, the main reading urgency but no comments, participants, blocking wait or start "
+      + "Kikas's, the main reading without release lag, comments, participants, blocking wait or start "
       + "pressure column, the ceiling the main reading's and the comments and the participants; "
       + "each forest its Elastic Net's")
   void retrospectiveModelsInBothScopes() {
@@ -920,7 +921,7 @@ class SimilarityScoringTest {
           "K21_participant_committers")), kikas.toString());
       assertEquals(kikas, model(r, KIKAS_RETRO + "_forest").forest().columns());
       final List<String> main = model(r, "own_retrospective").fitted().columns();
-      assertTrue(main.contains("RETRO_urgency_days"), main.toString());
+      assertFalse(main.contains("RETRO_urgency_days"), main.toString());
       assertTrue(main.stream().noneMatch(c -> c.startsWith("START_")
           || c.startsWith("RETRO_blocker_wait") || c.startsWith("RETRO_comments")
           || c.startsWith("RETRO_participants")), main.toString());
@@ -1200,15 +1201,16 @@ class SimilarityScoringTest {
    * cut on every scored issue, inner then outer, {@link #fourteenBits}. Captured from e67f85f
    * (ticket 29), where the pins of the inner run without a cut (ticket 22) and of the fixture
    * with a tail (ticket 27), which named models the fourteen leave out, held: it carries them for
-   * the fourteen.
+   * the fourteen. The values below were recaptured after release lag was removed from the two
+   * own retrospective models; start and literature specifications remain unchanged.
    */
-  private static final List<String> FOURTEEN_AT_TICKET_29 = List.of("72 8a61ae68",
-      "72 77f3d859", "44 d8d7924d", "44 d8d7924d", "72 97fa0fdb", "44 b9607449");
+  private static final List<String> FOURTEEN_FINAL = List.of("72 48520c8c",
+      "72 ae0926c", "44 4cb9e71c", "44 4cb9e71c", "72 aa31b23f", "44 5e6841ea");
 
   @Test
-  @DisplayName("the fourteen models, their comparisons, ordering intervals and side reading score, "
-      + "bit for bit, what they scored at ticket 29, in both scopes, with and without a tail cut")
-  void fourteenAsAtTicket29() {
+  @DisplayName("the final fourteen models, their comparisons, ordering intervals and side reading "
+      + "score, bit for bit, in both scopes, with and without a tail cut")
+  void fourteenFinal() {
     final List<String> now = new ArrayList<>();
     for (final SimilarityScoring.Readings r : List.of(
         SimilarityScoring.readings(withTail(training()), choices(0.2), forests(), 1.5, INNER, 1,
@@ -1221,7 +1223,7 @@ class SimilarityScoringTest {
     now.add(fourteenBits(SimilarityScoring.run(training(), choices(0.2), forests(), INNER, 1, 1)));
     now.add(fourteenBits(SimilarityScoring.run(corpus(), choices(0.2), forests(), RESERVED, 1,
         1)));
-    assertEquals(FOURTEEN_AT_TICKET_29, now);
+    assertEquals(FOURTEEN_FINAL, now);
   }
 
   @Test

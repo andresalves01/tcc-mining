@@ -73,11 +73,10 @@ class ElasticNetSelectionTest {
 
   /**
    * The retrospective columns of the main reading, in their order: the five of the content, the
-   * assignee changes and urgency.
+   * assignee changes. Release lag remains in the matrix but enters no own model.
    */
   private static final List<String> MAIN = List.of("RETRO_java_lines", "RETRO_mean_mccc",
-      "RETRO_mean_nesting", "RETRO_files", "RETRO_familiarity", "RETRO_assignee_changes",
-      "RETRO_urgency_days");
+      "RETRO_mean_nesting", "RETRO_files", "RETRO_familiarity", "RETRO_assignee_changes");
 
   /** The comments and the participants: what the ceiling adds to the main reading. */
   private static final List<String> DISCUSSION = List.of("RETRO_comments", "RETRO_participants");
@@ -435,7 +434,7 @@ class ElasticNetSelectionTest {
   @Test
   @DisplayName("the models the fourteen leave out are no model: neither the own specification "
       + "without the similarity medians, the medians alone, the own specification with the "
-      + "pressure columns, the union of the families nor the main reading without urgency")
+      + "pressure columns, the union of the families nor earlier retrospective variants")
   void leftOutModels() {
     for (final String name : LEFT_OUT) {
       assertFalse(ElasticNetSelection.MODELS.contains(name), name);
@@ -479,10 +478,10 @@ class ElasticNetSelectionTest {
   }
 
   @Test
-  @DisplayName("the main reading of the retrospective model has exactly the 20 columns: the own "
-      + "start model, then the five of the content, the assignee changes and urgency, the counts "
-      + "and volumes log1p, the ratio, means and urgency raw, a missing indicator beside the six "
-      + "that can be missing; no comments, no participants, no blocking wait; it reads the "
+  @DisplayName("the main reading of the retrospective model has exactly the 19 columns: the own "
+      + "start model, then the five of the content and assignee changes, the counts "
+      + "and volumes log1p, the ratio and means raw, a missing indicator beside the five "
+      + "that can be missing; no release lag, comments, participants or blocking wait; it reads the "
       + "similarity medians")
   void retrospectiveModel() {
     assertEquals("own_retrospective", ElasticNetSelection.MODELS.get(3));
@@ -490,14 +489,14 @@ class ElasticNetSelectionTest {
     for (final Augmentation.Variant v : Augmentation.Variant.values()) {
       final List<Cell> cells = ElasticNetSelection.cells(TEN_FIVE_32, v);
       final Cell retrospective = cell(cells, "own_retrospective");
-      assertEquals(20, retrospective.attributes().size());
+      assertEquals(19, retrospective.attributes().size());
       assertEquals(cell(cells, OWN).attributes(), retrospective.attributes().subList(0, 13));
-      final List<Attribute> seven = retrospective.attributes().subList(13, 20);
-      assertEquals(MAIN, seven.stream().map(Attribute::name).toList());
+      final List<Attribute> six = retrospective.attributes().subList(13, 19);
+      assertEquals(MAIN, six.stream().map(Attribute::name).toList());
       final List<String> log = List.of("RETRO_java_lines", "RETRO_files",
           "RETRO_assignee_changes");
-      final List<String> missing = concat(MAIN.subList(0, 5), List.of("RETRO_urgency_days"));
-      for (final Attribute a : seven) {
+      final List<String> missing = MAIN.subList(0, 5);
+      for (final Attribute a : six) {
         assertEquals(log.contains(a.name()) ? app.study.Construct.Transform.LOG1P
             : app.study.Construct.Transform.NONE, a.transform(), a.name());
         assertEquals(missing.contains(a.name()), a.absenceIndicator(), a.name());
@@ -527,9 +526,9 @@ class ElasticNetSelectionTest {
         final Cell ceiling = cell(cells, "own_retrospective_with_discussion");
         assertEquals(main.family(), ceiling.family());
         assertEquals(main.scenario(), ceiling.scenario());
-        assertEquals(main.attributes(), ceiling.attributes().subList(0, 20));
-        final List<Attribute> two = ceiling.attributes().subList(20, 22);
-        assertEquals(22, ceiling.attributes().size());
+        assertEquals(main.attributes(), ceiling.attributes().subList(0, 19));
+        final List<Attribute> two = ceiling.attributes().subList(19, 21);
+        assertEquals(21, ceiling.attributes().size());
         assertEquals(DISCUSSION, two.stream().map(Attribute::name).toList());
         for (final Attribute a : two) {
           assertEquals(app.study.Construct.Transform.LOG1P, a.transform(), a.name());
@@ -543,13 +542,15 @@ class ElasticNetSelectionTest {
   }
 
   @Test
-  @DisplayName("no model reads the wait on blocking issues, nor its missing indicator, nor the "
+  @DisplayName("no model reads release lag or the wait on blocking issues, nor their indicators, nor the "
       + "comments and participants but the ceiling, in both variants and at every combination")
   void noModelReadsTheBlockingWait() {
     for (final Augmentation.Variant v : Augmentation.Variant.values()) {
       for (final Combination c : Combination.all()) {
         for (final Cell cell : ElasticNetSelection.cells(c, v)) {
           assertTrue(design(cell).stream().noneMatch(n -> n.startsWith("RETRO_blocker_wait")),
+              cell.label());
+          assertTrue(design(cell).stream().noneMatch(n -> n.startsWith("RETRO_urgency_days")),
               cell.label());
           if (!cell.label().equals("own_retrospective_with_discussion")) {
             assertTrue(design(cell).stream().noneMatch(DISCUSSION::contains), cell.label());
@@ -963,8 +964,8 @@ class ElasticNetSelectionTest {
   }
 
   @Test
-  @DisplayName("the start models choose, bit for bit, what they chose before the main reading "
-      + "without urgency was added: Elastic Net (combination, columns, alpha, lambda, error, "
+  @DisplayName("the start models choose, bit for bit, what they chose before the final "
+      + "retrospective specification: Elastic Net (combination, columns, alpha, lambda, error, "
       + "predictions, every sweep) and forest (columns, column share, leaf, error, predictions, "
       + "grid)")
   void startAsBeforeTheNinth() {
@@ -1208,27 +1209,28 @@ class ElasticNetSelectionTest {
    * and every k's fence and fitting rows (not its error, which is of the model the k is chosen
    * on), then per set of {@link #SIX_SETS} a hash of its {@link #everything} line (Elastic Net,
    * removed columns, forest); then, at no cut on every validation issue, the same per set.
-   * Captured from e67f85f (ticket 29).
+   * Start and literature entries retain the ticket-29 bits; the four own-retrospective entries
+   * below were recaptured after the deliberate removal of release lag from those two models.
    */
-  private static final List<String> SIX_SETS_AT_TICKET_29 = List.of(
+  private static final List<String> SIX_SETS_FINAL = List.of(
       "d3d3ddba",
       "own_with_similarity_before_pressure 46d6e3a8",
       "alzubaidi_start e7762856",
       "kikas_start 16b7d500",
-      "own_retrospective 2af32f91",
-      "own_retrospective_with_discussion 4546c0cc",
+      "own_retrospective c7f07c28",
+      "own_retrospective_with_discussion a38f1e78",
       "kikas_retrospective 51cd32ef",
       "own_with_similarity_before_pressure d655ca57",
       "alzubaidi_start a86a7d59",
       "kikas_start dfec3b71",
-      "own_retrospective ed97e9c3",
-      "own_retrospective_with_discussion 22c0299",
+      "own_retrospective 1e6e6309",
+      "own_retrospective_with_discussion 24bf342e",
       "kikas_retrospective cad789cc");
 
   @Test
-  @DisplayName("the six attribute sets choose, bit for bit, what they chose at ticket 29, under "
-      + "the tail cut chosen and at no cut: the k, its fences, every Elastic Net and forest")
-  void sixSetsAsAtTicket29() {
+  @DisplayName("the six final attribute sets choose, bit for bit, under the tail cut chosen "
+      + "and at no cut: the k, its fences, every Elastic Net and forest")
+  void sixSetsFinal() {
     full();
     final ElasticNetSelection.Result r = ElasticNetSelection.run(counted(entries), 1);
     final List<String> now = new ArrayList<>(List.of(Integer.toHexString((everything(r).get(0)
@@ -1243,7 +1245,7 @@ class ElasticNetSelectionTest {
             + forestFingerprint(m.forest())).hashCode()));
       }
     }
-    assertEquals(SIX_SETS_AT_TICKET_29, now);
+    assertEquals(SIX_SETS_FINAL, now);
   }
 
   @Test

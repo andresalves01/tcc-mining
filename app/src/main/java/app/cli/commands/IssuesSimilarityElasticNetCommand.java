@@ -150,8 +150,8 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
           + e.getMessage()));
     }
 
-    System.out.printf("  target: %s; %s%n", BusinessDays.TARGET, BusinessDays.HOLIDAYS);
-    System.out.printf("  population: %s%n", BusinessDays.POPULATION);
+    System.out.printf("  target: %s; %s%n", BusinessDays.target(entries), BusinessDays.HOLIDAYS);
+    System.out.printf("  population: %s%n", BusinessDays.populationRule(entries));
     System.out.printf("  %s: %s%n", ElasticNetSelection.RETROSPECTIVE,
         Retrospective.SCENARIO);
     System.out.printf("  %s: %s%n", ElasticNetSelection.RETROSPECTIVE,
@@ -249,8 +249,9 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     run.put("outer_test", "not read");
     run.put("split_rule", ProjectSplit.RULE);
     run.putAll(statements());
+    run.put("target", BusinessDays.target(entries));
+    run.put("population", BusinessDays.populationRule(entries));
     run.put("population_rows", populationRows(population));
-    run.put("silence", population.silence());
     run.put("models", ElasticNetSelection.MODELS);
     run.put("matrix_sha256", matrixSha);
     run.put("parameters_sha256", parametersSha);

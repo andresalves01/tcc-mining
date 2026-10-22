@@ -266,7 +266,7 @@ public final class World {
    * is a heuristic: the corpus keeps no patch, so two distinct commits by the same person in the
    * same second with the same lines would be merged. Keeps the input order.
    */
-  static List<Commit> oncePerChange(final List<Commit> candidates) {
+  public static List<Commit> oncePerChange(final List<Commit> candidates) {
     final Map<String, List<Commit>> groups = new HashMap<>();
     for (final Commit c : candidates) {
       final String key = c.who() == null ? "\u0001" + c.id()

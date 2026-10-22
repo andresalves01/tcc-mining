@@ -262,6 +262,40 @@ public final class ProjectBootstrap {
     return new ArrayList<>(rows.values());
   }
 
+  /** A descriptive statistic's interval; undefined draws are counted, never treated as zero. */
+  public record Bounds(double low, double high, int validDraws) {}
+
+  /**
+   * The existing project draws for statistics that can be undefined (for example a sample SD
+   * with fewer than two positive estimates). Percentiles use only finite draws, with their count
+   * exposed. Fewer than two projects cannot support an interval across projects.
+   */
+  public static List<Bounds> finiteIntervals(final List<String> projectOfRow, final int width,
+      final Function<List<Integer>, double[]> statistic, final int threads) {
+    final List<List<Integer>> projects = clusters(projectOfRow);
+    if (projects.size() < 2) {
+      return java.util.stream.IntStream.range(0, width)
+          .mapToObj(i -> new Bounds(Double.NaN, Double.NaN, 0)).toList();
+    }
+    final double[][] draws = vectors(projects, projectOfRow.size(), threads, sample -> {
+      final double[] values = statistic.apply(sample);
+      if (values.length != width) {
+        throw new IllegalArgumentException("wrong statistic width: " + values.length);
+      }
+      return values;
+    });
+    final List<Bounds> out = new ArrayList<>();
+    for (int c = 0; c < width; c++) {
+      final int column = c;
+      final double[] finite = Arrays.stream(draws).mapToDouble(d -> d[column])
+          .filter(Double::isFinite).sorted().toArray();
+      out.add(finite.length == 0 ? new Bounds(Double.NaN, Double.NaN, 0)
+          : new Bounds(finite[(int) (0.025 * finite.length)],
+              finite[Math.max(0, (int) (0.975 * finite.length) - 1)], finite.length));
+    }
+    return List.copyOf(out);
+  }
+
   private static double gapOf(final List<Integer> sample, final double[] errorsA,
       final double[] errorsB) {
     double sum = 0;

@@ -131,7 +131,7 @@ class IssuesSimilarityElasticNetCommandTest {
     // the similarity stage's matrix lacks the retrospective columns, named in the models' order:
     // the main reading's, then the comments and the participants the ceiling adds
     assertEquals(List.of("RETRO_java_lines", "RETRO_mean_mccc", "RETRO_mean_nesting",
-        "RETRO_files", "RETRO_familiarity", "RETRO_assignee_changes", "RETRO_urgency_days",
+        "RETRO_files", "RETRO_familiarity", "RETRO_assignee_changes",
         "RETRO_comments", "RETRO_participants"),
         IssuesSimilarityElasticNetCommand.missing(every, columns));
     columns.addAll(app.issues.Retrospective.COLUMNS);

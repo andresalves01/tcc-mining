@@ -63,9 +63,10 @@ import java.util.Set;
  *
  * <p>The wait on the issues it was blocked by is no longer an attribute (André, 19/10/2026):
  * counted in the target's own unit and clipped at it, it equalled the target in about half of the
- * issues that had one. Comments and participants stay columns of the matrix, but they count the
- * very records the target is built from, so the main retrospective model leaves them out and only
- * its ceiling reads them ({@link #DISCUSSION}).
+ * issues that had one. Comments and participants stay columns of the matrix. The declared main
+ * retrospective specification leaves them out and its ceiling reads them ({@link #DISCUSSION}).
+ * The release-lag column remains recorded for audit but is excluded from both own models.
+ * Restoring the duration target does not change that attribute specification.
  *
  * <p>Separate from the extracted columns of {@link Extractor}: {@code A15}, {@code A16}, {@code
  * A17}, {@code D07}, {@code D08}, {@code K03}, {@code K04} and {@code K05} keep their meaning in the
@@ -90,8 +91,7 @@ public final class Retrospective {
   public static final List<String> CONTENT = List.of(LINES, MCCC, NESTING, FILES, FAMILIARITY);
 
   /**
-   * The comments and the participants: they count the very records the target is built from, so
-   * only the ceiling reading of the retrospective model reads them, never its main reading.
+   * The comments and the participants, read only by the declared ceiling specification.
    */
   public static final List<String> DISCUSSION = List.of(COMMENTS, PARTICIPANTS);
 
@@ -114,7 +114,7 @@ public final class Retrospective {
       + "version, measured after the fact); the counts grow with the duration itself, so a gain "
       + "is association with the duration observed up to the resolution, not a prediction "
       + "available during the work, nor causation. The main reading leaves the comments and the "
-      + "participants out, since they count the records the target is made of; the reading with "
+      + "participants and release lag out of the models; the reading with "
       + "them is a ceiling, not a competitor";
 
   private final World world;

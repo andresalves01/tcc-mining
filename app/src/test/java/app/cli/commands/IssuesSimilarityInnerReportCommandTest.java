@@ -89,6 +89,9 @@ class IssuesSimilarityInnerReportCommandTest {
     retrospective.put("RETRO_blocker_wait", new Attribute("RETRO_blocker_wait",
         "RETRO_blocker_wait", app.issues.Family.OWN, app.issues.Scenario.Block.EXPOSURE,
         Construct.Kind.NUMERIC, Construct.Transform.LOG1P, true));
+    retrospective.put("RETRO_urgency_days", new Attribute("RETRO_urgency_days",
+        "RETRO_urgency_days", app.issues.Family.OWN, app.issues.Scenario.Block.EXPOSURE,
+        Construct.Kind.NUMERIC, Construct.Transform.NONE, true));
     final Set<Attribute> out = new LinkedHashSet<>();
     for (final Attribute a : drawn) {
       if (a.name().startsWith("RETRO_")) {
@@ -189,11 +192,6 @@ class IssuesSimilarityInnerReportCommandTest {
         values.put(BusinessDays.BOUNDARY, 4.0);
         // never sent back to Open or Reopened: active, the whole interval's business days
         values.put(BusinessDays.ACTIVE, (double) days);
-        // no silent day: the target is the active count in both variants
-        for (final Augmentation.Variant v : Augmentation.Variant.values()) {
-          values.put(BusinessDays.recorded(v), (double) days);
-          values.put(BusinessDays.threshold(v), BusinessDays.LEAST_SILENT);
-        }
         final String id = "i" + n++;
         final Instant start = created.plusSeconds(3600L * 7 * n);
         final Map<Population, String[]> parts = new EnumMap<>(Population.class);
@@ -319,6 +317,20 @@ class IssuesSimilarityInnerReportCommandTest {
     assertTrue(report.contains("- kikas_retrospective: "
         + ElasticNetSelection.KIKAS_RETROSPECTIVE_ROLE), report.toString());
     assertTrue(report.contains("- " + ElasticNetSelection.TAIL_CUT_MODEL), report.toString());
+    assertTrue(report.contains("## Estimation uncertainty"));
+    assertTrue(report.contains("## SPSP uncertainty context"));
+    final List<String> uncertainty = Files.readAllLines(reports.resolve(
+        IssuesSimilarityInnerReportCommand.UNCERTAINTY));
+    assertEquals(1 + 2 * 14 * 9 * 6, uncertainty.size());
+    assertEquals(1 + 2 * 14 * 5, Files.readAllLines(reports.resolve(
+        IssuesSimilarityInnerReportCommand.PERCENTILES)).size());
+    for (final String reading : List.of("usual_flow", "all")) {
+      assertEquals(14, uncertainty.stream().skip(1).map(l -> l.split("\t", -1))
+          .filter(f -> f[0].equals(reading) && f[2].equals("overall")
+              && f[9].equals("mae_bd")).count());
+      assertTrue(uncertainty.stream().anyMatch(l -> l.startsWith(reading + "\t")
+          && l.contains("\tstart_description\tunavailable_or_blank\t")));
+    }
     assertTrue(report.stream().anyMatch(l -> l.startsWith("- each k on "
         + "own_with_similarity_before_pressure, its error")), report.toString());
     for (final String file : List.of(IssuesSimilarityInnerReportCommand.BANDS,
@@ -506,25 +518,23 @@ class IssuesSimilarityInnerReportCommandTest {
 
   /**
    * Every file of the report of {@link #entries} but the report itself, as the code wrote it
-   * before the fourteen models were settled, by {@link #ofTheFourteen}. Captured from e67f85f
-   * (ticket 29), where the pin of every file at ticket 27 without the own retrospective models,
-   * which named models the fourteen leave out, held: it carries that pin for the fourteen.
+   * before the final release-lag exclusion, by {@link #ofTheFourteen}. The values below were
+   * recaptured after that deliberate change; the start and literature specifications are unchanged.
    */
-  private static final Map<String, String> FOURTEEN_AT_TICKET_29 = Map.of(
-      IssuesSimilarityInnerReportCommand.PREDICTIONS, "20 95de5350",
-      IssuesSimilarityInnerReportCommand.MODELS, "29 1563925c",
-      IssuesSimilarityInnerReportCommand.BANDS, "113 ee7cecd",
-      IssuesSimilarityInnerReportCommand.COMPARISONS, "75 e73a8e25",
-      IssuesSimilarityInnerReportCommand.ORDERING, "41 c7b22d96",
-      IssuesSimilarityInnerReportCommand.DIAGNOSTICS, "222 504d3d26",
-      IssuesSimilarityInnerReportCommand.IMPORTANCE, "120 a8a42d",
-      IssuesSimilarityInnerReportCommand.INTERVALS, "281 4e13181b",
-      IssuesSimilarityInnerReportCommand.CALIBRATION, "29 403bf11d");
+  private static final Map<String, String> FOURTEEN_FINAL = Map.of(
+      IssuesSimilarityInnerReportCommand.PREDICTIONS, "20 aa2d606c",
+      IssuesSimilarityInnerReportCommand.MODELS, "29 fbef30bf",
+      IssuesSimilarityInnerReportCommand.BANDS, "113 8b15b22a",
+      IssuesSimilarityInnerReportCommand.COMPARISONS, "75 6f3d4343",
+      IssuesSimilarityInnerReportCommand.ORDERING, "41 be0883e7",
+      IssuesSimilarityInnerReportCommand.DIAGNOSTICS, "218 9359f121",
+      IssuesSimilarityInnerReportCommand.IMPORTANCE, "116 e31e9cb8",
+      IssuesSimilarityInnerReportCommand.INTERVALS, "281 c0ad28e4",
+      IssuesSimilarityInnerReportCommand.CALIBRATION, "29 3c2cf10b");
 
   @Test
-  @DisplayName("every file of the report but the report itself is, bit for bit, what it was at "
-      + "ticket 29 for the fourteen models and their pairs")
-  void fourteenFilesAsAtTicket29() throws IOException, CommandFailedException {
+  @DisplayName("every file of the final fourteen-model report but the report itself is bit for bit")
+  void fourteenFilesFinal() throws IOException, CommandFailedException {
     final Path matrix = dir.resolve("matrix.tsv");
     final Path elasticNet = dir.resolve("elastic-net.tsv");
     write(matrix, elasticNet);
@@ -534,10 +544,10 @@ class IssuesSimilarityInnerReportCommandTest {
     command().run(context());
 
     final Map<String, String> now = new HashMap<>();
-    for (final String file : FOURTEEN_AT_TICKET_29.keySet()) {
+    for (final String file : FOURTEEN_FINAL.keySet()) {
       now.put(file, ofTheFourteen(reports.resolve(file)));
     }
-    assertEquals(FOURTEEN_AT_TICKET_29, now);
+    assertEquals(FOURTEEN_FINAL, now);
   }
 
   @Test

@@ -77,6 +77,14 @@ public final class PredictionIntervals {
       + "the observed duration (the error bands, a reading after the fact that never chooses "
       + "the factor); the factors for later use recomputed on A and B together";
 
+  /** Population-specific text; the legacy rule retains its original one-day floor. */
+  public static String rule(final double floor) {
+    if (floor == FLOOR) return RULE;
+    if (floor != 0) throw new IllegalArgumentException("invalid interval floor");
+    return RULE.replace("raised to 1 business day", "raised to 0 business day")
+        .replace("coverage at 1 day", "coverage at the lower bound");
+  }
+
   /** What the outer test's intervals are, in words. */
   public static final String OUTER = "the outer models' intervals take the factors the inner "
       + "models calibrated on the whole usual-flow inner validation, an approximation: the outer "
@@ -100,11 +108,14 @@ public final class PredictionIntervals {
    * @param factors per level of {@link #LEVELS}, the factor
    * @param low the smallest of its predictions on the calibration issues, {@code high} the largest
    */
-  public record Calibration(int n, double[] factors, double low, double high) {
+  public record Calibration(int n, double[] factors, double low, double high, double floor) {
+    public Calibration(final int n, final double[] factors, final double low, final double high) {
+      this(n, factors, low, high, FLOOR);
+    }
 
     /** The interval at the level of index {@code level} around {@code prediction}. */
     public double[] interval(final int level, final double prediction) {
-      return PredictionIntervals.interval(prediction, factors[level]);
+      return PredictionIntervals.interval(prediction, factors[level], floor);
     }
   }
 
@@ -127,7 +138,12 @@ public final class PredictionIntervals {
    * @param bands one per band of {@link BusinessDays#bands}, the first the shortest durations
    */
   public record Read(TailCut.Reading reading, String model, double level, Group overall,
-      List<Group> bands) {}
+      List<Group> bands, Map<String, Group> strata) {
+    public Read(final TailCut.Reading reading, final String model, final double level,
+        final Group overall, final List<Group> bands) {
+      this(reading, model, level, overall, bands, Map.of());
+    }
+  }
 
   /**
    * Issues and every model's predictions of them.
@@ -138,14 +154,22 @@ public final class PredictionIntervals {
    *     SimilarityScoring.Report#bandTops})
    */
   public record Sample(List<String> projects, double[] observed,
-      Map<String, double[]> predicted, double[] bandTops) {
+      Map<String, double[]> predicted, double[] bandTops, double floor) {
+    public Sample(final List<String> projects, final double[] observed,
+        final Map<String, double[]> predicted, final double[] bandTops) {
+      this(projects, observed, predicted, bandTops, FLOOR);
+    }
 
     /** A scoring's issues, predictions and band limits. */
     public static Sample of(final SimilarityScoring.Report r) {
+      return of(r, FLOOR);
+    }
+
+    public static Sample of(final SimilarityScoring.Report r, final double floor) {
       final Map<String, double[]> predicted = new LinkedHashMap<>();
       r.models().forEach(m -> predicted.put(m.name(), m.predicted()));
       return new Sample(r.scoredUnits().stream().map(IssueUnit::project).toList(), r.observed(),
-          predicted, r.bandTops());
+          predicted, r.bandTops(), floor);
     }
   }
 
@@ -208,9 +232,14 @@ public final class PredictionIntervals {
    * factor)}, both ends at least {@link #FLOOR}.
    */
   public static double[] interval(final double prediction, final double factor) {
+    return interval(prediction, factor, FLOOR);
+  }
+
+  public static double[] interval(final double prediction, final double factor, final double floor) {
+    if (floor != 0 && floor != FLOOR) throw new IllegalArgumentException("invalid interval floor");
     final double centre = Math.log1p(prediction);
-    final double low = Math.max(FLOOR, Math.expm1(centre - factor));
-    final double high = Math.max(FLOOR, Math.expm1(centre + factor));
+    final double low = Math.max(floor, Math.expm1(centre - factor));
+    final double high = Math.max(floor, Math.expm1(centre + factor));
     return new double[] {low, high};
   }
 
@@ -229,6 +258,11 @@ public final class PredictionIntervals {
 
   /** A model's calibration on the issues given, its own predictions of them and their truth. */
   public static Calibration calibrate(final double[] predicted, final double[] observed) {
+    return calibrate(predicted, observed, FLOOR);
+  }
+
+  public static Calibration calibrate(final double[] predicted, final double[] observed,
+      final double floor) {
     if (predicted.length != observed.length || predicted.length == 0) {
       throw new IllegalArgumentException("one prediction per calibration issue, and at least one");
     }
@@ -241,7 +275,7 @@ public final class PredictionIntervals {
       factors[l] = factor(residuals, LEVELS.get(l));
     }
     return new Calibration(predicted.length, factors, Arrays.stream(predicted).min()
-        .getAsDouble(), Arrays.stream(predicted).max().getAsDouble());
+        .getAsDouble(), Arrays.stream(predicted).max().getAsDouble(), floor);
   }
 
   /**
@@ -257,7 +291,7 @@ public final class PredictionIntervals {
     final List<Integer> a = rows(usual, halves, true);
     final Map<String, Calibration> checked = new LinkedHashMap<>();
     usual.predicted().forEach((model, predicted) ->
-        checked.put(model, calibrate(pick(predicted, a), pick(usual.observed(), a))));
+        checked.put(model, calibrate(pick(predicted, a), pick(usual.observed(), a), usual.floor())));
     final List<Read> reads = new ArrayList<>();
     reads.addAll(read(TailCut.Reading.USUAL_FLOW, checked, usual, rows(usual, halves, false),
         threads));
@@ -275,7 +309,7 @@ public final class PredictionIntervals {
   public static Map<String, Calibration> calibrated(final Sample usual) {
     final Map<String, Calibration> out = new LinkedHashMap<>();
     usual.predicted().forEach((model, predicted) ->
-        out.put(model, calibrate(predicted, usual.observed())));
+        out.put(model, calibrate(predicted, usual.observed(), usual.floor())));
     return Collections.unmodifiableMap(out);
   }
 
@@ -331,7 +365,12 @@ public final class PredictionIntervals {
           bands.add(group(b, s, predicted, covered, width, globalWidth, threads));
         }
         out.add(new Read(reading, m.getKey(), LEVELS.get(l),
-            group(rows, s, predicted, covered, width, globalWidth, threads), List.copyOf(bands)));
+            group(rows, s, predicted, covered, width, globalWidth, threads), List.copyOf(bands),
+            s.floor() == 0 ? Map.of(
+                "zero", group(rows.stream().filter(i -> s.observed()[i] == 0).toList(), s,
+                    predicted, covered, width, globalWidth, threads),
+                "nonzero", group(rows.stream().filter(i -> s.observed()[i] > 0).toList(), s,
+                    predicted, covered, width, globalWidth, threads)) : Map.of()));
       }
     }
     return out;
@@ -350,7 +389,7 @@ public final class PredictionIntervals {
     final double median = median(pick(width, rows));
     return new Group(rows.size(), ProjectBootstrap.share(rows.stream().map(s.projects()::get)
         .toList(), pick(covered, rows), threads), median,
-        median / median(pick(globalWidth, rows)), error / rows.size());
+        median(pick(globalWidth, rows)) == 0 ? Double.NaN : median / median(pick(globalWidth, rows)), error / rows.size());
   }
 
   /**

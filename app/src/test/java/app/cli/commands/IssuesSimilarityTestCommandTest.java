@@ -311,14 +311,13 @@ class IssuesSimilarityTestCommandTest {
   }
 
   @Test
-  @DisplayName("the run records of both steps name the target as active business days with "
-      + "recorded activity, the population as the issues of at least one, and holidays as ignored")
+  @DisplayName("the run records retain silent days and exclude Open/Reopened, with the "
+      + "population of at least one day and holidays ignored")
   void businessDayStatements() {
     for (final Map<String, Object> run : List.of(IssuesSimilarityTestCommand.statements(),
         IssuesSimilarityElasticNetCommand.statements())) {
-      assertTrue(run.get("target").toString().startsWith("active business days with recorded "
-          + "activity: whole business days"), run.toString());
-      assertTrue(run.get("target").toString().contains(BusinessDays.SILENCE), run.toString());
+      assertTrue(run.get("target").toString().startsWith("whole business days"), run.toString());
+      assertTrue(run.get("target").toString().contains("days without recorded activity are retained"), run.toString());
       assertTrue(run.get("population").toString().contains("at least one business day"));
       assertTrue(run.get("holidays").toString().contains("holidays ignored"));
     }

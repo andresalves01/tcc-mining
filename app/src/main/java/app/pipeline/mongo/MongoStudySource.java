@@ -60,6 +60,12 @@ public final class MongoStudySource implements StudySource {
   }
 
   @Override
+  public Map<String, app.issues.DurationEvidence> durationEvidence(
+      final List<app.issues.RowCache.Entry> rows, final Set<String> bots) {
+    return new MongoDurationSource(source, thesis).load(rows, bots);
+  }
+
+  @Override
   public String describe() {
     return sourceName + " (corpus) + " + thesisName
         + " (person_canonical, developer_contribution, commit_complexity, issue_label)";

@@ -7,6 +7,7 @@ import app.issues.Augmentation;
 import app.issues.BusinessDays;
 import app.issues.DescriptionCleaner;
 import app.issues.ElasticNetSelection;
+import app.issues.EstimationUncertainty;
 import app.issues.PredictionIntervals;
 import app.issues.ProjectSplit;
 import app.issues.Retrospective;
@@ -104,6 +105,9 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
    * the previous predictions only when these are the same.
    */
   public static final String INPUTS = "similarity-test-inputs.tsv";
+  public static final String UNCERTAINTY = "similarity-test-uncertainty.tsv";
+  public static final String PERCENTILES = "similarity-test-prediction-percentiles.tsv";
+  public static final String UNCERTAINTY_REPORT = "similarity-test-uncertainty.md";
 
   /** What the outer test is, a sentence of its own (André, 17/10/2026). */
   static final String EXAMINED = "the outer test is a new draw of 30% per project, seed 1738.";
@@ -156,7 +160,9 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final Path inputsFile = reports.resolve(INPUTS);
     final Path relevanceFile = reports.resolve(RELEVANCE);
     final long began = System.nanoTime();
-    for (final Path out : List.of(predictionsFile, diagnosticsFile, inputsFile, relevanceFile)) {
+    for (final Path out : List.of(predictionsFile, diagnosticsFile, inputsFile, relevanceFile,
+        reports.resolve(UNCERTAINTY), reports.resolve(PERCENTILES),
+        reports.resolve(UNCERTAINTY_REPORT))) {
       for (final Path in : List.of(matrix, elasticNet)) {
         if (same(out, in)) {
           throw new CommandFailedException(List.of("  REFUSED, nothing was scored, written or "
@@ -191,7 +197,40 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     }
 
     // the split is checked before anything of the matrix is printed, its sizes included
-    final List<String> split = ProjectSplit.differences(entries);
+    final String splitReferenceSetting = settings.apply("SPLIT_REFERENCE_MATRIX");
+    final List<String> split;
+    if (splitReferenceSetting == null || splitReferenceSetting.isBlank()) {
+      split = ProjectSplit.differences(entries);
+    } else {
+      final List<RowCache.Entry> reference;
+      try {
+        reference = RowCache.read(Path.of(splitReferenceSetting));
+      } catch (final IOException e) {
+        throw refused("cannot read split reference: " + e);
+      }
+      split = new ArrayList<>(ProjectSplit.differences(reference));
+      if (split.isEmpty()) {
+        final Map<String, RowCache.Entry> byId = new LinkedHashMap<>();
+        for (final RowCache.Entry e : reference) {
+          if (byId.put(e.unit().issueId(), e) != null) {
+            split.add("duplicate issue in split reference: " + e.unit().issueId());
+            break;
+          }
+        }
+        for (final RowCache.Entry e : entries) {
+          final RowCache.Entry original = byId.get(e.unit().issueId());
+          if (original == null || !original.unit().project().equals(e.unit().project())
+              || !original.outer(app.issues.Universe.Population.IN_PROGRESS).equals(
+                  e.outer(app.issues.Universe.Population.IN_PROGRESS))
+              || !original.inner(app.issues.Universe.Population.IN_PROGRESS).equals(
+                  e.inner(app.issues.Universe.Population.IN_PROGRESS))) {
+            split.add("scored issue is absent from or moved relative to the full split: "
+                + e.unit().issueId());
+            break;
+          }
+        }
+      }
+    }
     if (!split.isEmpty()) {
       throw refused(split.get(0));
     }
@@ -225,8 +264,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     }
 
     System.out.printf("%n  NOTE: %s%n  NOTE: %s.%n", EXAMINED, EFFORT);
-    System.out.printf("  target: %s; %s%n", BusinessDays.TARGET, BusinessDays.HOLIDAYS);
-    System.out.printf("  population: %s%n", BusinessDays.POPULATION);
+    System.out.printf("  target: %s; %s%n", BusinessDays.target(entries), BusinessDays.HOLIDAYS);
+    System.out.printf("  population: %s%n", BusinessDays.populationRule(entries));
     System.out.printf("  issues of at least one business day: outer training %,d of %,d, outer "
         + "test %,d of %,d%n", population.kept().train(), population.all().train(),
         population.kept().test(), population.all().test());
@@ -235,6 +274,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final SimilarityScoring.Readings readings;
     final List<PredictionIntervals.Read> intervals;
     final List<SimilarityScoring.Relevance> relevance;
+    final Map<String, PredictionIntervals.Calibration> calibrated;
     try {
       readings = SimilarityScoring.readings(population.entries(), choices, forests, cut.k(),
           SimilarityScoring.Scope.RESERVED);
@@ -244,12 +284,12 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
           SimilarityScoring.Scope.RESERVED);
       // the prediction intervals (ticket 24, item 53 viii): the inner models refitted and
       // calibrated on the whole usual-flow inner validation, applied to the outer models
-      final Map<String, PredictionIntervals.Calibration> calibrated =
+      calibrated =
           PredictionIntervals.calibrated(PredictionIntervals.Sample.of(
-              SimilarityScoring.calibration(population.entries(), choices, forests, cut.k())));
+              SimilarityScoring.calibration(population.entries(), choices, forests, cut.k()), app.issues.AdjustedDuration.marked(entries) ? 0 : 1));
       intervals = PredictionIntervals.outer(calibrated,
-          PredictionIntervals.Sample.of(readings.main()),
-          PredictionIntervals.Sample.of(readings.complementary()),
+          PredictionIntervals.Sample.of(readings.main(), app.issues.AdjustedDuration.marked(entries) ? 0 : 1),
+          PredictionIntervals.Sample.of(readings.complementary(), app.issues.AdjustedDuration.marked(entries) ? 0 : 1),
           Parallel.threads(Parallel.BOOTSTRAP_THREADS));
     } catch (final IllegalArgumentException e) {
       throw refused(e.getMessage());
@@ -277,7 +317,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         + "the global one): %,d issues, %s%n", r.unseenRows(), r.unseenProjects());
     System.out.printf("  error bands: %s; here %s business days, of the outer training rows "
         + "fitted%n", BusinessDays.BANDS, BusinessDays.bandLimits(r.bandTops()));
-    System.out.printf("  prediction intervals: %s; %s; %s%n", PredictionIntervals.RULE,
+    System.out.printf("  prediction intervals: %s; %s; %s%n", PredictionIntervals.rule(app.issues.AdjustedDuration.marked(entries) ? 0 : 1),
         PredictionIntervals.FACTOR, PredictionIntervals.OUTER);
 
     final List<Map<String, Object>> rows = new ArrayList<>();
@@ -292,6 +332,10 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       rows.addAll(of);
     }
     printRelevance(relevance, rows);
+    final UncertaintyTables.Tables uncertainty = UncertaintyTables.of(readings,
+        population.entries(), calibrated, Parallel.threads(Parallel.BOOTSTRAP_THREADS));
+    rows.addAll(uncertainty.documents());
+    uncertainty.markdown().forEach(line -> System.out.println("  " + line));
 
     final List<String> predictions = SimilarityScoring.predictions(r);
     final Double rerun;
@@ -307,6 +351,9 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       write(predictionsFile, predictions);
       write(diagnosticsFile, diagnostics(main));
       write(relevanceFile, relevance(relevance));
+      write(reports.resolve(UNCERTAINTY), uncertainty.uncertainty());
+      write(reports.resolve(PERCENTILES), uncertainty.percentiles());
+      write(reports.resolve(UNCERTAINTY_REPORT), uncertainty.markdown());
       predictionsSha = Sha256.of(predictionsFile);
       diagnosticsSha = Sha256.of(diagnosticsFile);
       relevanceSha = Sha256.of(relevanceFile);
@@ -331,13 +378,33 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     run.put("outer_test", "scored");
     run.put("models", r.models().stream().map(SimilarityScoring.Scored::name).toList());
     run.putAll(statements());
+    run.put("target", BusinessDays.target(entries));
+    run.put("population", BusinessDays.populationRule(entries));
+    run.put("prediction_intervals", PredictionIntervals.rule(app.issues.AdjustedDuration.marked(entries) ? 0 : 1));
     run.put("population_rows", populationRows(population));
-    run.put("silence", population.silence());
     run.put("matrix_sha256", matrixSha);
+    if (splitReferenceSetting != null && !splitReferenceSetting.isBlank()) {
+      try {
+        run.put("split_reference_matrix_sha256", Sha256.of(Path.of(splitReferenceSetting)));
+      } catch (final IOException e) {
+        throw new CommandFailedException(List.of("could not hash split reference: " + e));
+      }
+    }
     run.put("elastic_net_parameters_sha256", elasticNetSha);
     run.put("predictions_sha256", predictionsSha);
     run.put("diagnostics_sha256", diagnosticsSha);
     run.put("relevance_sha256", relevanceSha);
+    try {
+      run.put("uncertainty_sha256", Sha256.of(reports.resolve(UNCERTAINTY)));
+      run.put("prediction_percentiles_sha256", Sha256.of(reports.resolve(PERCENTILES)));
+      run.put("uncertainty_report_sha256", Sha256.of(reports.resolve(UNCERTAINTY_REPORT)));
+    } catch (final IOException e) {
+      throw new CommandFailedException(List.of("  could not hash uncertainty outputs: " + e));
+    }
+    run.put("estimation_uncertainty_rule", EstimationUncertainty.RULE);
+    run.put("estimation_uncertainty_intervals", EstimationUncertainty.INTERVAL_RULE);
+    run.put("prediction_percentiles", EstimationUncertainty.PERCENTILE_RULE);
+    run.put("spsp_context", UncertaintyTables.context());
     run.put("relevance", RELEVANCE_RULE);
     run.put("forest_grid", IssuesSimilarityElasticNetCommand.forestGrid());
     run.put("forest_permutation_importance", "not read: it would read the outer test's labels");
@@ -758,9 +825,14 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       final List<PredictionIntervals.Group> groups = new ArrayList<>();
       groups.add(x.overall());
       groups.addAll(x.bands());
+      final List<String> groupLabels = new ArrayList<>(); groupLabels.add("all");
+      groupLabels.addAll(List.of(labels));
+      for (final String stratum : List.of("zero", "nonzero")) {
+        if (x.strata().containsKey(stratum)) { groups.add(x.strata().get(stratum)); groupLabels.add(stratum); }
+      }
       for (int q = 0; q < groups.size(); q++) {
         final PredictionIntervals.Group g = groups.get(q);
-        final String band = q == 0 ? "all" : labels[q - 1];
+        final String band = groupLabels.get(q);
         line.append("  ").append(band).append(g.coverage() == null
             ? " (n 0)" : String.format(java.util.Locale.ROOT, " %.3f [%.3f, %.3f] w %s x%s "
                 + "mae %.3f (n %d)", g.coverage().value(), g.coverage().low(),

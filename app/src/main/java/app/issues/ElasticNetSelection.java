@@ -34,10 +34,11 @@ import java.util.concurrent.Callable;
  * they are ({@code ALZUBAIDI / C1}, {@code KIKAS / C1}). After the resolution, three. The own
  * retrospective model in its main reading ({@link #RETROSPECTIVE}): the own start model followed
  * by what was observed between the first In Progress and the first resolution ({@link
- * Retrospective}) except the comments and the participants: the five content attributes, the
- * assignee changes and urgency, twenty in all. The same with the comments and the participants
- * ({@link #WITH_DISCUSSION}), twenty-two in all, a ceiling, not a competitor: those two count the
- * very records the target is made of ({@link Retrospective#DISCUSSION}). Kikas's retrospective
+ * Retrospective}) except comments, participants and release lag: the five content attributes
+ * and assignee changes, nineteen in all. The release-lag column stays in the matrix for audit.
+ * The same with the comments and the participants ({@link #WITH_DISCUSSION}), twenty-one in all,
+ * a ceiling, not a competitor: those two count the
+ * discussion observed during the work ({@link Retrospective#DISCUSSION}). Kikas's retrospective
  * model, Kikas's retrospective literature set ({@code KIKAS / C2}): Kikas at
  * the start followed by Kikas's whole retrospective set as adapted, the twelve counts observed up
  * to the resolution and the missing indicator the matrix has for them; no similarity median, no
@@ -53,8 +54,7 @@ import java.util.concurrent.Callable;
  *
  * <p>Left out, their decisions kept by the earlier runs' reports: the own specification without
  * the similarity medians, the medians alone, the own specification with the pressure attributes
- * and the union of the families, at the start; the main reading without urgency, after the
- * resolution.
+ * and the union of the families, at the start.
  *
  * <p><b>Similarity medians as attributes</b> (ticket 11, reversing ticket 08's choice by each
  * median's error read alone as a prediction). The three models with the medians ({@link
@@ -126,17 +126,17 @@ public final class ElasticNetSelection {
 
   /**
    * The retrospective scenario's model in its main reading, the fourth of {@link #MODELS}: the
-   * own start model followed by the five content attributes, the assignee changes and urgency,
-   * without the comments and the participants.
+   * own start model followed by the five content attributes and assignee changes, without
+   * comments, participants or release lag.
    */
   public static final String RETROSPECTIVE = "own_retrospective";
 
   /** What the main reading is, for the selection step's output and record and both reports. */
   public static final String RETROSPECTIVE_ROLE = "the main reading of the retrospective model: "
       + "the own start model followed by the five content attributes (Java lines, files, mean "
-      + "complexity, mean nesting, familiarity), the assignee changes and urgency, with their "
-      + "missing indicators; no comments and no participants, which count the records the "
-      + "target is made of";
+      + "complexity, mean nesting, familiarity) and assignee changes, with their "
+      + "missing indicators; no comments, participants or release lag, preserving the declared "
+      + "attribute specification";
 
   /**
    * The retrospective model with the comments and the participants, the fifth of {@link
@@ -147,7 +147,7 @@ public final class ElasticNetSelection {
   /** What the reading with the discussion is, for the selection step's output and record and both reports. */
   public static final String WITH_DISCUSSION_ROLE = "a CEILING, not a competitor: the main "
       + "reading of the retrospective model followed by the comments and the participants, which "
-      + "count the very records the target is made of, so part of any gain is mechanical; it "
+      + "accumulate during the work and are unavailable at the start; it "
       + "compares fairly with Kikas's retrospective set, which counts comments too";
 
   /**
@@ -293,9 +293,11 @@ public final class ElasticNetSelection {
   public static final String HEADER = "# the tail cut's k and fences, the k chosen on the own "
       + "start model, Elastic Net alpha and lambda, the similarity medians' n, n and k, and each "
       + "random forest's column share and leaf, chosen on the usual flow of the inner validation "
-      + "only, the target in whole business days on the issues of at least one, for six "
+      + "only, the target in whole business days excluding Open/Reopened and retaining silence, "
+      + "on the issues of at least one, for six "
       + "attribute sets: the own, Al-Zubaidi's and Kikas's at the start, the own retrospective "
-      + "one without and with the comments and participants and Kikas's retrospective one; the "
+      + "one without and with the comments and participants, both excluding release lag, and "
+      + "Kikas's retrospective one; the "
       + "outer test was not read";
 
   /** The step of the tail cut's lines in the parameters file (ticket 23). */
@@ -859,7 +861,7 @@ public final class ElasticNetSelection {
     start.add(revised(Augmentation.embedding(c.embeddingN(), variant)));
     start.add(revised(Augmentation.cluster(c.clusterK(), variant)));
 
-    // the main reading: the own start model, then content, assignee changes and urgency
+    // the main reading: the own start model, then content and assignee changes
     final List<Attribute> retrospective = new ArrayList<>(start);
     retrospective.addAll(retrospective(MAIN_READING));
     // the ceiling: the main reading, then the comments and the participants, nothing else
@@ -877,17 +879,19 @@ public final class ElasticNetSelection {
 
   /**
    * The retrospective columns the main reading reads, in their order: the five content ones,
-   * the assignee changes and urgency; every column but the comments and the participants.
+   * the assignee changes; comments, participants and release lag are excluded.
    */
   static final List<String> MAIN_READING = Retrospective.COLUMNS.stream()
-      .filter(c -> !Retrospective.DISCUSSION.contains(c)).toList();
+      .filter(c -> !Retrospective.DISCUSSION.contains(c) && !Retrospective.URGENCY.equals(c))
+      .toList();
 
   /**
    * The given attributes of the retrospective scenario ({@link Retrospective}), in the order
    * given: the counts and volumes {@code log1p}, the ratio and the means raw, as the registered
    * columns they stand beside ({@code A15} to {@code A17}, {@code D07}, {@code D08}, {@code K03}
-   * to {@code K05}); a missing indicator beside the five that can be missing. Urgency raw, being
-   * signed, with a missing indicator. Split-independent: the same in both variants.
+   * to {@code K05}); a missing indicator beside the five content attributes that can be missing.
+   * The audit-only release-lag attribute is supported by this helper but passed by no model.
+   * Split-independent: the same in both variants.
    */
   static List<Attribute> retrospective(final List<String> names) {
     if (!Retrospective.COLUMNS.containsAll(names)) {

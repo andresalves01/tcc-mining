@@ -183,8 +183,37 @@ class DayBoundariesTest {
     assertTrue(DayBoundaries.templated("FAILURE: Integrated in Hadoop-trunk #12"));
     assertTrue(DayBoundaries.templated("integrated in build 7"));
     assertTrue(DayBoundaries.templated("-1 overall.  Here are the results"));
+    assertTrue(DayBoundaries.templated(
+        "{color:red}-1 overall{color}.  Here are the results of testing the latest attachment"));
+    assertTrue(DayBoundaries.templated(
+        "{color:green}+1 overall{color}.  Here are the results of testing the latest attachment"));
     assertTrue(DayBoundaries.templated("Testing JIRA HADOOP-1"));
     assertFalse(DayBoundaries.templated("I think the commit 15333 from yesterday broke it"));
+    assertFalse(DayBoundaries.templated("I fixed the {color:red}-1 overall{color} test result"));
+    assertFalse(DayBoundaries.templated("{color:red}This patch still needs a review{color}"));
     assertFalse(DayBoundaries.templated(null));
+  }
+
+  @Test
+  @DisplayName("colored CI reports identify the account and remove its tracker actions")
+  void coloredPatchReportsIdentifyBotAccount() {
+    final List<Corpus.Comment> comments = new ArrayList<>();
+    for (int k = 0; k < 20; k++) {
+      final String body = k < 5
+          ? "{color:red}-1 overall{color}. Here are the results of testing the latest attachment"
+          : "More build details";
+      comments.add(new Corpus.Comment("i", "ci", T0 + k * H, 10,
+          DayBoundaries.templated(body)));
+    }
+    comments.add(new Corpus.Comment("i", "dev", T0, 5,
+        DayBoundaries.templated("I fixed the {color:red}-1 overall{color} result")));
+    assertEquals(Set.of("ci"), DayBoundaries.bots(comments, Set.of("i")));
+    final List<Corpus.Event> events = List.of(
+        new Corpus.Event("i", T0, "labels", "ci", null, "test", "1%%0"),
+        new Corpus.Event("i", T0 + H, "status", "dev", "Open", "In Progress", "2%%0"));
+    final List<Action> actions = DayBoundaries.actions(events, comments,
+        Map.of("i", "p"), Map.of());
+    assertEquals(2, actions.size(), "only the developer's comment and status change remain");
+    assertTrue(actions.stream().allMatch(a -> a.person().equals("dev")));
   }
 }

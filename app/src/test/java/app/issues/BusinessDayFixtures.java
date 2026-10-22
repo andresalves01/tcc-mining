@@ -39,8 +39,7 @@ final class BusinessDayFixtures {
 
   /**
    * The entries with every day boundary at {@value #HOUR}:00 UTC and, no fixture issue ever sent
-   * back to Open or Reopened, active business days those of the whole interval, and the target
-   * those same days in both variants, none silent: the matrix's columns.
+   * back to Open or Reopened, active business days those of the whole interval: the target in both variants.
    */
   static List<RowCache.Entry> bounded(final List<RowCache.Entry> entries) {
     final List<RowCache.Entry> out = new ArrayList<>(entries.size());
@@ -50,11 +49,6 @@ final class BusinessDayFixtures {
       final double active = BusinessDays.count(
           e.unit().startedAt().toEpochMilli(), e.unit().resolvedAt().toEpochMilli(), HOUR);
       values.put(BusinessDays.ACTIVE, active);
-      // no fixture issue has a silent day: the target is the active count in both variants
-      for (final Augmentation.Variant v : Augmentation.Variant.values()) {
-        values.put(BusinessDays.recorded(v), active);
-        values.put(BusinessDays.threshold(v), BusinessDays.LEAST_SILENT);
-      }
       out.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values, e.row().absent()),
           e.parts()));
     }

@@ -17,5 +17,11 @@ public interface StudySource {
   /** The collections this source opens, so {@code check} can refuse before a long read. */
   Set<String> reads();
 
+  /** Only the explicitly supplied cohort; includes status history even when code is absent. */
+  default Map<String, app.issues.DurationEvidence> durationEvidence(
+      java.util.List<app.issues.RowCache.Entry> rows, Set<String> bots) {
+    throw new UnsupportedOperationException("duration evidence not supported by this source");
+  }
+
   String describe();
 }

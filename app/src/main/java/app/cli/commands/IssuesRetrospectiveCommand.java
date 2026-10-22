@@ -87,6 +87,10 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
     try {
       refuseForeign(out);
       columns = new ArrayList<>(RowCache.columns(matrix));
+      final String obsoleteTarget = BusinessDays.unwritten(columns);
+      if (obsoleteTarget != null && columns.stream().anyMatch(BusinessDays.LEGACY_RECORDED_COLUMNS::contains)) {
+        throw refused(obsoleteTarget);
+      }
       final List<String> needed = new ArrayList<>(IssuesSimilarityTask.columns());
       needed.addAll(BusinessDays.COLUMNS);
       if (!columns.containsAll(needed)) {
@@ -186,8 +190,8 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
     out.put("discussion", "in [first In Progress, first resolution), bots left out: comments; "
         + "distinct people who commented or changed a field, the reporter only if active, commit "
         + "authors not counted; effective changes of the assignee (all log1p, never missing)");
-    out.put("discussion_reading", "the comments and the participants count the records the "
-        + "target is built from: the main retrospective model leaves them out, and the reading "
+    out.put("discussion_reading", "the declared main retrospective specification leaves "
+        + "comments and participants out, and the reading "
         + "with them is a ceiling, not a competitor");
     out.put("not_written", "the wait on the issues it was blocked by: counted in the target's "
         + "own unit and clipped at it, it equalled the target in about half of the issues that "

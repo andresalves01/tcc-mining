@@ -23,13 +23,10 @@ import java.util.stream.IntStream;
  * and of those closest by embedding, for each candidate number of neighbours, and the reporter's
  * historical median, once against the inner split and once against the outer.
  *
- * <p><b>Duration</b> (tickets 14, 18 and 27). Every median is of past issues' target, the active
- * business days with recorded activity ({@link BusinessDays#recorded}: the time back in Open or
- * Reopened and the silent days left out), each past issue counted at its own day boundary and at
- * the threshold of the variant's side, as the target is. A past issue
- * of 0 business days enters no history -- no neighbour search, no cluster fit or cluster, no
- * reporter median -- so a history holds only the kind of issue the model predicts; since ticket 21
- * the extraction draws none of them, and the rule stays as a guard.
+ * <p><b>Duration.</b> Every median reads the status-adjusted business days of past issues:
+ * time back in Open or Reopened is excluded, days without records are retained. Each past
+ * issue uses its own day boundary. The same duration is used in both split variants. A past
+ * issue of 0 days enters no history; since ticket 21 the extraction draws none of them.
  *
  * <p><b>History</b> (ticket 21, item 45 of the retrospective decisions). The history of a split
  * is its whole training side, whatever the dates: the inner fitting set for the inner variant, the
@@ -154,16 +151,21 @@ public final class Augmentation {
    * @param reporter the canonical person who opened it
    * @param start the first In Progress, epoch milliseconds
    * @param resolved the first resolution, epoch milliseconds
-   * @param innerDays its target from {@code start} to {@code resolved} at the inner variant's
-   *     threshold, at its own day boundary ({@link BusinessDays#recorded}): what a median of the
-   *     inner variant reads of it; 0 keeps it out of that history
-   * @param outerDays the same at the outer variant's threshold, read by the outer variant
+   * @param innerDays its status-adjusted business days at its own day boundary; what the inner
+   *     history reads, with 0 excluded
+   * @param outerDays the same duration read by the outer variant
    * @param outer the outer verdict: TRAIN or TEST
    * @param inner the inner verdict inside the outer training, TRAIN or TEST; empty outside it
    * @param description the cleaned description at the first In Progress, null when there is none
    */
   public record Issue(String id, String project, String reporter, long start, long resolved,
-      int innerDays, int outerDays, String outer, String inner, String description) {
+      int innerDays, int outerDays, String outer, String inner, String description,
+      boolean zeroAllowed) {
+    public Issue(final String id, final String project, final String reporter, final long start,
+        final long resolved, final int innerDays, final int outerDays, final String outer,
+        final String inner, final String description) {
+      this(id, project, reporter, start, resolved, innerDays, outerDays, outer, inner, description, false);
+    }
 
     /** An issue of the same target in both variants. */
     public Issue(final String id, final String project, final String reporter, final long start,
@@ -175,7 +177,7 @@ public final class Augmentation {
 
     /** Whether it may be history of {@code v}: it lasted at least one business day there. */
     boolean counted(final Variant v) {
-      return days(v) >= 1;
+      return days(v) >= (zeroAllowed ? 0 : 1);
     }
 
     /** What a median of {@code v} reads of it. */

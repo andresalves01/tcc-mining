@@ -105,9 +105,12 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
   public static final String INTERVALS = "similarity-inner-intervals.tsv";
   public static final String CALIBRATION = "similarity-inner-calibration.tsv";
   public static final String RELEVANCE = "similarity-inner-relevance.tsv";
+  public static final String UNCERTAINTY = "similarity-inner-uncertainty.tsv";
+  public static final String PERCENTILES = "similarity-inner-prediction-percentiles.tsv";
 
   private static final List<String> OUTPUTS = List.of(REPORT, PREDICTIONS, MODELS, BANDS,
-      COMPARISONS, ORDERING, DIAGNOSTICS, IMPORTANCE, INTERVALS, CALIBRATION, RELEVANCE);
+      COMPARISONS, ORDERING, DIAGNOSTICS, IMPORTANCE, INTERVALS, CALIBRATION, RELEVANCE,
+      UNCERTAINTY, PERCENTILES);
 
   /** How many columns of each forest the relevance section names, the largest importance first. */
   static final int TOP_IMPORTANCE = 10;
@@ -222,8 +225,8 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
 
     final SimilarityScoring.Report main = readings.main();
     final PredictionIntervals.Inner intervals = PredictionIntervals.inner(
-        PredictionIntervals.Sample.of(main),
-        PredictionIntervals.Sample.of(readings.complementary()),
+        PredictionIntervals.Sample.of(main, app.issues.AdjustedDuration.marked(training) ? 0 : 1),
+        PredictionIntervals.Sample.of(readings.complementary(), app.issues.AdjustedDuration.marked(training) ? 0 : 1),
         Parallel.threads(Parallel.BOOTSTRAP_THREADS));
     final Map<String, List<String>> files = new LinkedHashMap<>();
     files.put(REPORT, report(readings, intervals, relevance, population, chosen, matrix,
@@ -238,6 +241,14 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     files.put(INTERVALS, intervals(intervals, main.bandTops()));
     files.put(CALIBRATION, calibration(intervals));
     files.put(RELEVANCE, IssuesSimilarityTestCommand.relevance(relevance));
+    final UncertaintyTables.Tables uncertainty = UncertaintyTables.of(readings, training,
+        intervals.calibrated(), Parallel.threads(Parallel.BOOTSTRAP_THREADS));
+    final List<String> markdown = files.get(REPORT);
+    final String footer = markdown.remove(markdown.size() - 1);
+    markdown.addAll(uncertainty.markdown());
+    markdown.add(footer);
+    files.put(UNCERTAINTY, uncertainty.uncertainty());
+    files.put(PERCENTILES, uncertainty.percentiles());
     files.get(REPORT).forEach(line -> System.out.println("  " + line));
     try {
       Files.createDirectories(reports);
@@ -374,12 +385,9 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     md.add("- matrix: " + matrix + " (sha256 " + chosen.matrixSha() + "); outer training rows "
         + "only, the others left behind on their split field");
     md.add("- choices: " + elasticNet + " (sha256 " + chosen.elasticNetSha() + ")");
-    md.add("- target: " + BusinessDays.TARGET + "; " + BusinessDays.HOLIDAYS);
-    md.add("- silent days: T = " + BusinessDays.days(population.threshold()) + " business days, "
-        + "from the gaps of the inner fitting set; days left out of the active business days: "
-        + population.leftOut());
+    md.add("- target: " + BusinessDays.target(population.entries()) + "; " + BusinessDays.HOLIDAYS);
     md.add("- split: " + ProjectSplit.RULE);
-    md.add("- population: " + BusinessDays.POPULATION + "; inner fitting "
+    md.add("- population: " + BusinessDays.populationRule(population.entries()) + "; inner fitting "
         + population.kept().innerFit() + " of " + population.all().innerFit()
         + ", inner validation " + population.kept().innerSelection() + " of "
         + population.all().innerSelection());
@@ -414,7 +422,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
         BusinessDays.BANDS, BusinessDays.bandLimits(r.bandTops()), r.fitRows(),
         TailCut.QUANTILES));
     final PredictionIntervals.Halves h = intervals.halves();
-    md.add("- prediction intervals: " + PredictionIntervals.RULE + "; "
+    md.add("- prediction intervals: " + PredictionIntervals.rule(app.issues.AdjustedDuration.marked(population.entries()) ? 0 : 1) + "; "
         + PredictionIntervals.FACTOR);
     md.add(f("- calibration halves of the %d usual-flow validation issues: A, %d projects, %d "
         + "issues, calibrates; B, the other projects, %d issues, is checked; with the tail, in "
@@ -596,6 +604,9 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
       final String calibrated =
           f(" (%d calibration issues)", intervals.checked().get(x.model()).n());
       md.add(groupRow(x, "all", x.overall(), calibrated));
+      for (final String stratum : List.of("zero", "nonzero")) {
+        if (x.strata().containsKey(stratum)) md.add(groupRow(x, stratum, x.strata().get(stratum), calibrated));
+      }
       for (int b = 0; b < PredictionIntervals.BANDS; b++) {
         md.add(groupRow(x, labels[b], x.bands().get(b), calibrated));
       }
@@ -642,6 +653,10 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
       final String reading = x.reading().name().toLowerCase(Locale.ROOT);
       out.add(String.join("\t", reading, x.model(), d(x.level()), "all", "", "",
           Integer.toString(c.n()), factor, figures(x.overall())));
+      for (final String stratum : List.of("zero", "nonzero")) {
+        if (x.strata().containsKey(stratum)) out.add(String.join("\t", reading, x.model(), d(x.level()),
+            stratum, "", "", Integer.toString(c.n()), factor, figures(x.strata().get(stratum))));
+      }
       for (int b = 0; b < PredictionIntervals.BANDS; b++) {
         out.add(String.join("\t", reading, x.model(), d(x.level()), labels[b],
             b == 0 ? "" : d(tops[b - 1]), b == tops.length ? "" : d(tops[b]),

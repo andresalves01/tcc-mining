@@ -52,14 +52,17 @@ public final class DayBoundaries {
 
   /** The bot rule in words, as the run records of the stages that leave bots out state it. */
   public static final String BOT_RULE = "at least " + BOT_MIN_COMMENTS + " comments, at least "
-      + BOT_TEMPLATED_SHARE + " of them opening like a bot's template";
+      + BOT_TEMPLATED_SHARE + " of them opening like a bot's template "
+      + "(Jira color markup allowed before patch-test overall scores)";
 
   /**
    * How a bot's comment opens: GitHub mirroring, commit notices, build reports, patch-test reports.
    * Read on the text with its tabs and line breaks turned into spaces, from its first character.
+   * Patch-test scores may start with Jira's color markup, as the Tez CI reports do.
    */
   private static final Pattern TEMPLATE = Pattern.compile("^(GitHub user|Commit [0-9a-f]+ (from|in)"
-      + "|((SUCCESS|FAILURE|UNSTABLE|ABORTED|FIXED|ERROR): )?Integrated in|[-+]1 overall"
+      + "|((SUCCESS|FAILURE|UNSTABLE|ABORTED|FIXED|ERROR): )?Integrated in"
+      + "|(?:\\{color:[^}]+\\})?[-+]1 overall"
       + "|Testing JIRA)", Pattern.CASE_INSENSITIVE);
 
   private static final Pattern BREAKS = Pattern.compile("[\\t\\r\\n]+");
