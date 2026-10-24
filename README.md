@@ -154,8 +154,9 @@ hang, so run one package at a time:
 
 - `app.CorpusRegressionTest` checks the restored corpus against the one these results came from.
   It is skipped when no MongoDB is running.
-- The embedding tests compare against the reference model only when `MODEL_DIR` points to it.
-  With `REQUIRE_MODEL=1` they fail instead of being skipped.
+- The embedding tests compare the Java embedder against the reference model. They read the model
+  from `MODEL_DIR`, or from `~/.cache/tcc-minilm-java` when it is there, and are skipped
+  otherwise. With `REQUIRE_MODEL=1` they fail instead of being skipped.
 
 ## Code layout
 

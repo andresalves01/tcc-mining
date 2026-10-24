@@ -71,8 +71,11 @@ tasks.named<Test>("test") {
     useJUnitPlatform()
 
     // The embedder's comparison with sentence-transformers runs only when MODEL_DIR names the
-    // downloaded model; declared an input so setting or clearing it reruns the tests.
-    val modelDir = System.getenv("MODEL_DIR") ?: System.getProperty("MODEL_DIR") ?: ""
+    // downloaded model, by default ~/.cache/tcc-minilm-java when the model is there; declared an
+    // input so setting or clearing it reruns the tests.
+    val defaultModelDir = File(System.getProperty("user.home"), ".cache/tcc-minilm-java")
+    val modelDir = System.getenv("MODEL_DIR") ?: System.getProperty("MODEL_DIR")
+        ?: (if (File(defaultModelDir, "model.safetensors").isFile) defaultModelDir.path else "")
     inputs.property("MODEL_DIR", modelDir)
     systemProperty("MODEL_DIR", modelDir)
     // REQUIRE_MODEL=1 makes those tests fail instead of skipping when the model is not there. Both
