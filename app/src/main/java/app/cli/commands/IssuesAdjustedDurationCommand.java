@@ -174,6 +174,19 @@ public final class IssuesAdjustedDurationCommand implements CommandRunner {
     if(eligibleTrain!=frozenOld.size())throw new IllegalArgumentException("frozen eligible training cohort changed");
     var descriptions=new HashMap<String,String>();
     for(String line:Files.readAllLines(path("START_DESCRIPTIONS"))){var d=Document.parse(line);if(d.getString("description")!=null)descriptions.put(d.getString("id"),d.getString("description"));}
+    // The frozen descriptions file contains only outer training rows. Recover reserved text at
+    // each issue's start instant, without reading its outcome, before recomputing similarities.
+    var texts=context.study().texts(test.stream().map(r->r.unit().issueId()).toList());
+    var outerDescriptions=new ArrayList<String>();
+    int describedTest=0;
+    for(var r:test){var u=r.unit();
+      String description=descriptionAtStart(r,texts.get(u.issueId()));
+      if(description!=null){descriptions.put(u.issueId(),description);describedTest++;}
+      if(r.row().values().getOrDefault("A01_desc_length",0.0)>0&&description==null)
+        throw new IllegalArgumentException("reserved start description missing: "+u.key());
+      outerDescriptions.add(new Document("id",u.issueId()).append("description",description).toJson());
+    }
+    Files.write(external.resolve("outer-start-descriptions.jsonl"),outerDescriptions);
     var embeddings=EmbeddingCache.open(path("EMBEDDING_CACHE"),EmbeddingCache.pinned(),text->{throw new IllegalStateException("description absent from frozen embedding cache");});
     var eligible=new ArrayList<RowCache.Entry>();
     for(var r:rows)if(result.counts().get(r.unit().issueId()).total()!=null)eligible.add(r);
@@ -196,8 +209,17 @@ public final class IssuesAdjustedDurationCommand implements CommandRunner {
           String.join(",",c.warnings())));
     }
     Files.write(external.resolve("outer-per-issue.tsv"),audit);
-    System.out.printf("Reserved cohort: %d/%d eligible; frozen training %d; cap %d; outer histories rebuilt; evidence cache %s%n",
-        eligibleTest,test.size(),eligibleTrain,threshold.cap(),outerEvidenceFile);
+    System.out.printf("Reserved cohort: %d/%d eligible; frozen training %d; cap %d; "
+        + "start descriptions %d/%d; outer histories rebuilt; evidence cache %s%n",
+        eligibleTest,test.size(),eligibleTrain,threshold.cap(),describedTest,test.size(),outerEvidenceFile);
+  }
+
+  static String descriptionAtStart(RowCache.Entry row,Corpus.Text text) {
+    var u=row.unit();
+    var issue=new Corpus.Issue(u.issueId(),u.key(),u.project(),u.createdAt().toEpochMilli(),
+        null,null,null,null,null,null,List.of(),List.of());
+    return DescriptionCleaner.clean(Initial.at(issue,List.of(),text,
+        u.startedAt().toEpochMilli()).description());
   }
 
   private static List<RowCache.Entry> rebuild(List<RowCache.Entry> rows,Map<String,String> descriptions,

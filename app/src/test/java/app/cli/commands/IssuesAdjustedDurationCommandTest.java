@@ -15,6 +15,22 @@ import org.junit.jupiter.api.io.TempDir;
 
 class IssuesAdjustedDurationCommandTest {
   @TempDir Path dir;
+  @Test void reservedDescriptionIsRecoveredAtStartRatherThanAtResolution() {
+    String id="000000000000000000000002";
+    var created=Instant.parse("2024-01-01T12:00:00Z");
+    var started=created.plusSeconds(86400);
+    var resolved=started.plusSeconds(86400);
+    var unit=new IssueUnit(id,"P-2","p",null,null,created,resolved,"Fixed",false,started);
+    var row=new RowCache.Entry(unit,new Row(id,Map.of(),Set.of()),
+        Map.of(Population.IN_PROGRESS,new String[]{"TEST",""}));
+    var afterStart=new Corpus.Event(id,started.plusSeconds(3600).toEpochMilli(),"desc",null,
+        "Original description","Later revision",null);
+    var text=new Corpus.Text("Title","Later revision",List.of(afterStart));
+    assertEquals(DescriptionCleaner.clean("Original description"),
+        IssuesAdjustedDurationCommand.descriptionAtStart(row,text));
+    assertNull(IssuesAdjustedDurationCommand.descriptionAtStart(row,null));
+  }
+
   @Test void evidenceExportIsTrainingOnlyCachedAndPinnedToBotPolicy() throws Exception {
     String id="000000000000000000000001";
     var start=Instant.parse("2024-01-01T12:00:00Z");var end=start.plusSeconds(86400);
