@@ -68,34 +68,6 @@ public final class ReferenceMedian {
     return byProject.getOrDefault(unit.project(), global);
   }
 
-  /** How many scored rows fell back to the global median, which the report has to state. */
-  public int fellBackOn(final List<? extends Outcome> scored) {
-    int fell = 0;
-    for (final Outcome unit : scored) {
-      if (!byProject.containsKey(unit.project())) {
-        fell++;
-      }
-    }
-    return fell;
-  }
-
-  /** The prediction for every scored row, in order. */
-  public double[] projectOf(final List<? extends Outcome> scored) {
-    final double[] out = new double[scored.size()];
-    for (int i = 0; i < out.length; i++) {
-      out[i] = predictHours(scored.get(i));
-    }
-    return out;
-  }
-
-  public int projects() {
-    return projects;
-  }
-
-  public double globalMedianHours() {
-    return global;
-  }
-
   private static double median(final List<Double> values) {
     final List<Double> sorted = new ArrayList<>(values);
     sorted.sort(Double::compare);

@@ -15,15 +15,6 @@ import java.util.Set;
 public interface ContributionSource {
 
   /**
-   * @param canonicalByPerson raw {@code people} id to merged person id
-   * @param bots canonical ids whose commits are automated; flagged on the rows, not dropped
-   */
-  default ContributionScan scan(final Map<String, String> canonicalByPerson,
-      final Set<String> bots) throws Exception {
-    return scan(canonicalByPerson, bots, null);
-  }
-
-  /**
    * Restricted to projects whose name contains {@code pilot}.
    *
    * <p>Present on the port rather than only on the adapter because "run the small version first" is

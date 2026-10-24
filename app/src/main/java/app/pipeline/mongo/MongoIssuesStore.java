@@ -39,11 +39,6 @@ public final class MongoIssuesStore implements ResultStore {
     this.name = database;
   }
 
-  /** The database this writes to, so a report can name it instead of implying it. */
-  public String databaseName() {
-    return name;
-  }
-
   @Override
   public String record(final Map<String, Object> run, final List<Map<String, Object>> rows) {
     final ObjectId execution = new ObjectId();

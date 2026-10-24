@@ -108,8 +108,8 @@ public final class Forest {
   }
 
   /**
-   * Fits every point of the grid on the fitting side and keeps the one that errs least on the
-   * scored side ({@link #chosen}). A share that gives a count already tried is skipped. Only ever
+   * Fits every point of the grid on the fitting side and keeps the first one that errs least on
+   * the scored side. A share that gives a count already tried is skipped. Only ever
    * called with {@link Fitting.Mode#INNER} sides.
    */
   public static Fitted sweep(final Cell cell, final Fitting.Sides sides, final double referenceMae,
@@ -154,35 +154,7 @@ public final class Forest {
   }
 
   /**
-   * Which of the trials, in grid order, {@link #sweep} keeps: the first with the lowest error. A
-   * point is kept only when its error is strictly lower, so of points whose errors are exactly
-   * equal the earlier one wins -- the smaller share first, then the smaller leaf. No tolerance.
-   */
-  public static int chosen(final List<Trial> trials) {
-    int best = -1;
-    double bestMae = Double.POSITIVE_INFINITY;
-    for (int t = 0; t < trials.size(); t++) {
-      if (trials.get(t).mae() < bestMae) {
-        bestMae = trials.get(t).mae();
-        best = t;
-      }
-    }
-    return best;
-  }
-
-  /**
-   * One forest on the fitting side at the given point of the grid, scored once on the scored side,
-   * with each column's permutation importance there. The same design matrix, target and
-   * back-transform as {@link #sweep}. The forest draws exactly the chosen count of columns at each
-   * split, the point the selection validated; a count larger than this fit's columns refuses.
-   */
-  public static Frozen frozen(final Cell cell, final Fitting.Sides sides, final Choice choice,
-      final double referenceMae, final double constantMae) {
-    return frozen(cell, sides, choice, referenceMae, constantMae, true);
-  }
-
-  /**
-   * {@link #frozen(Cell, Fitting.Sides, Choice, double, double)}, its permutation importance
+   * One forest at the chosen point of the grid, its permutation importance
    * read only when {@code importance}: without it the list is empty and the scored side's
    * outcomes are read for the error alone. The outer test reads none, since shuffling a column
    * among its issues and reading the rise in error would read its labels column by column.

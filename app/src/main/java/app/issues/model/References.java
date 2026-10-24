@@ -44,10 +44,6 @@ public final class References {
     return new References(ReferenceMedian.learnedOn(fit), medians);
   }
 
-  public double constantMedian() {
-    return project.constantHours();
-  }
-
   public double[] projectMedian(final List<IssueUnit> scored) {
     final double[] out = new double[scored.size()];
     for (int i = 0; i < out.length; i++) {
@@ -59,17 +55,6 @@ public final class References {
   public double[] constant(final int n) {
     final double[] out = new double[n];
     java.util.Arrays.fill(out, project.constantHours());
-    return out;
-  }
-
-  public double[] pairMedian(final List<IssueUnit> scored) {
-    final double[] out = new double[scored.size()];
-    for (int i = 0; i < out.length; i++) {
-      final IssueUnit unit = scored.get(i);
-      // no executor: the conditioned reference has no person to condition on
-      out[i] = unit.executor() == null ? project.predictHours(unit)
-          : pair.getOrDefault(key(unit), project.predictHours(unit));
-    }
     return out;
   }
 

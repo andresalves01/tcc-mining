@@ -24,11 +24,6 @@ public record DurationEvidence(List<Change> changes, List<Activity> activities,
     warnings = List.copyOf(flags);
   }
 
-  public DurationEvidence(final List<Change> changes, final List<Activity> activities,
-      final List<Corpus.Event> events, final String quality, final List<String> warnings) {
-    this(changes, activities, events, quality, warnings, List.of());
-  }
-
   /** Native committer/visibility clocks, retained even when originals replace that observation. */
   public record Integration(String sha, Long committedAt, long visibleAt, String sourceId,
       boolean replacedByOriginals) {}
@@ -42,7 +37,4 @@ public record DurationEvidence(List<Change> changes, List<Activity> activities,
     return Universe.changelog(events).values().stream().findFirst().map(List::copyOf).orElse(List.of());
   }
 
-  public static DurationEvidence empty() {
-    return new DurationEvidence(List.of(), List.of(), List.of(), "no_eligible_commit", List.of());
-  }
 }

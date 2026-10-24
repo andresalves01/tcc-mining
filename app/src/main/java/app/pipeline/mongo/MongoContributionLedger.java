@@ -1,7 +1,7 @@
 package app.pipeline.mongo;
 
-import app.cost.Contribution;
-import app.cost.port.ContributionLedger;
+import app.contribution.Contribution;
+import app.contribution.port.ContributionLedger;
 import com.mongodb.bulk.BulkWriteResult;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoCollection;
@@ -97,11 +97,6 @@ public final class MongoContributionLedger implements ContributionLedger {
 
   private static String hex(final ObjectId id) {
     return id == null ? null : id.toHexString();
-  }
-
-  @Override
-  public long count() {
-    return target.getCollection(DEVELOPER_CONTRIBUTION).countDocuments();
   }
 
   @Override

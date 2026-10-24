@@ -80,10 +80,6 @@ public final class ElasticNetModel {
     return coefficients.clone();
   }
 
-  public double intercept() {
-    return intercept;
-  }
-
   public double alpha() {
     return alpha;
   }

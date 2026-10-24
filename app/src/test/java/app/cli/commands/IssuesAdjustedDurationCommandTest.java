@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.util.*;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import app.pipeline.port.SilentProgress;
 
 class IssuesAdjustedDurationCommandTest {
   @TempDir Path dir;
@@ -50,10 +51,10 @@ class IssuesAdjustedDurationCommandTest {
       public Set<String> reads(){return Set.of();} public String describe(){return "fake";}
       public Map<String,DurationEvidence> durationEvidence(List<RowCache.Entry> rows,Set<String> bots){
         calls[0]++;assertEquals(List.of(id),rows.stream().map(r->r.unit().issueId()).toList());
-        return Map.of(id,DurationEvidence.empty());
+        return Map.of(id,new DurationEvidence(List.of(),List.of(),List.of(),"no_eligible_commit",List.of(),List.of()));
       }
     };
-    var context=new Context(null,null,null,null,null,null,null,null,null,null,null,Progress.silent(),source,null,null);
+    var context=new Context(null,null,null,null,null,null,null,null,null,null,null,SilentProgress.INSTANCE,source,null,null);
     var values=Map.of("MATRIX",input.toString(),"ADJUSTED_DIR",out.toString(),"BOT_ACCOUNTS",bots.toString(),"ADJUSTED_STEP","evidence");
     var command=new IssuesAdjustedDurationCommand(values::get);command.run(context);command.run(context);
     assertEquals(1,calls[0]);assertTrue(Files.exists(out.resolve("evidence-v1.json")));

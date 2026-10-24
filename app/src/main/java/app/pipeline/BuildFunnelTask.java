@@ -37,7 +37,7 @@ public final class BuildFunnelTask {
     final Map<String, String> canonical = registry.readCanonical();
     if (canonical.isEmpty()) {
       throw new BuildLedgerTask.RegistryEmptyException(
-          "person_canonical is empty: run reconstruct-people and canonicalize first");
+          "person_canonical is empty: run reconstruct-people and harvest-jira first");
     }
     final LabelScan scan = source.scan(pilot, canonical, registry.readBots());
     return new Report(scan, store.save(scan.labels()));

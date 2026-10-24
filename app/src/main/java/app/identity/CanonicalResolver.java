@@ -235,7 +235,4 @@ public final class CanonicalResolver {
     return records.size();
   }
 
-  public Strictness strictness() {
-    return strictness;
-  }
 }

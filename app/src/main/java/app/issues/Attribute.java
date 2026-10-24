@@ -27,7 +27,4 @@ public record Attribute(String id, String name, Family family, Scenario.Block bl
     return name + "_ausente";
   }
 
-  static Set<String> names(final java.util.Collection<Attribute> attributes) {
-    return attributes.stream().map(Attribute::name).collect(java.util.stream.Collectors.toSet());
-  }
 }

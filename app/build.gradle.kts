@@ -16,59 +16,34 @@ repositories {
 }
 
 dependencies {
-    // --- 1. SPARK 3.5 (Core & SQL) ---
-    // Spark handles the heavy lifting and distributed logic
-    // Elastic Net. Its native BLAS is not optional -- Smile's matrix layer has no pure-Java
-    // fallback, so excluding org.bytedeco compiles and then fails at the first multiplication.
-    // The 74 MB it adds is the price of the estimator; the data layer's is not.
+    // --- 1. MODELS ---
+    // Elastic Net and random forest. Its native BLAS is not optional -- Smile's matrix layer has
+    // no pure-Java fallback, so excluding org.bytedeco compiles and then fails at the first
+    // multiplication.
     implementation(libs.smile.core) {
         // Smile can read a DataFrame from DuckDB and from SAS files; the regression cannot. That
         // is 73 MB of embedded database for a matrix of 25k rows by 15 columns.
         exclude(group = "org.duckdb")
         exclude(group = "com.epam", module = "parso")
     }
-    // Extra Trees, which Smile does not have: it ships RandomForest and GradientTreeBoost and no
-    // extremely randomised variant. Tribuo's ExtraTreesTrainer takes a CART regression tree built
-    // with useRandomSplitPoints, which is the definition the specification asks for. Pulled in
-    // transitively with tribuo-common-tree.
-    implementation(libs.tribuo.regression.tree)
-
-    implementation("org.apache.spark:spark-core_2.12:3.5.0")
-    implementation("org.apache.spark:spark-sql_2.12:3.5.0")
-    
-    // Official MongoDB Spark Connector (v10.3+ is Java 21 friendly)
-    implementation("org.mongodb.spark:mongo-spark-connector_2.12:10.3.0")
 
     // --- 2. MONGODB DRIVER ---
-    // For your non-Spark Java 21 code (streaming and mapping)
     implementation(platform("org.mongodb:mongodb-driver-bom:5.6.5"))
     implementation("org.mongodb:mongodb-driver-sync")
 
-    // --- 3. APACHE PARQUET & HADOOP ---
-    implementation("org.apache.parquet:parquet-avro:1.17.0") // Using the latest 2026 release
-    implementation("org.apache.hadoop:hadoop-client:3.4.0") // Full Hadoop client support
-    
-    // --- 4. IDENTITY RECONSTRUCTION ---
+    // --- 3. IDENTITY RECONSTRUCTION ---
     // JGit reads the .git directories bundled in the `repository_data` GridFS bucket,
     // so no `git` binary and no network clone is needed.
     implementation("org.eclipse.jgit:org.eclipse.jgit:6.10.0.202406032230-r")
     // Streams the repository tarballs straight out of GridFS.
     implementation("org.apache.commons:commons-compress:1.27.1")
-    // Pinned to the version Spark 3.5.0 ships to avoid a Jackson split-brain on the classpath.
     implementation("com.fasterxml.jackson.core:jackson-databind:2.15.2")
 
-    // --- 5. LANGUAGE DETECTION ---
-    // Lingua, every language loaded, for the report on which languages the descriptions are in.
-    // Reporting only: nothing it answers enters a model or the data.
-    implementation(libs.lingua)
-
-    // --- 6. SENTENCE EMBEDDINGS ---
+    // --- 4. SENTENCE EMBEDDINGS ---
     // all-MiniLM-L6-v2 runs in plain Java (app.pipeline.embedding), with no library of its own:
     // ONNX Runtime crashed the JVM under the launcher's long command line, and native code made
     // launching fragile. The model files come from issues-download-model.
 
-    // --- 7. UTILITIES ---
-    implementation(libs.guava)
     testImplementation(libs.junit.jupiter)
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
@@ -87,12 +62,7 @@ application {
         // The ledger stage holds ~450k per-commit rows and the file-id set in memory while it
         // streams the corpus; the default quarter-of-RAM heap leaves too little headroom next to
         // a co-resident mongod on a 15 GB machine.
-        "-Xmx4g",
-        "--add-opens=java.base/java.nio=ALL-UNNAMED",
-        "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
-        "--add-opens=java.base/java.lang=ALL-UNNAMED",
-        "--add-opens=java.base/java.util=ALL-UNNAMED",
-        "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED"
+        "-Xmx4g"
     )
 }
 
@@ -110,13 +80,4 @@ tasks.named<Test>("test") {
     val requireModel = System.getenv("REQUIRE_MODEL") ?: System.getProperty("REQUIRE_MODEL") ?: ""
     inputs.property("REQUIRE_MODEL", requireModel)
     systemProperty("REQUIRE_MODEL", requireModel)
-
-    // Spark needs these JVM opens on Java 17+, same as applicationDefaultJvmArgs above.
-    jvmArgs(
-        "--add-opens=java.base/java.nio=ALL-UNNAMED",
-        "--add-opens=java.base/sun.nio.ch=ALL-UNNAMED",
-        "--add-opens=java.base/java.lang=ALL-UNNAMED",
-        "--add-opens=java.base/java.util=ALL-UNNAMED",
-        "--add-opens=java.base/java.util.concurrent=ALL-UNNAMED"
-    )
 }

@@ -4,8 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import app.cost.Contribution;
-import app.cost.port.ContributionLedger;
+import app.contribution.Contribution;
+import app.contribution.port.ContributionLedger;
 import app.features.CommitComplexity;
 import app.features.port.CommitComplexitySource;
 import app.features.port.CommitComplexityStore;
@@ -24,12 +24,13 @@ import java.util.Set;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import app.pipeline.port.SilentProgress;
 
 /** The expensive stage, exercised against in-memory doubles so its rules are cheap to check. */
 class ComplexityPipelineTest {
 
   private static final Instant EPOCH = Instant.parse("2010-01-01T00:00:00Z");
-  private static final Progress SILENT = Progress.silent();
+  private static final Progress SILENT = SilentProgress.INSTANCE;
 
   private static Instant day(final int day) {
     return EPOCH.plus(day, ChronoUnit.DAYS);
@@ -87,7 +88,6 @@ class ComplexityPipelineTest {
       return rows;
     }
 
-    @Override
     public long count() {
       return rows.size();
     }
@@ -118,7 +118,6 @@ class ComplexityPipelineTest {
       return Set.copyOf(rows.keySet());
     }
 
-    @Override
     public Map<String, CommitComplexity> readAll() {
       return rows;
     }

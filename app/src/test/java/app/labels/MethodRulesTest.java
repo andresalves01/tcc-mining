@@ -103,7 +103,6 @@ class MethodRulesTest {
     void noMethodsMeansNoMeasurement() {
       final IssueLabel label = labelWith(List.of());
 
-      assertFalse(label.hasRecoverableMethods());
       assertTrue(label.meanMccc().isEmpty(), "an empty mean must not collapse to 0.0");
       assertTrue(label.meanNl().isEmpty());
     }
@@ -117,7 +116,6 @@ class MethodRulesTest {
 
       assertEquals(120, label.javaLinesAdded());
       assertEquals(45, label.javaLinesDeleted());
-      assertEquals(165, label.javaLinesChanged(), "removals add to volume, they do not cancel it");
     }
 
     @Test

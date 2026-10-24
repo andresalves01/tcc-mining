@@ -1,7 +1,7 @@
 package app.pipeline;
 
-import app.cost.Contribution;
-import app.cost.port.ContributionLedger;
+import app.contribution.Contribution;
+import app.contribution.port.ContributionLedger;
 import app.features.CommitComplexity;
 import app.features.port.CommitComplexitySource;
 import app.features.port.CommitComplexityStore;

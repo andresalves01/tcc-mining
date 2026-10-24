@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import app.pipeline.port.SilentProgress;
 
 /** Pins the shape of a progress line, now decided in one place rather than in four adapters. */
 class ConsoleProgressTest {
@@ -71,7 +72,7 @@ class ConsoleProgressTest {
     final ByteArrayOutputStream captured = new ByteArrayOutputStream();
     try {
       System.setOut(new PrintStream(captured, true, StandardCharsets.UTF_8));
-      final Progress silent = Progress.silent();
+      final Progress silent = SilentProgress.INSTANCE;
       silent.phase(1, 1, "nothing");
       silent.detail("nothing");
       silent.item(1, 1, "nothing", "nothing");

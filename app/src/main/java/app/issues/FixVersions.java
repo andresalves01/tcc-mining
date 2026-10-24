@@ -14,7 +14,7 @@ import java.util.Set;
  * record, last first, by the rule the links are read with ({@link Initial#undo}). Urgency reads
  * this, since it needs the names to match tags.
  *
- * <p><b>Whether there was one at creation</b> ({@link #setBefore}) does not depend on the names.
+ * <p><b>How many there were at creation</b> ({@link #countAtCreation}) does not depend on the names.
  * Jira renames or merges a version without a changelog entry, so a version added after the start
  * under its old name can sit in the current record under its new one, and undoing by name would
  * leave it there at creation. Counting does not: the number of versions at creation is the number
@@ -84,25 +84,8 @@ public final class FixVersions {
   }
 
   /**
-   * Whether the issue had a fix version at creation ({@link #countAtCreation} above 0) or got one
-   * strictly before {@code t}, even if it was removed later. No name is compared.
-   */
-  static boolean setBefore(final Corpus.Issue issue, final List<Corpus.Event> events,
-      final long t) {
-    if (countAtCreation(issue, events) > 0) {
-      return true;
-    }
-    for (final Corpus.Event e : Initial.field(events, FIELD)) {
-      if (e.at() != null && e.at() < t && Initial.norm(e.newValue()) != null) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  /**
-   * How far the changelog explains the fix versions, for the gate, as {@link Initial#fidelity}
-   * reports its fields: of the issues with a change, those whose undoing by name finds every
+   * How far the changelog explains the fix versions, for the gate, in the fields of {@link
+   * Initial.Fidelity}: of the issues with a change, those whose undoing by name finds every
    * added version held and agrees with the count at creation; and the issues whose versions at
    * creation differ from the current ones.
    */

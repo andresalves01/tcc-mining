@@ -30,19 +30,6 @@ public final class ProjectBootstrap {
   public static final int DRAWS = 600;
   public static final long SEED = 20260927L;
 
-  /** The gain in percent, {@code 100 * (reference - model) / reference}, with its 95% interval. */
-  public record Interval(double gain, double low, double high) {
-
-    /** True when the interval leaves out zero on the side of the model. */
-    public boolean modelBetter() {
-      return low > 0;
-    }
-
-    public boolean referenceBetter() {
-      return high < 0;
-    }
-  }
-
   /**
    * Two specifications scored on the same rows, their gap in mean absolute error -- or, inside an
    * {@link Ordering}, in an ordering measure -- with its 95% interval from resampling whole
@@ -306,31 +293,6 @@ public final class ProjectBootstrap {
   }
 
   /**
-   * The model's gain over the reference with its 95% interval from resampling whole projects; the
-   * draws are evaluated on the threads {@link Parallel#BOOTSTRAP_THREADS} asks for.
-   */
-  public static Interval gain(final List<String> projectOfRow, final double[] model,
-      final double[] reference, final double[] observed) {
-    return gain(projectOfRow, model, reference, observed,
-        Parallel.threads(Parallel.BOOTSTRAP_THREADS));
-  }
-
-  /**
-   * The gain with its draws evaluated on up to {@code threads} threads, the same bits on any
-   * number: the projects of every draw are picked in sequence before any is evaluated.
-   */
-  public static Interval gain(final List<String> projectOfRow, final double[] model,
-      final double[] reference, final double[] observed, final int threads) {
-
-    final List<List<Integer>> projects = clusters(projectOfRow);
-    final double point = gainOf(allRows(observed.length), model, reference, observed);
-    final double[] draws = draws(projects, observed.length, threads,
-        sample -> gainOf(sample, model, reference, observed));
-    Arrays.sort(draws);
-    return new Interval(point, draws[(int) (0.025 * DRAWS)], draws[(int) (0.975 * DRAWS) - 1]);
-  }
-
-  /**
    * The mean of {@code values} with its interval, the draws evaluated on up to {@code threads}
    * threads, the same bits on any number.
    *
@@ -362,14 +324,4 @@ public final class ProjectBootstrap {
     return all;
   }
 
-  private static double gainOf(final List<Integer> sample, final double[] model,
-      final double[] reference, final double[] observed) {
-    double m = 0;
-    double r = 0;
-    for (final int i : sample) {
-      m += Math.abs(model[i] - observed[i]);
-      r += Math.abs(reference[i] - observed[i]);
-    }
-    return r == 0 ? 0 : 100.0 * (r - m) / r;
-  }
 }

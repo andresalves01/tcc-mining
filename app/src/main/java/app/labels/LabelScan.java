@@ -12,11 +12,6 @@ import java.util.List;
  */
 public record LabelScan(List<IssueLabel> labels, List<FunnelStage> stages, long methodsExtracted) {
 
-  public long issuesWithoutMethods() {
-    final FunnelStage last = stages.get(stages.size() - 1);
-    return last.excluded();
-  }
-
   public double methodCoverage() {
     final FunnelStage last = stages.get(stages.size() - 1);
     return last.denominator() == 0 ? 0 : (double) last.retained() / last.denominator();

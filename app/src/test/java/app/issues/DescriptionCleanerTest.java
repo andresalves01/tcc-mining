@@ -92,20 +92,9 @@ class DescriptionCleanerTest {
   }
 
   @Test
-  @DisplayName("for detection, code and noformat blocks go with their contents")
-  void detection() {
-    assertEquals("Fails here: see above",
-        DescriptionCleaner.forDetection("Fails here:\n{code}x = 1{code}\n{noformat}trace{noformat}"
-            + " see above"));
-    assertNull(DescriptionCleaner.forDetection("{code}only code{code}"));
-    assertNull(DescriptionCleaner.forDetection(null));
-  }
-
-  @Test
-  @DisplayName("an unclosed code or noformat block runs to the end of the text")
+  @DisplayName("an unclosed code block runs to the end of the text")
   void unclosed() {
     assertEquals("see x_y_z *p_", clean("see {code}x_y_z *p_"));
-    assertEquals("see", DescriptionCleaner.forDetection("see {noformat}trace *a*"));
   }
 
   @Test
@@ -113,7 +102,6 @@ class DescriptionCleanerTest {
   void monospaceMacro() {
     assertEquals("code macro is used", clean("{{code}} macro is used"));
     assertEquals("code a noformat", clean("{{code}} a {{noformat}}"));
-    assertEquals("code a code", DescriptionCleaner.forDetection("{{code}} a {{code}}"));
   }
 
   @Test

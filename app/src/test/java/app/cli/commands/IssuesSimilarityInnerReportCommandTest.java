@@ -39,6 +39,7 @@ import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import app.pipeline.port.SilentProgress;
 
 /**
  * The inner report on a synthetic matrix written to disk: what it scores, that it equals the
@@ -58,7 +59,7 @@ class IssuesSimilarityInnerReportCommandTest {
   /** A context with no port at all but a result store that fails the test if anything is recorded. */
   private static Context context() {
     return new Context(null, null, null, null, null, null, null, null, null, null, null,
-        Progress.silent(), null, (run, rows) -> {
+        SilentProgress.INSTANCE, null, (run, rows) -> {
           throw new AssertionError("recorded " + run);
         }, null);
   }

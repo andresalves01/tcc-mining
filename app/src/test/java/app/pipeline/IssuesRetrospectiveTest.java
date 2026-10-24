@@ -28,6 +28,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import app.pipeline.port.SilentProgress;
 
 /**
  * The retrospective stage over the similarity stage's matrix (ticket 15), on a corpus and methods
@@ -76,7 +77,7 @@ class IssuesRetrospectiveTest {
         BusinessDays.BOUNDARY, 4.0, BusinessDays.ACTIVE, days));
     for (final Variant v : Variant.values()) {
       out.put(BusinessDays.recorded(v), days);
-      out.put(BusinessDays.threshold(v), BusinessDays.LEAST_SILENT);
+      out.put(BusinessDays.threshold(v), 2.0);
     }
     return out;
   }
@@ -102,10 +103,6 @@ class IssuesRetrospectiveTest {
         throw new AssertionError("the texts are not read");
       }
 
-      @Override
-      public Set<String> reads() {
-        return Set.of();
-      }
 
       @Override
       public String describe() {
@@ -128,7 +125,7 @@ class IssuesRetrospectiveTest {
 
   /** The hand-assigned split taken as it is; the rule's check is {@link #refuses}' last. */
   private IssuesRetrospectiveTask task() {
-    return new IssuesRetrospectiveTask(source(), changed(), Progress.silent(), e -> List.of());
+    return new IssuesRetrospectiveTask(source(), changed(), SilentProgress.INSTANCE, e -> List.of());
   }
 
   private static RowCache.Entry entry(final IssuesRetrospectiveTask.Report r, final String id) {
@@ -273,7 +270,7 @@ class IssuesRetrospectiveTest {
     test.put(Population.IN_PROGRESS, new String[] {"TEST", ""});
     other.set(0, new RowCache.Entry(first.unit(), first.row(), test));
     final IssuesRetrospectiveTask.Report split = new IssuesRetrospectiveTask(source(), changed(),
-        Progress.silent()).run(other);
+        SilentProgress.INSTANCE).run(other);
     assertEquals(1, split.refused().size(), split.refused().toString());
     assertTrue(split.refused().get(0).contains("not at the verdicts of the split's rule"),
         split.refused().toString());

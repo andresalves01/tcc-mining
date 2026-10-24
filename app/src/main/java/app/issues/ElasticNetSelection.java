@@ -90,7 +90,7 @@ import java.util.concurrent.Callable;
  * whether or not the Elastic Net gave it a weight -- the same design matrix fitted on the fitting
  * side, the same {@code log1p} target and back-transform; n and k are not swept again. The point with the lowest inner
  * validation error is kept; of points whose errors are exactly equal, the first in the grid's
- * order (the smaller column share, then the smaller leaf; {@link Forest#chosen}). Its column share,
+ * order (the smaller column share, then the smaller leaf; {@link Forest#sweep}). Its column share,
  * the count that share gave and its leaf go to the parameters file under the step {@link
  * #FOREST_STEP}.
  *
@@ -614,20 +614,7 @@ public final class ElasticNetSelection {
     return select(entries, TailCut.GRID, TailCut.Reading.USUAL_FLOW, threads);
   }
 
-  /**
-   * The choice of {@link #run(List, int)} with the k given, no other k swept, every choice scored
-   * on the validation issues {@code scored} reads; at {@link TailCut#NO_CUT} and {@link
-   * TailCut.Reading#ALL}, the choice before ticket 23, bit for bit.
-   */
-  public static Result fixed(final List<RowCache.Entry> entries, final double k,
-      final TailCut.Reading scored, final int threads) {
-    if (!TailCut.GRID.contains(k)) {
-      throw new IllegalArgumentException("k " + k + " is not one of the grid " + TailCut.GRID);
-    }
-    return select(entries, List.of(k), scored, threads);
-  }
-
-  private static Result select(final List<RowCache.Entry> entries, final List<Double> grid,
+  static Result select(final List<RowCache.Entry> entries, final List<Double> grid,
       final TailCut.Reading scored, final int threads) {
     final List<Cell> every = everyCell(Augmentation.Variant.INNER);
     final List<RowCache.Entry> training =

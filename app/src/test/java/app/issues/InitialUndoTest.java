@@ -49,22 +49,4 @@ class InitialUndoTest {
     assertEquals(Set.of("e"), u.held());
   }
 
-  @Test
-  @DisplayName("the links' fidelity reads the same flag: an unexplained link change counts as "
-      + "changed but not consistent")
-  void linkFidelity() {
-    final List<Corpus.Issue> issues = List.of(
-        new Corpus.Issue("a", "P-1", "p", 0L, "r", "r", null, "Bug", "Major", null, List.of(),
-            List.of("e")),
-        new Corpus.Issue("b", "P-2", "p", 0L, "r", "r", null, "Bug", "Major", null, List.of(),
-            List.of("d")));
-    final List<Corpus.Event> events = List.of(link(1, null, "d"),
-        new Corpus.Event("b", 1L, "issue_links", "x", null, "d", "1%%0"));
-    final Corpus corpus = new Corpus(issues, events, List.of(), List.of(), List.of(),
-        Map.of("p", Set.of("P")), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
-    final Initial.Fidelity f = Initial.fidelity(Universe.of(corpus), List.of("a", "b"),
-        Map.of()).stream().filter(x -> x.field().equals("issue_links")).findFirst()
-        .orElseThrow();
-    assertEquals(new Initial.Fidelity("issue_links", 2, 2, 1, 1), f);
-  }
 }

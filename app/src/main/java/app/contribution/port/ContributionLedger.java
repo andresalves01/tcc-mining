@@ -10,9 +10,6 @@ public interface ContributionLedger {
   /** Upserts, keyed on the commit, so a re-run repairs rather than duplicates. */
   long save(Collection<Contribution> contributions);
 
-  /** Rows currently stored. */
-  long count();
-
   /**
    * The whole ledger, for the in-memory derivations built on top of it.
    *

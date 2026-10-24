@@ -199,7 +199,7 @@ class BusinessDaysTest {
       // no silent day: the target is the active count in both variants
       for (final Augmentation.Variant v : Augmentation.Variant.values()) {
         values.put(BusinessDays.recorded(v), active);
-        values.put(BusinessDays.threshold(v), BusinessDays.LEAST_SILENT);
+        values.put(BusinessDays.threshold(v), 2.0);
       }
     }
     entries.add(new RowCache.Entry(new IssueUnit(id, "K-" + id, "p", "r", "e", s,

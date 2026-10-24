@@ -5,9 +5,9 @@ import app.pipeline.CanonicalizeTask;
 /**
  * Prints a canonicalisation report.
  *
- * <p>Shared, because three commands end in one: {@code reconstruct-people} and {@code harvest-jira}
- * canonicalise after writing their half of the registry, and {@code canonicalize} does only this.
- * Reporting the merge the same way in all three is what makes two runs comparable by eye.
+ * <p>Shared, because two commands end in one: {@code reconstruct-people} and {@code harvest-jira}
+ * canonicalise after writing their half of the registry. Reporting the merge the same way in both
+ * is what makes two runs comparable by eye.
  */
 final class CanonicalPrinter {
 

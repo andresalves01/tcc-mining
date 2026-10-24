@@ -62,7 +62,7 @@ public class ParallelSweepTest {
       final double hours = Math.max(0.05, Math.expm1(Math.max(0.05, log)));
       final String id = "i" + i;
       final IssueUnit unit = new IssueUnit(id, "K-" + i, "p" + i % 7, "r", null, T0,
-          T0.plusMillis((long) (hours * 3_600_000)), "Fixed", false);
+          T0.plusMillis((long) (hours * 3_600_000)), "Fixed", false, T0);
       final Row row = new Row(id, values, Set.of());
       if (i < fit) {
         fitUnits.add(unit);

@@ -97,22 +97,6 @@ public record IssueLabel(
         .orElseGet(OptionalDouble::empty);
   }
 
-  /** The duration this fit treats as the outcome, absent where the row cannot supply it. */
-  public OptionalDouble durationOf(final TtcTarget target) {
-    return switch (target) {
-      case TOTAL -> OptionalDouble.of(ttcDays());
-      case WAIT -> waitDays();
-      case AUTHOR -> authorDays();
-      case TOTAL_WORKING -> OptionalDouble.of(workingDays());
-      case WAIT_WORKING -> workingWaitDays();
-      case AUTHOR_WORKING -> workingAuthorDays();
-    };
-  }
-
-  public long javaLinesChanged() {
-    return javaLinesAdded + javaLinesDeleted;
-  }
-
   /**
    * Mean cyclomatic complexity over the methods this issue changed.
    *
@@ -129,7 +113,4 @@ public record IssueLabel(
     return methods.stream().mapToDouble(ChangedMethod::nl).average();
   }
 
-  public boolean hasRecoverableMethods() {
-    return !methods.isEmpty();
-  }
 }

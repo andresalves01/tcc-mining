@@ -24,9 +24,6 @@ import java.util.List;
  */
 public final class Breakdown {
 
-  /** The bands, as quantiles of the true duration. Fixed here rather than chosen per run. */
-  public static final double[] CUTS = {0.25, 0.50, 0.75, 0.90};
-
   /**
    * @param label which band, in words
    * @param n how many rows fell in it
@@ -72,19 +69,6 @@ public final class Breakdown {
         trimmedN == 0 ? Double.NaN : trimmedSum / trimmedN, trimmedN);
   }
 
-  /** The same predictions, split by how long the unit actually took. */
-  public static List<Band> byTruth(final double[] predicted, final double[] observed) {
-    final double[] truth = observed.clone();
-    Arrays.sort(truth);
-    final double[] edges = new double[CUTS.length];
-    for (int i = 0; i < CUTS.length; i++) {
-      edges[i] = quantile(truth, CUTS[i]);
-    }
-
-    return byEdges(predicted, observed, edges, new String[] {"fastest 25%", "25% a 50%",
-        "50% a 75%", "75% a 90%", "slowest 10%"});
-  }
-
   /**
    * The same predictions, split by fixed bands of the true duration: band {@code b} holds the
    * rows above the previous top and at or under {@code tops[b]}, the first open below and the
@@ -115,46 +99,6 @@ public final class Breakdown {
       bands.add(new Band(labels[b], errors.size(), median(truths), mean(errors), median(errors)));
     }
     return List.copyOf(bands);
-  }
-
-  /**
-   * The same measures, restricted to the body of the distribution.
-   *
-   * <p>Cut on the true duration between two quantiles, which drops the units that finished
-   * almost instantly and the long tail that dominates the mean. It answers "how does this behave on
-   * an ordinary unit", and it is only honest if the <b>references are cut on the same
-   * rows</b> -- a model measured on an easier subset against a reference measured on everything
-   * would be comparing two different questions.
-   *
-   * <p>Ordering inside a band is a harder problem than ordering overall, because the durations
-   * inside it are closer together. A lower figure here is not the model getting worse.
-   */
-  public record Body(int n, double lowHours, double highHours, double medianTruth,
-      double mae, double medianError, double spearman, double pairwise) {}
-
-  public static Body body(final double[] predicted, final double[] observed,
-      final double lowQuantile, final double highQuantile) {
-
-    final double[] truth = observed.clone();
-    Arrays.sort(truth);
-    final double low = quantile(truth, lowQuantile);
-    final double high = quantile(truth, highQuantile);
-
-    final List<Double> keptPredicted = new ArrayList<>();
-    final List<Double> keptObserved = new ArrayList<>();
-    final List<Double> errors = new ArrayList<>();
-    for (int i = 0; i < observed.length; i++) {
-      if (observed[i] > low && observed[i] <= high) {
-        keptPredicted.add(predicted[i]);
-        keptObserved.add(observed[i]);
-        errors.add(Math.abs(predicted[i] - observed[i]));
-      }
-    }
-    final double[] p = keptPredicted.stream().mapToDouble(Double::doubleValue).toArray();
-    final double[] o = keptObserved.stream().mapToDouble(Double::doubleValue).toArray();
-    return new Body(p.length, low, high, median(keptObserved), mean(errors), median(errors),
-        p.length < 2 ? Double.NaN : Metrics.spearman(p, o),
-        p.length < 2 ? Double.NaN : Score.pairwiseAccuracy(p, o));
   }
 
   private static double quantile(final double[] sorted, final double q) {

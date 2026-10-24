@@ -238,22 +238,6 @@ public final class Initial {
     return new Undone<>(state, stored, ok);
   }
 
-  /**
-   * A single-valued field's value in force right after {@code t}, changes at {@code t} included:
-   * its value at creation as {@link #of} reads it (the old value of the first change, else the
-   * current one), then every change stamped up to {@code t}. Changes without an instant are not
-   * placed in time and only count for the value at creation.
-   */
-  static String scalarAt(final List<Corpus.Event> changes, final String current, final long t) {
-    String value = scalar(changes, current).initial;
-    for (final Corpus.Event e : changes) {
-      if (e.at() != null && e.at() <= t) {
-        value = norm(e.newValue());
-      }
-    }
-    return value;
-  }
-
   private static List<String> elements(final Map<String, Integer> multiset) {
     final List<String> out = new ArrayList<>();
     multiset.forEach((k, n) -> {
@@ -265,41 +249,4 @@ public final class Initial {
     return out;
   }
 
-  /** The changelog gate: per field, over the given issues. */
-  public static List<Fidelity> fidelity(final Universe universe, final List<String> ids,
-      final Map<String, Corpus.Text> texts) {
-    final Map<String, int[]> tally = new LinkedHashMap<>();
-    for (final String f : List.of("title", "desc", "priority", "issue_type", "assignee_id",
-        "labels", "issue_links")) {
-      tally.put(f, new int[3]);
-    }
-    for (final String id : ids) {
-      final Corpus.Issue issue = universe.issue(id);
-      final List<Corpus.Event> events = universe.events(id);
-      final Corpus.Text text = texts.get(id);
-      final List<Corpus.Event> tc = text == null ? List.of() : text.changes();
-      add(tally.get("title"), scalar(field(tc, "title"), text == null ? null : text.title()));
-      add(tally.get("desc"), scalar(field(tc, "desc"), text == null ? null : text.description()));
-      add(tally.get("priority"), scalar(field(events, "priority"), issue.priority()));
-      add(tally.get("issue_type"), scalar(field(events, "issue_type"), issue.type()));
-      add(tally.get("assignee_id"), scalar(field(events, "assignee_id"), issue.assignee()));
-      add(tally.get("labels"), labels(field(events, "labels"), issue.labels()));
-      add(tally.get("issue_links"), links(field(events, "issue_links"), issue.links()));
-    }
-    final List<Fidelity> out = new ArrayList<>();
-    tally.forEach((f, t) -> out.add(new Fidelity(f, ids.size(), t[0], t[1], t[2])));
-    return out;
-  }
-
-  private static void add(final int[] t, final Reversal<?> r) {
-    if (r.changed()) {
-      t[0]++;
-      if (r.consistent()) {
-        t[1]++;
-      }
-    }
-    if (!java.util.Objects.equals(r.initial(), r.stored())) {
-      t[2]++;
-    }
-  }
 }

@@ -38,7 +38,7 @@ import java.util.Optional;
  * <pre>
  *   app                  entry point -- argument selection, wiring, exit codes
  *   app.cli              one runner per command, printing, progress rendering
- *   app.pipeline         use cases  -- ReconstructPeople, HarvestJira, Canonicalize, ...
+ *   app.pipeline         use cases  -- ReconstructPeople, HarvestJira, BuildLedger, ...
  *   app.pipeline.port    interfaces for the corpus itself and for reporting progress
  *   app.pipeline.mongo   adapters   -- GridFS + JGit + the commit join, registry persistence
  *   app.pipeline.jira    adapters   -- issue-tracker changelog client
@@ -46,7 +46,7 @@ import java.util.Optional;
  *   app.config           configuration, resolved once at startup
  *   app.identity.port    interfaces the use cases depend on
  *   app.identity         domain     -- pure; knows nothing of Mongo, HTTP, Spark or files
- *   app.cost             domain     -- pure; contributions, seniority, the cost curve
+ *   app.contribution     domain     -- pure; the per-commit contribution ledger
  *   app.labels           domain     -- pure; the funnel, the methods, the temporal split
  * </pre>
  */

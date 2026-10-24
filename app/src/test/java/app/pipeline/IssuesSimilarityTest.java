@@ -32,6 +32,7 @@ import java.util.Set;
 import java.util.function.Function;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import app.pipeline.port.SilentProgress;
 
 /** The similarity stage over the extracted matrix: the size check and the descriptions it reads. */
 class IssuesSimilarityTest {
@@ -117,10 +118,6 @@ class IssuesSimilarityTest {
         return out;
       }
 
-      @Override
-      public Set<String> reads() {
-        return Set.of();
-      }
 
       @Override
       public String describe() {
@@ -137,7 +134,7 @@ class IssuesSimilarityTest {
       issue("i" + k, T0 + D, T0 + 10 * D, "TRAIN", "TRAIN");
     }
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(false),
-        Progress.silent(), ProjectSplit::differences, SAME, 2, KMEANS).run(entries);
+        SilentProgress.INSTANCE, ProjectSplit::differences, SAME, 2, KMEANS).run(entries);
     assertEquals(1, r.refused().size());
     assertTrue(r.refused().get(0).contains("not at the verdicts of the split's rule"),
         r.refused().get(0));
@@ -155,7 +152,7 @@ class IssuesSimilarityTest {
       return new RowCache.Entry(e.unit(), e.row(), drawn);
     });
     assertThrows(AssertionError.class, () -> new IssuesSimilarityTask(source(false),
-        Progress.silent(), ProjectSplit::differences, SAME, 2, KMEANS).run(entries),
+        SilentProgress.INSTANCE, ProjectSplit::differences, SAME, 2, KMEANS).run(entries),
         "the split passed, so the corpus was read");
   }
 
@@ -172,7 +169,7 @@ class IssuesSimilarityTest {
     issue("t", T0 + 30 * D, T0 + 31 * D, "TEST", "");
 
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), HAND, SAME, 2, KMEANS)
+        SilentProgress.INSTANCE, HAND, SAME, 2, KMEANS)
         .run(entries);
     assertEquals(List.of(), r.refused());
     assertEquals(4, r.entries().size());
@@ -204,7 +201,7 @@ class IssuesSimilarityTest {
     tags.add(new Corpus.Tag("p", "release-1.2", T0 + 50 * D, null));
 
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), HAND, SAME, 2, KMEANS)
+        SilentProgress.INSTANCE, HAND, SAME, 2, KMEANS)
         .run(entries);
     assertEquals(List.of(), r.refused());
     final Map<String, Row> rows = new HashMap<>();
@@ -238,7 +235,7 @@ class IssuesSimilarityTest {
       return new Embedder.Embedding(hand.get(text), text.length());
     };
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), HAND, embedder, 2, KMEANS)
+        SilentProgress.INSTANCE, HAND, embedder, 2, KMEANS)
         .run(entries);
     final Map<String, Row> rows = new HashMap<>();
     r.entries().forEach(e -> rows.put(e.unit().issueId(), e.row()));
@@ -261,7 +258,7 @@ class IssuesSimilarityTest {
     issue("v", "s", T0 + 20 * D, T0 + 21 * D, "TRAIN", "TEST");
     issue("t", "z", T0 + 30 * D, T0 + 31 * D, "TEST", "");
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), HAND, SAME, 2, KMEANS)
+        SilentProgress.INSTANCE, HAND, SAME, 2, KMEANS)
         .run(entries);
     final Map<String, Row> rows = new HashMap<>();
     r.entries().forEach(e -> rows.put(e.unit().issueId(), e.row()));
@@ -296,7 +293,7 @@ class IssuesSimilarityTest {
     issue("t", "r", "d", T0 + 30 * D, T0 + 31 * D, "TEST", "");
 
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), HAND, SAME, 2, KMEANS)
+        SilentProgress.INSTANCE, HAND, SAME, 2, KMEANS)
         .run(entries);
     assertEquals(List.of(), r.refused());
     final Map<String, Row> rows = new HashMap<>();
@@ -337,7 +334,7 @@ class IssuesSimilarityTest {
     issue("t", T0 + 30 * D, T0 + 31 * D, "TEST", "");
 
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), HAND, SAME, 2, KMEANS)
+        SilentProgress.INSTANCE, HAND, SAME, 2, KMEANS)
         .run(entries);
     assertEquals(List.of(), r.refused());
     final Map<String, Row> rows = new HashMap<>();
@@ -377,7 +374,7 @@ class IssuesSimilarityTest {
 
   private IssuesSimilarityTask.Report run() {
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), HAND, SAME, 2, KMEANS).run(entries);
+        SilentProgress.INSTANCE, HAND, SAME, 2, KMEANS).run(entries);
     assertEquals(List.of(), r.refused());
     return r;
   }
@@ -427,7 +424,7 @@ class IssuesSimilarityTest {
     issue("z", T0 + D + 11 * H, T0 + D + 18 * H, "TRAIN", "TEST");
     issue("t", T0 + 30 * D, T0 + 31 * D, "TEST", "");
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), HAND, SAME, 2, KMEANS).run(entries);
+        SilentProgress.INSTANCE, HAND, SAME, 2, KMEANS).run(entries);
     assertEquals(1, r.refused().size(), r.refused().toString());
     assertTrue(r.refused().get(0).startsWith("2 issues of the matrix have 0 active business days"),
         r.refused().get(0));
@@ -443,7 +440,7 @@ class IssuesSimilarityTest {
     issue("t", T0 + 30 * D, T0 + 31 * D, "TEST", "");
     issues.remove(1);
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), HAND, SAME, 2, KMEANS)
+        SilentProgress.INSTANCE, HAND, SAME, 2, KMEANS)
         .run(entries);
     assertEquals(List.of("1 issues of the matrix are not in the corpus, the first v"),
         r.refused());
@@ -487,7 +484,7 @@ class IssuesSimilarityTest {
 
   private void assertRefusedOn(final String id) {
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask(source(true),
-        Progress.silent(), HAND, SAME, 2, KMEANS)
+        SilentProgress.INSTANCE, HAND, SAME, 2, KMEANS)
         .run(entries);
     assertEquals(List.of("1 issues of the matrix are not In-Progress issues of the corpus with "
         + "the same first In Progress and first resolution, the first " + id), r.refused());

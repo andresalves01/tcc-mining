@@ -38,11 +38,6 @@ public final class Bootstrap {
    */
   public record Comparison(String a, String b, double winRate, double meanGap,
       double lowGap, double highGap) {
-
-    /** Neither side wins often enough to call it, on these rows. */
-    public boolean indistinguishable() {
-      return lowGap <= 0 && highGap >= 0;
-    }
   }
 
   private Bootstrap() {}
@@ -91,19 +86,5 @@ public final class Bootstrap {
       errors[i] = Math.abs(predicted[i] - observed[i]);
     }
     return errors;
-  }
-
-  /** Every pair of a list, in order, so a report can print a triangle instead of a square. */
-  public static List<Comparison> allPairs(final List<String> labels,
-      final List<double[]> errorsPerLabel) {
-
-    final List<Comparison> comparisons = new ArrayList<>();
-    for (int i = 0; i < labels.size(); i++) {
-      for (int j = i + 1; j < labels.size(); j++) {
-        comparisons.add(compare(labels.get(i), errorsPerLabel.get(i),
-            labels.get(j), errorsPerLabel.get(j)));
-      }
-    }
-    return List.copyOf(comparisons);
   }
 }

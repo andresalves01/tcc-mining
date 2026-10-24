@@ -4,7 +4,7 @@ import app.cli.CommandFailedException;
 import app.cli.CommandRunner;
 import app.cli.Context;
 import app.config.PipelineConfig;
-import app.cost.ContributionScan;
+import app.contribution.ContributionScan;
 import app.pipeline.BuildLedgerTask;
 import java.util.List;
 import java.util.Optional;

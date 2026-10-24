@@ -5,12 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import app.cost.Contribution;
-import app.cost.ContributionScan;
-import app.cost.CostParams;
-import app.cost.Seniority;
-import app.cost.port.ContributionLedger;
-import app.cost.port.ContributionSource;
+import app.contribution.Contribution;
+import app.contribution.ContributionScan;
+import app.contribution.port.ContributionLedger;
+import app.contribution.port.ContributionSource;
 import app.identity.Identity;
 import app.identity.PersonRecord;
 import app.identity.RefusedBridge;
@@ -26,6 +24,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import app.pipeline.port.SilentProgress;
 
 /** Exercises the ledger use cases against in-memory doubles, with no MongoDB and no corpus. */
 class LedgerPipelineTest {
@@ -33,7 +32,7 @@ class LedgerPipelineTest {
   private static final Instant T0 = Instant.parse("2016-06-01T00:00:00Z");
 
   /** The tasks report progress through a port, so a test run stays quiet. */
-  private static final Progress SILENT = Progress.silent();
+  private static final Progress SILENT = SilentProgress.INSTANCE;
 
   private static final class InMemoryLedger implements ContributionLedger {
 
@@ -50,7 +49,6 @@ class LedgerPipelineTest {
       return new ArrayList<>(rows.values());
     }
 
-    @Override
     public long count() {
       return rows.size();
     }
@@ -188,10 +186,9 @@ class LedgerPipelineTest {
   }
 
   @Test
-  @DisplayName("bots are kept in the ledger but excluded from the seniority population")
+  @DisplayName("bots are kept in the ledger, flagged as bots")
   void botsAreFlaggedNotDropped() {
-    // Keeping them makes "how much volume is automated" answerable later; ranking them would push
-    // real developers down a scale that includes actors nobody can put on a team.
+    // Keeping them makes "how much volume is automated" answerable later.
     final ContributionSource source = (identities, bots, pilot) -> new ContributionScan(
         List.of(
             contribution("c1", "human-a", false, 10),
@@ -206,46 +203,8 @@ class LedgerPipelineTest {
 
     assertEquals(3, ledger.count(), "the bot's row stays on disk");
 
-    final SeniorityReportTask.Report report = new SeniorityReportTask(ledger)
-        .run(new CostParams(1_000, 2.0), Seniority.allLines());
-
-    assertEquals(2, report.developers(), "the bot is not part of the ranked population");
-    assertTrue(report.costs().stream().allMatch(cost -> cost >= 1_000 && cost <= 2_000));
-    assertFalse(report.careerRanks().isEmpty());
-  }
-
-  @Test
-  @DisplayName("reporting on an empty ledger refuses by name, and says which stage to run")
-  void refusesToReportOnNothing() {
-    final SeniorityReportTask task = new SeniorityReportTask(new InMemoryLedger());
-
-    final SeniorityReportTask.LedgerEmptyException refusal =
-        assertThrows(SeniorityReportTask.LedgerEmptyException.class,
-            () -> task.run(new CostParams(1, 2), Seniority.allLines()));
-
-    assertTrue(refusal.getMessage().contains("build-ledger"),
-        "a refusal that does not name the missing stage leaves the operator guessing");
-  }
-
-  @Test
-  @DisplayName("the report's scope gap is zero when nobody works outside their project")
-  void scopeGapIsZeroForSingleProjectDevelopers() {
-    final ContributionSource source = (identities, bots, pilot) -> new ContributionScan(
-        List.of(
-            contribution("c1", "a", false, 10),
-            contribution("c2", "b", false, 20),
-            contribution("c3", "c", false, 30)),
-        3, 0, 0, 3, 0, 0);
-    final InMemoryLedger ledger = new InMemoryLedger();
-    run(() -> new BuildLedgerTask(
-        source, ledger, new StubRegistry(Map.of("alias", "a"), Set.of()), SILENT).run());
-
-    final SeniorityReportTask.Report report = new SeniorityReportTask(ledger)
-        .run(new CostParams(1, 2), Seniority.allLines());
-
-    assertEquals(1, report.projects());
-    assertTrue(report.scopeGaps().stream().allMatch(gap -> gap < 1e-12),
-        "with one project the two scopes are the same measurement");
+    assertEquals(Set.of("robot"), ledger.readAll().stream().filter(Contribution::bot)
+        .map(Contribution::canonicalId).collect(java.util.stream.Collectors.toSet()));
   }
 
   private static <T> T run(final ThrowingSupplier<T> supplier) {

@@ -54,7 +54,8 @@ class ForestTest {
           parts.put(Population.IN_PROGRESS, part);
         }
         out.add(new RowCache.Entry(new IssueUnit(id, "K-" + id, "p" + p, "r", "e",
-            t0, t0.plusMillis((long) (hours * 3_600_000)), "Fixed", false),
+            t0, t0.plusMillis((long) (hours * 3_600_000)), "Fixed", false,
+            t0),
             new Row(id, values, Set.of()), parts));
       }
     }
@@ -83,16 +84,16 @@ class ForestTest {
     final double third = 1.0 / 3;
     final List<Forest.Trial> tied = List.of(new Forest.Trial(1.0 / 6, 1, 5, 7.0),
         new Forest.Trial(1.0 / 6, 1, 25, 7.0), new Forest.Trial(third, 2, 5, 7.0));
-    assertEquals(0, Forest.chosen(tied));
+    assertEquals(0, ForestTrials.chosen(tied));
     final List<Forest.Trial> later = List.of(new Forest.Trial(1.0 / 6, 1, 5, 9.0),
         new Forest.Trial(1.0 / 6, 1, 25, 7.0), new Forest.Trial(third, 2, 5, 7.0),
         new Forest.Trial(third, 2, 25, 8.0));
-    assertEquals(1, Forest.chosen(later));
+    assertEquals(1, ForestTrials.chosen(later));
 
     // the sweep keeps the point chosen() picks from its own trials, and records its share
     final Fitting.Sides sides = Fitting.sides(corpus(), Fitting.Mode.INNER, Population.IN_PROGRESS);
     final Forest.Fitted f = Forest.sweep(Cell.byLabel(CELL), sides, 1, 1);
-    final Forest.Trial kept = f.trials().get(Forest.chosen(f.trials()));
+    final Forest.Trial kept = f.trials().get(ForestTrials.chosen(f.trials()));
     assertEquals(List.of(kept.share(), (double) kept.mtry(), (double) kept.nodeSize()),
         List.of(f.share(), (double) f.mtry(), (double) f.nodeSize()));
   }

@@ -109,9 +109,6 @@ public final class PredictionIntervals {
    * @param low the smallest of its predictions on the calibration issues, {@code high} the largest
    */
   public record Calibration(int n, double[] factors, double low, double high, double floor) {
-    public Calibration(final int n, final double[] factors, final double low, final double high) {
-      this(n, factors, low, high, FLOOR);
-    }
 
     /** The interval at the level of index {@code level} around {@code prediction}. */
     public double[] interval(final int level, final double prediction) {
@@ -139,10 +136,6 @@ public final class PredictionIntervals {
    */
   public record Read(TailCut.Reading reading, String model, double level, Group overall,
       List<Group> bands, Map<String, Group> strata) {
-    public Read(final TailCut.Reading reading, final String model, final double level,
-        final Group overall, final List<Group> bands) {
-      this(reading, model, level, overall, bands, Map.of());
-    }
   }
 
   /**
@@ -155,15 +148,6 @@ public final class PredictionIntervals {
    */
   public record Sample(List<String> projects, double[] observed,
       Map<String, double[]> predicted, double[] bandTops, double floor) {
-    public Sample(final List<String> projects, final double[] observed,
-        final Map<String, double[]> predicted, final double[] bandTops) {
-      this(projects, observed, predicted, bandTops, FLOOR);
-    }
-
-    /** A scoring's issues, predictions and band limits. */
-    public static Sample of(final SimilarityScoring.Report r) {
-      return of(r, FLOOR);
-    }
 
     public static Sample of(final SimilarityScoring.Report r, final double floor) {
       final Map<String, double[]> predicted = new LinkedHashMap<>();
@@ -227,14 +211,6 @@ public final class PredictionIntervals {
     return sorted[k - 1];
   }
 
-  /**
-   * The interval around {@code prediction} at {@code factor}: {@code expm1(log1p(prediction) +-
-   * factor)}, both ends at least {@link #FLOOR}.
-   */
-  public static double[] interval(final double prediction, final double factor) {
-    return interval(prediction, factor, FLOOR);
-  }
-
   public static double[] interval(final double prediction, final double factor, final double floor) {
     if (floor != 0 && floor != FLOOR) throw new IllegalArgumentException("invalid interval floor");
     final double centre = Math.log1p(prediction);
@@ -254,11 +230,6 @@ public final class PredictionIntervals {
       }
     }
     return tops.length;
-  }
-
-  /** A model's calibration on the issues given, its own predictions of them and their truth. */
-  public static Calibration calibrate(final double[] predicted, final double[] observed) {
-    return calibrate(predicted, observed, FLOOR);
   }
 
   public static Calibration calibrate(final double[] predicted, final double[] observed,

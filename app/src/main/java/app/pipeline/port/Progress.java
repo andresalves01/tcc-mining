@@ -26,31 +26,4 @@ public interface Progress {
 
   /** Progress through a countable population whose members have no name worth printing. */
   void count(long done, long total, String format, Object... args);
-
-  /** A sink that prints nothing, for tests and for any caller that wants only the result. */
-  static Progress silent() {
-    return Silent.INSTANCE;
-  }
-
-  /** Implementation of {@link #silent()}; stateless, so one instance serves every caller. */
-  final class Silent implements Progress {
-
-    private static final Silent INSTANCE = new Silent();
-
-    private Silent() {}
-
-    @Override
-    public void phase(final int step, final int of, final String format, final Object... args) {}
-
-    @Override
-    public void detail(final String format, final Object... args) {}
-
-    @Override
-    public void item(final int index, final int of, final String name, final String format,
-        final Object... args) {}
-
-    @Override
-    public void count(final long done, final long total, final String format,
-        final Object... args) {}
-  }
 }

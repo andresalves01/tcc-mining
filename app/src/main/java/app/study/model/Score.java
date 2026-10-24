@@ -102,48 +102,4 @@ public record Score(String label, int n, double mae, double maeDays,
     return comparable == 0 ? Double.NaN : (correct + 0.5 * tiedGuess) / comparable;
   }
 
-  /** A reference scores itself, so its row of the table comes out of the same code path. */
-  public static Score reference(final String label, final double[] predicted,
-      final double[] observed, final double constantMae) {
-
-    double sum = 0;
-    for (int i = 0; i < predicted.length; i++) {
-      sum += Math.abs(predicted[i] - observed[i]);
-    }
-    return of(label, predicted, observed, sum / predicted.length, constantMae);
-  }
-
-  /**
-   * What the outcome itself looks like, printed above the table.
-   *
-   * <p>Without it a mean absolute error is unreadable. On this population the median duration is
-   * 56 hours and the mean is 229 -- four times larger -- so an error of two hundred hours is not
-   * "about right on average", it is four times the typical unit. Any table of MAE that does
-   * not carry the distribution beside it invites being read as better than it is.
-   */
-  public record Outcome(int n, double meanHours, double medianHours, double p25Hours,
-      double p75Hours, double p90Hours, double maxHours) {
-
-    public static Outcome of(final double[] hours) {
-      final double[] sorted = hours.clone();
-      java.util.Arrays.sort(sorted);
-      double sum = 0;
-      for (final double value : sorted) {
-        sum += value;
-      }
-      final int n = sorted.length;
-      return new Outcome(n, sum / n, quantile(sorted, 0.50), quantile(sorted, 0.25),
-          quantile(sorted, 0.75), quantile(sorted, 0.90), sorted[n - 1]);
-    }
-
-    private static double quantile(final double[] sorted, final double share) {
-      return sorted[Math.min(sorted.length - 1, (int) (share * sorted.length))];
-    }
-  }
-
-  /** The header the report prints above a block of these. */
-  public static List<String> header() {
-    return List.of("family / profile", "n", "MAE h", "MAE days", "gain h", "gain %",
-        "gain vs constant %", "Spearman");
-  }
 }

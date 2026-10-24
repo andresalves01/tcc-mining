@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import app.pipeline.port.SilentProgress;
 
 /** Which files the Elastic Net step may write over, and which matrices it refuses. */
 class IssuesSimilarityElasticNetCommandTest {
@@ -97,7 +98,7 @@ class IssuesSimilarityElasticNetCommandTest {
     final java.util.Map<String, String> settings = java.util.Map.of("MATRIX", matrix.toString(),
         "ELASTIC_NET_PARAMETERS", parameters.toString());
     final app.cli.Context context = new app.cli.Context(null, null, null, null, null, null, null,
-        null, null, null, null, app.pipeline.port.Progress.silent(), null,
+        null, null, null, null, app.pipeline.port.SilentProgress.INSTANCE, null,
         (run, rows) -> {
           throw new AssertionError("recorded " + run);
         }, null);

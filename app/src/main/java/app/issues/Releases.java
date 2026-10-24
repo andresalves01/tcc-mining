@@ -37,9 +37,6 @@ public final class Releases {
       Pattern.compile("^(?:[a-z][a-z0-9 ._-]*?[-_ /])?v?(\\d[0-9a-z._-]*)$");
   private static final Pattern RELEASE = Pattern.compile("^\\d+(\\.\\d+)+$");
 
-  /** Fewer releases before the start than this, and the cycle is missing. */
-  static final int MIN_RELEASES = 3;
-
   /** Per project, normalised name to its earliest tag date. */
   private final Map<String, Map<String, Long>> dates;
 
@@ -93,12 +90,6 @@ public final class Releases {
     return m.matches() ? m.group(1).replace('_', '.') : s;
   }
 
-  /** Whether a tag of this name is a release. */
-  public static boolean release(final String tagName) {
-    final String n = normalised(tagName);
-    return n != null && RELEASE.matcher(n).matches();
-  }
-
   /** The release date of a version of the project: its earliest matching tag's; null if none. */
   public Long date(final String project, final String version) {
     if (version == null) {
@@ -107,28 +98,4 @@ public final class Releases {
     return dates.getOrDefault(project, Map.of()).get(normalised(version));
   }
 
-  /** The project's release instants, ascending. */
-  public List<Long> releases(final String project) {
-    return new ArrayList<>(releases.getOrDefault(project, new TreeSet<>()));
-  }
-
-  /**
-   * The expected calendar days left in the project's release cycle at {@code start}: the median
-   * gap between its releases dated strictly before {@code start} minus the days since the last of
-   * them; negative when the release is overdue. Null with fewer than {@link #MIN_RELEASES} of them.
-   * Days are elapsed 24-hour days: other releases have no day boundary of their own.
-   */
-  public Double cycle(final String project, final long start) {
-    final List<Long> before =
-        new ArrayList<>(releases.getOrDefault(project, new TreeSet<>()).headSet(start, false));
-    if (before.size() < MIN_RELEASES) {
-      return null;
-    }
-    final List<Double> gaps = new ArrayList<>(before.size() - 1);
-    for (int i = 1; i < before.size(); i++) {
-      gaps.add((before.get(i) - before.get(i - 1)) / (double) World.DAY);
-    }
-    final double since = (start - before.get(before.size() - 1)) / (double) World.DAY;
-    return Augmentation.median(gaps) - since;
-  }
 }

@@ -1,8 +1,8 @@
 package app.cli;
 
 import app.config.PipelineConfig;
-import app.cost.port.ContributionLedger;
-import app.cost.port.ContributionSource;
+import app.contribution.port.ContributionLedger;
+import app.contribution.port.ContributionSource;
 import app.features.port.CommitComplexitySource;
 import app.features.port.CommitComplexityStore;
 import app.identity.port.GitIdentitySource;

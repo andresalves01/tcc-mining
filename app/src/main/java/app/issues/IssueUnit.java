@@ -31,14 +31,6 @@ public record IssueUnit(String issueId, String key, String project, String repor
         startedAt, null);
   }
 
-  /** An issue whose duration starts at its creation. */
-  public IssueUnit(final String issueId, final String key, final String project,
-      final String reporter, final String executor, final Instant createdAt,
-      final Instant resolvedAt, final String reason, final boolean moved) {
-    this(issueId, key, project, reporter, executor, createdAt, resolvedAt, reason, moved,
-        createdAt);
-  }
-
   /** The same issue with its target in {@code days} business days. */
   public IssueUnit withBusinessDays(final int days) {
     return new IssueUnit(issueId, key, project, reporter, executor, createdAt, resolvedAt, reason,

@@ -1306,7 +1306,7 @@ class SimilarityScoringTest {
         SimilarityScoring.readings(entries, choices(0.2), forests(), 1.5, RESERVED, 1, 1);
     final Map<String, PredictionIntervals.Calibration> calibrated =
         PredictionIntervals.calibrated(PredictionIntervals.Sample.of(
-            SimilarityScoring.calibration(entries, choices(0.2), forests(), 1.5)));
+            SimilarityScoring.calibration(entries, choices(0.2), forests(), 1.5), PredictionIntervals.FLOOR));
     // the calibration covers exactly the fourteen models the outer test scores
     assertEquals(Set.copyOf(MODELS), calibrated.keySet());
     // the constant global median gets a finite factor at every level, inner
@@ -1314,8 +1314,8 @@ class SimilarityScoringTest {
       assertTrue(Double.isFinite(factor), Double.toString(factor));
     }
     final List<PredictionIntervals.Read> reads = PredictionIntervals.outer(calibrated,
-        PredictionIntervals.Sample.of(outer.main()),
-        PredictionIntervals.Sample.of(outer.complementary()), 1);
+        PredictionIntervals.Sample.of(outer.main(), PredictionIntervals.FLOOR),
+        PredictionIntervals.Sample.of(outer.complementary(), PredictionIntervals.FLOOR), 1);
     assertEquals(2 * MODELS.size() * PredictionIntervals.LEVELS.size(), reads.size());
     assertEquals(Set.copyOf(MODELS), reads.stream().map(PredictionIntervals.Read::model)
         .collect(java.util.stream.Collectors.toSet()));

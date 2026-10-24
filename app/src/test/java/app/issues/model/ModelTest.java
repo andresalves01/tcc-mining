@@ -41,27 +41,6 @@ class ModelTest {
     assertEquals(1.0, inner.observed()[0], 1e-9, "one hour from the In Progress");
   }
 
-  @Test
-  @DisplayName("the project bootstrap reports the point gain and brackets it")
-  void projectBootstrap() {
-    final List<String> projects = new ArrayList<>();
-    final double[] observed = new double[60];
-    final double[] model = new double[60];
-    final double[] reference = new double[60];
-    for (int i = 0; i < 60; i++) {
-      projects.add("p" + (i % 6));
-      observed[i] = 10 + i;
-      model[i] = observed[i] + 1;
-      reference[i] = observed[i] + 4;
-    }
-    final ProjectBootstrap.Interval gain =
-        ProjectBootstrap.gain(projects, model, reference, observed);
-
-    assertEquals(75.0, gain.gain(), 1e-9, "one hour of error against four");
-    assertTrue(gain.low() <= 75.0 && gain.high() >= 75.0);
-    assertTrue(gain.modelBetter());
-  }
-
   private static int size(final String label) {
     return Cell.byLabel(label).attributes().size();
   }

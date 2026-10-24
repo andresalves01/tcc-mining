@@ -17,7 +17,7 @@ class UncertaintyTablesTest {
         List.of("a", "b"), new boolean[] {true, false}, new double[] {1, 3},
         Map.of("model", new double[] {0, 2}), new double[] {1, 2, 3}),
         Map.of("model", new PredictionIntervals.Calibration(20,
-            new double[] {Math.log(2), Math.log(3)}, 0, 2)), 1);
+            new double[] {Math.log(2), Math.log(3)}, 0, 2, PredictionIntervals.FLOOR)), 1);
     final var tables = UncertaintyTables.render(List.of(result));
     assertEquals(1 + 9 * 6, tables.uncertainty().size());
     assertEquals(1 + 5, tables.percentiles().size());

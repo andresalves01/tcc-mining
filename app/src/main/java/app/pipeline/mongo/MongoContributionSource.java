@@ -1,8 +1,8 @@
 package app.pipeline.mongo;
 
-import app.cost.Contribution;
-import app.cost.ContributionScan;
-import app.cost.port.ContributionSource;
+import app.contribution.Contribution;
+import app.contribution.ContributionScan;
+import app.contribution.port.ContributionSource;
 import app.pipeline.port.Progress;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoDatabase;

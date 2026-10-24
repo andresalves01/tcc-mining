@@ -70,7 +70,7 @@ class StudyTest {
     Corpus build() {
       return new Corpus(issues, events, comments, List.of(), commits,
           Map.of("p", Set.of("P")), prMerge, people, contributions, complexity, labels,
-          Map.of());
+          Map.of(), List.of());
     }
   }
 
@@ -145,14 +145,14 @@ class StudyTest {
     final Extractor e = new Extractor(w, history(u));
 
     final Map<String, Double> x = e.row(u.unit("x"), Initial.of(u.issue("x"), u.events("x"),
-        null), null);
+        null), null, null);
     assertEquals(0.0, x.get("K16_project_commits_90d"), "c1 was not visible at t0");
     assertEquals(0.0, x.get("REP_git_known_t0"));
     assertNull(x.get("K13_creator_commits_90d"), "unknown, not zero");
     assertEquals(1.0, x.get("K13x_reporter_no_commit_ever"));
 
     final Map<String, Double> y = e.row(u.unit("y"), Initial.of(u.issue("y"), u.events("y"),
-        null), null);
+        null), null, null);
     assertEquals(1.0, y.get("REP_git_known_t0"));
     assertEquals(1.0, y.get("K13_creator_commits_90d"));
     assertEquals(2.0, y.get("K16_project_commits_90d"), "c1 is visible by then");
@@ -173,7 +173,7 @@ class StudyTest {
     final Universe u = Universe.of(corpus);
     final Extractor e = new Extractor(new World(u, corpus), history(u));
     final Map<String, Double> a = e.row(u.unit("a"), Initial.of(u.issue("a"), u.events("a"),
-        null), null);
+        null), null, null);
     assertEquals(5.0, a.get("A15_change_loc"));
     assertEquals(10.0, a.get("A15w_change_loc_whole"));
     assertEquals(1.0, a.get("EXE_known"));
@@ -204,12 +204,12 @@ class StudyTest {
     assertEquals(List.of("c1", "c3"), w.commits().stream().map(World.Commit::id).toList());
     assertEquals(List.of("b", "a"), w.commits().get(0).linked());
     final Map<String, Double> a = e.row(u.unit("a"), Initial.of(u.issue("a"), u.events("a"),
-        null), null);
+        null), null, null);
     assertEquals(5.0, a.get("A15_change_loc"), "the kept copy links both issues");
     assertEquals(10.0, a.get("A15w_change_loc_whole"), "the lines enter once");
     assertEquals(1.0, a.get("K08_commit_refs"));
     final Map<String, Double> z = e.row(u.unit("z"), Initial.of(u.issue("z"), u.events("z"),
-        null), null);
+        null), null, null);
     assertEquals(2.0, z.get("K16_project_commits_90d"), "c1 and c3; c2 is the same change as c1");
   }
 
@@ -234,7 +234,8 @@ class StudyTest {
     final Universe.Unit i3 = u.unit(Universe.Population.IN_PROGRESS, "i3");
     assertEquals(T0 + 3 * D, i3.start());
     assertEquals("dev", i3.startedBy());
-    assertEquals(12.0, i3.durationHours(), 1e-9, "from the In Progress, not from the creation");
+    assertEquals(12.0, (i3.resolved() - i3.start()) / 3_600_000.0, 1e-9,
+        "from the In Progress, not from the creation");
     assertEquals(T0, u.unit("i3").start(), "the history's unit starts at creation");
   }
 

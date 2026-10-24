@@ -28,6 +28,7 @@ import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import app.pipeline.port.SilentProgress;
 
 /**
  * The retrospective stage's refusals, before the corpus is read: the tests hand their own settings
@@ -47,7 +48,7 @@ class IssuesRetrospectiveCommandTest {
   /** A context with nothing to read and a result store that fails the test if anything is recorded. */
   private static Context context() {
     return new Context(null, null, null, null, null, null, null, null, null, null, null,
-        Progress.silent(), null, (run, rows) -> {
+        SilentProgress.INSTANCE, null, (run, rows) -> {
           throw new AssertionError("recorded " + run);
         }, null);
   }

@@ -33,11 +33,10 @@ class ReferenceMedianTest {
     assertEquals(20.0, reference.predictHours(unit("x", "p", 999)),
         "the median of 10, 20 and 60 is 20 -- and the scored row's own 999 hours is not consulted");
     assertEquals(5.0, reference.predictHours(unit("y", "q", 1)));
-    assertEquals(2, reference.projects());
   }
 
   @Test
-  @DisplayName("a project absent from the fit side falls back to the global median, and is counted")
+  @DisplayName("a project absent from the fit side falls back to the global median")
   void theGlobalFallback() {
     final ReferenceMedian reference = ReferenceMedian.learnedOn(List.of(
         unit("a", "p", 10), unit("b", "p", 20), unit("c", "q", 30)));
@@ -45,8 +44,6 @@ class ReferenceMedianTest {
     final Done unseen = unit("z", "novo", 1);
     assertEquals(20.0, reference.predictHours(unseen),
         "the median of all three training rows");
-    assertEquals(1, reference.fellBackOn(List.of(unseen, unit("w", "p", 1))),
-        "and the count is reported, because it is a property of the population");
   }
 
   @Test
@@ -59,7 +56,7 @@ class ReferenceMedianTest {
   }
 
   @Test
-  @DisplayName("the score of a perfect prediction is zero error and the gain is zero against itself")
+  @DisplayName("the score of a perfect prediction is zero error and a full gain")
   void scoringIsConsistent() {
     final double[] truth = {10, 20, 30, 40};
     final Score perfect = Score.of("perfeito", truth.clone(), truth, 100.0, 80.0);
@@ -69,9 +66,6 @@ class ReferenceMedianTest {
     assertEquals(100.0, perfect.gainPercent(), 1e-9);
     assertEquals(100.0, perfect.gainOverConstantPercent(), 1e-9);
     assertEquals(1.0, perfect.spearman(), 1e-9, "a perfect prediction orders perfectly too");
-
-    final Score self = Score.reference("obrigatoria", truth.clone(), truth, 80.0);
-    assertEquals(0.0, self.gain(), 1e-12, "a reference gains nothing against itself");
   }
 
   @Test

@@ -20,8 +20,5 @@ public interface CommitComplexityStore {
   /** Which commits are already read, so a resumed run does not pay for them twice. */
   Set<String> storedIds();
 
-  /** The whole table, keyed by commit id. Empty means it was never built. */
-  Map<String, CommitComplexity> readAll();
-
   String describe();
 }

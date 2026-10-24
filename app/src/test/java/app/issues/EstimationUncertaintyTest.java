@@ -15,7 +15,7 @@ class EstimationUncertaintyTest {
 
   private static final Map<String, PredictionIntervals.Calibration> CALIBRATION = Map.of(
       "model", new PredictionIntervals.Calibration(100,
-          new double[] {Math.log(2), Math.log(3)}, 0, 10));
+          new double[] {Math.log(2), Math.log(3)}, 0, 10, PredictionIntervals.FLOOR));
 
   private static Summary overall(final Reading r) {
     return r.summaries().get(0);

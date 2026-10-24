@@ -14,11 +14,6 @@ import java.util.Optional;
  *
  * @param targetDb written to; must differ from {@code sourceDb} so reconstructed documents can
  *     never be mistaken for ones that shipped in the published release
- * @param costRatio {@code C_max / C_min}. A reporting parameter only: it is never written to the
- *     ledger, because the sensitivity analysis sweeps it and a stored cost would freeze one
- *     scenario into what otherwise reads as mined data
- * @param javaOnlyVolume rank seniority by lines in {@code .java} files rather than all files, so
- *     that volume is measured in the same language {@code McCC} is
  * @param issuesDb where the issue-duration study records its runs ({@code smartshark_issues}).
  *     Its own database, refused if it names any database the codebase reads
  * @param pilotProject when present, restricts a scan to projects whose name contains it. A full
@@ -34,9 +29,6 @@ public record PipelineConfig(
     Path jiraCacheDir,
     Duration jiraDelay,
     Strictness strictness,
-    double costMinimum,
-    double costRatio,
-    boolean javaOnlyVolume,
     Optional<String> pilotProject) {
 
   public PipelineConfig {
@@ -65,9 +57,6 @@ public record PipelineConfig(
         Path.of(value("JIRA_CACHE_DIR", "build/jira-cache")),
         Duration.ofMillis(Long.parseLong(value("JIRA_DELAY_MS", "250"))),
         Strictness.valueOf(value("MERGE_STRICTNESS", Strictness.EMAIL_AND_FULL_NAME.name())),
-        Double.parseDouble(value("COST_MIN", "1.0")),
-        Double.parseDouble(value("COST_RATIO", "1.7283")),
-        !"ALL".equalsIgnoreCase(value("VOLUME", "JAVA")),
         Optional.of(value("PILOT", "")).filter(pilot -> !pilot.isBlank()));
   }
 

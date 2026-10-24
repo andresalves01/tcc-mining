@@ -66,6 +66,7 @@ class IssuesSimilarityCommandTest {
     for (final RowCache.Entry e : base) {
       issues.add(new Augmentation.Issue(e.unit().issueId(), "p", e.unit().reporter(),
           e.unit().startedAt().toEpochMilli(), e.unit().resolvedAt().toEpochMilli(),
+          (int) e.unit().durationHours(),
           (int) e.unit().durationHours(), e.outer(Population.IN_PROGRESS),
           e.inner(Population.IN_PROGRESS),
           text.get(e.unit().issueId())));
@@ -183,9 +184,10 @@ class IssuesSimilarityCommandTest {
       final double a = Math.PI * i / 4;
       vectors.put("d" + i, new float[] {(float) Math.cos(a), (float) Math.sin(a)});
       issues.add(new Augmentation.Issue("f" + i, i < 2 ? "q" : "p", "r", 0, (10 + i) * 3_600_000L,
+          10 + i,
           10 + i, "TRAIN", "TRAIN", "d" + i));
     }
-    issues.add(new Augmentation.Issue("v", "p", "r", 100 * 3_600_000L, 101 * 3_600_000L, 1,
+    issues.add(new Augmentation.Issue("v", "p", "r", 100 * 3_600_000L, 101 * 3_600_000L, 1, 1,
         "TRAIN", "TEST", "d0"));
     final Augmentation.Result result = Augmentation.run(issues,
         s -> new Embedder.Embedding(vectors.get(s), 1), 2, new SmileKMeans());

@@ -167,14 +167,6 @@ public final class Augmentation {
       this(id, project, reporter, start, resolved, innerDays, outerDays, outer, inner, description, false);
     }
 
-    /** An issue of the same target in both variants. */
-    public Issue(final String id, final String project, final String reporter, final long start,
-        final long resolved, final int businessDays, final String outer, final String inner,
-        final String description) {
-      this(id, project, reporter, start, resolved, businessDays, businessDays, outer, inner,
-          description);
-    }
-
     /** Whether it may be history of {@code v}: it lasted at least one business day there. */
     boolean counted(final Variant v) {
       return days(v) >= (zeroAllowed ? 0 : 1);

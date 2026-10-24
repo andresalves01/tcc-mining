@@ -12,6 +12,7 @@ import app.issues.Universe.Population;
 import app.issues.model.Cell;
 import app.issues.model.Fitting;
 import app.issues.model.Forest;
+import app.issues.model.ForestTrials;
 import app.issues.model.ParallelSweepTest;
 import app.study.Row;
 import java.time.Instant;
@@ -1028,7 +1029,7 @@ class ElasticNetSelectionTest {
       final long points = java.util.Arrays.stream(Forest.MTRY_SHARES)
           .mapToInt(s -> Forest.mtry(s, p)).distinct().count() * Forest.NODE_SIZES.length;
       assertEquals(points, f.trials().size(), name);
-      final Forest.Trial chosen = f.trials().get(Forest.chosen(f.trials()));
+      final Forest.Trial chosen = f.trials().get(ForestTrials.chosen(f.trials()));
       assertEquals(bits(chosen.mae()), bits(f.score().mae()), name);
       assertEquals(new Forest.Choice(chosen.share(), chosen.mtry(), chosen.nodeSize()),
           new Forest.Choice(f.share(), f.mtry(), f.nodeSize()), name);
@@ -1099,7 +1100,7 @@ class ElasticNetSelectionTest {
    * choice before ticket 23, which every pin above was taken from.
    */
   private static ElasticNetSelection.Result uncut(final List<RowCache.Entry> entries) {
-    return ElasticNetSelection.fixed(entries, TailCut.NO_CUT, TailCut.Reading.ALL, 1);
+    return fixed(entries, TailCut.NO_CUT, TailCut.Reading.ALL, 1);
   }
 
   /** The inner fitting units of counted entries, as the selection reads them. */
@@ -1293,7 +1294,7 @@ class ElasticNetSelectionTest {
     assertEquals(chosen.fitRows(), r.fitRows());
     // each k's error is the own start model's, chosen on that k's rows, on the usual flow
     for (final TailCut.Trial t : cut.grid()) {
-      final ElasticNetSelection.Model own = model(ElasticNetSelection.fixed(counted, t.k(),
+      final ElasticNetSelection.Model own = model(fixed(counted, t.k(),
           TailCut.Reading.USUAL_FLOW, 1), OWN);
       assertEquals(bits(own.fitted().score().mae()), bits(t.mae()), "k " + t.k());
     }
@@ -1301,13 +1302,13 @@ class ElasticNetSelectionTest {
     assertTrue(cut.grid().stream().mapToLong(t -> bits(t.mae())).distinct().count() > 1,
         cut.grid().toString());
     // the same k reaches every model and forest
-    assertEquals(everything(r), everything(ElasticNetSelection.fixed(counted, cut.k(),
+    assertEquals(everything(r), everything(fixed(counted, cut.k(),
         TailCut.Reading.USUAL_FLOW, 1)));
 
     // at a k that cuts, the fitting rows above its fence and the validation issues above the
     // usual flow's left out of the matrix, every choice scored on what is left: the same bits
     final ElasticNetSelection.Result low =
-        ElasticNetSelection.fixed(counted, 1.5, TailCut.Reading.USUAL_FLOW, 1);
+        fixed(counted, 1.5, TailCut.Reading.USUAL_FLOW, 1);
     assertTrue(low.fitRows() < innerFitting(counted).size(), "the fixture's tail is cut");
     final List<RowCache.Entry> kept = counted.stream().filter(e -> "TRAIN".equals(
         e.inner(Population.IN_PROGRESS)) ? e.unit().duration() <= low.cut().fence()
@@ -1361,7 +1362,7 @@ class ElasticNetSelectionTest {
         r.cut().grid().toString());
     assertTrue(r.cut().grid().stream().allMatch(t -> t.fitRows() == r.fitRows()));
     assertEquals(TailCut.NO_CUT, r.cut().k());
-    assertEquals(everything(ElasticNetSelection.fixed(held, TailCut.NO_CUT,
+    assertEquals(everything(fixed(held, TailCut.NO_CUT,
         TailCut.Reading.USUAL_FLOW, 1)), everything(r));
   }
 
@@ -1410,5 +1411,15 @@ class ElasticNetSelectionTest {
     extra.add("tail-cut\tk_2.0\tmae_business_days\t1.0");
     assertThrows(IllegalArgumentException.class,
         () -> ElasticNetSelection.tailCut(ElasticNetSelection.read(extra)));
+  }
+
+  /**
+   * The selection with the k given and no other k swept, every choice scored on the validation
+   * issues {@code scored} reads.
+   */
+  private static ElasticNetSelection.Result fixed(final List<RowCache.Entry> entries,
+      final double k, final TailCut.Reading scored, final int threads) {
+    assertTrue(TailCut.GRID.contains(k), "k " + k + " is not one of the grid " + TailCut.GRID);
+    return ElasticNetSelection.select(entries, List.of(k), scored, threads);
   }
 }

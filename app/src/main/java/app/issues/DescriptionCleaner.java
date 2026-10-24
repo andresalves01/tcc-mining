@@ -73,14 +73,6 @@ public final class DescriptionCleaner {
     return collapse(Normalizer.normalize(out, Normalizer.Form.NFC));
   }
 
-  /**
-   * What the language detector reads: the cleaned description without its code and noformat
-   * blocks, contents included, so a stack trace does not vote. Null when nothing is left.
-   */
-  public static String forDetection(final String raw) {
-    return raw == null ? null : clean(BLOCK.matcher(raw).replaceAll(" "));
-  }
-
   /** The rules outside code and noformat blocks. */
   private static String prose(final String text) {
     String t = IMAGE.matcher(text).replaceAll(" ");

@@ -54,12 +54,6 @@ public final class MongoStudySource implements StudySource {
   }
 
   @Override
-  public Set<String> reads() {
-    return Set.of("issue", "issue_system", "project", "vcs_system", "event", "issue_comment",
-        "commit", "pull_request", "pull_request_commit", "file_action", "tag");
-  }
-
-  @Override
   public Map<String, app.issues.DurationEvidence> durationEvidence(
       final List<app.issues.RowCache.Entry> rows, final Set<String> bots) {
     return new MongoDurationSource(source, thesis).load(rows, bots);

@@ -15,7 +15,6 @@ import org.bson.types.ObjectId;
 
 /** Scoped read-only duration evidence. No issue outcome or outer-test row is queried here. */
 public final class MongoDurationSource {
-  public static final String RULE_VERSION = DurationEvidence.SOURCE_RULE_VERSION;
   private final MongoDatabase source, thesis;
   public MongoDurationSource(MongoDatabase source, MongoDatabase thesis) {
     this.source=source; this.thesis=thesis;

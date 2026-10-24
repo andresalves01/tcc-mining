@@ -122,11 +122,6 @@ public final class Extractor {
     }
   }
 
-  /** The retrospective executor's first commit, or null: the person the conditioned reference uses. */
-  public World.Commit executorOf(final String issue, final long limit) {
-    return executorCommit(issue, limit);
-  }
-
   /** The human author of the first linked commit visible before {@code limit}, by authoring. */
   World.Commit executorCommit(final String issue, final long limit) {
     final List<World.Commit> commits = world.implementation(issue, limit);
@@ -157,11 +152,6 @@ public final class Extractor {
       }
     }
     return best;
-  }
-
-  /** The first substantive interaction of any universe issue, for the time-travel gate. */
-  public Long firstInteractionOf(final String id) {
-    return firstInteraction.get(id);
   }
 
   private int executorOpenAt(final String who, final String project, final long t) {
@@ -253,12 +243,6 @@ public final class Extractor {
 
   private static Double bool(final boolean b) {
     return b ? 1.0 : 0.0;
-  }
-
-  /** Every column of one studied issue, at its creation. Null values are absences. */
-  public Map<String, Double> row(final Universe.Unit u, final Initial.Values init,
-      final Corpus.Label label) {
-    return row(u, init, label, null);
   }
 
   /**

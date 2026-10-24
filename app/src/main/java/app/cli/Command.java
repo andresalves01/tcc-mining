@@ -1,12 +1,10 @@
 package app.cli;
 
 import app.cli.commands.BuildLedgerCommand;
-import app.cli.commands.CanonicalizeCommand;
 import app.cli.commands.CheckCommand;
 import app.cli.commands.ComplexityCommand;
 import app.cli.commands.FunnelCommand;
 import app.cli.commands.HarvestJiraCommand;
-import app.cli.commands.IssuesDescriptionLanguageCommand;
 import app.cli.commands.IssuesDownloadModelCommand;
 import app.cli.commands.IssuesInProgressExtractCommand;
 import app.cli.commands.IssuesInProgressTeamCommand;
@@ -16,8 +14,6 @@ import app.cli.commands.IssuesSimilarityElasticNetCommand;
 import app.cli.commands.IssuesSimilarityInnerReportCommand;
 import app.cli.commands.IssuesSimilarityTestCommand;
 import app.cli.commands.ReconstructPeopleCommand;
-import app.cli.commands.SeniorityCommand;
-import app.cli.commands.StatsCommand;
 import app.pipeline.port.Corpus;
 import java.util.Arrays;
 import java.util.List;
@@ -58,10 +54,6 @@ public enum Command {
       Run reconstruct-people first.""",
       Corpus.Stage.HARVEST_JIRA),
 
-  CANONICALIZE("canonicalize", new CanonicalizeCommand(), """
-      Recompute the equivalence relation from the current registry. Cheap:
-      use it to compare MERGE_STRICTNESS settings without re-mining."""),
-
   BUILD_LEDGER("build-ledger", new BuildLedgerCommand(), """
       Build `developer_contribution` -- one row per non-merge commit with
       its canonical author and the lines it carried. Reads `file_action`
@@ -94,15 +86,6 @@ public enum Command {
       and validation; nothing set aside), and time travel. Writes the cache
       to CACHE only if the gate passed; records a summary, with the split's
       rule and seed, in ISSUES_DB; reads everything else."""),
-
-  ISSUES_DESCRIPTION_LANGUAGE("issues-description-language",
-      new IssuesDescriptionLanguageCommand(), """
-      Issue duration from the first In Progress: the language of each
-      description as it stood at that instant, cleaned of Jira markup, with
-      code and log blocks removed before detection (Lingua, all languages).
-      Writes the count per language, the count with no description and 20
-      non-English descriptions drawn with a fixed seed to REPORT_DIR. Reads
-      the corpus; records nothing in Mongo, so it may run at any time."""),
 
   ISSUES_IN_PROGRESS_TEAM("issues-in-progress-team", new IssuesInProgressTeamCommand(), """
       Issue duration from the first In Progress: runs the extraction and
@@ -195,8 +178,8 @@ public enum Command {
       new IssuesSimilarityElasticNetCommand(), """
       Issue duration from the first In Progress, in whole business days (Monday-to-Friday dates reached from the
       first In Progress to the first resolution, at each issue's day
-      boundary, holidays ignored, the time back in Open or Reopened and
-      the whole working days of silent gaps between records left out),
+      boundary, holidays ignored, the time back in Open or Reopened left
+      out, days without recorded activity kept),
       on the issues of at least one business day: chooses alpha and
       lambda on the inner validation, by the Elastic Net sweep (alpha
       0.10, 0.50 or 0.95; twelve lambdas over four decades down from the
@@ -361,13 +344,7 @@ public enum Command {
       duration and start-description availability; P25/P50/P75/P90/P95
       estimates with existing pooled prediction intervals. The report's
       separate SPSP section gives cited uncertainty context, not a scheduling
-      acceptance threshold. These additions choose or refit no settings."""),
-
-  SENIORITY("seniority", new SeniorityCommand(), """
-      Report seniority `q` and the cost curve over the ledger, under both
-      the project and the career scope. Reads only, writes nothing."""),
-
-  STATS("stats", new StatsCommand(), "Summarise what the registry holds.");
+      acceptance threshold. These additions choose or refit no settings.""");
 
   private static final Map<String, Command> CommandMap = Arrays.stream(values())
       .collect(Collectors.toUnmodifiableMap(command -> command.token, command -> command));

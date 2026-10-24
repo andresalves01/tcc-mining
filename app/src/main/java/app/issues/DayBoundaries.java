@@ -139,20 +139,7 @@ public final class DayBoundaries {
     return out;
   }
 
-  /**
-   * The actions that count, sorted by instant: every event and comment on an issue of {@code
-   * projectOfIssue} with an author and an instant, but {@code ProjectImport} events and the {@link
-   * #bots} of those issues' comments; each author read as their canonical identity in {@code
-   * people}, the raw id when there is none.
-   */
   static List<Action> actions(final List<Corpus.Event> events,
-      final List<Corpus.Comment> comments, final Map<String, String> projectOfIssue,
-      final Map<String, Corpus.Person> people) {
-    return actions(events, comments, projectOfIssue, people,
-        bots(comments, projectOfIssue.keySet()));
-  }
-
-  private static List<Action> actions(final List<Corpus.Event> events,
       final List<Corpus.Comment> comments, final Map<String, String> projectOfIssue,
       final Map<String, Corpus.Person> people, final Set<String> bots) {
     final List<Action> out = new ArrayList<>();
@@ -193,12 +180,7 @@ public final class DayBoundaries {
         bots);
   }
 
-  /** The boundaries read from {@code actions}, already kept. */
-  static DayBoundaries of(final List<Action> actions) {
-    return of(actions, Set.of());
-  }
-
-  private static DayBoundaries of(final List<Action> actions, final Set<String> bots) {
+  static DayBoundaries of(final List<Action> actions, final Set<String> bots) {
     // one unit per person per clock hour, at its first action, for that action's project
     final Map<String, Map<Long, Action>> first = new HashMap<>();
     final Comparator<Action> earlier = Comparator.comparingLong(Action::at)

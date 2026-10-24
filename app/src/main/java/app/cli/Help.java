@@ -52,12 +52,8 @@ public final class Help {
           JIRA_CACHE_DIR    build/jira-cache
           JIRA_DELAY_MS     250                 pause between issue-tracker requests
           MERGE_STRICTNESS  EMAIL_AND_FULL_NAME | EMAIL_ONLY
-          VOLUME            JAVA | ALL          which lines count as developer volume
-          COST_MIN          1.0                 C_min, reporting only -- never stored
-          COST_RATIO        1.7283              C_max / C_min, reporting only
           PILOT             (unset)             ledger and funnel: restrict to matching projects
-          REPORT_DIR        (unset)             issues-description-language,
-                                                issues-in-progress-similarity,
+          REPORT_DIR        (unset)             issues-in-progress-similarity,
                                                 issues-in-progress-similarity-test and
                                                 -inner-report: where their files go
           MATRIX            (unset)             issues-in-progress-similarity: the augmented matrix

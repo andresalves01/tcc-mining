@@ -18,6 +18,7 @@ import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import app.pipeline.port.SilentProgress;
 
 /**
  * The in-progress extraction on a corpus held in memory (ticket 21): the population of at least
@@ -63,10 +64,6 @@ class IssuesInProgressExtractTest {
         return Map.of();
       }
 
-      @Override
-      public Set<String> reads() {
-        return Set.of();
-      }
 
       @Override
       public String describe() {
@@ -93,7 +90,7 @@ class IssuesInProgressExtractTest {
     issue("sa", "s", T0 + D + 10 * H, T0 + 6 * D + 10 * H);
 
     final IssuesInProgressExtractTask.Report r =
-        new IssuesInProgressExtractTask(source(), Progress.silent()).run();
+        new IssuesInProgressExtractTask(source(), SilentProgress.INSTANCE).run();
 
     assertTrue(r.travelPassed(), r.travel().toString());
     final List<String> ids = r.entries().stream().map(e -> e.unit().issueId()).toList();

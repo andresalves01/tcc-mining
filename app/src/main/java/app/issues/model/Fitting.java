@@ -66,22 +66,6 @@ public final class Fitting {
       double[] predicted, Score score, int step, List<Trial> trials,
       Recalibration recalibration) {
 
-    /** A reference or a given prediction: nothing was swept and nothing recalibrated. */
-    public Fitted(final Cell cell, final double alpha, final double lambda,
-        final List<String> columns, final List<String> dropped,
-        final List<Contribution> contributions, final int selected, final double[] predicted,
-        final Score score, final int step) {
-      this(cell, alpha, lambda, columns, dropped, contributions, selected, predicted, score,
-          step, List.of(), null);
-    }
-
-    /** The 10th, 50th and 90th percentiles of the predictions, in hours: how much they spread. */
-    public double[] spread() {
-      final double[] sorted = predicted.clone();
-      java.util.Arrays.sort(sorted);
-      final int n = sorted.length;
-      return new double[] {sorted[n / 10], sorted[n / 2], sorted[Math.min(n - 1, 9 * n / 10)]};
-    }
   }
 
   /** One point of the grid: the scored side's error of the fit with this mixture and penalty. */
@@ -175,18 +159,6 @@ public final class Fitting {
       out[s] = top * Math.pow(LAMBDA_FLOOR_RATIO, (double) s / (LAMBDA_STEPS - 1));
     }
     return out;
-  }
-
-  /**
-   * Sweeps the declared grid on the fitting side and keeps the pair with the lowest absolute error
-   * on the scored side. Only ever called with {@link Mode#INNER} sides. The points are fitted on
-   * the threads {@link Parallel#ELASTIC_NET_THREADS} asks for (see {@link #sweep(Cell, Sides,
-   * double, double, int)}).
-   */
-  public static Fitted sweep(final Cell cell, final Sides sides, final double referenceMae,
-      final double constantMae) {
-    return sweep(cell, sides, referenceMae, constantMae,
-        Parallel.threads(Parallel.ELASTIC_NET_THREADS));
   }
 
   /**

@@ -72,8 +72,7 @@ The stages run in order, and each one reads what the previous ones wrote.
 | Command | What it does |
 |---|---|
 | `reconstruct-people` | Rebuilds the developer registry from the git repositories stored in the corpus. The published release has no `people` collection. |
-| `harvest-jira` | Matches Jira accounts to developers through the public Jira API. The answers are cached on disk. |
-| `canonicalize` | Recomputes which identities are the same person. It is cheap, so you can compare `MERGE_STRICTNESS` settings. |
+| `harvest-jira` | Matches Jira accounts to developers through the public Jira API. The answers are cached on disk. `MERGE_STRICTNESS` sets how identities are merged into one person. |
 | `build-ledger` | Writes `developer_contribution`: one row per commit, with its author and line counts. |
 | `funnel` | Applies the exclusions and writes `issue_label`. |
 | `complexity` | Writes `commit_complexity`, the complexity of the methods each commit changed. This is the slowest stage. If interrupted, it resumes where it stopped. |
@@ -137,9 +136,7 @@ MongoDB. It needs `MATRIX`, `ADJUSTED_DIR`, `BOT_ACCOUNTS`, `START_DESCRIPTIONS`
 
 ### Commands that only read
 
-`check`, `stats` (what the developer registry holds), `seniority` (seniority and cost curve
-report), `issues-description-language` (the languages of the descriptions) and `help` write
-nothing to MongoDB and can be run at any time.
+`check` and `help` write nothing to MongoDB and can be run at any time.
 
 ## Tests
 
@@ -151,7 +148,8 @@ hang, so run one package at a time:
 ./gradlew test --tests 'app.pipeline.*'
 ./gradlew test --tests 'app.cli.*'
 ./gradlew test --tests 'app.study.*' --tests 'app.model.*' --tests 'app.features.*' \
-  --tests 'app.labels.*' --tests 'app.identity.*' --tests 'app.config.*' --tests 'app.cost.*'
+  --tests 'app.labels.*' --tests 'app.identity.*' --tests 'app.config.*' \
+  --tests 'app.EventReplayTest' --tests 'app.CorpusRegressionTest'
 ```
 
 - `app.CorpusRegressionTest` checks the restored corpus against the one these results came from.
@@ -166,7 +164,7 @@ hang, so run one package at a time:
 | `app.cli` | the commands, the help text and the console output |
 | `app.config` | reading the settings |
 | `app.identity` | rebuilding the developer registry |
-| `app.contribution`, `app.cost` | the contribution ledger, seniority and the cost curve |
+| `app.contribution` | the per-commit contribution ledger |
 | `app.labels`, `app.features` | the issue funnel and the team and complexity attributes |
 | `app.pipeline` | reading the corpus, the extraction tasks and the embedder |
 | `app.model` | the Elastic Net and random forest estimators and their metrics |

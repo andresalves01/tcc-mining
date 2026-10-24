@@ -71,9 +71,6 @@ public final class Universe {
       this(id, key, project, reporter, created, resolved, reason, moved, created, null);
     }
 
-    public double durationHours() {
-      return (resolved - start) / 3_600_000.0;
-    }
   }
 
   private final Map<String, Corpus.Issue> issues;
@@ -286,18 +283,6 @@ public final class Universe {
       }
     }
     return value;
-  }
-
-  /** How often the status leaves Resolved/Closed after {@code after}. */
-  public static int reopenings(final List<Corpus.Event> events, final long after) {
-    int n = 0;
-    for (final Corpus.Event e : events) {
-      if ("status".equals(e.field()) && e.at() != null && e.at() > after
-          && RESOLVED.contains(e.oldValue()) && !RESOLVED.contains(e.newValue())) {
-        n++;
-      }
-    }
-    return n;
   }
 
   // ------------------------------------------------------------------ accessors

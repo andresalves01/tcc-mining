@@ -46,7 +46,7 @@ class DayBoundariesTest {
   }
 
   private Boundary boundary(final String person, final String project, final long click) {
-    return DayBoundaries.of(actions).at(person, project, click);
+    return DayBoundaries.of(actions, Set.of()).at(person, project, click);
   }
 
   @Test
@@ -165,7 +165,8 @@ class DayBoundariesTest {
     assertEquals(Set.of("bot"),
         DayBoundaries.bots(comments, Set.of("i1", "i2")), "twenty comments, a quarter templated");
     final List<Action> kept = DayBoundaries.actions(events, comments,
-        Map.of("i1", "p", "i2", "q"), people);
+        Map.of("i1", "p", "i2", "q"), people,
+        DayBoundaries.bots(comments, Set.of("i1", "i2")));
     assertEquals(List.of("ana", "bea"), kept.stream().filter(a -> a.at() < t + DAY)
         .map(Action::person).toList(), "the In Progress change and the attachment");
     assertEquals(21, kept.size(), "and the nineteen comments of a person with fewer than twenty");
@@ -212,7 +213,7 @@ class DayBoundariesTest {
         new Corpus.Event("i", T0, "labels", "ci", null, "test", "1%%0"),
         new Corpus.Event("i", T0 + H, "status", "dev", "Open", "In Progress", "2%%0"));
     final List<Action> actions = DayBoundaries.actions(events, comments,
-        Map.of("i", "p"), Map.of());
+        Map.of("i", "p"), Map.of(), DayBoundaries.bots(comments, Set.of("i")));
     assertEquals(2, actions.size(), "only the developer's comment and status change remain");
     assertTrue(actions.stream().allMatch(a -> a.person().equals("dev")));
   }

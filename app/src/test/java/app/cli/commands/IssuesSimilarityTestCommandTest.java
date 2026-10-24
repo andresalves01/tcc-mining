@@ -22,6 +22,7 @@ import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import app.pipeline.port.SilentProgress;
 
 /**
  * The test command's refusals, every one reached before the matrix is parsed, so nothing is
@@ -42,7 +43,7 @@ class IssuesSimilarityTestCommandTest {
   /** A context whose result store fails the test if anything is recorded. */
   private static Context context() {
     return new Context(null, null, null, null, null, null, null, null, null, null, null,
-        Progress.silent(), null, (run, rows) -> {
+        SilentProgress.INSTANCE, null, (run, rows) -> {
           throw new AssertionError("recorded " + run);
         }, null);
   }
@@ -448,9 +449,9 @@ class IssuesSimilarityTestCommandTest {
         new PredictionIntervals.Group(10, share, 9.0, 1.5, 7.0));
     final List<PredictionIntervals.Read> reads = List.of(
         new PredictionIntervals.Read(TailCut.Reading.USUAL_FLOW, "kikas_start", 0.8, overall,
-            bands),
+            bands, Map.of()),
         new PredictionIntervals.Read(TailCut.Reading.USUAL_FLOW, "kikas_start", 0.95, overall,
-            bands));
+            bands, Map.of()));
     final List<Map<String, Object>> rows = new java.util.ArrayList<>();
     final java.io.PrintStream out = System.out;
     final java.io.ByteArrayOutputStream printed = new java.io.ByteArrayOutputStream();

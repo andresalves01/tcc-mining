@@ -57,7 +57,8 @@ class IssuesReservedTest {
           parts.put(Population.IN_PROGRESS, part);
         }
         out.add(new RowCache.Entry(new IssueUnit(id, "K-" + id, "p" + p, "r", "e" + (k % 3),
-            t0, t0.plusMillis((long) (hours * 3_600_000)), "Fixed", k % 7 == 0),
+            t0, t0.plusMillis((long) (hours * 3_600_000)), "Fixed", k % 7 == 0,
+            t0),
             new Row(id, values, Set.of()), parts));
       }
     }

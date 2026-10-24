@@ -221,13 +221,6 @@ public final class DesignMatrix {
     return matrix;
   }
 
-  /** The per-column mean and spread, for a report that has to record what standardising did. */
-  public Map<String, double[]> scaling() {
-    final Map<String, double[]> scaling = new LinkedHashMap<>();
-    terms.forEach(term -> scaling.put(term.name(), new double[] {term.mean(), term.sd()}));
-    return scaling;
-  }
-
   @Override
   public String toString() {
     return columns.size() + " columns" + (dropped.isEmpty() ? ""

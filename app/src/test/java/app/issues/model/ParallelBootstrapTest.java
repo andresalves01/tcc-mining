@@ -41,20 +41,6 @@ class ParallelBootstrapTest {
   }
 
   @Test
-  @DisplayName("the gain's interval on one, three and twelve threads is the old sequential "
-      + "loop's, bit for bit")
-  void gain() {
-    final ProjectBootstrap.Interval old = oldGain(projects, model, reference, observed);
-    for (final int threads : List.of(1, 3, 12)) {
-      final ProjectBootstrap.Interval now =
-          ProjectBootstrap.gain(projects, model, reference, observed, threads);
-      assertEquals(bits(old.gain()), bits(now.gain()), threads + " threads");
-      assertEquals(bits(old.low()), bits(now.low()), threads + " threads");
-      assertEquals(bits(old.high()), bits(now.high()), threads + " threads");
-    }
-  }
-
-  @Test
   @DisplayName("the paired gap's interval on one, three and twelve threads is the old sequential "
       + "loop's, bit for bit")
   void compare() {
@@ -90,24 +76,6 @@ class ParallelBootstrapTest {
     }
     Arrays.sort(draws);
     return new ProjectBootstrap.Gap("a", "b", point, draws[(int) (0.025 * ProjectBootstrap.DRAWS)],
-        draws[(int) (0.975 * ProjectBootstrap.DRAWS) - 1]);
-  }
-
-  private static ProjectBootstrap.Interval oldGain(final List<String> projectOfRow,
-      final double[] model, final double[] reference, final double[] observed) {
-    final List<List<Integer>> projects = clusters(projectOfRow);
-    final double point = gainOf(allRows(observed.length), model, reference, observed);
-    final double[] draws = new double[ProjectBootstrap.DRAWS];
-    final Random random = new Random(ProjectBootstrap.SEED);
-    for (int d = 0; d < ProjectBootstrap.DRAWS; d++) {
-      final List<Integer> sample = new ArrayList<>(observed.length);
-      for (int p = 0; p < projects.size(); p++) {
-        sample.addAll(projects.get(random.nextInt(projects.size())));
-      }
-      draws[d] = gainOf(sample, model, reference, observed);
-    }
-    Arrays.sort(draws);
-    return new ProjectBootstrap.Interval(point, draws[(int) (0.025 * ProjectBootstrap.DRAWS)],
         draws[(int) (0.975 * ProjectBootstrap.DRAWS) - 1]);
   }
 

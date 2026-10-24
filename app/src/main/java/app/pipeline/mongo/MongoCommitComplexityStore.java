@@ -75,17 +75,6 @@ public final class MongoCommitComplexityStore implements CommitComplexityStore {
     return ids;
   }
 
-  @Override
-  public Map<String, CommitComplexity> readAll() {
-    final Map<String, CommitComplexity> rows = new HashMap<>(1 << 18);
-    for (final Document doc : target.getCollection(COMMIT_COMPLEXITY).find()) {
-      final String id = doc.getObjectId("_id").toHexString();
-      rows.put(id, new CommitComplexity(id, doc.getDouble("mccc"), doc.getDouble("nl"),
-          doc.getInteger("methods", 0), doc.getInteger("unrecoverable", 0)));
-    }
-    return rows;
-  }
-
   private static long write(final MongoCollection<Document> collection,
       final List<WriteModel<Document>> batch) {
 

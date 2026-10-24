@@ -57,7 +57,7 @@ class PredictionIntervalsTest {
     models.put(SimilarityScoring.GLOBAL, global);
     models.put(MODEL, predicted);
     return new PredictionIntervals.Sample(project, observed, models,
-        TailCut.quartiles(fitting));
+        TailCut.quartiles(fitting), PredictionIntervals.FLOOR);
   }
 
   @Test
@@ -77,19 +77,19 @@ class PredictionIntervalsTest {
     assertEquals(1.6, PredictionIntervals.factor(nineteen, 0.80));
 
     // log1p(9) = ln 10: divided and multiplied by 2
-    final double[] around9 = PredictionIntervals.interval(9, Math.log(2));
+    final double[] around9 = PredictionIntervals.interval(9, Math.log(2), PredictionIntervals.FLOOR);
     assertEquals(4, around9[0], EXACT);
     assertEquals(19, around9[1], EXACT);
     // log1p(1) = ln 2: the lower end, expm1(ln 0.5) = -0.5, raised to 1 business day
-    final double[] around1 = PredictionIntervals.interval(1, Math.log(4));
+    final double[] around1 = PredictionIntervals.interval(1, Math.log(4), PredictionIntervals.FLOOR);
     assertEquals(1, around1[0]);
     assertEquals(7, around1[1], EXACT);
     // an upper end below the floor is raised too: never an empty interval
-    final double[] tiny = PredictionIntervals.interval(0.2, 0.1);
+    final double[] tiny = PredictionIntervals.interval(0.2, 0.1, PredictionIntervals.FLOOR);
     assertEquals(1, tiny[0]);
     assertEquals(1, tiny[1]);
     assertEquals(Double.POSITIVE_INFINITY, PredictionIntervals.interval(3, Double
-        .POSITIVE_INFINITY)[1]);
+        .POSITIVE_INFINITY, PredictionIntervals.FLOOR)[1]);
   }
 
   @Test
@@ -103,7 +103,7 @@ class PredictionIntervalsTest {
       final double residual = (10 - i) / 10.0;
       observed[i] = Math.expm1(Math.log1p(predicted[i]) + (i % 2 == 0 ? residual : -residual));
     }
-    final PredictionIntervals.Calibration c = PredictionIntervals.calibrate(predicted, observed);
+    final PredictionIntervals.Calibration c = PredictionIntervals.calibrate(predicted, observed, PredictionIntervals.FLOOR);
     assertEquals(10, c.n());
     assertEquals(1, c.low());
     assertEquals(28, c.high());
@@ -134,7 +134,7 @@ class PredictionIntervalsTest {
     final Map<String, double[]> outerModels = new LinkedHashMap<>(fresh.predicted());
     outerModels.put(SimilarityScoring.GLOBAL, five);
     final PredictionIntervals.Sample outer = new PredictionIntervals.Sample(fresh.projects(),
-        fresh.observed(), outerModels, fresh.bandTops());
+        fresh.observed(), outerModels, fresh.bandTops(), PredictionIntervals.FLOOR);
     final List<PredictionIntervals.Read> reads = new ArrayList<>(inner.reads());
     reads.addAll(PredictionIntervals.outer(inner.calibrated(), outer, outer, 1));
     for (final PredictionIntervals.Read r : reads) {
@@ -200,7 +200,7 @@ class PredictionIntervalsTest {
     }
     // other band limits regroup the issues and move no factor, nor the overall figures
     final PredictionIntervals.Sample other = new PredictionIntervals.Sample(s.projects(),
-        s.observed(), s.predicted(), new double[] {2, 4, 8});
+        s.observed(), s.predicted(), new double[] {2, 4, 8}, PredictionIntervals.FLOOR);
     final PredictionIntervals.Inner regrouped = PredictionIntervals.inner(other, other, 1);
     for (final String m : s.predicted().keySet()) {
       assertEquals(Arrays.toString(inner.checked().get(m).factors()),
@@ -249,7 +249,7 @@ class PredictionIntervalsTest {
       }
     }
     final PredictionIntervals.Sample b = new PredictionIntervals.Sample(usual.projects(), moved,
-        usual.predicted(), usual.bandTops());
+        usual.predicted(), usual.bandTops(), PredictionIntervals.FLOOR);
     final PredictionIntervals.Inner again = PredictionIntervals.inner(usual, b, 1);
     final PredictionIntervals.Inner bothMoved = PredictionIntervals.inner(b, b, 1);
     for (final String m : usual.predicted().keySet()) {
@@ -261,7 +261,7 @@ class PredictionIntervalsTest {
       assertNotEquals(Arrays.toString(inner.calibrated().get(m).factors()),
           Arrays.toString(bothMoved.calibrated().get(m).factors()), m);
       final double[] p = usual.predicted().get(m);
-      assertEquals(Arrays.toString(PredictionIntervals.calibrate(p, usual.observed())
+      assertEquals(Arrays.toString(PredictionIntervals.calibrate(p, usual.observed(), PredictionIntervals.FLOOR)
           .factors()), Arrays.toString(inner.calibrated().get(m).factors()), m);
     }
     // the check reads half B only: its issues, every model at both levels, on both readings

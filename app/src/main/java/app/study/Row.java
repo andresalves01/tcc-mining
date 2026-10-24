@@ -33,8 +33,4 @@ public record Row(String unitId, Map<String, Double> values, Set<String> absent)
   public Optional<Double> get(final String name) {
     return Optional.ofNullable(values.get(name));
   }
-
-  public boolean isAbsent(final String name) {
-    return absent.contains(name);
-  }
 }

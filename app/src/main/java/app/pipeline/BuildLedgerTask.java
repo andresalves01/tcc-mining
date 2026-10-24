@@ -1,8 +1,8 @@
 package app.pipeline;
 
-import app.cost.ContributionScan;
-import app.cost.port.ContributionLedger;
-import app.cost.port.ContributionSource;
+import app.contribution.ContributionScan;
+import app.contribution.port.ContributionLedger;
+import app.contribution.port.ContributionSource;
 import app.identity.port.PersonRegistry;
 import app.pipeline.port.Progress;
 import java.util.Map;
@@ -11,11 +11,8 @@ import java.util.Set;
 /**
  * Builds the per-commit contribution ledger from the corpus and the reconstructed identities.
  *
- * <p>The ledger is where the two halves of the model get their raw material: {@code H_j} is an
- * accumulation over these rows, and the seniority {@code q} behind the cost curve is a ranking of
- * the same accumulation. Cost itself is deliberately <b>not</b> computed here — see
- * {@code CostParams} for why a stored cost column would be an assumption wearing the costume of a
- * measurement.
+ * <p>The issue stages read the developers' and teams' history of lines and complexity from these
+ * rows, as of each issue's start.
  *
  * <p>Refuses to run without identities, for the same reason the Jira harvest does: with an empty
  * equivalence relation every commit author is unresolvable, so the scan would read 84 GB and

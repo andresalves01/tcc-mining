@@ -1,5 +1,6 @@
 package app.study.model;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -62,13 +63,12 @@ class DesignMatrixTest {
       fit.add(row("f" + i, Map.of("count", (double) i)));
     }
     final DesignMatrix matrix = DesignMatrix.fittedOn(fit, attributes);
-    final double[] before = matrix.scaling().get("count");
+    final double[] before = matrix.apply(fit.get(4));
 
     matrix.apply(row("wild", Map.of("count", 1_000_000.0)));
 
-    assertEquals(before[0], matrix.scaling().get("count")[0], 0.0,
+    assertArrayEquals(before, matrix.apply(fit.get(4)), 0.0,
         "applying a row must not update anything; the transform is fixed when it is fitted");
-    assertEquals(before[1], matrix.scaling().get("count")[1], 0.0);
   }
 
   @Test
@@ -143,9 +143,9 @@ class DesignMatrixTest {
     final DesignMatrix matrix =
         DesignMatrix.fittedOn(fit, List.of(COUNT));
 
-    final double[] scaling = matrix.scaling().get("count");
+    // a row at the mean of the transformed column standardises to 0
     final double expectedMean = (Math.log1p(0) + Math.log1p(999)) / 2;
-    assertEquals(expectedMean, scaling[0], 1e-12,
+    assertEquals(0.0, matrix.apply(row("m", Map.of("count", Math.expm1(expectedMean))))[0], 1e-9,
         "the mean is of the transformed column, not of the raw one");
   }
 

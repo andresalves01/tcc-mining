@@ -38,17 +38,6 @@ public record Corpus(
     Map<String, int[]> files,
     List<Tag> tags) {
 
-  /** A corpus without tags, as every stage before ticket 19 read it. */
-  public Corpus(final List<Issue> issues, final List<Event> events, final List<Comment> comments,
-      final List<Mention> mentions, final List<Commit> commits,
-      final Map<String, java.util.Set<String>> homeKeys, final Map<String, Long> prMerge,
-      final Map<String, Person> people, final Map<String, Contribution> contributions,
-      final Map<String, Double> complexity, final Map<String, Label> labels,
-      final Map<String, int[]> files) {
-    this(issues, events, comments, mentions, commits, homeKeys, prMerge, people, contributions,
-        complexity, labels, files, List.of());
-  }
-
   /**
    * One issue document. The current values are what the changelog is reversed from.
    *

@@ -110,7 +110,7 @@ class AugmentationTest {
    */
   private void issue(final String id, final String outer, final String inner, final long start,
       final long hours, final String description) {
-    issues.add(new Augmentation.Issue(id, "p", "r", start * H, (start + hours) * H, (int) hours,
+    issues.add(new Augmentation.Issue(id, "p", "r", start * H, (start + hours) * H, (int) hours, (int) hours,
         outer, inner, description));
   }
 
@@ -290,6 +290,7 @@ class AugmentationTest {
   private void by(final String id, final String project, final String reporter,
       final String outer, final String inner, final long start, final long hours) {
     issues.add(new Augmentation.Issue(id, project, reporter, start * H, (start + hours) * H,
+        (int) hours,
         (int) hours, outer, inner, null));
   }
 
@@ -492,7 +493,7 @@ class AugmentationTest {
     }
     issue("t", "TEST", "", 1_000, 1, "a");
     final Map<String, Map<String, Double>> before = run(issues).columns();
-    issues.set(1, new Augmentation.Issue("f1", "p", "r", 10 * H, 17 * H, 9, "TRAIN", "TRAIN",
+    issues.set(1, new Augmentation.Issue("f1", "p", "r", 10 * H, 17 * H, 9, 9, "TRAIN", "TRAIN",
         "a"));
     final Map<String, Map<String, Double>> changed = run(issues).columns();
     assertEquals(7.0, before.get("f0").get(Augmentation.jaccard(5, Variant.INNER)));
@@ -508,7 +509,7 @@ class AugmentationTest {
   private List<Augmentation.Issue> later(final String part, final long hours) {
     return issues.stream().map(i -> (part.equals("TEST") ? i.outer() : i.inner()).equals("TEST")
         ? new Augmentation.Issue(i.id(), i.project(), i.reporter(), i.start(),
-            i.resolved() + hours * H, i.innerDays() + (int) hours, i.outer(), i.inner(),
+            i.resolved() + hours * H, i.innerDays() + (int) hours, i.innerDays() + (int) hours, i.outer(), i.inner(),
             i.description()) : i).toList();
   }
 

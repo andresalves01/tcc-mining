@@ -18,7 +18,7 @@ class AdjustedDurationTest {
   }
   static DurationEvidence evidence(List<String> commits, List<String> comments, List<Corpus.Event> events) {
     return new DurationEvidence(commits.stream().map(d->new DurationEvidence.Change(d,at(d),at(d),"native",d,false)).toList(),
-        comments.stream().map(d->new DurationEvidence.Activity(at(d),"comment",d)).toList(),events,"native_provisional",List.of());
+        comments.stream().map(d->new DurationEvidence.Activity(at(d),"comment",d)).toList(),events,"native_provisional",List.of(), List.of());
   }
   @Test void retainsPrefixCapsGapsWithoutAddingActivityTwiceAndRemovesSilentTail() {
     var c=AdjustedDuration.count(row("a","TRAIN",List.of()),evidence(List.of("03","17"),List.of("04","05","08","09","18"),List.of()),2);
@@ -64,7 +64,7 @@ class AdjustedDurationTest {
   }
   @Test void zeroHistoryIsIncludedOnlyForTheVersionedTargetAndMissingIsExcluded() {
     var zero=new Augmentation.Issue("z","p","r",0,1,0,0,"TRAIN","TRAIN","text",true);
-    var legacy=new Augmentation.Issue("l","p","r",0,1,0,"TRAIN","TRAIN","text");
+    var legacy=new Augmentation.Issue("l","p","r",0,1,0,0,"TRAIN","TRAIN","text");
     var missing=new Augmentation.Issue("m","p","r",0,1,-1,-1,"TRAIN","TRAIN","text",true);
     assertTrue(zero.counted(Augmentation.Variant.INNER));
     assertFalse(legacy.counted(Augmentation.Variant.INNER)); assertFalse(missing.counted(Augmentation.Variant.INNER));
@@ -72,7 +72,7 @@ class AdjustedDurationTest {
   @Test void zeroPredictionIntervalsHaveNoArtificialOneDayFloor() {
     var c=PredictionIntervals.calibrate(new double[]{0,1,2,3},new double[]{0,0,1,2},0);
     assertEquals(0,c.interval(0,0)[0]);
-    assertEquals(1,PredictionIntervals.interval(0,0)[0]); // legacy API
+    assertEquals(1,PredictionIntervals.interval(0,0,PredictionIntervals.FLOOR)[0]);
     assertEquals(0,PredictionIntervals.interval(0,0,0)[1]);
   }
   @Test void zeroObservedHasDefinedPredictionDenominatorErrorAndZeroIntervalCoverage() {
