@@ -1,8 +1,10 @@
 # Issue duration from In Progress
 
-How many active business days an issue of an Apache Java project takes from the moment work on it
-starts to its first resolution, estimated from what was known when the work started, and how much
-more is learned from what happens during the work. It is the only study this repository serves.
+How many recorded business days an issue of an Apache Java project takes from its first transition
+to In Progress to its first resolution, estimated under the declared start-attribute and
+training-history protocol, and how much more is associated with retrospective attributes.
+The interval measures the recorded workflow: neither status is a validated boundary of actual
+implementation or person-effort. It is the only study this repository serves.
 
 _Avoid_: secondary study, in-progress variant, main study (there is no other study to be secondary to)
 
@@ -33,7 +35,9 @@ _Avoid_: assignee, developer, owner
 The person who opened the issue.
 
 **Bot account**:
-An account whose activity is automated; it never counts as a person in any attribute.
+An account identified as automated by the declared filter. It is excluded wherever the attribute
+explicitly requires human discussion or tracker activity. The adapted Kikas counts retain their
+existing extraction definitions and must not automatically be described as human-only counts.
 
 ### Duration
 
@@ -46,7 +50,9 @@ later one, with dates cut at the day boundary; holidays are not known.
 
 **Duration**:
 The business days from the start to the first resolution, without the periods the issue spent back
-in Open or Reopened. It is the target of every model.
+in Open or Reopened. Days without recorded activity stay; review in Patch Available stays.
+It is the target of every model and every duration history. This is operational duration, not
+measured person-hours of effort.
 _Avoid_: TTC, time-to-code, hours, lead time, resolution time
 
 **Population**:
@@ -116,9 +122,9 @@ The median duration of the reporter's other issues in the same project, from the
 
 **Pressure attributes**:
 The former start attributes about releases and Blocker issues—the fix-version flag, the release
-cycle and Blocker pace—and the retrospective urgency. The three start attributes were tried in
-earlier runs but are no longer written or read by a current model; urgency remains in the
-retrospective models.
+cycle and Blocker pace—and the retrospective release lag. The three start attributes were tried in
+earlier runs but are no longer written or read by a current model; the release-lag column remains
+in the matrix for audit but is excluded from the final own retrospective models.
 
 **Fix-version flag**:
 Whether the issue had a fix version before its start.
@@ -131,7 +137,7 @@ the start; negative when the release is overdue.
 The median creation-to-resolution time, in calendar days, of the project's other Blocker-priority
 issues, read from the training side and from issues outside the population, never the test side.
 
-**Urgency**:
+**Release lag (formerly urgency)**:
 The calendar days from the first resolution to the release of the issue's fix version.
 
 ### Models
@@ -143,8 +149,9 @@ the executor's code size, complexity and open workload, and the three similarity
 _Avoid_: revised specification, C1
 
 **Own start model**:
-The start model fitted on the own specification, the one a scheduler would use when the work starts;
-the fitting cut's k is chosen on it alone, and the retrospective model builds on it.
+The start model fitted on the own specification; the fitting cut's k is chosen on it alone, and the
+retrospective model builds on it. Its intended SPSP connection does not establish adequate effort
+estimation or scheduling performance.
 _Avoid_: own specification with similarity (the earlier model that also read the start pressure
 attributes)
 
@@ -154,7 +161,7 @@ models.
 
 **Retrospective model**:
 The own start model plus the retrospective attributes, read twice. Its **main reading** leaves out
-the comments and the participants, which count the very records the target is built from; the
+the comments and the participants, preserving the declared attribute specification; the
 reading **with discussion** adds those two and is a **ceiling**, an upper reference of what was
 recorded during the work, not a competitor of the other models. The wait on blocking issues is in
 neither: counted in the target's own unit, it equalled the target in about half of the issues that
@@ -211,5 +218,22 @@ The range around an estimate that holds a stated share of such issues (80% or 95
 the inner validation.
 
 **Prediction quartile**:
-One of the four ranges of a model's own estimates on the calibration issues; each has its own
-interval width.
+One of the four ranges of a model's own estimates. It does not choose a calibration factor:
+each model and interval level uses one pooled inner-validation factor.
+
+**Prediction percentile illustration**:
+A model's P25, P50, P75, P90 or P95 estimate on the scored issues, with its existing prediction
+interval. It does not establish coverage conditional on that percentile.
+
+**Relative error**:
+The observed duration minus the estimate, divided by the estimate. Positive means underestimation.
+Zero estimates remain in the population and absolute-error measures, but have undefined relative
+error and are counted separately. The mean signed relative error measures bias; its pooled sample
+standard deviation describes spread. Shares within ±25%, ±50% and ±100% use positive estimates.
+
+**SPSP uncertainty context**:
+Comparison with published effort-uncertainty scenarios. Under fixed staff dedication, effort and
+duration have equal relative errors only under that allocation assumption; the study's
+status-adjusted business days measure recorded workflow duration, not observed person-effort.
+Pooled error spread is not each activity's conditional uncertainty, and a tested scenario is not
+a validated scheduling tolerance. These readings choose no model or population.
