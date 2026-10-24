@@ -1,7 +1,6 @@
 package app.pipeline.mongo;
 
 import app.labels.ChangedMethod;
-import app.labels.ExamOrigin;
 import app.labels.IssueLabel;
 import app.labels.port.LabelStore;
 import com.mongodb.bulk.BulkWriteResult;
@@ -16,7 +15,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
 import java.util.List;
-import java.util.Optional;
 import org.bson.Document;
 import org.bson.types.ObjectId;
 
@@ -72,25 +70,13 @@ public final class MongoLabelStore implements LabelStore {
         .append("project", label.projectName())
         .append("created_at", Date.from(label.createdAt()))
         .append("resolved_at", Date.from(label.resolvedAt()))
-        .append("ttc_days", label.ttcDays())
         .append("canonical_id", new ObjectId(label.canonicalAuthorId()))
         .append("first_commit_at", Date.from(label.firstCommitAt()))
-        .append("commits", label.commits())
         .append("java_lines_added", label.javaLinesAdded())
         .append("java_lines_deleted", label.javaLinesDeleted())
-        .append("n_methods", methods.size())
         .append("mean_mccc", label.meanMccc().orElseThrow())
         .append("mean_nl", label.meanNl().orElseThrow())
         .append("methods", methods);
-    // Absent is absent: a label with no external examination gets no field here rather than a
-    // zero.
-    label.examinedAt().ifPresent(at -> doc.append("examined_at", Date.from(at)));
-    label.examOrigin().ifPresent(origin -> doc.append("exam_origin", origin.name()));
-    label.waitDays().ifPresent(days -> doc.append("ttc_espera", days));
-    label.authorDays().ifPresent(days -> doc.append("ttc_autor", days));
-    doc.append("ttc_util", label.workingDays());
-    label.workingWaitDays().ifPresent(days -> doc.append("ttc_espera_util", days));
-    label.workingAuthorDays().ifPresent(days -> doc.append("ttc_autor_util", days));
     return doc;
   }
 
@@ -115,15 +101,12 @@ public final class MongoLabelStore implements LabelStore {
           doc.getDate("resolved_at").toInstant(),
           doc.getObjectId("canonical_id").toHexString(),
           doc.getDate("first_commit_at").toInstant(),
-          doc.getInteger("commits", 0),
           doc.getLong("java_lines_added") == null
               ? doc.getInteger("java_lines_added", 0) : doc.getLong("java_lines_added"),
           doc.getLong("java_lines_deleted") == null
               ? doc.getInteger("java_lines_deleted", 0) : doc.getLong("java_lines_deleted"),
           methods.stream().map(m -> new ChangedMethod(m.getString("long_name"),
-              m.getDouble("mccc"), m.getDouble("nl"))).toList(),
-          Optional.ofNullable(doc.getDate("examined_at")).map(Date::toInstant),
-          Optional.ofNullable(doc.getString("exam_origin")).map(ExamOrigin::valueOf)));
+              m.getDouble("mccc"), m.getDouble("nl"))).toList()));
     }
     return labels;
   }

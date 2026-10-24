@@ -28,7 +28,7 @@ class MethodRulesTest {
 
   private static IssueLabel labelWith(final List<ChangedMethod> methods) {
     return new IssueLabel("5bf43342ed024056f5b30676", "p", T, T.plusSeconds(86_400),
-        "58bfc52702ca40f8bf147856", T, 1, 120, 45, methods);
+        "58bfc52702ca40f8bf147856", T, 120, 45, methods);
   }
 
   @Nested

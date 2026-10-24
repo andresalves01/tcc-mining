@@ -195,7 +195,7 @@ public final class MongoLabelSource implements LabelSource {
         final Linked head = first(e.getValue());
         labels.add(new IssueLabel(e.getKey().toHexString(), issueProject.get(e.getKey()),
             created.get(e.getKey()), resolved.get(e.getKey()), head.canonical(),
-            head.authoredAt(), e.getValue().size(),
+            head.authoredAt(),
             e.getValue().stream().mapToLong(Linked::javaAdded).sum(),
             e.getValue().stream().mapToLong(Linked::javaDeleted).sum(),
             deduplicated));

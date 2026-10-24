@@ -37,7 +37,7 @@ class ComplexityPipelineTest {
   }
 
   private static IssueLabel label(final String id, final String developer, final String project) {
-    return new IssueLabel(id, project, day(100), day(200), developer, day(100), 1, 10, 5,
+    return new IssueLabel(id, project, day(100), day(200), developer, day(100), 10, 5,
         List.of(new ChangedMethod("p.C.m()V", 3, 1)));
   }
 
