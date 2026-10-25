@@ -20,5 +20,14 @@ public interface StudySource {
     throw new UnsupportedOperationException("duration evidence not supported by this source");
   }
 
+  /**
+   * The size and message title of native commits, what is known of commits recovered from pull
+   * requests, and the file names of attachments; only the ids given.
+   */
+  default app.issues.FirstCommitFacts firstCommitFacts(Collection<String> commitIds,
+      Collection<String> originalShas, Collection<String> attachmentIds) {
+    throw new UnsupportedOperationException("first-commit facts not supported by this source");
+  }
+
   String describe();
 }

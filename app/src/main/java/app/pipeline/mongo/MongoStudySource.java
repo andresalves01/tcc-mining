@@ -60,6 +60,12 @@ public final class MongoStudySource implements StudySource {
   }
 
   @Override
+  public app.issues.FirstCommitFacts firstCommitFacts(final Collection<String> commitIds,
+      final Collection<String> originalShas, final Collection<String> attachmentIds) {
+    return new MongoFirstCommitFacts(source, thesis).load(commitIds, originalShas, attachmentIds);
+  }
+
+  @Override
   public String describe() {
     return sourceName + " (corpus) + " + thesisName
         + " (person_canonical, developer_contribution, commit_complexity, issue_label)";

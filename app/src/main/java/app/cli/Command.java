@@ -37,6 +37,24 @@ public enum Command {
       ADJUSTED_STEP: evidence, audit, matrix, select, report, models, baseline-select or baseline-report.
       Preserves original partitions and target; no outer-test outcomes or database writes."""),
 
+  ISSUES_FIRST_COMMIT_AUDIT("issues-first-commit-audit",
+      new app.cli.commands.IssuesFirstCommitAuditCommand(), """
+      Issue duration from the first commit: builds, read only, the population
+      of issues resolved as Fixed at their first resolution, created before
+      their first commit that counts (human, authored before the resolution,
+      not a merge, pull-request originals included), with at least two
+      commits once duplicates are gone (same author and instant; same first
+      message line and changed lines at another instant, the oldest kept),
+      the first commit below 50% of the changed lines of every file, code
+      on at least two dates at the first author's day boundary, no commit
+      linked to another issue, and a target of at least one business day.
+      Draws the split with the In Progress rule over them, learns the cap on
+      the waits between commits and patches on the inner fitting only, and
+      counts the target of the outer training. Also reports the limits of
+      30% and 70% and the overlap with the In Progress split. Of the outer
+      test only its size is written. Writes audit.md and per-issue.tsv to
+      AUDIT_DIR; writes nothing to any database and records no run."""),
+
   CHECK("check", new CheckCommand(), """
       Report what the source corpus holds before a stage spends an hour on it:
       the collections each command reads, whether they are populated, and
