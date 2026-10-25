@@ -57,6 +57,8 @@ main ones:
 | `SOURCE_DB` | `smartshark_2_2` | the corpus; read only |
 | `TARGET_DB` | `smartshark_tcc` | the collections the preparation stages build |
 | `ISSUES_DB` | `smartshark_issues` | the run records of the issue stages |
+| `PREPARED_DB` | `TARGET_DB` | where the issue stages read the prepared collections; read only |
+| `POPULATION` | `IN_PROGRESS` | the population `issues-in-progress-extract` extracts: `IN_PROGRESS` or `FIRST_COMMIT` |
 | `APP_OPTS` | (unset) | JVM options, such as `-Xmx8g` |
 
 The issue stages read and write files whose paths you give in `CACHE`, `TEAM_COLUMNS`, `MATRIX`,
@@ -147,6 +149,29 @@ Of the outer test it writes only the size.
 
 It needs `AUDIT_DIR`, where it writes `audit.md` and `per-issue.tsv`, and writes nothing to
 MongoDB. Give it `APP_OPTS=-Xmx6g`.
+
+### 5. Issue duration from the first commit: extraction
+
+`issues-in-progress-extract` with `POPULATION=FIRST_COMMIT` extracts the first-commit population
+instead of the In Progress one. It builds the audit's population, split, cap and target: the cap is
+learned on the inner fitting's waits and then applied, frozen, to every drawn issue. It reads every
+column of the In Progress extraction at the first commit that counts, checks time travel at that
+instant, and writes the target and its parts after them (`FC_target_days`,
+`FC_implementation_days`, `FC_tail_days`, `FC_capped_days`, `FC_marks`, `FC_patches` and
+`FC_day_boundary_hour`). The cache's split columns are `primeiro_commit_externa` and
+`primeiro_commit_interna`. Of the target it prints and records only the outer training's.
+
+The first-commit study writes to databases of its own, and the command refuses the In Progress
+study's `TARGET_DB` and `ISSUES_DB` before it reads anything. The prepared collections stay in
+`smartshark_tcc`, read through `PREPARED_DB`:
+
+```bash
+POPULATION=FIRST_COMMIT TARGET_DB=smartshark_first_commit \
+  ISSUES_DB=smartshark_first_commit_issues PREPARED_DB=smartshark_tcc \
+  APP_OPTS=-Xmx6g CACHE=$RUN/first-commit-matrix.tsv $APP issues-in-progress-extract
+```
+
+The later stages of the study do not read this population yet.
 
 ### Commands that only read
 

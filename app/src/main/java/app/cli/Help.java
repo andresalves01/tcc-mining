@@ -46,6 +46,12 @@ public final class Help {
           SOURCE_DB         smartshark_2_2      read-only
           TARGET_DB         smartshark_tcc      written to; must differ from SOURCE_DB
           ISSUES_DB         smartshark_issues   the issue stages' run records: written to; its own
+          PREPARED_DB       (TARGET_DB)         the issue stages read the prepared collections
+                                                (person_canonical, developer_contribution,
+                                                commit_complexity, issue_label) here; read only
+          POPULATION        IN_PROGRESS         issues-in-progress-extract: IN_PROGRESS or
+                                                FIRST_COMMIT (needs TARGET_DB and ISSUES_DB of
+                                                its own)
           CACHE             (unset)             issues-in-progress-extract: the matrix written;
                                                 issues-in-progress-similarity: the one it reads
           WORK_DIR          build/identity-work
