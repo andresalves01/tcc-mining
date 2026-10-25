@@ -8,6 +8,7 @@ import app.issues.ProjectSplit;
 import app.pipeline.IssuesFirstCommitAuditTask;
 import app.pipeline.IssuesFirstCommitAuditTask.IssueRow;
 import app.pipeline.IssuesFirstCommitAuditTask.Report;
+import app.pipeline.IssuesFirstCommitAuditTask.Side;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -126,7 +127,8 @@ public final class IssuesFirstCommitAuditCommand implements CommandRunner {
     md.add("");
     md.add("| Issues | Mín. | Q1 | Mediana | Q3 | P90 | Máx. | Média | Soma |");
     md.add("|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
-    md.add(row(r.training().target()));
+    md.add("| " + n(r.training().target().n()) + " | " + quantiles(r.training().target()) + " | "
+        + n(r.training().target().sum()) + " |");
     md.add("");
     md.add("- Dias entre o primeiro commit e o último código, já com o teto: "
         + n(r.training().implementation()) + ".");
@@ -146,11 +148,9 @@ public final class IssuesFirstCommitAuditCommand implements CommandRunner {
         + "| Máx. | Média |");
     md.add("|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
     for (final IssuesFirstCommitAuditTask.Sensitivity s : r.sensitivity()) {
-      final FirstCommit.Summary a = s.target();
       md.add("| " + d(100 * s.limit()) + "% | " + n(s.sizes().rows()) + " | "
           + n(s.sizes().train()) + " | " + n(s.sizes().test()) + " | " + n(s.threshold().cap())
-          + " | " + d(a.min()) + " | " + d(a.q1()) + " | " + d(a.median()) + " | " + d(a.q3())
-          + " | " + d(a.p90()) + " | " + d(a.max()) + " | " + d(a.mean()) + " |");
+          + " | " + quantiles(s.target()) + " |");
     }
     md.add("");
     md.add("## Sobreposição com o estudo In Progress");
@@ -158,13 +158,14 @@ public final class IssuesFirstCommitAuditCommand implements CommandRunner {
     md.add("Linhas: o lado de cada issue nesta partição. Colunas: o lado dela na partição do "
         + "estudo In Progress, sorteada como a extração dele sorteia.");
     md.add("");
-    final List<String> sides = List.copyOf(r.overlap().values().iterator().next().keySet());
-    md.add("| Aqui \\ In Progress | " + String.join(" | ", sides) + " | Total |");
+    final List<Side> sides = List.of(Side.values());
+    md.add("| Aqui \\ In Progress | " + String.join(" | ",
+        sides.stream().map(Side::label).toList()) + " | Total |");
     md.add("|---|" + "---:|".repeat(sides.size() + 1));
-    for (final Map.Entry<String, Map<String, Integer>> e : r.overlap().entrySet()) {
-      final StringBuilder b = new StringBuilder("| " + e.getKey() + " |");
+    for (final Map.Entry<Side, Map<Side, Integer>> e : r.overlap().entrySet()) {
+      final StringBuilder b = new StringBuilder("| " + e.getKey().label() + " |");
       int total = 0;
-      for (final String side : sides) {
+      for (final Side side : sides) {
         b.append(' ').append(n(e.getValue().get(side))).append(" |");
         total += e.getValue().get(side);
       }
@@ -173,10 +174,15 @@ public final class IssuesFirstCommitAuditCommand implements CommandRunner {
     return md;
   }
 
-  private static String row(final FirstCommit.Summary a) {
-    return "| " + n(a.n()) + " | " + d(a.min()) + " | " + d(a.q1()) + " | " + d(a.median())
-        + " | " + d(a.q3()) + " | " + d(a.p90()) + " | " + d(a.max()) + " | " + d(a.mean())
-        + " | " + n(a.sum()) + " |";
+  /** Minimum, Q1, median, Q3, P90, maximum and mean, as table cells. */
+  private static String quantiles(final FirstCommit.Summary a) {
+    return String.join(" | ", d(a.min()), d(a.q1()), d(a.median()), d(a.q3()), d(a.p90()),
+        d(a.max()), d(a.mean()));
+  }
+
+  private static String cell(final FirstCommit.Count c,
+      final java.util.function.ToIntFunction<FirstCommit.Count> part) {
+    return c == null ? "" : Integer.toString(part.applyAsInt(c));
   }
 
   static List<String> perIssue(final Report r) {
@@ -195,13 +201,11 @@ public final class IssuesFirstCommitAuditCommand implements CommandRunner {
           Integer.toString(v.duplicates().sameTitleLines()),
           v.firstShare() == null ? "" : String.format(Locale.ROOT, "%.6f", v.firstShare()),
           v.hour() == null ? "" : v.hour().toString(),
-          v.hour() == null ? "" : Integer.toString(v.codeDays()), row.side(),
-          c == null ? "" : Integer.toString(c.marks()),
-          c == null ? "" : Integer.toString(c.patches()),
-          c == null ? "" : Integer.toString(c.implementation()),
-          c == null ? "" : Integer.toString(c.tail()),
-          c == null ? "" : Integer.toString(c.capped()),
-          c == null ? "" : Integer.toString(c.total())));
+          v.hour() == null ? "" : Integer.toString(v.codeDays()),
+          row.side() == null ? "" : row.side().name(), cell(c, FirstCommit.Count::marks),
+          cell(c, FirstCommit.Count::patches), cell(c, FirstCommit.Count::implementation),
+          cell(c, FirstCommit.Count::tail), cell(c, FirstCommit.Count::capped),
+          cell(c, FirstCommit.Count::total)));
     }
     return lines;
   }

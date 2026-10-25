@@ -221,26 +221,26 @@ class IssuesFirstCommitAuditTaskTest {
   void originals() {
     final Report r = run();
     final IssueRow row = byKey(r).get("Q-110");
-    assertEquals(IssuesFirstCommitAuditTask.FIT, row.side());
+    assertEquals(IssuesFirstCommitAuditTask.Side.FIT, row.side());
     final FirstCommit.Verdict v = row.verdict();
     assertTrue(v.eligible());
     assertEquals(List.of("o1", "o2"), v.kept().stream().map(FirstCommit.Code::sha).toList());
     assertEquals(20 / 65.0, v.firstShare(), 1e-12);
     assertEquals(2, row.originals());
     assertEquals(3, row.count().total(), "Tuesday to Friday");
-    assertEquals(new IssuesFirstCommitAuditTask.Code(76, 2, 1), r.code());
+    assertEquals(new IssuesFirstCommitAuditTask.CodeTotals(76, 2, 1), r.code());
   }
 
   @Test
   @DisplayName("of the outer test only the size leaves; every training issue carries its target")
   void sealedTest() {
     final Report r = run();
-    final long training = r.rows().stream().filter(x -> !x.side().isEmpty()).count();
+    final long training = r.rows().stream().filter(x -> x.side() != null).count();
     assertEquals(r.sizes().train(), training);
     assertTrue(r.sizes().test() > 0);
     assertEquals(r.sizes().rows(), r.sizes().train() + r.sizes().test());
     for (final IssueRow row : r.rows()) {
-      if (row.side().isEmpty()) {
+      if (row.side() == null) {
         assertNull(row.count());
       } else {
         assertTrue(row.count().total() >= 1);
@@ -256,7 +256,7 @@ class IssuesFirstCommitAuditTaskTest {
     final List<Integer> gaps = new ArrayList<>();
     int fit = 0;
     for (final IssueRow row : r.rows()) {
-      if (IssuesFirstCommitAuditTask.FIT.equals(row.side())) {
+      if (row.side() == IssuesFirstCommitAuditTask.Side.FIT) {
         fit++;
         gaps.add(row.count().implementation() + row.count().capped());
       }
@@ -286,10 +286,10 @@ class IssuesFirstCommitAuditTaskTest {
     final Report r = run();
     int total = 0;
     int outside = 0;
-    for (final Map<String, Integer> row : r.overlap().values()) {
-      for (final Map.Entry<String, Integer> e : row.entrySet()) {
+    for (final var row : r.overlap().values()) {
+      for (final var e : row.entrySet()) {
         total += e.getValue();
-        if (e.getKey().equals(IssuesFirstCommitAuditTask.OUTSIDE)) {
+        if (e.getKey() == IssuesFirstCommitAuditTask.Side.OUTSIDE) {
           outside += e.getValue();
         }
       }

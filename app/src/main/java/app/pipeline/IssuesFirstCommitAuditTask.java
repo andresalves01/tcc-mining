@@ -30,8 +30,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 /**
- * The first-commit population and its target on the training side, read only (ticket 01 of the
- * first-commit study): the base, the commits that count, the selection ({@link FirstCommit}), the
+ * The first-commit population and its target on the training side, read only: the base, the commits that count, the selection ({@link FirstCommit}), the
  * split ({@link ProjectSplit}) over the issues of a target of at least one business day, the cap
  * learned on the inner fitting alone, and the target of the outer training. Of the outer test only
  * its size leaves this task.
@@ -47,11 +46,23 @@ import java.util.TreeSet;
  */
 public final class IssuesFirstCommitAuditTask {
 
-  /** Where an issue lands, as the audit names the sides. */
-  public static final String FIT = "ajuste interno";
-  public static final String VALIDATION = "validação interna";
-  public static final String TEST = "teste externo";
-  public static final String OUTSIDE = "fora do In Progress";
+  /** Where an issue lands in a split, with the name the audit prints. */
+  public enum Side {
+    FIT("ajuste interno"),
+    VALIDATION("validação interna"),
+    TEST("teste externo"),
+    OUTSIDE("fora do In Progress");
+
+    private final String label;
+
+    Side(final String label) {
+      this.label = label;
+    }
+
+    public String label() {
+      return label;
+    }
+  }
 
   /** One line of the funnel: what is left after a rule, and how many it took out. */
   public record Step(String label, int remaining, int removed) {}
@@ -65,10 +76,17 @@ public final class IssuesFirstCommitAuditTask {
    * @param issues issues with at least one commit removed
    * @param belowTwo issues with two commits or more that count but fewer than two after them
    */
-  public record Duplicates(int issues, int sameAuthorDate, int sameTitleLines, int belowTwo) {}
+  public record DuplicateTotals(int issues, int sameAuthorDate, int sameTitleLines, int belowTwo) {}
 
   /** The commits that count over the base: all, recovered originals, natives they replaced. */
-  public record Code(int counted, int originals, int replaced) {}
+  public record CodeTotals(int counted, int originals, int replaced) {}
+
+  /** The running counts behind {@link CodeTotals}. */
+  static final class Tally {
+    int counted;
+    int originals;
+    int replaced;
+  }
 
   /** The target on the outer training, and its parts summed. */
   public record Training(FirstCommit.Summary target, long implementation, long tail, long capped,
@@ -82,18 +100,19 @@ public final class IssuesFirstCommitAuditTask {
    * One issue of the per-issue audit: every issue that left, and every one of the outer training;
    * none of the outer test.
    *
-   * @param side {@link #FIT} or {@link #VALIDATION} on the outer training; empty for one that left
+   * @param side {@link Side#FIT} or {@link Side#VALIDATION} on the outer training; null for one
+   *     that left
    * @param count its target; null unless on the outer training
    */
   public record IssueRow(String id, String key, String project, FirstCommit.Verdict verdict,
-      int counted, int originals, String side, FirstCommit.Count count) {}
+      int counted, int originals, Side side, FirstCommit.Count count) {}
 
   /**
    * @param overlap per side of this split, per side of the In Progress split, how many issues
    */
-  public record Report(int bots, Code code, List<Step> funnel, Duplicates duplicates, Sizes sizes,
+  public record Report(int bots, CodeTotals code, List<Step> funnel, DuplicateTotals duplicates, Sizes sizes,
       FirstCommit.Threshold threshold, Training training, List<Sensitivity> sensitivity,
-      Map<String, Map<String, Integer>> overlap, List<IssueRow> rows) {}
+      Map<Side, Map<Side, Integer>> overlap, List<IssueRow> rows) {}
 
   private final StudySource source;
   private final Progress progress;
@@ -138,7 +157,7 @@ public final class IssuesFirstCommitAuditTask {
     });
     final FirstCommitFacts facts =
         source.firstCommitFacts(nativeIds, originalShas, attachmentIds);
-    final int[] tally = new int[3];
+    final Tally tally = new Tally();
     final Map<String, FirstCommit.Issue> issues = new LinkedHashMap<>();
     for (final Universe.Unit u : base) {
       issues.put(u.id(), issue(u, natives.getOrDefault(u.id(), List.of()),
@@ -155,15 +174,15 @@ public final class IssuesFirstCommitAuditTask {
     final Drawn main = drawn.get(FirstCommit.SHARE);
 
     progress.phase(5, 6, "the In Progress population and split, for the overlap");
-    final Map<String, String> inProgress = inProgressSides(corpus, universe);
+    final Map<String, Side> inProgress = inProgressSides(corpus, universe);
 
     progress.phase(6, 6, "audit");
     final List<Step> funnel = funnel(base.size(), main.verdicts());
     final List<IssueRow> rows = new ArrayList<>();
-    final Map<String, Map<String, Integer>> overlap = new LinkedHashMap<>();
-    for (final String side : List.of(FIT, VALIDATION, TEST)) {
-      final Map<String, Integer> row = new LinkedHashMap<>();
-      for (final String other : List.of(FIT, VALIDATION, TEST, OUTSIDE)) {
+    final Map<Side, Map<Side, Integer>> overlap = new EnumMap<>(Side.class);
+    for (final Side side : List.of(Side.FIT, Side.VALIDATION, Side.TEST)) {
+      final Map<Side, Integer> row = new EnumMap<>(Side.class);
+      for (final Side other : Side.values()) {
         row.put(other, 0);
       }
       overlap.put(side, row);
@@ -185,22 +204,23 @@ public final class IssuesFirstCommitAuditTask {
         belowTwo++;
       }
       final int originals = (int) i.code().stream().filter(FirstCommit.Code::original).count();
-      final String side = side(main.parts(), u.id());
+      final Side side = side(main.parts(), u.id());
       if (side != null) {
-        overlap.get(side).merge(inProgress.getOrDefault(u.id(), OUTSIDE), 1, Integer::sum);
+        overlap.get(side).merge(inProgress.getOrDefault(u.id(), Side.OUTSIDE), 1, Integer::sum);
       }
-      if (TEST.equals(side)) {
+      if (side == Side.TEST) {
         continue; // sealed: only its size leaves this task
       }
       rows.add(new IssueRow(u.id(), u.key(), u.project(), v, i.code().size(), originals,
-          side == null ? "" : side, main.training().get(u.id())));
+          side, main.training().get(u.id())));
     }
     final List<Sensitivity> sensitivity = new ArrayList<>();
     drawn.forEach((limit, d) -> sensitivity.add(new Sensitivity(limit, d.sizes(), d.threshold(),
         FirstCommit.summary(d.training().values().stream().map(FirstCommit.Count::total)
             .toList()))));
-    return new Report(bots.size(), new Code(tally[0], tally[1], tally[2]), funnel,
-        new Duplicates(dupIssues, sameAuthorDate, sameTitleLines, belowTwo), main.sizes(),
+    return new Report(bots.size(),
+        new CodeTotals(tally.counted, tally.originals, tally.replaced), funnel,
+        new DuplicateTotals(dupIssues, sameAuthorDate, sameTitleLines, belowTwo), main.sizes(),
         main.threshold(), training(main.training()), sensitivity, overlap, rows);
   }
 
@@ -286,7 +306,7 @@ public final class IssuesFirstCommitAuditTask {
    */
   static FirstCommit.Issue issue(final Universe.Unit u, final List<Corpus.Commit> natives,
       final DurationEvidence evidence, final FirstCommitFacts facts,
-      final Map<String, Corpus.Person> people, final Universe universe, final int[] tally) {
+      final Map<String, Corpus.Person> people, final Universe universe, final Tally tally) {
     final Set<String> replaced = new HashSet<>();
     evidence.integrations().stream().filter(DurationEvidence.Integration::replacedByOriginals)
         .forEach(i -> replaced.add(i.sourceId()));
@@ -294,7 +314,7 @@ public final class IssuesFirstCommitAuditTask {
     final Set<String> hashes = new HashSet<>();
     for (final Corpus.Commit c : natives) {
       if (replaced.contains(c.id())) {
-        tally[2]++;
+        tally.replaced++;
         continue;
       }
       final FirstCommitFacts.Native f = facts.natives().get(c.id());
@@ -313,9 +333,9 @@ public final class IssuesFirstCommitAuditTask {
       code.add(new FirstCommit.Code(c.sha(), f == null ? null : World.person(f.author(), people),
           c.authoredAt(), f == null ? null : f.lines(), f == null ? null : f.title(),
           f == null ? Set.of() : others(f.linked(), u, universe), true));
-      tally[1]++;
+      tally.originals++;
     }
-    tally[0] += code.size();
+    tally.counted += code.size();
     final List<Long> patches = new ArrayList<>();
     final List<Long> activity = new ArrayList<>();
     for (final DurationEvidence.Activity a : evidence.activities()) {
@@ -372,15 +392,15 @@ public final class IssuesFirstCommitAuditTask {
   }
 
   /** The side an issue landed on; null when it was not drawn. */
-  static String side(final ProjectSplit.Parts parts, final String id) {
+  static Side side(final ProjectSplit.Parts parts, final String id) {
     final Part outer = parts.outer().get(id);
     if (outer == null) {
       return null;
     }
     if (outer == Part.TEST) {
-      return TEST;
+      return Side.TEST;
     }
-    return parts.inner().get(id) == Part.TRAIN ? FIT : VALIDATION;
+    return parts.inner().get(id) == Part.TRAIN ? Side.FIT : Side.VALIDATION;
   }
 
   static List<Step> funnel(final int base, final Map<String, FirstCommit.Verdict> verdicts) {
@@ -417,7 +437,7 @@ public final class IssuesFirstCommitAuditTask {
   }
 
   /** The side of each issue of the In Progress population, drawn as its extraction draws it. */
-  static Map<String, String> inProgressSides(final Corpus corpus, final Universe universe) {
+  static Map<String, Side> inProgressSides(final Corpus corpus, final Universe universe) {
     final List<Universe.Unit> started = universe.population(Population.IN_PROGRESS);
     final Set<String> ids = new TreeSet<>();
     started.forEach(u -> ids.add(u.id()));
@@ -429,7 +449,7 @@ public final class IssuesFirstCommitAuditTask {
       }
     }
     final ProjectSplit.Parts parts = ProjectSplit.draw(projects);
-    final Map<String, String> out = new HashMap<>(projects.size() * 2);
+    final Map<String, Side> out = new HashMap<>(projects.size() * 2);
     projects.keySet().forEach(id -> out.put(id, side(parts, id)));
     return out;
   }
