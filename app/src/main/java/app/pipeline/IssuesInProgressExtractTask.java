@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.BiFunction;
 
 /**
  * The study's population and columns: the issues resolved as Fixed read at their first In
@@ -106,11 +107,43 @@ public final class IssuesInProgressExtractTask {
     final ProjectSplit.Parts split = ProjectSplit.draw(projects);
 
     progress.phase(4, 5, "columns of %,d issues at the In Progress instant", units.size());
-    final Set<String> ids = new TreeSet<>(projects.keySet());
+    // the executors' first touches learnt from every In-Progress issue, as before the drop
+    return columns(source, progress, corpus, universe, units, all, IN_PROGRESS_STARTER,
+        Population.IN_PROGRESS, split, summary(started.size(), projects, split), Map.of(),
+        List.of(), 5, 5);
+  }
+
+  /**
+   * Who made the start, as a canonical person: the executor when nobody was assigned at the start;
+   * and how the run names the executor's three cases.
+   */
+  record Starter(BiFunction<World, Universe.Unit, String> person, String assignee,
+      String starter, String none) {}
+
+  /** P8 for the In Progress population: whoever made the transition. */
+  static final Starter IN_PROGRESS_STARTER = new Starter(
+      (world, u) -> world.person(u.startedBy()), "assignee at t0",
+      "no assignee: whoever made the transition", "none");
+
+  /**
+   * The columns of {@code units}, each read at its own start ({@link Universe.Unit#start}), the
+   * time-travel gate at that instant, and the cache's entries under {@code population}'s split.
+   * Phases {@code phase - 1} and {@code phase} of {@code phases}.
+   *
+   * @param studied the issues whose executors' first touches the extractor learns
+   * @param extra per issue id, further values written after the pause flag, in the order of
+   *     {@code extraColumns}; empty for none
+   */
+  static Report columns(final StudySource source, final Progress progress, final Corpus corpus,
+      final Universe universe, final List<Universe.Unit> units, final Set<String> studied,
+      final Starter starter, final Population population, final ProjectSplit.Parts split,
+      final Split summary, final Map<String, Map<String, Double>> extra,
+      final List<String> extraColumns, final int phase, final int phases) {
+    final Set<String> ids = new TreeSet<>();
+    units.forEach(u -> ids.add(u.id()));
     final Map<String, Corpus.Text> texts = source.texts(ids);
     final World world = new World(universe, corpus);
-    // the executors' first touches learnt from every In-Progress issue, as before the drop
-    final Extractor extractor = new Extractor(world, all);
+    final Extractor extractor = new Extractor(world, studied);
     final Map<String, Map<String, Double>> values = new HashMap<>(ids.size() * 2);
     final Map<String, Extractor.At> at = new HashMap<>(ids.size() * 2);
     final Map<String, Integer> executors = new java.util.LinkedHashMap<>();
@@ -121,9 +154,9 @@ public final class IssuesInProgressExtractTask {
           Initial.at(universe.issue(u.id()), events, texts.get(u.id()), t0);
       final String assignee = Initial.norm(init.assignee());
       final String executor = assignee != null ? world.person(assignee)
-          : world.person(u.startedBy());
-      executors.merge(assignee != null ? "assignee at t0"
-          : executor != null ? "no assignee: whoever made the transition" : "none", 1, Integer::sum);
+          : starter.person().apply(world, u);
+      executors.merge(assignee != null ? starter.assignee()
+          : executor != null ? starter.starter() : starter.none(), 1, Integer::sum);
       final Extractor.At a = new Extractor.At(t0, executor, participants(world, universe, u, t0));
       at.put(u.id(), a);
       final Map<String, Double> row =
@@ -132,11 +165,12 @@ public final class IssuesInProgressExtractTask {
       values.put(u.id(), row);
     }
 
-    progress.phase(5, 5, "gate: time travel");
+    progress.phase(phase, phases, "gate: time travel");
     final List<TimeTravel.Check> travel = TimeTravel.run(world, units, values, at);
 
     final List<String> columns = new ArrayList<>(Attributes.stored());
     columns.add(PAUSED);
+    columns.addAll(extraColumns);
     final List<RowCache.Entry> entries = new ArrayList<>(units.size());
     final Map<String, Map<String, Double>> team = new java.util.LinkedHashMap<>();
     for (final Universe.Unit u : units) {
@@ -151,19 +185,24 @@ public final class IssuesInProgressExtractTask {
       final Universe.Part outer = split.outer().get(u.id());
       final Universe.Part inner = split.inner().get(u.id());
       final Map<Population, String[]> parts = new EnumMap<>(Population.class);
-      parts.put(Population.IN_PROGRESS,
-          new String[] {outer.name(), inner == null ? "" : inner.name()});
+      parts.put(population, new String[] {outer.name(), inner == null ? "" : inner.name()});
       final Row row = row(u.id(), values.get(u.id()));
       final Map<String, Double> withPause = new java.util.LinkedHashMap<>(row.values());
       withPause.put(PAUSED, values.get(u.id()).get(PAUSED));
+      final Map<String, Double> more = extra.getOrDefault(u.id(), Map.of());
+      for (final String column : extraColumns) {
+        final Double v = more.get(column);
+        if (v != null) {
+          withPause.put(column, v);
+        }
+      }
       entries.add(new RowCache.Entry(new IssueUnit(u.id(), u.key(), u.project(),
           world.person(u.reporter()), at.get(u.id()).executor(),
           Instant.ofEpochMilli(u.created()), Instant.ofEpochMilli(u.resolved()), u.reason(),
           u.moved(), Instant.ofEpochMilli(u.start())),
           new Row(u.id(), withPause, row.absent()), parts));
     }
-    return new Report(summary(started.size(), projects, split), travel, executors, entries,
-        columns, team);
+    return new Report(summary, travel, executors, entries, columns, team);
   }
 
   /** The cache row: every extracted column, its absence flag, and the sensitivity A15w. */

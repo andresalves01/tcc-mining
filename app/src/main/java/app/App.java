@@ -119,7 +119,7 @@ public final class App {
         new MongoCommitComplexityStore(client, config.targetDb()),
         new MongoCorpusCheck(client, config.sourceDb()),
         progress,
-        new app.pipeline.mongo.MongoStudySource(client, config.sourceDb(), config.targetDb(),
+        new app.pipeline.mongo.MongoStudySource(client, config.sourceDb(), config.preparedDb(),
             progress),
         new app.pipeline.mongo.MongoIssuesStore(client, config.issuesDb()),
         new app.pipeline.mongo.MongoChangedMethodSource(client, config.sourceDb(), progress));

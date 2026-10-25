@@ -50,6 +50,7 @@ public final class RowCache {
   static String prefix(final Population p) {
     return switch (p) {
       case IN_PROGRESS -> "andamento";
+      case FIRST_COMMIT -> "primeiro_commit";
     };
   }
 
@@ -59,11 +60,15 @@ public final class RowCache {
 
   /**
    * One cache for the given populations. The start instant is written when a population's duration
-   * does not start at creation, as {@link Population#IN_PROGRESS}'s does not.
+   * does not start at creation, as neither {@link Population#IN_PROGRESS}'s nor {@link
+   * Population#FIRST_COMMIT}'s does; a cache holds the start of one population only.
    */
   public static void write(final Path path, final List<Entry> entries, final List<String> columns,
       final List<Population> populations) throws IOException {
-    final boolean started = populations.contains(Population.IN_PROGRESS);
+    if (populations.size() > 1) {
+      throw new IllegalArgumentException("one start instant per cache: " + populations);
+    }
+    final boolean started = !populations.isEmpty();
     final StringBuilder out = new StringBuilder(1 << 24);
     out.append(String.join(SEP, BASE));
     if (started) {

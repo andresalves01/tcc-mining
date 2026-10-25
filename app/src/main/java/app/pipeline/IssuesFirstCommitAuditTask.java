@@ -123,51 +123,40 @@ public final class IssuesFirstCommitAuditTask {
     this.progress = progress;
   }
 
-  /** The issues under one limit, split, the cap learned and the training counted. */
-  private record Drawn(Map<String, FirstCommit.Verdict> verdicts, ProjectSplit.Parts parts,
+  /**
+   * The issues under one limit, split, the cap learned and the training counted.
+   *
+   * @param training the target of each outer training issue, at the cap
+   */
+  record Drawn(Map<String, FirstCommit.Verdict> verdicts, ProjectSplit.Parts parts,
       Sizes sizes, FirstCommit.Threshold threshold, Map<String, FirstCommit.Count> training) {}
 
+  /**
+   * The base and what the rules read of each of its issues.
+   *
+   * @param units the issues resolved as Fixed at their first resolution, in universe order
+   * @param issues per base issue id, its commits that count, patches and human activity
+   */
+  record Base(Corpus corpus, Universe universe, DayBoundaries days, Set<String> bots,
+      List<Universe.Unit> units, Map<String, FirstCommit.Issue> issues, Tally tally) {
+
+    /** The day boundary of the first commit's author, read at that commit. */
+    FirstCommit.Boundary boundary() {
+      return (author, project, at) -> days.at(author, project, at).hour();
+    }
+  }
+
   public Report run() {
-    progress.phase(1, 6, "reading the corpus: %s", source.describe());
-    final Corpus corpus = source.load();
-
-    progress.phase(2, 6, "base: the issues resolved as Fixed at their first resolution");
-    final Universe universe = Universe.of(corpus);
-    final DayBoundaries days = DayBoundaries.of(corpus, universe);
-    final Set<String> bots = days.bots();
-    final List<Universe.Unit> base = new ArrayList<>();
-    for (final String id : universe.universe()) {
-      final Universe.Unit u = universe.unit(id);
-      if (u != null && "Fixed".equals(u.reason())) {
-        base.add(u);
-      }
-    }
-    final Map<String, List<Corpus.Commit>> natives = natives(corpus, base, bots);
-
-    progress.phase(3, 6, "pull-request originals and human activity of %,d issues", base.size());
-    final Map<String, DurationEvidence> evidence = evidence(base, bots);
-    final Set<String> nativeIds = new TreeSet<>();
-    natives.values().forEach(l -> l.forEach(c -> nativeIds.add(c.id())));
-    final Set<String> originalShas = new TreeSet<>();
-    final Set<String> attachmentIds = new TreeSet<>();
-    evidence.values().forEach(e -> {
-      e.changes().stream().filter(DurationEvidence.Change::original)
-          .forEach(c -> originalShas.add(c.sha()));
-      e.activities().stream().filter(a -> "attachment".equals(a.kind()))
-          .forEach(a -> attachmentIds.add(a.sourceId()));
-    });
-    final FirstCommitFacts facts =
-        source.firstCommitFacts(nativeIds, originalShas, attachmentIds);
-    final Tally tally = new Tally();
-    final Map<String, FirstCommit.Issue> issues = new LinkedHashMap<>();
-    for (final Universe.Unit u : base) {
-      issues.put(u.id(), issue(u, natives.getOrDefault(u.id(), List.of()),
-          evidence.get(u.id()), facts, corpus.people(), universe, tally));
-    }
+    final Base b = base(6);
+    final Corpus corpus = b.corpus();
+    final Universe universe = b.universe();
+    final List<Universe.Unit> base = b.units();
+    final Map<String, FirstCommit.Issue> issues = b.issues();
+    final Tally tally = b.tally();
+    final Set<String> bots = b.bots();
 
     progress.phase(4, 6, "selection, split and cap");
-    final FirstCommit.Boundary boundary = (author, project, at) -> days.at(author, project, at)
-        .hour();
+    final FirstCommit.Boundary boundary = b.boundary();
     final Map<Double, Drawn> drawn = new LinkedHashMap<>();
     for (final double limit : FirstCommit.SENSITIVITY) {
       drawn.put(limit, draw(issues, limit, boundary));
@@ -223,6 +212,52 @@ public final class IssuesFirstCommitAuditTask {
         new CodeTotals(tally.counted, tally.originals, tally.replaced), funnel,
         new DuplicateTotals(dupIssues, sameAuthorDate, sameTitleLines, belowTwo), main.sizes(),
         main.threshold(), training(main.training()), sensitivity, overlap, rows);
+  }
+
+  /**
+   * Phases 1 to 3 of {@code phases}: the corpus, the base, and each base issue's commits that
+   * count, patches and human activity. Shared with the extraction of the first-commit population
+   * ({@link IssuesFirstCommitExtractTask}), so both read the same issues.
+   */
+  Base base(final int phases) {
+    progress.phase(1, phases, "reading the corpus: %s", source.describe());
+    final Corpus corpus = source.load();
+
+    progress.phase(2, phases, "base: the issues resolved as Fixed at their first resolution");
+    final Universe universe = Universe.of(corpus);
+    final DayBoundaries days = DayBoundaries.of(corpus, universe);
+    final Set<String> bots = days.bots();
+    final List<Universe.Unit> base = new ArrayList<>();
+    for (final String id : universe.universe()) {
+      final Universe.Unit u = universe.unit(id);
+      if (u != null && "Fixed".equals(u.reason())) {
+        base.add(u);
+      }
+    }
+    final Map<String, List<Corpus.Commit>> natives = natives(corpus, base, bots);
+
+    progress.phase(3, phases, "pull-request originals and human activity of %,d issues",
+        base.size());
+    final Map<String, DurationEvidence> evidence = evidence(base, bots);
+    final Set<String> nativeIds = new TreeSet<>();
+    natives.values().forEach(l -> l.forEach(c -> nativeIds.add(c.id())));
+    final Set<String> originalShas = new TreeSet<>();
+    final Set<String> attachmentIds = new TreeSet<>();
+    evidence.values().forEach(e -> {
+      e.changes().stream().filter(DurationEvidence.Change::original)
+          .forEach(c -> originalShas.add(c.sha()));
+      e.activities().stream().filter(a -> "attachment".equals(a.kind()))
+          .forEach(a -> attachmentIds.add(a.sourceId()));
+    });
+    final FirstCommitFacts facts =
+        source.firstCommitFacts(nativeIds, originalShas, attachmentIds);
+    final Tally tally = new Tally();
+    final Map<String, FirstCommit.Issue> issues = new LinkedHashMap<>();
+    for (final Universe.Unit u : base) {
+      issues.put(u.id(), issue(u, natives.getOrDefault(u.id(), List.of()),
+          evidence.get(u.id()), facts, corpus.people(), universe, tally));
+    }
+    return new Base(corpus, universe, days, bots, base, issues, tally);
   }
 
   // ------------------------------------------------------------------ commits that count
@@ -352,7 +387,7 @@ public final class IssuesFirstCommitAuditTask {
 
   // ------------------------------------------------------------------ population and target
 
-  private static Drawn draw(final Map<String, FirstCommit.Issue> issues, final double limit,
+  static Drawn draw(final Map<String, FirstCommit.Issue> issues, final double limit,
       final FirstCommit.Boundary boundary) {
     final Map<String, FirstCommit.Verdict> verdicts = new LinkedHashMap<>();
     final Map<String, String> projects = new HashMap<>();

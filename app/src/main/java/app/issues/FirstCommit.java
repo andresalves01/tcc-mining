@@ -41,6 +41,13 @@ public final class FirstCommit {
   /** An attachment whose file name says it is a patch. */
   public static final Pattern PATCH = Pattern.compile("(?i)patch|\\.diff$");
 
+  /** The population in words, for the run records. */
+  public static final String POPULATION = "issues resolved as Fixed at their first resolution, "
+      + "created before their first commit that counts, with at least two commits once "
+      + "duplicates are gone, the first commit below 50% of the changed lines of every file, "
+      + "code on at least two dates, no commit linked to another issue, and a target of at least "
+      + "one business day; the split is drawn over them alone";
+
   /** The rules in words, for the audit. */
   public static final String RULE = "first commit to first resolution; marks are the commits "
       + "and the human patches after the first commit; business days between marks capped at "
