@@ -108,7 +108,8 @@ public final class IssuesFirstCommitAuditTask {
       int counted, int originals, Side side, FirstCommit.Count count) {}
 
   /**
-   * @param overlap per side of this split, per side of the In Progress split, how many issues
+   * @param overlap per side of this split's outer training, per side of the In Progress split,
+   *     how many issues; the outer test is left out, its size is in {@code sizes}
    */
   public record Report(int bots, CodeTotals code, List<Step> funnel, DuplicateTotals duplicates, Sizes sizes,
       FirstCommit.Threshold threshold, Training training, List<Sensitivity> sensitivity,
@@ -180,7 +181,7 @@ public final class IssuesFirstCommitAuditTask {
     final List<Step> funnel = funnel(base.size(), main.verdicts());
     final List<IssueRow> rows = new ArrayList<>();
     final Map<Side, Map<Side, Integer>> overlap = new EnumMap<>(Side.class);
-    for (final Side side : List.of(Side.FIT, Side.VALIDATION, Side.TEST)) {
+    for (final Side side : List.of(Side.FIT, Side.VALIDATION)) {
       final Map<Side, Integer> row = new EnumMap<>(Side.class);
       for (final Side other : Side.values()) {
         row.put(other, 0);
@@ -205,11 +206,11 @@ public final class IssuesFirstCommitAuditTask {
       }
       final int originals = (int) i.code().stream().filter(FirstCommit.Code::original).count();
       final Side side = side(main.parts(), u.id());
-      if (side != null) {
-        overlap.get(side).merge(inProgress.getOrDefault(u.id(), Side.OUTSIDE), 1, Integer::sum);
-      }
       if (side == Side.TEST) {
         continue; // sealed: only its size leaves this task
+      }
+      if (side != null) {
+        overlap.get(side).merge(inProgress.getOrDefault(u.id(), Side.OUTSIDE), 1, Integer::sum);
       }
       rows.add(new IssueRow(u.id(), u.key(), u.project(), v, i.code().size(), originals,
           side, main.training().get(u.id())));

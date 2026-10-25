@@ -171,6 +171,10 @@ public final class IssuesFirstCommitAuditCommand implements CommandRunner {
       }
       md.add(b.append(' ').append(n(total)).append(" |").toString());
     }
+    md.add("| " + Side.TEST.label() + " |" + " — |".repeat(sides.size()) + " "
+        + n(r.sizes().test()) + " |");
+    md.add("");
+    md.add("Do teste externo, só o total.");
     return md;
   }
 

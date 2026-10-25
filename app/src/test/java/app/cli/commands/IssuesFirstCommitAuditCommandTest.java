@@ -108,6 +108,7 @@ class IssuesFirstCommitAuditCommandTest {
     final String md = Files.readString(out.resolve("audit.md"));
     assertTrue(md.contains("| Fixed na primeira resolução | 10 | — |"), md);
     assertTrue(md.contains("| 10 | 1 | 7 | 3 | 5 | 2 |"), "drawn, projects and the sides: " + md);
+    assertTrue(md.contains("| teste externo | — | — | — | — | 3 |"), "only the test's total: " + md);
     final List<String> lines = Files.readAllLines(out.resolve("per-issue.tsv"));
     assertEquals(1 + 7, lines.size(), "the header and the training side, never the test side");
     for (final String line : lines.subList(1, lines.size())) {

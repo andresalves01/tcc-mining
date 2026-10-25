@@ -281,7 +281,7 @@ class IssuesFirstCommitAuditTaskTest {
   }
 
   @Test
-  @DisplayName("every drawn issue is placed against the In Progress split")
+  @DisplayName("every training issue is placed against the In Progress split; the test is not")
   void overlap() {
     final Report r = run();
     int total = 0;
@@ -294,7 +294,8 @@ class IssuesFirstCommitAuditTaskTest {
         }
       }
     }
-    assertEquals(r.sizes().rows(), total);
+    assertEquals(r.sizes().train(), total);
+    assertFalse(r.overlap().containsKey(IssuesFirstCommitAuditTask.Side.TEST));
     assertEquals(1, outside, "Q-110 never went to In Progress");
   }
 }
