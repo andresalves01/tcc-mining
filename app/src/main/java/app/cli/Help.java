@@ -93,6 +93,8 @@ public final class Help {
                                                 fences and each k's error;
                                                 issues-in-progress-similarity-test and
                                                 -inner-report read it
+          AUDIT_DIR         (unset)             issues-first-commit-audit: where audit.md and
+                                                per-issue.tsv go
         """);
   }
 

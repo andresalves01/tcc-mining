@@ -4,9 +4,10 @@ How many recorded business days an issue of an Apache Java project takes from it
 to In Progress to its first resolution, estimated under the declared start-attribute and
 training-history protocol, and how much more is associated with retrospective attributes.
 The interval measures the recorded workflow: neither status is a validated boundary of actual
-implementation or person-effort. It is the only study this repository serves.
+implementation or person-effort. The repository also serves the first-commit study (see
+**Duration from the first commit** below); neither study is the main or the secondary one.
 
-_Avoid_: secondary study, in-progress variant, main study (there is no other study to be secondary to)
+_Avoid_: secondary study, in-progress variant, main study
 
 ## Language
 
@@ -237,3 +238,40 @@ duration have equal relative errors only under that allocation assumption; the s
 status-adjusted business days measure recorded workflow duration, not observed person-effort.
 Pooled error spread is not each activity's conditional uncertainty, and a tested scenario is not
 a validated scheduling tolerance. These readings choose no model or population.
+
+### Duration from the first commit
+
+**First-commit study**:
+The study of how many business days an issue takes from its first commit to its first resolution,
+in issues where most of the code is written after that commit. Its population and target are its
+own; its splits follow the same rule, drawn again over its issues.
+
+**Commit that counts**:
+A commit linked to the issue, by a human, authored before the first resolution, not a merge; a
+commit recovered from a pull request counts, and replaces the commit that merged it.
+
+**First commit**:
+The earliest commit that counts; the start of the first-commit study's duration.
+
+**First-commit population**:
+The issues resolved as Fixed at their first resolution, created before their first commit, with
+at least two commits that count once duplicates are removed, a first commit below 50% of the
+issue's changed lines, code on at least two dates, no commit linked to another issue, and a
+duration of at least one business day. It observes how most of the work is done, not how long
+what was left takes.
+
+**Mark**:
+A commit that counts, or a human patch attached after the first commit and before the first
+resolution.
+
+**Wait**:
+The business days between two consecutive marks.
+
+**Wait fence**:
+Q3 + 1.5·IQR of the waits of the inner fitting; the **wait cap** is the largest wait not above it,
+learned once and frozen. A wait counts up to the cap, never below its dates with human activity.
+_Avoid_: fence (the fence is on the duration)
+
+**Tail**:
+After the last mark, the dates with a human comment, attachment or review, up to the first
+resolution; only those count.

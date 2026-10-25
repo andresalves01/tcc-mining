@@ -134,9 +134,24 @@ MongoDB. It needs `MATRIX`, `ADJUSTED_DIR`, `BOT_ACCOUNTS`, `START_DESCRIPTIONS`
 `EMBEDDING_CACHE`. `ADJUSTED_STEP` selects the step: `evidence`, `audit`, `matrix`, `select`,
 `report`, `models`, `baseline-select`, `baseline-report` or `outer-matrix`.
 
+### 4. Issue duration from the first commit: audit
+
+`issues-first-commit-audit` builds, read only, the population of another study: the duration from
+an issue's first commit to its first resolution. It keeps the issues resolved as Fixed at their
+first resolution, created before their first commit, with at least two commits once duplicates are
+gone, a first commit below 50% of the changed lines, code on at least two dates and no commit linked
+to another issue. It draws the split with the rule of the In Progress study, learns the cap on the
+waits between commits and patches on the inner fitting only, and counts the target of the outer
+training. It also reports the limits of 30% and 70% and the overlap with the In Progress split.
+Of the outer test it writes only the size.
+
+It needs `AUDIT_DIR`, where it writes `audit.md` and `per-issue.tsv`, and writes nothing to
+MongoDB. Give it `APP_OPTS=-Xmx6g`.
+
 ### Commands that only read
 
-`check` and `help` write nothing to MongoDB and can be run at any time.
+`check`, `help` and `issues-first-commit-audit` write nothing to MongoDB and can be run at any
+time.
 
 ## Tests
 
