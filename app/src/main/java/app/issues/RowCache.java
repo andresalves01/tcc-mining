@@ -104,6 +104,28 @@ public final class RowCache {
     Files.writeString(path, out.toString(), StandardCharsets.UTF_8);
   }
 
+  /**
+   * The population whose split every entry carries: the one a matrix was extracted for. Refuses
+   * entries of no population, of more than one, or a mixture.
+   */
+  public static Population population(final List<Entry> entries) {
+    if (entries.isEmpty()) {
+      throw new IllegalArgumentException("no rows: the matrix's population is unknown");
+    }
+    final Set<Population> found = entries.getFirst().parts().keySet();
+    if (found.size() != 1) {
+      throw new IllegalArgumentException(entries.getFirst().unit().issueId() + " carries the "
+          + "split of " + found + "; a matrix carries the split of one population");
+    }
+    for (final Entry e : entries) {
+      if (!e.parts().keySet().equals(found)) {
+        throw new IllegalArgumentException(e.unit().issueId() + " carries the split of "
+            + e.parts().keySet() + ", the first row that of " + found);
+      }
+    }
+    return found.iterator().next();
+  }
+
   /** Reads a cache: the partitions and the start are found by column name. */
   public static List<Entry> read(final Path path) throws IOException {
     return read(path, null, null);

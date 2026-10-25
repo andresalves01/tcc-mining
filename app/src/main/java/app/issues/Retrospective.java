@@ -15,7 +15,8 @@ import java.util.Set;
 
 /**
  * The retrospective scenario's nine attributes (tickets 15 and 19), observed between the first In
- * Progress (t0) and the first resolution (t1). They describe the work as it was done; a count
+ * Progress (t0) and the first resolution (t1); for the first-commit population t0 is the unit's
+ * start, the first commit that counts. They describe the work as it was done; a count
  * grows with the duration itself, so a model reading them shows association with the duration,
  * not a prediction available during the work.
  *

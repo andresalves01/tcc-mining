@@ -9,6 +9,7 @@ import app.issues.DayBoundaries;
 import app.issues.DescriptionCleaner;
 import app.issues.Embedder;
 import app.issues.Extractor;
+import app.issues.FirstCommit;
 import app.issues.ProjectSplit;
 import app.issues.RowCache;
 import app.issues.TeamColumns;
@@ -69,6 +70,24 @@ public final class IssuesSimilarityCommand implements CommandRunner {
 
   private static final Population P = Population.IN_PROGRESS;
 
+  /** Where each setting is read from: the environment, then the system properties. */
+  private final Function<String, String> settings;
+
+  public IssuesSimilarityCommand() {
+    this(name -> {
+      final String fromEnv = System.getenv(name);
+      return fromEnv == null || fromEnv.isBlank() ? System.getProperty(name) : fromEnv;
+    });
+  }
+
+  /**
+   * @param settings the settings by name; the tests hand their own, so a real CACHE in the
+   *     environment of whoever runs them is never read
+   */
+  IssuesSimilarityCommand(final Function<String, String> settings) {
+    this.settings = settings;
+  }
+
   @Override
   public void run(final Context context) throws CommandFailedException {
     final Path cache = path("CACHE");
@@ -116,7 +135,19 @@ public final class IssuesSimilarityCommand implements CommandRunner {
       throw new CommandFailedException(List.of("  REFUSED: " + cache + " already has "
           + String.join(", ", already) + "; give the matrix the extraction wrote"));
     }
-    System.out.printf("%n  DURATION FROM IN PROGRESS -- DESCRIPTION SIMILARITY%n");
+    final Population population;
+    try {
+      population = RowCache.population(extracted);
+    } catch (final IllegalArgumentException e) {
+      throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
+          + e.getMessage()));
+    }
+    final boolean firstCommit = population == Population.FIRST_COMMIT;
+    if (firstCommit) {
+      IssuesInProgressExtractCommand.requireOwnDatabases(context.config());
+    }
+    System.out.printf("%n  DURATION FROM %s -- DESCRIPTION SIMILARITY%n",
+        firstCommit ? "THE FIRST COMMIT" : "IN PROGRESS");
     System.out.printf("  matrix read %s  sha256 %s (%,d rows)%n", cache, cacheSha,
         extracted.size());
     System.out.printf("  team columns read %s  sha256 %s%n", teamFile, teamSha);
@@ -157,8 +188,8 @@ public final class IssuesSimilarityCommand implements CommandRunner {
         embeddingThreads, embeddingThreads == 1 ? "" : "s");
     final long augmenting = System.nanoTime();
     try {
-      r = new IssuesSimilarityTask(context.study(), context.progress(), embeddings, clusterer)
-          .run(entries);
+      r = new IssuesSimilarityTask(context.study(), context.progress(), embeddings, clusterer,
+          population).run(entries);
     } catch (final RuntimeException e) {
       throw new CommandFailedException(List.of("  the similarity stage failed, nothing was "
           + "written or recorded but the embeddings already computed: " + e));
@@ -187,9 +218,9 @@ public final class IssuesSimilarityCommand implements CommandRunner {
 
     final Map<String, String> written = new LinkedHashMap<>();
     try {
-      writeMatrix(matrix, r, columns);
+      writeMatrix(matrix, r, columns, population);
       written.put("matrix", Sha256.of(matrix));
-      for (final Map.Entry<String, List<String>> f : diagnostics(r).entrySet()) {
+      for (final Map.Entry<String, List<String>> f : diagnostics(r, population).entrySet()) {
         Files.createDirectories(reports);
         final Path file = reports.resolve(f.getKey());
         Files.write(file, f.getValue());
@@ -199,8 +230,9 @@ public final class IssuesSimilarityCommand implements CommandRunner {
       throw new CommandFailedException(List.of("  could not write the outputs: " + e));
     }
 
-    System.out.printf("%n  %,d of %,d issues have a description at their first In Progress "
-        + "(cleaner %s)%n", r.described(), entries.size(), DescriptionCleaner.VERSION);
+    System.out.printf("%n  %,d of %,d issues have a description at their %s (cleaner %s)%n",
+        r.described(), entries.size(), firstCommit ? "first commit" : "first In Progress",
+        DescriptionCleaner.VERSION);
     final List<Augmentation.Embedded> embedded = r.result().embedded();
     final long invalid = embedded.stream().filter(e -> e.problem() != null).count();
     final int maxChunks = embedded.stream().mapToInt(Augmentation.Embedded::chunks).max()
@@ -218,16 +250,21 @@ public final class IssuesSimilarityCommand implements CommandRunner {
         fixVersions.changed() == 0 ? 100.0
             : 100.0 * fixVersions.consistent() / fixVersions.changed(),
         100.0 * fixVersions.differs() / fixVersions.issues());
-    System.out.printf("%n  DAY BOUNDARIES: %s; %s%n", BusinessDays.TARGET,
-        BusinessDays.HOLIDAYS);
-    System.out.printf("  %,d bot accounts left out of the activity (at least %d comments, at "
-        + "least %.0f%% opening like a bot's template)%n", r.bots().size(),
-        DayBoundaries.BOT_MIN_COMMENTS, 100 * DayBoundaries.BOT_TEMPLATED_SHARE);
-    final Map<String, Map<String, Integer>> sources = sources(r);
-    sources.forEach((split, by) -> System.out.printf("    %-18s %s%n", split, by));
-    final Map<String, Integer> changed = changedByActiveTime(r);
-    System.out.printf("  issues whose business days the time back in Open or Reopened changed: "
-        + "%s%n", changed);
+    final Map<String, Map<String, Integer>> sources = firstCommit ? Map.of() : sources(r);
+    final Map<String, Integer> changed = firstCommit ? Map.of() : changedByActiveTime(r);
+    if (firstCommit) {
+      System.out.printf("%n  TARGET READ BY EVERY HISTORY: %s, the extraction's (%s)%n",
+          FirstCommit.TARGET_COLUMN, FirstCommit.RULE);
+    } else {
+      System.out.printf("%n  DAY BOUNDARIES: %s; %s%n", BusinessDays.TARGET,
+          BusinessDays.HOLIDAYS);
+      System.out.printf("  %,d bot accounts left out of the activity (at least %d comments, at "
+          + "least %.0f%% opening like a bot's template)%n", r.bots().size(),
+          DayBoundaries.BOT_MIN_COMMENTS, 100 * DayBoundaries.BOT_TEMPLATED_SHARE);
+      sources.forEach((split, by) -> System.out.printf("    %-18s %s%n", split, by));
+      System.out.printf("  issues whose business days the time back in Open or Reopened changed: "
+          + "%s%n", changed);
+    }
 
     System.out.printf("%n  COVERAGE BY SPLIT%n");
     final List<Map<String, Object>> rows = new ArrayList<>();
@@ -256,7 +293,7 @@ public final class IssuesSimilarityCommand implements CommandRunner {
           h.rows(), h.history());
     }
     System.out.printf("%n  matrix written to %s (%d new columns)%n", matrix,
-        IssuesSimilarityTask.columns().size() + BusinessDays.COLUMNS.size());
+        IssuesSimilarityTask.columns().size() + (firstCommit ? 0 : BusinessDays.COLUMNS.size()));
     System.out.printf("  diagnostics written to %s: %s%n", reports,
         String.join(", ", written.keySet().stream().filter(k -> !k.equals("matrix")).toList()));
 
@@ -298,14 +335,22 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     run.put("history", HISTORY);
     run.put("split_rule", ProjectSplit.RULE);
     run.put("split_seed", ProjectSplit.SEED);
-    run.put("target", BusinessDays.TARGET);
-    run.put("population", BusinessDays.POPULATION);
-    run.put("holidays", BusinessDays.HOLIDAYS);
-    run.put("stopped_statuses", BusinessDays.STOPPED.stream().sorted().toList());
-    run.put("changed_by_active_time", changed);
-    run.put("day_boundary", boundaryRule());
-    run.put("day_boundary_sources", sources);
-    run.put("bot_accounts", r.bots().stream().sorted().toList());
+    if (firstCommit) {
+      run.put("study_population", population.name());
+      run.put("target", FirstCommit.RULE);
+      run.put("target_column", FirstCommit.TARGET_COLUMN);
+      run.put("population", FirstCommit.POPULATION);
+      run.put("description_at", "the first commit that counts");
+    } else {
+      run.put("target", BusinessDays.TARGET);
+      run.put("population", BusinessDays.POPULATION);
+      run.put("holidays", BusinessDays.HOLIDAYS);
+      run.put("stopped_statuses", BusinessDays.STOPPED.stream().sorted().toList());
+      run.put("changed_by_active_time", changed);
+      run.put("day_boundary", boundaryRule());
+      run.put("day_boundary_sources", sources);
+      run.put("bot_accounts", r.bots().stream().sorted().toList());
+    }
     run.put("rows", entries.size());
     run.put("described", r.described());
     run.put("seconds", (System.nanoTime() - began) / 1e9);
@@ -361,11 +406,22 @@ public final class IssuesSimilarityCommand implements CommandRunner {
   /** The matrix as read, every column and header name kept, with the new columns after them. */
   static void writeMatrix(final Path out, final IssuesSimilarityTask.Report r,
       final List<String> columns) throws IOException {
+    writeMatrix(out, r, columns, P);
+  }
+
+  /**
+   * The same for the matrix of {@code population}: of the first-commit population, without the
+   * day boundary and the active business days, its target already in the matrix.
+   */
+  static void writeMatrix(final Path out, final IssuesSimilarityTask.Report r,
+      final List<String> columns, final Population population) throws IOException {
     final List<String> all = new ArrayList<>(columns);
     all.removeAll(BusinessDays.LEGACY_RECORDED_COLUMNS);
     all.addAll(IssuesSimilarityTask.columns());
-    all.addAll(BusinessDays.COLUMNS);
-    RowCache.write(out, r.entries(), all, List.of(P));
+    if (population == Population.IN_PROGRESS) {
+      all.addAll(BusinessDays.COLUMNS);
+    }
+    RowCache.write(out, r.entries(), all, List.of(population));
   }
 
   /** The day boundary's rule as a document, for the run record. */
@@ -452,6 +508,15 @@ public final class IssuesSimilarityCommand implements CommandRunner {
 
   /** Each diagnostic file by name, as lines with a header. */
   static Map<String, List<String>> diagnostics(final IssuesSimilarityTask.Report r) {
+    return diagnostics(r, P);
+  }
+
+  /**
+   * The same for the matrix of {@code population}; of the first-commit population without the
+   * day boundaries, which this stage does not read there.
+   */
+  static Map<String, List<String>> diagnostics(final IssuesSimilarityTask.Report r,
+      final Population population) {
     final Map<String, String> project = new HashMap<>();
     r.entries().forEach(e -> project.put(e.unit().issueId(), e.unit().project()));
     final Map<String, List<String>> out = new LinkedHashMap<>();
@@ -543,6 +608,9 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     r.result().histories().forEach(h -> histories.add(String.join("\t", name(h.variant()),
         Integer.toString(h.rows()), Integer.toString(h.history()))));
     out.put("histories.tsv", histories);
+    if (population != Population.IN_PROGRESS) {
+      return out;
+    }
 
     // the business days of the whole interval beside the active ones the matrix holds, so the
     // issues whose count the time back in Open or Reopened changed can be found; left blank on
@@ -570,9 +638,8 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     return v.name().toLowerCase(Locale.ROOT);
   }
 
-  private static Path path(final String name) throws CommandFailedException {
-    final String fromEnv = System.getenv(name);
-    final String value = fromEnv == null || fromEnv.isBlank() ? System.getProperty(name) : fromEnv;
+  private Path path(final String name) throws CommandFailedException {
+    final String value = settings.apply(name);
     if (value == null || value.isBlank()) {
       throw new CommandFailedException(List.of("  CACHE, TEAM_COLUMNS, MATRIX, REPORT_DIR, "
           + "MODEL_DIR and EMBEDDING_CACHE are required; missing " + name));

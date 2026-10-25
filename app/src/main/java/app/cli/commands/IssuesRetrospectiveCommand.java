@@ -6,6 +6,7 @@ import app.cli.Context;
 import app.issues.Augmentation;
 import app.issues.BusinessDays;
 import app.issues.DayBoundaries;
+import app.issues.FirstCommit;
 import app.issues.Retrospective;
 import app.issues.RowCache;
 import app.issues.Universe.Population;
@@ -84,6 +85,7 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
     final String matrixSha;
     final List<RowCache.Entry> entries;
     final List<String> columns;
+    final Population population;
     try {
       refuseForeign(out);
       columns = new ArrayList<>(RowCache.columns(matrix));
@@ -91,11 +93,24 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
       if (obsoleteTarget != null && columns.stream().anyMatch(BusinessDays.LEGACY_RECORDED_COLUMNS::contains)) {
         throw refused(obsoleteTarget);
       }
+      entries = RowCache.read(matrix);
+      try {
+        population = RowCache.population(entries);
+      } catch (final IllegalArgumentException e) {
+        throw refused(e.getMessage());
+      }
       final List<String> needed = new ArrayList<>(IssuesSimilarityTask.columns());
-      needed.addAll(BusinessDays.COLUMNS);
+      needed.addAll(BusinessDays.columns(population));
+      if (population == Population.FIRST_COMMIT) {
+        needed.addAll(FirstCommit.ATTRIBUTE_COLUMNS);
+      }
       if (!columns.containsAll(needed)) {
-        throw refused(matrix + " has not the similarity stage's columns, the day boundary and "
-            + "the active business days; give the matrix issues-in-progress-similarity wrote");
+        throw refused(population == Population.IN_PROGRESS
+            ? matrix + " has not the similarity stage's columns, the day boundary and the active "
+                + "business days; give the matrix issues-in-progress-similarity wrote"
+            : matrix + " has not the similarity stage's columns, the first-commit target and "
+                + "the attributes of decision 16a; give the matrix issues-in-progress-similarity "
+                + "wrote from the first-commit extraction");
       }
       final List<String> already =
           Retrospective.COLUMNS.stream().filter(columns::contains).toList();
@@ -103,20 +118,23 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
         throw refused(matrix + " already has " + String.join(", ", already));
       }
       matrixSha = Sha256.of(matrix);
-      entries = RowCache.read(matrix);
     } catch (final IOException e) {
       throw new CommandFailedException(List.of("  could not read " + matrix + ": " + e));
     }
+    final boolean firstCommit = population == Population.FIRST_COMMIT;
+    if (firstCommit) {
+      IssuesInProgressExtractCommand.requireOwnDatabases(context.config());
+    }
 
-    System.out.printf("%n  DURATION FROM IN PROGRESS -- DESCRIPTION SIMILARITY -- RETROSPECTIVE "
-        + "SCENARIO%n");
+    System.out.printf("%n  DURATION FROM %s -- DESCRIPTION SIMILARITY -- RETROSPECTIVE "
+        + "SCENARIO%n", firstCommit ? "THE FIRST COMMIT" : "IN PROGRESS");
     System.out.printf("  %s%n", Retrospective.SCENARIO);
     System.out.printf("  matrix read %s  sha256 %s (%,d rows)%n", matrix, matrixSha,
         entries.size());
     final IssuesRetrospectiveTask.Report r;
     try {
       r = new IssuesRetrospectiveTask(context.study(), context.changedMethods(),
-          context.progress()).run(entries);
+          context.progress(), population).run(entries);
     } catch (final IllegalArgumentException e) {
       throw refused(e.getMessage());
     }
@@ -142,7 +160,7 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
     all.addAll(Retrospective.COLUMNS);
     final String outSha;
     try {
-      RowCache.write(out, r.entries(), all, List.of(Population.IN_PROGRESS));
+      RowCache.write(out, r.entries(), all, List.of(population));
       outSha = Sha256.of(out);
     } catch (final IOException e) {
       throw new CommandFailedException(List.of("  could not write " + out + ": " + e));
@@ -153,6 +171,9 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
     final Map<String, Object> run = new LinkedHashMap<>();
     run.put("stage", STAGE);
     run.putAll(statements());
+    if (firstCommit) {
+      run.putAll(firstCommitStatements());
+    }
     run.put("columns", Retrospective.COLUMNS);
     run.put("matrix_sha256", matrixSha);
     run.put("retrospective_matrix_sha256", outSha);
@@ -198,6 +219,25 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
         + "had one, so no model reads it");
     out.put("bots", DayBoundaries.BOT_RULE);
     out.put("excluded", EXCLUDED);
+    return out;
+  }
+
+  /**
+   * What the run record of the first-commit population states besides {@link #statements()},
+   * replacing the ones whose start differs: the window starts at the first commit that counts.
+   */
+  static Map<String, Object> firstCommitStatements() {
+    final Map<String, Object> out = new LinkedHashMap<>();
+    out.put("study_population", Population.FIRST_COMMIT.name());
+    out.put("window", "[first commit that counts, first resolution): the first commit replaces "
+        + "the first In Progress wherever the statements name it; the implementation commits "
+        + "are the same, those before the first commit included, and the familiarity reads the "
+        + "files touched before the first commit");
+    out.put("target", FirstCommit.RULE);
+    out.put("attributes_of_decision_16a", "written by the extraction and copied as they are: "
+        + FirstCommit.FIRST_LINES + ", the first commit's lines added and removed in every file, "
+        + "a start attribute; " + FirstCommit.FIRST_SHARE + ", its share of the issue's lines, a "
+        + "retrospective attribute");
     return out;
   }
 
