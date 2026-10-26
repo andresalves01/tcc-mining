@@ -46,7 +46,14 @@ public final class Universe {
      * The issues resolved as Fixed at the first resolution with a status change to In Progress in
      * [creation, first resolution); their duration starts at the first such change.
      */
-    IN_PROGRESS
+    IN_PROGRESS,
+    /**
+     * The first-commit population ({@link FirstCommit}): the issues resolved as Fixed at the first
+     * resolution whose duration starts at their first commit that counts. It is built from the
+     * commits, the pull-request originals and the attachments, which this class does not read, so
+     * the extraction builds it ({@code IssuesFirstCommitExtractTask}) and not {@link #population}.
+     */
+    FIRST_COMMIT
   }
 
   /** The status that marks the start of the work. */
@@ -292,7 +299,9 @@ public final class Universe {
     return universe;
   }
 
+  /** The units of {@link Population#IN_PROGRESS}; refuses any other population. */
   public List<Unit> population(final Population population) {
+    requireInProgress(population);
     return inProgress.stream().map(started::get).toList();
   }
 
@@ -303,7 +312,15 @@ public final class Universe {
 
   /** The unit of an issue in the population: it starts at the first In Progress. */
   public Unit unit(final Population population, final String id) {
+    requireInProgress(population);
     return started.get(id);
+  }
+
+  private static void requireInProgress(final Population population) {
+    if (population != Population.IN_PROGRESS) {
+      throw new IllegalArgumentException(population + " is not built from the changelog: the "
+          + "extraction builds it");
+    }
   }
 
   public Corpus.Issue issue(final String id) {

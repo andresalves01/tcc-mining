@@ -52,8 +52,6 @@ public final class ProjectSplit {
       + "gives the inner fitting and the inner validation; a project of one issue goes wholly to "
       + "training; no issue is set aside";
 
-  private static final Population P = Population.IN_PROGRESS;
-
   /**
    * Outer and inner verdicts by issue id.
    *
@@ -102,6 +100,12 @@ public final class ProjectSplit {
    * not prove the matrix holds the whole population.
    */
   public static List<String> differences(final List<RowCache.Entry> entries) {
+    return differences(entries, Population.IN_PROGRESS);
+  }
+
+  /** {@link #differences(List)} for the verdicts of {@code population}'s split columns. */
+  public static List<String> differences(final List<RowCache.Entry> entries,
+      final Population population) {
     final Map<String, String> projects = new HashMap<>(entries.size() * 2);
     entries.forEach(e -> projects.put(e.unit().issueId(), e.unit().project()));
     final Parts parts = draw(projects);
@@ -110,11 +114,11 @@ public final class ProjectSplit {
     for (final RowCache.Entry e : entries) {
       final String id = e.unit().issueId();
       final Part inner = parts.inner().get(id);
-      if (!parts.outer().get(id).name().equals(e.outer(P))
-          || !(inner == null ? "" : inner.name()).equals(e.inner(P))) {
+      if (!parts.outer().get(id).name().equals(e.outer(population))
+          || !(inner == null ? "" : inner.name()).equals(e.inner(population))) {
         wrong++;
         if (first == null) {
-          first = id + " (" + e.outer(P) + "/" + e.inner(P) + ", the rule gives "
+          first = id + " (" + e.outer(population) + "/" + e.inner(population) + ", the rule gives "
               + parts.outer().get(id) + "/" + (inner == null ? "" : inner) + ")";
         }
       }

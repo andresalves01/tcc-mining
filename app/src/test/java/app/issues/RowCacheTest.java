@@ -74,4 +74,12 @@ class RowCacheTest {
         + "a\tK-1\tp\tr\te\t2016-01-01T00:00:00Z\t2016-01-02T00:00:00Z\tFixed\t0\t1.0\n");
     assertThrows(IOException.class, () -> RowCache.read(path, Population.IN_PROGRESS, "TRAIN"));
   }
+
+  @Test
+  @DisplayName("a cache holds the start of one population only")
+  void onePopulationPerCache() {
+    assertThrows(IllegalArgumentException.class, () -> RowCache.write(dir.resolve("two.tsv"),
+        List.of(), List.of("A01_desc_length"),
+        List.of(Population.IN_PROGRESS, Population.FIRST_COMMIT)));
+  }
 }

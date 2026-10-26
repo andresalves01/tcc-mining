@@ -103,7 +103,18 @@ public enum Command {
       the training side, the same Random continuing, for the inner fitting
       and validation; nothing set aside), and time travel. Writes the cache
       to CACHE only if the gate passed; records a summary, with the split's
-      rule and seed, in ISSUES_DB; reads everything else."""),
+      rule and seed, in ISSUES_DB; reads everything else.
+      With POPULATION=FIRST_COMMIT, issue duration from the first commit
+      instead: the population, split, cap and target of
+      issues-first-commit-audit (the cap learned on the inner fitting and
+      applied, frozen, to every drawn issue), the same columns read at the
+      first commit that counts (the executor is the assignee then, or else
+      the first commit's author), time travel at that instant, and the
+      target and its parts as the FC_* columns. The cache's split columns
+      are primeiro_commit_externa and primeiro_commit_interna. Refuses the
+      In Progress study's TARGET_DB and ISSUES_DB before reading anything;
+      give PREPARED_DB=smartshark_tcc to read the prepared collections. Of
+      the target it prints and records the outer training's alone."""),
 
   ISSUES_IN_PROGRESS_TEAM("issues-in-progress-team", new IssuesInProgressTeamCommand(), """
       Issue duration from the first In Progress: runs the extraction and
