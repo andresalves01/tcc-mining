@@ -280,7 +280,15 @@ public enum Command {
       reference fits on the rows of that k. The similarity medians and the
       reporter median keep reading every training issue. The parameters
       file records the chosen k, the model it was chosen on, both fences in
-      business days and every k's error; one without them is refused."""),
+      business days and every k's error; one without them is refused.
+      The population is the matrix's, read from its split columns. Every
+      row is read by its id, project and split verdicts alone, and only the
+      outer training rows are parsed further. A matrix of the first-commit
+      population (primeiro_commit_*) is selected on its split, its target
+      (FC_target_days) and its sets, the own ones with the first commit's
+      size and the retrospective ones with its share; the parameters file
+      has a header of its own. It refuses the In Progress study's
+      TARGET_DB and ISSUES_DB before any row is read."""),
 
   ISSUES_SIMILARITY_TEST("issues-in-progress-similarity-test",
       new IssuesSimilarityTestCommand(), """
@@ -339,7 +347,9 @@ public enum Command {
       median (the global median orders nothing), the paired difference in
       Spearman and in pairwise ordering, each with its interval from the
       same draws of whole projects as the error comparisons; printed and
-      recorded."""),
+      recorded. A matrix of the first-commit population is refused on its
+      header alone: that study's outer test is sealed until it is opened
+      once, with the design frozen and the author's authorisation."""),
 
   ISSUES_SIMILARITY_INNER_REPORT("issues-in-progress-similarity-inner-report",
       new IssuesSimilarityInnerReportCommand(), """
@@ -392,7 +402,35 @@ public enum Command {
       duration and start-description availability; P25/P50/P75/P90/P95
       estimates with existing pooled prediction intervals. The report's
       separate SPSP section gives cited uncertainty context, not a scheduling
-      acceptance threshold. These additions choose or refit no settings.""");
+      acceptance threshold. These additions choose or refit no settings.
+      The population is the matrix's, read from its split columns; a
+      parameters file written for the other population is refused. For the
+      first-commit population the report also lists the ten largest errors
+      on each side of the own retrospective model on every inner validation
+      issue, with the target's parts, commits, patches, the first commit's
+      size and share, the issue's lines, Java lines, files, comments,
+      participants and description length, and each column's median on
+      both sides and on every issue (similarity-inner-largest-errors.tsv).
+      For the first-commit population the side reading's issues are named
+      "with Java code": every issue has commits, and these are the ones with
+      a Java line observed among them."""),
+
+  ISSUES_FIRST_COMMIT_SHARE_ABLATION("issues-first-commit-share-ablation",
+      new app.cli.commands.IssuesFirstCommitShareAblationCommand(), """
+      Issue duration from the first commit, SHARE ABLATION, read-only: a
+      diagnostic outside the fourteen declared models, on the inner
+      validation only, every figure optimistic. The main reading of the own
+      retrospective model is chosen twice by the selection's procedure, with
+      and without the first commit's share of the issue's lines (decision
+      16a), on the inner fitting rows at or below the chosen k's fence, every
+      choice scored on the usual-flow validation issues; the variant with the
+      share must reproduce the selection's own choice. Both are refitted as
+      the inner report refits them and read on the usual flow and on every
+      validation issue: MAE, Spearman, pairwise ordering and the paired
+      differences with intervals resampling whole projects. Reads MATRIX (a
+      first-commit retrospective matrix, the outer training rows only) and
+      ELASTIC_NET_PARAMETERS (written on it); writes share-ablation.md and
+      share-ablation.tsv to REPORT_DIR; nothing to the database.""");
 
   private static final Map<String, Command> CommandMap = Arrays.stream(values())
       .collect(Collectors.toUnmodifiableMap(command -> command.token, command -> command));

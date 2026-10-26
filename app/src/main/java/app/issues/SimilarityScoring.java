@@ -292,11 +292,35 @@ public final class SimilarityScoring {
       final Map<String, ElasticNetSelection.Choice> choices,
       final Map<String, Forest.Choice> forests, final double k, final Scope scope,
       final int fitThreads, final int drawThreads) {
+    return readings(entries, choices, forests, k, scope, fitThreads, drawThreads, P);
+  }
+
+  /**
+   * {@link #readings(List, Map, Map, double, Scope)} on the split and the attribute sets of
+   * {@code population}, on the threads {@link Parallel} asks for.
+   */
+  public static Readings readings(final List<RowCache.Entry> entries,
+      final Map<String, ElasticNetSelection.Choice> choices,
+      final Map<String, Forest.Choice> forests, final double k, final Scope scope,
+      final Population population) {
+    return readings(entries, choices, forests, k, scope,
+        Parallel.threads(Parallel.ELASTIC_NET_THREADS),
+        Parallel.threads(Parallel.BOOTSTRAP_THREADS), population);
+  }
+
+  /**
+   * {@link #readings(List, Map, Map, double, Scope, int, int)} on the split and the attribute
+   * sets of {@code population}: its split's verdicts give the sides, its sets the models.
+   */
+  public static Readings readings(final List<RowCache.Entry> entries,
+      final Map<String, ElasticNetSelection.Choice> choices,
+      final Map<String, Forest.Choice> forests, final double k, final Scope scope,
+      final int fitThreads, final int drawThreads, final Population population) {
     return new Readings(
         score(entries, choices, forests, k, scope, TailCut.Reading.USUAL_FLOW, true, fitThreads,
-            drawThreads),
+            drawThreads, population),
         score(entries, choices, forests, k, scope, TailCut.Reading.ALL, true, fitThreads,
-            drawThreads));
+            drawThreads, population));
   }
 
   /**
@@ -311,7 +335,7 @@ public final class SimilarityScoring {
       final Map<String, Forest.Choice> forests, final double k) {
     return score(entries, choices, forests, k, Scope.INNER, TailCut.Reading.USUAL_FLOW, false,
         Parallel.threads(Parallel.ELASTIC_NET_THREADS),
-        Parallel.threads(Parallel.BOOTSTRAP_THREADS));
+        Parallel.threads(Parallel.BOOTSTRAP_THREADS), P);
   }
 
   /**
@@ -344,7 +368,7 @@ public final class SimilarityScoring {
       final Map<String, Forest.Choice> forests, final Scope scope, final int fitThreads,
       final int drawThreads) {
     return score(entries, choices, forests, TailCut.NO_CUT, scope, TailCut.Reading.ALL, true,
-        fitThreads, drawThreads);
+        fitThreads, drawThreads, P);
   }
 
   /**
@@ -358,7 +382,7 @@ public final class SimilarityScoring {
       final Map<String, ElasticNetSelection.Choice> choices,
       final Map<String, Forest.Choice> forests, final double k, final Scope scope,
       final TailCut.Reading reading, final boolean compared, final int fitThreads,
-      final int drawThreads) {
+      final int drawThreads, final Population population) {
     if (!new LinkedHashSet<>(ElasticNetSelection.MODELS).equals(choices.keySet())) {
       throw new IllegalArgumentException("the parameters hold alpha and lambda for "
           + choices.keySet() + "; the models are " + ElasticNetSelection.MODELS);
@@ -368,10 +392,10 @@ public final class SimilarityScoring {
           + "; the models are " + ElasticNetSelection.MODELS);
     }
     BusinessDays.counted(entries);
-    final List<Cell> cells =
-        ElasticNetSelection.cells(ElasticNetSelection.combinations(choices), scope.variant());
+    final List<Cell> cells = ElasticNetSelection.cells(ElasticNetSelection.combinations(choices),
+        scope.variant(), population);
     final Fitting.Sides whole = ElasticNetSelection.flagged(
-        Fitting.sides(entries, scope.mode(), P), cells);
+        Fitting.sides(entries, scope.mode(), population), cells);
     final double fence = TailCut.fence(whole.fitUnits(), k);
     final double usualFence = TailCut.fence(whole.fitUnits(), TailCut.USUAL_FLOW_K);
     final Fitting.Sides cut = TailCut.cut(whole, fence);
@@ -380,7 +404,7 @@ public final class SimilarityScoring {
     final Fences fences = new Fences(k, fence, usualFence, whole.fitUnits().size(),
         TailCut.usualFlow(cut, usualFence).scoreUnits().size(), cut.scoreUnits().size());
     // the rows the lambdas were chosen on: the inner fitting set cut at its own fence of this k
-    final int innerFitRows = innerFitRows(entries, k);
+    final int innerFitRows = innerFitRows(entries, k, population);
     final int fitRows = sides.fitUnits().size();
     final double[] observed = sides.observed();
     final List<String> projects = sides.projects();
@@ -504,18 +528,36 @@ public final class SimilarityScoring {
   public static List<Relevance> relevance(final List<RowCache.Entry> entries,
       final Map<String, ElasticNetSelection.Choice> choices, final double k, final Scope scope,
       final int drawThreads) {
+    return relevance(entries, choices, k, scope, drawThreads, P);
+  }
+
+  /** {@link #relevance(List, Map, double, Scope)} on the split and sets of {@code population}. */
+  public static List<Relevance> relevance(final List<RowCache.Entry> entries,
+      final Map<String, ElasticNetSelection.Choice> choices, final double k, final Scope scope,
+      final Population population) {
+    return relevance(entries, choices, k, scope, Parallel.threads(Parallel.BOOTSTRAP_THREADS),
+        population);
+  }
+
+  /**
+   * {@link #relevance(List, Map, double, Scope, int)} on the split and the attribute sets of
+   * {@code population}.
+   */
+  public static List<Relevance> relevance(final List<RowCache.Entry> entries,
+      final Map<String, ElasticNetSelection.Choice> choices, final double k, final Scope scope,
+      final int drawThreads, final Population population) {
     if (!new LinkedHashSet<>(ElasticNetSelection.MODELS).equals(choices.keySet())) {
       throw new IllegalArgumentException("the parameters hold alpha and lambda for "
           + choices.keySet() + "; the models are " + ElasticNetSelection.MODELS);
     }
     BusinessDays.counted(entries);
-    final List<Cell> cells =
-        ElasticNetSelection.cells(ElasticNetSelection.combinations(choices), scope.variant());
+    final List<Cell> cells = ElasticNetSelection.cells(ElasticNetSelection.combinations(choices),
+        scope.variant(), population);
     final Fitting.Sides whole = ElasticNetSelection.flagged(
-        Fitting.sides(entries, scope.mode(), P), cells);
+        Fitting.sides(entries, scope.mode(), population), cells);
     final Fitting.Sides cut = TailCut.cut(whole, TailCut.fence(whole.fitUnits(), k));
     final int fitRows = cut.fitUnits().size();
-    final int innerFitRows = innerFitRows(entries, k);
+    final int innerFitRows = innerFitRows(entries, k, population);
     final List<String> projects = cut.fitUnits().stream().map(IssueUnit::project).toList();
     final int projectCount = new HashSet<>(projects).size();
     final List<Relevance> out = new ArrayList<>(cells.size());
@@ -565,8 +607,10 @@ public final class SimilarityScoring {
    * The rows the given lambdas were chosen on: the inner fitting set cut at its own fence of
    * {@code k}, which the final lambda scales by in the reserved scope.
    */
-  private static int innerFitRows(final List<RowCache.Entry> entries, final double k) {
-    final List<IssueUnit> innerFit = Fitting.sides(entries, Fitting.Mode.INNER, P).fitUnits();
+  private static int innerFitRows(final List<RowCache.Entry> entries, final double k,
+      final Population population) {
+    final List<IssueUnit> innerFit =
+        Fitting.sides(entries, Fitting.Mode.INNER, population).fitUnits();
     final double innerFence = TailCut.fence(innerFit, k);
     return (int) innerFit.stream().filter(u -> u.duration() <= innerFence).count();
   }

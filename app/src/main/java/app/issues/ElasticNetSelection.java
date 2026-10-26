@@ -300,6 +300,32 @@ public final class ElasticNetSelection {
       + "Kikas's retrospective one; the "
       + "outer test was not read";
 
+  /**
+   * The first line of every parameters file this step writes for {@link Population#FIRST_COMMIT}:
+   * the same choices on the same six attribute sets, the own ones with the two attributes of
+   * decision 16a, and the target of that population, which another header tells apart.
+   */
+  public static final String HEADER_FIRST_COMMIT = "# the tail cut's k and fences, the k chosen "
+      + "on the own start model, Elastic Net alpha and lambda, the similarity medians' n, n and k, "
+      + "and each random forest's column share and leaf, chosen on the usual flow of the inner "
+      + "validation only, the target in whole business days from the first commit to the first "
+      + "resolution, its waits between marks capped, on the issues of at least one, for six "
+      + "attribute sets: the own, Al-Zubaidi's and Kikas's at the start, the own retrospective "
+      + "one without and with the comments and participants, both excluding release lag, the own "
+      + "ones with the first commit's size and the retrospective ones with its share, and "
+      + "Kikas's retrospective one; the outer test was not read";
+
+  /** The header of {@code population}'s parameters file. */
+  public static String header(final Population population) {
+    return population == Population.FIRST_COMMIT ? HEADER_FIRST_COMMIT : HEADER;
+  }
+
+  /** The population a parameters file's header was written for; null for another header. */
+  public static Population headerPopulation(final String header) {
+    return HEADER.equals(header) ? Population.IN_PROGRESS
+        : HEADER_FIRST_COMMIT.equals(header) ? Population.FIRST_COMMIT : null;
+  }
+
   /** The step of the tail cut's lines in the parameters file (ticket 23). */
   public static final String TAIL_STEP = "tail-cut";
 
@@ -383,8 +409,14 @@ public final class ElasticNetSelection {
    * prints the double, no cut's fence {@code Infinity}.
    */
   public static List<String> parameters(final Result r, final String matrixSha) {
+    return parameters(r, matrixSha, P);
+  }
+
+  /** {@link #parameters(Result, String)} under {@code population}'s header. */
+  public static List<String> parameters(final Result r, final String matrixSha,
+      final Population population) {
     final List<String> out = new ArrayList<>();
-    out.add(HEADER);
+    out.add(header(population));
     out.add("# step\tname\tparameter\tvalue");
     out.add(String.join("\t", STEP, INPUTS, MATRIX_SHA, matrixSha));
     final TailCut.Choice cut = r.cut();
@@ -615,15 +647,31 @@ public final class ElasticNetSelection {
    * threads, and the Elastic Net's choices are made before it and do not depend on it.
    */
   public static Result run(final List<RowCache.Entry> entries, final int threads) {
-    return select(entries, TailCut.GRID, TailCut.Reading.USUAL_FLOW, threads);
+    return run(entries, threads, P);
+  }
+
+  /**
+   * {@link #run(List, int)} on the split and the attribute sets of {@code population}: the outer
+   * training rows are those of its split, the models its sets ({@link #cells(Combination,
+   * Augmentation.Variant, Population)}). Nothing else differs.
+   */
+  public static Result run(final List<RowCache.Entry> entries, final int threads,
+      final Population population) {
+    return select(entries, TailCut.GRID, TailCut.Reading.USUAL_FLOW, threads, population);
   }
 
   static Result select(final List<RowCache.Entry> entries, final List<Double> grid,
       final TailCut.Reading scored, final int threads) {
-    final List<Cell> every = everyCell(Augmentation.Variant.INNER);
-    final List<RowCache.Entry> training =
-        BusinessDays.counted(entries.stream().filter(e -> TRAIN.equals(e.outer(P))).toList());
-    final Fitting.Sides whole = flagged(Fitting.sides(training, Fitting.Mode.INNER, P), every);
+    return select(entries, grid, scored, threads, P);
+  }
+
+  static Result select(final List<RowCache.Entry> entries, final List<Double> grid,
+      final TailCut.Reading scored, final int threads, final Population population) {
+    final List<Cell> every = everyCell(Augmentation.Variant.INNER, population);
+    final List<RowCache.Entry> training = BusinessDays.counted(
+        entries.stream().filter(e -> TRAIN.equals(e.outer(population))).toList());
+    final Fitting.Sides whole =
+        flagged(Fitting.sides(training, Fitting.Mode.INNER, population), every);
     // both fences on the inner fitting set as it is, before any cut
     final double usualFence = TailCut.fence(whole.fitUnits(), TailCut.USUAL_FLOW_K);
     final Fitting.Sides sides = scored == TailCut.Reading.ALL ? whole

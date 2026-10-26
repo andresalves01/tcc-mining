@@ -7,6 +7,7 @@ import app.issues.Augmentation;
 import app.issues.BusinessDays;
 import app.issues.ElasticNetSelection;
 import app.issues.IssueUnit;
+import app.issues.LargestErrors;
 import app.issues.PredictionIntervals;
 import app.issues.ProjectSplit;
 import app.issues.RowCache;
@@ -108,6 +109,12 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
   public static final String UNCERTAINTY = "similarity-inner-uncertainty.tsv";
   public static final String PERCENTILES = "similarity-inner-prediction-percentiles.tsv";
 
+  /**
+   * The ten largest errors on each side of the own retrospective model, with their profiles: the
+   * first-commit population's only ({@link LargestErrors}).
+   */
+  public static final String LARGEST_ERRORS = "similarity-inner-largest-errors.tsv";
+
   private static final List<String> OUTPUTS = List.of(REPORT, PREDICTIONS, MODELS, BANDS,
       COMPARISONS, ORDERING, DIAGNOSTICS, IMPORTANCE, INTERVALS, CALIBRATION, RELEVANCE,
       UNCERTAINTY, PERCENTILES);
@@ -143,7 +150,8 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     final Path elasticNet =
         IssuesSimilarityTestCommand.path(settings, "ELASTIC_NET_PARAMETERS");
     final Path reports = IssuesSimilarityTestCommand.path(settings, "REPORT_DIR");
-    for (final String name : OUTPUTS) {
+    for (final String name : java.util.stream.Stream.concat(OUTPUTS.stream(),
+        java.util.stream.Stream.of(LARGEST_ERRORS)).toList()) {
       for (final Path in : List.of(matrix, elasticNet)) {
         if (IssuesSimilarityTestCommand.same(reports.resolve(name), in)) {
           throw refused(reports.resolve(name) + " is an input of this step and is never written");
@@ -152,6 +160,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     }
 
     final IssuesSimilarityTestCommand.Chosen chosen;
+    final Population study;
     final List<RowCache.Entry> training;
     final List<String> columns;
     try {
@@ -160,14 +169,22 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
       } catch (final IllegalArgumentException e) {
         throw refused(e.getMessage());
       }
+      // the population from the matrix's header alone, before any row is read
+      study = RowCache.splitPopulation(matrix);
+      if (chosen.population() != study) {
+        throw refused(elasticNet + " was written for " + chosen.population() + ", the matrix "
+            + "holds the split of " + study);
+      }
       // the outer training rows only: every other row is left behind on its split field
-      training = RowCache.read(matrix, P, "TRAIN");
+      training = RowCache.read(matrix, study, "TRAIN");
       columns = RowCache.columns(matrix);
     } catch (final IOException e) {
       throw new CommandFailedException(List.of("  could not read the inputs: " + e));
     }
+    final boolean firstCommit = study == Population.FIRST_COMMIT;
 
-    System.out.printf("%n  DURATION FROM IN PROGRESS -- DESCRIPTION SIMILARITY -- INNER REPORT%n");
+    System.out.printf("%n  DURATION FROM %s -- DESCRIPTION SIMILARITY -- INNER REPORT%n",
+        firstCommit ? "THE FIRST COMMIT" : "IN PROGRESS");
     System.out.printf("  NOTE: %s.%n", OPTIMISTIC);
     System.out.printf("  matrix read %s  sha256 %s (%,d outer training rows; the other rows are "
         + "left behind on their split field)%n", matrix, chosen.matrixSha(), training.size());
@@ -185,7 +202,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     final List<String> missing;
     try {
       missing = IssuesSimilarityElasticNetCommand.missing(ElasticNetSelection.cells(
-          ElasticNetSelection.combinations(chosen.choices()), Augmentation.Variant.INNER),
+          ElasticNetSelection.combinations(chosen.choices()), Augmentation.Variant.INNER, study),
           columns);
     } catch (final IllegalArgumentException e) {
       throw refused(e.getMessage());
@@ -194,7 +211,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
       throw refused(matrix + " has no column " + missing
           + IssuesSimilarityElasticNetCommand.retrospectiveHint(missing));
     }
-    final String unwritten = BusinessDays.unwritten(columns);
+    final String unwritten = BusinessDays.unwritten(columns, study);
     if (unwritten != null) {
       throw refused(matrix + ": " + unwritten);
     }
@@ -206,7 +223,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
       // the same inner fitting set as the selection's, by the matrix's hash: the same fences,
       // checked before any model is fitted
       final List<IssueUnit> fitting = population.entries().stream()
-          .filter(e -> "TRAIN".equals(e.inner(P))).map(RowCache.Entry::unit).toList();
+          .filter(e -> "TRAIN".equals(e.inner(study))).map(RowCache.Entry::unit).toList();
       final double fence = TailCut.fence(fitting, chosen.cut().k());
       final double usualFence = TailCut.fence(fitting, TailCut.USUAL_FLOW_K);
       if (Double.compare(fence, chosen.cut().fence()) != 0
@@ -216,9 +233,9 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
             usualFence, chosen.cut().fence(), chosen.cut().usualFence()));
       }
       readings = SimilarityScoring.readings(population.entries(), chosen.choices(),
-          chosen.forests(), chosen.cut().k(), SimilarityScoring.Scope.INNER);
+          chosen.forests(), chosen.cut().k(), SimilarityScoring.Scope.INNER, study);
       relevance = SimilarityScoring.relevance(population.entries(), chosen.choices(),
-          chosen.cut().k(), SimilarityScoring.Scope.INNER);
+          chosen.cut().k(), SimilarityScoring.Scope.INNER, study);
     } catch (final IllegalArgumentException e) {
       throw refused(e.getMessage());
     }
@@ -230,11 +247,12 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
         Parallel.threads(Parallel.BOOTSTRAP_THREADS));
     final Map<String, List<String>> files = new LinkedHashMap<>();
     files.put(REPORT, report(readings, intervals, relevance, population, chosen, matrix,
-        elasticNet));
-    files.put(PREDICTIONS, predictions(readings));
+        elasticNet, study));
+    final Side side = Side.of(study);
+    files.put(PREDICTIONS, predictions(readings, side));
     files.put(MODELS, models(readings));
     files.put(BANDS, bands(readings));
-    files.put(COMPARISONS, comparisons(readings));
+    files.put(COMPARISONS, comparisons(readings, side));
     files.put(ORDERING, ordering(readings));
     files.put(DIAGNOSTICS, IssuesSimilarityTestCommand.diagnostics(main));
     files.put(IMPORTANCE, IssuesSimilarityTestCommand.importance(main));
@@ -249,6 +267,16 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     markdown.add(footer);
     files.put(UNCERTAINTY, uncertainty.uncertainty());
     files.put(PERCENTILES, uncertainty.percentiles());
+    if (firstCommit) {
+      // the ten largest errors on each side of the own retrospective model, on every inner
+      // validation issue, with what the matrix says of each (ticket 04 of the first-commit study)
+      final LargestErrors.Profiles profiles = LargestErrors.of(readings.complementary(),
+          population.entries(), ElasticNetSelection.RETROSPECTIVE, LargestErrors.COUNT);
+      files.put(LARGEST_ERRORS, LargestErrors.tsv(profiles));
+      markdown.remove(markdown.size() - 1);
+      markdown.addAll(LargestErrors.markdown(profiles));
+      markdown.add(footer.substring(0, footer.length() - 1) + ", " + LARGEST_ERRORS + ".");
+    }
     files.get(REPORT).forEach(line -> System.out.println("  " + line));
     try {
       Files.createDirectories(reports);
@@ -277,6 +305,35 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
    * usual flow and whether it has an implementation commit.
    */
   static List<String> predictions(final SimilarityScoring.Readings readings) {
+    return predictions(readings, Side.IMPLEMENTATION_COMMIT);
+  }
+
+  /**
+   * How the side reading's issues are named: with an implementation commit in the In Progress
+   * study; with Java code in the first-commit one, where every issue has commits and the side
+   * reading's issues are those with a Java line observed among them ({@code RETRO_java_lines}).
+   *
+   * @param phrase in the report's words, after "issues"
+   * @param with the comparisons file's label of the issues of the side reading
+   * @param without its label of the others
+   * @param column the predictions file's column
+   */
+  record Side(String phrase, String with, String without, String column) {
+
+    static final Side IMPLEMENTATION_COMMIT = new Side("with an implementation commit",
+        "with implementation commit", "without implementation commit",
+        "has_implementation_commit");
+
+    static final Side JAVA_CODE = new Side("with Java code", "with Java code",
+        "without Java code", "has_java_code");
+
+    static Side of(final Population study) {
+      return study == Population.FIRST_COMMIT ? JAVA_CODE : IMPLEMENTATION_COMMIT;
+    }
+  }
+
+  /** {@link #predictions(SimilarityScoring.Readings)} with the side reading named by {@code side}. */
+  static List<String> predictions(final SimilarityScoring.Readings readings, final Side side) {
     final SimilarityScoring.Report r = readings.complementary();
     final boolean[] usual = TailCut.within(r.observed(), r.fences().usualFence());
     final List<String> lines = SimilarityScoring.predictions(r);
@@ -285,7 +342,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
       final String[] f = lines.get(k).split("\t", 5);
       out.add(String.join("\t", f[0], f[1], f[2], f[3],
           k == 0 ? "usual_flow" : Boolean.toString(usual[k - 1]),
-          k == 0 ? "has_implementation_commit" : Boolean.toString(r.implementationCommit()[k - 1]),
+          k == 0 ? side.column() : Boolean.toString(r.implementationCommit()[k - 1]),
           f[4]));
     }
     return out;
@@ -330,12 +387,17 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
    * commit.
    */
   static List<String> comparisons(final SimilarityScoring.Readings readings) {
+    return comparisons(readings, Side.IMPLEMENTATION_COMMIT);
+  }
+
+  /** {@link #comparisons(SimilarityScoring.Readings)} with the side reading named by {@code side}. */
+  static List<String> comparisons(final SimilarityScoring.Readings readings, final Side side) {
     final List<String> out = new ArrayList<>();
     out.add("reading\tissues\trows\ta\tb\tmae_diff_bd\tci_low\tci_high\ttie");
     for (final SimilarityScoring.Report r : both(readings)) {
       gaps(out, name(r), "all scored", r.scoredRows(), r.comparisons());
-      gaps(out, name(r), "with implementation commit", r.withCommitRows(), r.withCommits());
-      gaps(out, name(r), "without implementation commit", r.scoredRows() - r.withCommitRows(),
+      gaps(out, name(r), side.with(), r.withCommitRows(), r.withCommits());
+      gaps(out, name(r), side.without(), r.scoredRows() - r.withCommitRows(),
           r.withoutCommits());
     }
     return out;
@@ -375,10 +437,23 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
       final List<SimilarityScoring.Relevance> relevance, final BusinessDays.Population population,
       final IssuesSimilarityTestCommand.Chosen chosen, final Path matrix,
       final Path elasticNet) {
+    return report(readings, intervals, relevance, population, chosen, matrix, elasticNet,
+        P);
+  }
+
+  /** {@link #report} for the study of {@code study}, whose title it names. */
+  static List<String> report(final SimilarityScoring.Readings readings,
+      final PredictionIntervals.Inner intervals,
+      final List<SimilarityScoring.Relevance> relevance, final BusinessDays.Population population,
+      final IssuesSimilarityTestCommand.Chosen chosen, final Path matrix,
+      final Path elasticNet, final Population study) {
     final SimilarityScoring.Report r = readings.complementary();
     final SimilarityScoring.Fences fences = r.fences();
+    final Side side = Side.of(study);
     final List<String> md = new ArrayList<>();
-    md.add("# Issue duration from In Progress: inner report");
+    md.add(study == Population.FIRST_COMMIT
+        ? "# Issue duration from the first commit: inner report"
+        : "# Issue duration from In Progress: inner report");
     md.add("");
     md.add("**NOTE: " + OPTIMISTIC + ".**");
     md.add("");
@@ -407,7 +482,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
             t.mae(), t.k() == fences.k() ? " (chosen)" : "")).toList()));
     md.add("- fitted on " + r.fitRows() + " inner fitting issues at the chosen alpha and lambda "
         + "(not scaled); scored on " + r.scoredRows() + " inner validation issues, "
-        + r.withCommitRows() + " of them with an implementation commit");
+        + r.withCommitRows() + " of them " + side.phrase());
     md.add("- validation projects with no fitting issue (the project median is the global one "
         + "there): " + r.unseenRows() + " issues, " + r.unseenProjects());
     md.add("- " + ElasticNetSelection.RETROSPECTIVE + ": "
@@ -416,6 +491,12 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
         + ElasticNetSelection.WITH_DISCUSSION_ROLE);
     md.add("- " + ElasticNetSelection.KIKAS_RETROSPECTIVE + ": "
         + ElasticNetSelection.KIKAS_RETROSPECTIVE_ROLE);
+    if (study == Population.FIRST_COMMIT) {
+      md.add("- " + IssuesSimilarityElasticNetCommand.FIRST_COMMIT_ATTRIBUTES);
+      md.add("- the side reading's issues with Java code are those with a Java line observed "
+          + "among their commits (" + app.issues.Retrospective.LINES + "): every issue of "
+          + "this population has at least two commits");
+    }
     md.add("- the Elastic Nets' coefficients and the forests' permutation importance, here and in "
         + "the files beside this one, are the main reading's");
     md.add(f("- error bands: %s; here %s business days, of the %d cut inner fitting issues; %s",
@@ -435,8 +516,8 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     md.add("- the factors recomputed on A and B together, for later use, are in " + CALIBRATION
         + "; those of A, which the check reads, in " + INTERVALS);
     md.add("");
-    section(md, readings.main(), intervals, "Main reading: the usual flow");
-    section(md, r, intervals, "Complementary reading: all issues");
+    section(md, readings.main(), intervals, "Main reading: the usual flow", side);
+    section(md, r, intervals, "Complementary reading: all issues", side);
     relevance(md, relevance, readings.main());
     md.add("Files beside this one: " + String.join(", ", OUTPUTS.subList(1, OUTPUTS.size()))
         + ".");
@@ -445,7 +526,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
 
   /** Every table of one reading, under its own heading. */
   private static void section(final List<String> md, final SimilarityScoring.Report r,
-      final PredictionIntervals.Inner intervals, final String title) {
+      final PredictionIntervals.Inner intervals, final String title, final Side side) {
     md.add("## " + title + " (" + r.scoredRows() + " issues)");
     md.add("");
     md.add(r.reading().description() + ".");
@@ -486,7 +567,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     md.add("");
     table(md, r.comparisons());
     md.add("### Side reading: the main reading of the retrospective model against the own start "
-        + "model on the " + r.withCommitRows() + " issues with an implementation commit");
+        + "model on the " + r.withCommitRows() + " issues " + side.phrase());
     md.add("");
     table(md, r.withCommits());
     md.add("### For contrast: the same pairs on the " + (r.scoredRows() - r.withCommitRows())

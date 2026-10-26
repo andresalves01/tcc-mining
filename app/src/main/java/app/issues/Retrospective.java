@@ -118,6 +118,18 @@ public final class Retrospective {
       + "participants and release lag out of the models; the reading with "
       + "them is a ceiling, not a competitor";
 
+  /**
+   * {@link #SCENARIO} for the window of {@code population}: for {@link
+   * Universe.Population#FIRST_COMMIT} the attributes are observed from the first commit that
+   * counts to the first resolution; the In Progress text is {@link #SCENARIO} itself.
+   */
+  public static String scenario(final Universe.Population population) {
+    return population == Universe.Population.FIRST_COMMIT
+        ? SCENARIO.replace("between the first In Progress and the first resolution",
+            "between the first commit that counts and the first resolution")
+        : SCENARIO;
+  }
+
   private final World world;
   private final Universe universe;
   private final Set<String> bots;

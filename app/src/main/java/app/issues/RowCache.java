@@ -132,6 +132,77 @@ public final class RowCache {
   }
 
   /**
+   * The population whose split columns a cache's header holds, read from the header alone: no
+   * row is read. Refuses a cache with the split columns of no population or of more than one.
+   */
+  public static Population splitPopulation(final Path path) throws IOException {
+    final List<Population> found = splitPopulations(path);
+    if (found.size() != 1) {
+      throw new IOException(path + " holds the split columns of " + found + "; a matrix holds "
+          + "those of one population");
+    }
+    return found.getFirst();
+  }
+
+  /**
+   * The populations whose split columns a cache's header holds, in their order, read from the
+   * header alone: no row is read.
+   */
+  public static List<Population> splitPopulations(final Path path) throws IOException {
+    final String first;
+    try (var lines = Files.lines(path, StandardCharsets.UTF_8)) {
+      first = lines.findFirst().orElseThrow(() -> new IOException(path + " is empty"));
+    }
+    final Set<String> header = new HashSet<>(List.of(first.split(SEP, -1)));
+    final List<Population> found = new ArrayList<>();
+    for (final Population p : Population.values()) {
+      if (header.contains(prefix(p) + "_externa")) {
+        found.add(p);
+      }
+    }
+    return List.copyOf(found);
+  }
+
+  /**
+   * Every row of a cache with its id, key, project and split verdicts only, in the cache's order:
+   * no value, date or outcome of any row is parsed, the outer test's included. Each unit has no
+   * dates and each row no values; what reads them is the split's rule ({@link
+   * ProjectSplit#differences}) and the split's sizes, never a model.
+   */
+  public static List<Entry> splits(final Path path) throws IOException {
+    final List<String> lines = Files.readAllLines(path, StandardCharsets.UTF_8);
+    if (lines.isEmpty()) {
+      throw new IOException(path + " is empty");
+    }
+    final String[] header = lines.get(0).split(SEP, -1);
+    for (int i = 0; i < BASE.size(); i++) {
+      if (!BASE.get(i).equals(header[i])) {
+        throw new IOException(path + ": column " + i + " should be " + BASE.get(i));
+      }
+    }
+    final Map<Population, Integer> partAt = new EnumMap<>(Population.class);
+    for (int i = 0; i < header.length; i++) {
+      for (final Population p : Population.values()) {
+        if (header[i].equals(prefix(p) + "_externa")) {
+          partAt.put(p, i);
+        }
+      }
+    }
+    final List<Entry> out = new ArrayList<>(lines.size());
+    for (final String line : lines.subList(1, lines.size())) {
+      if (line.isBlank()) {
+        continue;
+      }
+      final String id = field(line, 0);
+      final Map<Population, String[]> parts = new EnumMap<>(Population.class);
+      partAt.forEach((p, k) -> put(parts, p, field(line, k), field(line, k + 1)));
+      out.add(new Entry(new IssueUnit(id, field(line, 1), field(line, 2), null, null, null,
+          null, null, false, null), new Row(id, Map.of(), Set.of()), parts));
+    }
+    return out;
+  }
+
+  /**
    * Only the rows whose outer verdict under {@code population} is {@code outer}, in the cache's
    * order. Of every other row nothing but that one field is read: it is cut out by its position
    * before the line is split or any value, date or verdict of it parsed, so the rows on the other

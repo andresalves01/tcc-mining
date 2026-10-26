@@ -128,7 +128,7 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
 
     System.out.printf("%n  DURATION FROM %s -- DESCRIPTION SIMILARITY -- RETROSPECTIVE "
         + "SCENARIO%n", firstCommit ? "THE FIRST COMMIT" : "IN PROGRESS");
-    System.out.printf("  %s%n", Retrospective.SCENARIO);
+    System.out.printf("  %s%n", Retrospective.scenario(population));
     System.out.printf("  matrix read %s  sha256 %s (%,d rows)%n", matrix, matrixSha,
         entries.size());
     final IssuesRetrospectiveTask.Report r;
@@ -170,7 +170,7 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
 
     final Map<String, Object> run = new LinkedHashMap<>();
     run.put("stage", STAGE);
-    run.putAll(statements());
+    run.putAll(statements(population));
     if (firstCommit) {
       run.putAll(firstCommitStatements());
     }
@@ -198,8 +198,13 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
 
   /** What the run record states about the scenario and its definitions. */
   static Map<String, Object> statements() {
+    return statements(Population.IN_PROGRESS);
+  }
+
+  /** {@link #statements()} with the scenario's window of {@code population}. */
+  static Map<String, Object> statements(final Population population) {
     final Map<String, Object> out = new LinkedHashMap<>();
-    out.put("scenario", Retrospective.SCENARIO);
+    out.put("scenario", Retrospective.scenario(population));
     out.put("implementation_commits", "the issue's linked commits by a human author visible "
         + "before the first resolution, those before the first In Progress included");
     out.put("content", "Java lines added and removed, each commit's split among the issues it "

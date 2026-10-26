@@ -132,6 +132,14 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       + ProjectBootstrap.DRAWS + " draws of whole projects as the error comparisons (seed "
       + ProjectBootstrap.SEED + "); an interval containing zero is a tie";
 
+  /**
+   * Why this step scores no other population: the first-commit study's outer test is opened once,
+   * by a step of its own, with the design frozen and the author's explicit authorisation.
+   */
+  static final String SEALED = "the outer test of the first-commit study is sealed: it is opened "
+      + "once, with the design frozen and the author's explicit authorisation, and this step "
+      + "scores the In Progress study's alone";
+
   /** Where each setting is read from: the environment, then the system properties. */
   private final Function<String, String> settings;
 
@@ -169,6 +177,18 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
               + "recorded: " + out + " is an input of this step and is never written"));
         }
       }
+    }
+
+    // the first-commit study's outer test is sealed (its ticket 05): refused on the matrix's
+    // header alone, before the parameters, any row or any label is read
+    try {
+      if (Files.exists(matrix) && RowCache.splitPopulations(matrix)
+          .contains(app.issues.Universe.Population.FIRST_COMMIT)) {
+        throw new CommandFailedException(List.of("  REFUSED, nothing was read, scored, written "
+            + "or recorded: " + matrix + " holds the first-commit population's split; " + SEALED));
+      }
+    } catch (final IOException e) {
+      throw new CommandFailedException(List.of("  could not read the inputs: " + e));
     }
 
     final String matrixSha;
@@ -445,10 +465,11 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
    * @param elasticNetSha the SHA-256 of the bytes parsed
    * @param matrixSha the SHA-256 of the matrix, the one the choices were made on
    * @param cut the tail cut the selection chose (ticket 23): its k, fences and grid
+   * @param population the population the parameters file was written for, by its header
    */
   record Chosen(String elasticNetSha, String matrixSha,
       Map<String, ElasticNetSelection.Choice> choices, Map<String, Forest.Choice> forests,
-      TailCut.Choice cut) {}
+      TailCut.Choice cut, app.issues.Universe.Population population) {}
 
   /**
    * The choices of {@code elasticNet}, refused -- an {@link IllegalArgumentException} with the
@@ -492,7 +513,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
           + "another matrix (sha256 " + ElasticNetSelection.matrixSha(enParameters) + "), not "
           + matrix + " (sha256 " + matrixSha + ")");
     }
-    return new Chosen(sha256(elasticNetBytes), matrixSha, choices, forests, cut);
+    return new Chosen(sha256(elasticNetBytes), matrixSha, choices, forests, cut,
+        ElasticNetSelection.headerPopulation(elasticNetLines.get(0)));
   }
 
   /** What the run record states about the test it scores. */
