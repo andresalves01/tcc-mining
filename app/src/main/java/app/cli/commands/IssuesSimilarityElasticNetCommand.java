@@ -73,6 +73,13 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
       + "the linear model cannot capture; added after an inner-validation prototype and before "
       + "the outer test was opened";
 
+  /** Decision 16a in the first-commit study's sets, for its run records and reports. */
+  static final String FIRST_COMMIT_ATTRIBUTES = "decision 16a: the first commit's lines added "
+      + "plus removed in every file (FC_first_commit_lines, log1p) closes the own start model, so "
+      + "both readings of the own retrospective model read it too; its share of the issue's "
+      + "changed lines (FC_first_commit_share, raw) closes their retrospective columns; the "
+      + "literature sets are unchanged";
+
   /** Where each setting is read from: the environment, then the system properties. */
   private final Function<String, String> settings;
 
@@ -101,24 +108,40 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
           + ", which this step never writes"));
     }
 
+    final Population study;
+    try {
+      study = RowCache.splitPopulation(matrix);
+    } catch (final IOException e) {
+      throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
+          + e.getMessage()));
+    }
+    final boolean firstCommit = study == Population.FIRST_COMMIT;
+    if (firstCommit) {
+      // before any row is read: the first-commit study records its runs in its own databases
+      IssuesInProgressExtractCommand.requireOwnDatabases(context.config());
+    }
+
     final String matrixSha;
     final List<RowCache.Entry> entries;
+    final List<RowCache.Entry> training;
     final List<String> columns;
     try {
       refuseForeign(parameters);
       matrixSha = Sha256.of(matrix);
-      entries = RowCache.read(matrix);
+      // every row by its id, project and split verdicts alone; the outer training rows whole
+      entries = RowCache.splits(matrix);
+      training = RowCache.read(matrix, study, "TRAIN");
       columns = RowCache.columns(matrix);
     } catch (final IOException e) {
       throw new CommandFailedException(List.of("  could not read " + matrix + " or "
           + parameters + ": " + e));
     }
-    System.out.printf("%n  DURATION FROM IN PROGRESS -- DESCRIPTION SIMILARITY -- ELASTIC NET "
-        + "ON THE INNER VALIDATION%n");
+    System.out.printf("%n  DURATION FROM %s -- DESCRIPTION SIMILARITY -- ELASTIC NET "
+        + "ON THE INNER VALIDATION%n", firstCommit ? "THE FIRST COMMIT" : "IN PROGRESS");
     System.out.printf("  matrix read %s  sha256 %s (%,d rows)%n", matrix, matrixSha,
         entries.size());
 
-    final List<String> split = ProjectSplit.differences(entries);
+    final List<String> split = ProjectSplit.differences(entries, study);
     if (!split.isEmpty()) {
       throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
           + split.get(0)));
@@ -130,28 +153,28 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     final BusinessDays.Population population;
     try {
       final List<String> missing = missing(
-          ElasticNetSelection.everyCell(Augmentation.Variant.INNER), columns);
+          ElasticNetSelection.everyCell(Augmentation.Variant.INNER, study), columns);
       if (!missing.isEmpty()) {
         throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
             + matrix + " has no column " + missing + retrospectiveHint(missing)));
       }
-      final String unwritten = BusinessDays.unwritten(columns);
+      final String unwritten = BusinessDays.unwritten(columns, study);
       if (unwritten != null) {
         throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
             + matrix + ": " + unwritten));
       }
-      // the outer test is left behind here, before any outcome is read
-      population = BusinessDays.population(entries.stream()
-          .filter(e -> "TRAIN".equals(e.outer(Population.IN_PROGRESS))).toList(),
-          Augmentation.Variant.INNER);
-      r = ElasticNetSelection.run(population.entries());
+      // the outer test was left behind on its split field, before any outcome was read
+      population = BusinessDays.population(training, Augmentation.Variant.INNER);
+      r = ElasticNetSelection.run(population.entries(),
+          app.model.Parallel.threads(app.model.Parallel.ELASTIC_NET_THREADS), study);
     } catch (final IllegalArgumentException e) {
       throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
           + e.getMessage()));
     }
 
-    System.out.printf("  target: %s; %s%n", BusinessDays.target(entries), BusinessDays.HOLIDAYS);
-    System.out.printf("  population: %s%n", BusinessDays.populationRule(entries));
+    System.out.printf("  target: %s; %s%n", BusinessDays.target(training),
+        BusinessDays.HOLIDAYS);
+    System.out.printf("  population: %s%n", BusinessDays.populationRule(training));
     System.out.printf("  %s: %s%n", ElasticNetSelection.RETROSPECTIVE,
         Retrospective.SCENARIO);
     System.out.printf("  %s: %s%n", ElasticNetSelection.RETROSPECTIVE,
@@ -234,7 +257,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     try {
       refuseForeign(parameters);
       final Path partial = parameters.resolveSibling(parameters.getFileName() + ".partial");
-      Files.write(partial, ElasticNetSelection.parameters(r, matrixSha));
+      Files.write(partial, ElasticNetSelection.parameters(r, matrixSha, study));
       Files.move(partial, parameters, StandardCopyOption.REPLACE_EXISTING,
           StandardCopyOption.ATOMIC_MOVE);
       parametersSha = Sha256.of(parameters);
@@ -249,8 +272,12 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     run.put("outer_test", "not read");
     run.put("split_rule", ProjectSplit.RULE);
     run.putAll(statements());
-    run.put("target", BusinessDays.target(entries));
-    run.put("population", BusinessDays.populationRule(entries));
+    run.put("target", BusinessDays.target(training));
+    run.put("population", BusinessDays.populationRule(training));
+    if (firstCommit) {
+      run.put("study", study.name());
+      run.put("first_commit_attributes", FIRST_COMMIT_ATTRIBUTES);
+    }
     run.put("population_rows", populationRows(population));
     run.put("models", ElasticNetSelection.MODELS);
     run.put("matrix_sha256", matrixSha);
@@ -456,7 +483,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
    * previous_own_start}, {@code revised_nine}, ...) is told apart by its model names.
    */
   static boolean onlyThisStep(final List<String> lines) {
-    if (lines.isEmpty() || !ElasticNetSelection.HEADER.equals(lines.get(0))) {
+    if (lines.isEmpty() || ElasticNetSelection.headerPopulation(lines.get(0)) == null) {
       return false;
     }
     try {

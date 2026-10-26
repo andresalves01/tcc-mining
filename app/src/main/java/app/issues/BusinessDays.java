@@ -100,6 +100,24 @@ public final class BusinessDays {
   }
 
   /**
+   * {@link #unwritten(Collection)} for the matrix of {@code population}: for {@link
+   * Universe.Population#FIRST_COMMIT}, why a matrix without the target or its day boundary the
+   * extraction writes cannot give the target, null when it can; the status is not read, so the
+   * In Progress columns are not asked for.
+   */
+  public static String unwritten(final Collection<String> columns,
+      final Universe.Population population) {
+    if (population == Universe.Population.IN_PROGRESS) {
+      return unwritten(columns);
+    }
+    final List<String> missing =
+        columns(population).stream().filter(c -> !columns.contains(c)).toList();
+    return missing.isEmpty() ? null : "the matrix has no " + String.join(", ", missing)
+        + "; give the matrix issues-in-progress-retrospective wrote from the first-commit "
+        + "extraction";
+  }
+
+  /**
    * The explicit paused statuses: time from a change to one of them until the next status
    * change is not counted ({@link #active}); this is a workflow measure, not measured effort.
    */

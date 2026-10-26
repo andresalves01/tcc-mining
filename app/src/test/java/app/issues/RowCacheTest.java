@@ -82,4 +82,28 @@ class RowCacheTest {
         List.of(), List.of("A01_desc_length"),
         List.of(Population.IN_PROGRESS, Population.FIRST_COMMIT)));
   }
+
+  @Test
+  @DisplayName("the split alone: every row's id, key, project and verdicts, no value or date "
+      + "parsed, and the population read from the header")
+  void readsTheSplitAlone() throws IOException {
+    final Path path = corrupted();
+    final List<RowCache.Entry> splits = RowCache.splits(path);
+    assertEquals(List.of("a", "b", "c", "x"),
+        splits.stream().map(e -> e.unit().issueId()).toList());
+    assertEquals(List.of("TRAIN", "TEST", "TRAIN", "CROSSES"),
+        splits.stream().map(e -> e.outer(Population.IN_PROGRESS)).toList());
+    assertEquals(List.of("TRAIN", "", "TEST", ""),
+        splits.stream().map(e -> e.inner(Population.IN_PROGRESS)).toList());
+    assertEquals("P-b", splits.get(1).unit().key());
+    assertEquals("p", splits.get(1).unit().project());
+    assertEquals(Map.of(), splits.get(1).row().values());
+    assertEquals(Population.IN_PROGRESS, RowCache.splitPopulation(path));
+    assertEquals(List.of(Population.IN_PROGRESS), RowCache.splitPopulations(path));
+
+    final Path none = dir.resolve("none.tsv");
+    RowCache.write(none, List.of(), List.of("A01_desc_length"), List.of());
+    assertEquals(List.of(), RowCache.splitPopulations(none));
+    assertThrows(IOException.class, () -> RowCache.splitPopulation(none));
+  }
 }
