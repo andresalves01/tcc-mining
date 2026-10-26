@@ -227,7 +227,14 @@ projects, and the similarity medians only inside the models.
   largest errors on each side of the own retrospective model on every inner validation issue.
   Each issue shows the target's parts, its commits and patches, the first commit's size and share,
   the issue's lines, Java lines, files, comments, participants and description length. Each
-  column's median is given for both sides and for every issue.
+  column's median is given for both sides and for every issue. Its side reading names the issues
+  "with Java code", since every issue of this population has commits.
+- **Share ablation.** `issues-first-commit-share-ablation` is a diagnostic outside the fourteen
+  models, on the inner validation only. It chooses the main reading of the own retrospective model
+  twice by the selection's procedure, with and without the first commit's share, and compares the
+  two on the usual flow and on every issue. It reads the same `MATRIX` and
+  `ELASTIC_NET_PARAMETERS`, writes `share-ablation.md` and `share-ablation.tsv` to `REPORT_DIR`,
+  and writes nothing to MongoDB.
 - **Outer test.** `issues-in-progress-similarity-test` refuses a first-commit matrix on its header
   alone. That outer test stays sealed until it is opened once, with the design frozen and the
   author's authorisation.
@@ -243,8 +250,8 @@ MATRIX=$RUN/retrospective-matrix.tsv ELASTIC_NET_PARAMETERS=$RUN/elastic-net-par
 
 ### Commands that only read
 
-`check`, `help` and `issues-first-commit-audit` write nothing to MongoDB and can be run at any
-time.
+`check`, `help`, `issues-first-commit-audit` and `issues-first-commit-share-ablation` write
+nothing to MongoDB and can be run at any time.
 
 ## Tests
 

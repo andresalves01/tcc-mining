@@ -410,7 +410,27 @@ public enum Command {
       issue, with the target's parts, commits, patches, the first commit's
       size and share, the issue's lines, Java lines, files, comments,
       participants and description length, and each column's median on
-      both sides and on every issue (similarity-inner-largest-errors.tsv).""");
+      both sides and on every issue (similarity-inner-largest-errors.tsv).
+      For the first-commit population the side reading's issues are named
+      "with Java code": every issue has commits, and these are the ones with
+      a Java line observed among them."""),
+
+  ISSUES_FIRST_COMMIT_SHARE_ABLATION("issues-first-commit-share-ablation",
+      new app.cli.commands.IssuesFirstCommitShareAblationCommand(), """
+      Issue duration from the first commit, SHARE ABLATION, read-only: a
+      diagnostic outside the fourteen declared models, on the inner
+      validation only, every figure optimistic. The main reading of the own
+      retrospective model is chosen twice by the selection's procedure, with
+      and without the first commit's share of the issue's lines (decision
+      16a), on the inner fitting rows at or below the chosen k's fence, every
+      choice scored on the usual-flow validation issues; the variant with the
+      share must reproduce the selection's own choice. Both are refitted as
+      the inner report refits them and read on the usual flow and on every
+      validation issue: MAE, Spearman, pairwise ordering and the paired
+      differences with intervals resampling whole projects. Reads MATRIX (a
+      first-commit retrospective matrix, the outer training rows only) and
+      ELASTIC_NET_PARAMETERS (written on it); writes share-ablation.md and
+      share-ablation.tsv to REPORT_DIR; nothing to the database.""");
 
   private static final Map<String, Command> CommandMap = Arrays.stream(values())
       .collect(Collectors.toUnmodifiableMap(command -> command.token, command -> command));
