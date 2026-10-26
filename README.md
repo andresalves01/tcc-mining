@@ -208,7 +208,38 @@ Progress study, plus the two attributes of the first commit:
 - the share closes the retrospective columns of both readings.
 
 The literature sets are unchanged. Use `ElasticNetSelection.cells` with the population to get
-them. The selection and the reports do not read this population yet.
+them.
+
+### 7. Issue duration from the first commit: selection and inner report
+
+`issues-in-progress-similarity-elastic-net` and `issues-in-progress-similarity-inner-report` take
+the population of the matrix they read, from its split columns. On the first-commit matrix they
+use its split, its target and its model sets. The rules are the In Progress study's: the tail cut
+with its k chosen on the own start model, the usual flow, the comparisons resampling whole
+projects, and the similarity medians only inside the models.
+
+- **Selection.** Every row is read by its id, project and split verdicts alone, to check the split
+  and count it. Only the outer training rows are parsed further. The parameters file has a header
+  of its own population. The command refuses the In Progress study's `TARGET_DB` and `ISSUES_DB`
+  before it reads a row.
+- **Inner report.** It refuses a parameters file written for the other population. For the first
+  commit it adds `similarity-inner-largest-errors.tsv` and a section of the report: the ten
+  largest errors on each side of the own retrospective model on every inner validation issue.
+  Each issue shows the target's parts, its commits and patches, the first commit's size and share,
+  the issue's lines, Java lines, files, comments, participants and description length. Each
+  column's median is given for both sides and for every issue.
+- **Outer test.** `issues-in-progress-similarity-test` refuses a first-commit matrix on its header
+  alone. That outer test stays sealed until it is opened once, with the design frozen and the
+  author's authorisation.
+
+```bash
+export TARGET_DB=smartshark_first_commit ISSUES_DB=smartshark_first_commit_issues \
+  PREPARED_DB=smartshark_tcc
+MATRIX=$RUN/retrospective-matrix.tsv ELASTIC_NET_PARAMETERS=$RUN/elastic-net-parameters.txt \
+  $APP issues-in-progress-similarity-elastic-net
+MATRIX=$RUN/retrospective-matrix.tsv ELASTIC_NET_PARAMETERS=$RUN/elastic-net-parameters.txt \
+  REPORT_DIR=$RUN/inner-report $APP issues-in-progress-similarity-inner-report
+```
 
 ### Commands that only read
 
