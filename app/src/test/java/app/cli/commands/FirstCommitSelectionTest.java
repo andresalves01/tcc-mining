@@ -121,6 +121,11 @@ class FirstCommitSelectionTest {
     assertEquals(FirstCommit.RULE, run.get("target"));
     assertEquals(FirstCommit.POPULATION, run.get("population"));
     assertEquals("not read", run.get("outer_test"));
+    // the retrospective window is the first commit's to the first resolution
+    assertEquals(app.issues.Retrospective.scenario(Population.FIRST_COMMIT),
+        run.get("retrospective_scenario"));
+    assertTrue(((String) run.get("retrospective_scenario")).contains("between the first commit "
+        + "that counts and the first resolution"));
 
     // the selection is the one on the outer training rows of the first-commit split
     final List<RowCache.Entry> training =
@@ -161,6 +166,15 @@ class FirstCommitSelectionTest {
     assertEquals("# Issue duration from the first commit: inner report", report.get(0));
     assertTrue(report.stream().anyMatch(l -> l.startsWith("- target: " + FirstCommit.RULE)),
         report.toString());
+    // the side reading's issues are those with Java code
+    final List<String> comparisons =
+        Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.COMPARISONS));
+    assertTrue(comparisons.stream().anyMatch(l -> l.startsWith("usual_flow\twith Java code\t")));
+    assertTrue(comparisons.stream().anyMatch(l -> l.startsWith("all\twithout Java code\t")));
+    assertTrue(comparisons.stream().noneMatch(l -> l.contains("implementation commit")));
+    assertTrue(report.stream().anyMatch(l -> l.startsWith("### Side reading:")
+        && l.endsWith(" issues with Java code")), report.toString());
+    assertTrue(report.stream().noneMatch(l -> l.contains("implementation commit")));
     final List<String> relevance =
         Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.RELEVANCE));
     assertTrue(relevance.stream().map(l -> l.split("\t")).anyMatch(f -> f[0].equals(
@@ -171,6 +185,7 @@ class FirstCommitSelectionTest {
     final List<String> predictions =
         Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.PREDICTIONS));
     final List<String> head = List.of(predictions.get(0).split("\t"));
+    assertEquals("has_java_code", head.get(5));
     final int retrospective = head.indexOf(ElasticNetSelection.RETROSPECTIVE);
     final Map<String, Double> error = new LinkedHashMap<>();
     for (final String line : predictions.subList(1, predictions.size())) {
@@ -268,5 +283,58 @@ class FirstCommitSelectionTest {
     assertTrue(String.join("\n", e.lines()).contains("was written for IN_PROGRESS"),
         e.lines().toString());
     assertFalse(Files.exists(reports));
+  }
+
+  @Test
+  @DisplayName("the share ablation, a diagnostic: the variant with the share is the selection's "
+      + "own choice, both are read on the inner validation only, nothing of the outer test is "
+      + "written, and a matrix of In Progress is refused")
+  void ablatesTheShare() throws Exception {
+    final Path matrix = sealedMatrix();
+    final Path parameters = dir.resolve("elastic-net.tsv");
+    final Map<String, String> settings = new HashMap<>();
+    settings.put("MATRIX", matrix.toString());
+    settings.put("ELASTIC_NET_PARAMETERS", parameters.toString());
+    new IssuesSimilarityElasticNetCommand(settings::get).run(context(own(), (run, rows) -> "run"));
+    final Path out = dir.resolve("ablation");
+    settings.put("REPORT_DIR", out.toString());
+    new IssuesFirstCommitShareAblationCommand(settings::get).run(context(own(), never()));
+
+    final List<String> table =
+        Files.readAllLines(out.resolve(IssuesFirstCommitShareAblationCommand.TABLE));
+    assertEquals(1 + 4, table.size());
+    // the variant with the share reads, on the usual flow, the selection's own error
+    final List<RowCache.Entry> training =
+        RowCache.read(matrix, Population.FIRST_COMMIT, "TRAIN");
+    final ElasticNetSelection.Result direct = ElasticNetSelection.run(BusinessDays.population(
+        training, Augmentation.Variant.INNER).entries(), 1, Population.FIRST_COMMIT);
+    final double own = direct.models().get(ElasticNetSelection.MODELS.indexOf(
+        ElasticNetSelection.RETROSPECTIVE)).fitted().score().mae();
+    final String[] usual = table.get(1).split("\t");
+    assertEquals(List.of("usual_flow", ElasticNetSelection.RETROSPECTIVE),
+        List.of(usual[0], usual[2]));
+    assertEquals(own, Double.parseDouble(usual[3]));
+    assertEquals(app.issues.ShareAblation.WITHOUT, table.get(2).split("\t")[2]);
+    final List<String> md =
+        Files.readAllLines(out.resolve(IssuesFirstCommitShareAblationCommand.REPORT));
+    assertTrue(md.get(0).contains("a diagnostic"), md.get(0));
+    final List<Pattern> outerTest = SelectionFixture.entries(Population.FIRST_COMMIT).stream()
+        .filter(e -> "TEST".equals(e.outer(Population.FIRST_COMMIT)))
+        .map(e -> Pattern.compile("(?<![\\w-])" + Pattern.quote(e.unit().key()) + "(?!\\w)"))
+        .toList();
+    for (final String text : List.of(String.join("\n", table), String.join("\n", md))) {
+      assertTrue(outerTest.stream().noneMatch(p -> p.matcher(text).find()));
+    }
+
+    final Path inProgress = SelectionFixture.write(dir.resolve("in-progress.tsv"),
+        Population.IN_PROGRESS);
+    settings.put("MATRIX", inProgress.toString());
+    settings.put("REPORT_DIR", dir.resolve("refused").toString());
+    final CommandFailedException e = assertThrows(CommandFailedException.class,
+        () -> new IssuesFirstCommitShareAblationCommand(settings::get).run(context(own(),
+            never())));
+    assertTrue(String.join("\n", e.lines()).contains("not of the first-commit population"),
+        e.lines().toString());
+    assertFalse(Files.exists(dir.resolve("refused")));
   }
 }

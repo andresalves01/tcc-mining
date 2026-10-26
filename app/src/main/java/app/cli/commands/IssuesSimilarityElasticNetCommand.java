@@ -176,7 +176,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
         BusinessDays.HOLIDAYS);
     System.out.printf("  population: %s%n", BusinessDays.populationRule(training));
     System.out.printf("  %s: %s%n", ElasticNetSelection.RETROSPECTIVE,
-        Retrospective.SCENARIO);
+        Retrospective.scenario(study));
     System.out.printf("  %s: %s%n", ElasticNetSelection.RETROSPECTIVE,
         ElasticNetSelection.RETROSPECTIVE_ROLE);
     System.out.printf("  %s: %s%n", ElasticNetSelection.WITH_DISCUSSION,
@@ -271,7 +271,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     run.put("mode", "inner");
     run.put("outer_test", "not read");
     run.put("split_rule", ProjectSplit.RULE);
-    run.putAll(statements());
+    run.putAll(statements(study));
     run.put("target", BusinessDays.target(training));
     run.put("population", BusinessDays.populationRule(training));
     if (firstCommit) {
@@ -384,12 +384,17 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
    * retrospective scenario.
    */
   static Map<String, Object> statements() {
+    return statements(Population.IN_PROGRESS);
+  }
+
+  /** {@link #statements()} with the retrospective window of {@code population}. */
+  static Map<String, Object> statements(final Population population) {
     final Map<String, Object> out = new LinkedHashMap<>();
     out.put("target", BusinessDays.TARGET);
     out.put("population", BusinessDays.POPULATION);
     out.put("holidays", BusinessDays.HOLIDAYS);
     out.put("forest_role", FOREST_ROLE);
-    out.put("retrospective_scenario", Retrospective.SCENARIO);
+    out.put("retrospective_scenario", Retrospective.scenario(population));
     out.put("own_retrospective", ElasticNetSelection.RETROSPECTIVE_ROLE);
     out.put("own_retrospective_with_discussion", ElasticNetSelection.WITH_DISCUSSION_ROLE);
     out.put("kikas_retrospective", ElasticNetSelection.KIKAS_RETROSPECTIVE_ROLE);

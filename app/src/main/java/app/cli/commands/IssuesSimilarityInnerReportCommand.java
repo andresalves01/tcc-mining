@@ -248,10 +248,11 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     final Map<String, List<String>> files = new LinkedHashMap<>();
     files.put(REPORT, report(readings, intervals, relevance, population, chosen, matrix,
         elasticNet, study));
-    files.put(PREDICTIONS, predictions(readings));
+    final Side side = Side.of(study);
+    files.put(PREDICTIONS, predictions(readings, side));
     files.put(MODELS, models(readings));
     files.put(BANDS, bands(readings));
-    files.put(COMPARISONS, comparisons(readings));
+    files.put(COMPARISONS, comparisons(readings, side));
     files.put(ORDERING, ordering(readings));
     files.put(DIAGNOSTICS, IssuesSimilarityTestCommand.diagnostics(main));
     files.put(IMPORTANCE, IssuesSimilarityTestCommand.importance(main));
@@ -304,6 +305,35 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
    * usual flow and whether it has an implementation commit.
    */
   static List<String> predictions(final SimilarityScoring.Readings readings) {
+    return predictions(readings, Side.IMPLEMENTATION_COMMIT);
+  }
+
+  /**
+   * How the side reading's issues are named: with an implementation commit in the In Progress
+   * study; with Java code in the first-commit one, where every issue has commits and the side
+   * reading's issues are those with a Java line observed among them ({@code RETRO_java_lines}).
+   *
+   * @param phrase in the report's words, after "issues"
+   * @param with the comparisons file's label of the issues of the side reading
+   * @param without its label of the others
+   * @param column the predictions file's column
+   */
+  record Side(String phrase, String with, String without, String column) {
+
+    static final Side IMPLEMENTATION_COMMIT = new Side("with an implementation commit",
+        "with implementation commit", "without implementation commit",
+        "has_implementation_commit");
+
+    static final Side JAVA_CODE = new Side("with Java code", "with Java code",
+        "without Java code", "has_java_code");
+
+    static Side of(final Population study) {
+      return study == Population.FIRST_COMMIT ? JAVA_CODE : IMPLEMENTATION_COMMIT;
+    }
+  }
+
+  /** {@link #predictions(SimilarityScoring.Readings)} with the side reading named by {@code side}. */
+  static List<String> predictions(final SimilarityScoring.Readings readings, final Side side) {
     final SimilarityScoring.Report r = readings.complementary();
     final boolean[] usual = TailCut.within(r.observed(), r.fences().usualFence());
     final List<String> lines = SimilarityScoring.predictions(r);
@@ -312,7 +342,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
       final String[] f = lines.get(k).split("\t", 5);
       out.add(String.join("\t", f[0], f[1], f[2], f[3],
           k == 0 ? "usual_flow" : Boolean.toString(usual[k - 1]),
-          k == 0 ? "has_implementation_commit" : Boolean.toString(r.implementationCommit()[k - 1]),
+          k == 0 ? side.column() : Boolean.toString(r.implementationCommit()[k - 1]),
           f[4]));
     }
     return out;
@@ -357,12 +387,17 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
    * commit.
    */
   static List<String> comparisons(final SimilarityScoring.Readings readings) {
+    return comparisons(readings, Side.IMPLEMENTATION_COMMIT);
+  }
+
+  /** {@link #comparisons(SimilarityScoring.Readings)} with the side reading named by {@code side}. */
+  static List<String> comparisons(final SimilarityScoring.Readings readings, final Side side) {
     final List<String> out = new ArrayList<>();
     out.add("reading\tissues\trows\ta\tb\tmae_diff_bd\tci_low\tci_high\ttie");
     for (final SimilarityScoring.Report r : both(readings)) {
       gaps(out, name(r), "all scored", r.scoredRows(), r.comparisons());
-      gaps(out, name(r), "with implementation commit", r.withCommitRows(), r.withCommits());
-      gaps(out, name(r), "without implementation commit", r.scoredRows() - r.withCommitRows(),
+      gaps(out, name(r), side.with(), r.withCommitRows(), r.withCommits());
+      gaps(out, name(r), side.without(), r.scoredRows() - r.withCommitRows(),
           r.withoutCommits());
     }
     return out;
@@ -414,6 +449,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
       final Path elasticNet, final Population study) {
     final SimilarityScoring.Report r = readings.complementary();
     final SimilarityScoring.Fences fences = r.fences();
+    final Side side = Side.of(study);
     final List<String> md = new ArrayList<>();
     md.add(study == Population.FIRST_COMMIT
         ? "# Issue duration from the first commit: inner report"
@@ -446,7 +482,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
             t.mae(), t.k() == fences.k() ? " (chosen)" : "")).toList()));
     md.add("- fitted on " + r.fitRows() + " inner fitting issues at the chosen alpha and lambda "
         + "(not scaled); scored on " + r.scoredRows() + " inner validation issues, "
-        + r.withCommitRows() + " of them with an implementation commit");
+        + r.withCommitRows() + " of them " + side.phrase());
     md.add("- validation projects with no fitting issue (the project median is the global one "
         + "there): " + r.unseenRows() + " issues, " + r.unseenProjects());
     md.add("- " + ElasticNetSelection.RETROSPECTIVE + ": "
@@ -457,8 +493,8 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
         + ElasticNetSelection.KIKAS_RETROSPECTIVE_ROLE);
     if (study == Population.FIRST_COMMIT) {
       md.add("- " + IssuesSimilarityElasticNetCommand.FIRST_COMMIT_ATTRIBUTES);
-      md.add("- the side reading's \"implementation commit\" is, here, a Java line observed "
-          + "among the issue's commits (" + app.issues.Retrospective.LINES + "): every issue of "
+      md.add("- the side reading's issues with Java code are those with a Java line observed "
+          + "among their commits (" + app.issues.Retrospective.LINES + "): every issue of "
           + "this population has at least two commits");
     }
     md.add("- the Elastic Nets' coefficients and the forests' permutation importance, here and in "
@@ -480,8 +516,8 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     md.add("- the factors recomputed on A and B together, for later use, are in " + CALIBRATION
         + "; those of A, which the check reads, in " + INTERVALS);
     md.add("");
-    section(md, readings.main(), intervals, "Main reading: the usual flow");
-    section(md, r, intervals, "Complementary reading: all issues");
+    section(md, readings.main(), intervals, "Main reading: the usual flow", side);
+    section(md, r, intervals, "Complementary reading: all issues", side);
     relevance(md, relevance, readings.main());
     md.add("Files beside this one: " + String.join(", ", OUTPUTS.subList(1, OUTPUTS.size()))
         + ".");
@@ -490,7 +526,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
 
   /** Every table of one reading, under its own heading. */
   private static void section(final List<String> md, final SimilarityScoring.Report r,
-      final PredictionIntervals.Inner intervals, final String title) {
+      final PredictionIntervals.Inner intervals, final String title, final Side side) {
     md.add("## " + title + " (" + r.scoredRows() + " issues)");
     md.add("");
     md.add(r.reading().description() + ".");
@@ -531,7 +567,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     md.add("");
     table(md, r.comparisons());
     md.add("### Side reading: the main reading of the retrospective model against the own start "
-        + "model on the " + r.withCommitRows() + " issues with an implementation commit");
+        + "model on the " + r.withCommitRows() + " issues " + side.phrase());
     md.add("");
     table(md, r.withCommits());
     md.add("### For contrast: the same pairs on the " + (r.scoredRows() - r.withCommitRows())
