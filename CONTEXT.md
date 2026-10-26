@@ -275,3 +275,11 @@ _Avoid_: fence (the fence is on the duration)
 **Tail**:
 After the last mark, the dates with a human comment, attachment or review, up to the first
 resolution; only those count.
+
+**First-commit size**:
+The first commit's lines added and removed in every file. It is a start attribute, since it is
+known at the first commit.
+
+**First-commit share**:
+The first commit's part of the lines the issue's commits that count changed. It is a
+retrospective attribute, since the total is known only at the first resolution.

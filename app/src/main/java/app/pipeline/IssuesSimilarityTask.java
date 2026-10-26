@@ -8,6 +8,7 @@ import app.issues.Corpus;
 import app.issues.DayBoundaries;
 import app.issues.DescriptionCleaner;
 import app.issues.ElasticNetSelection;
+import app.issues.FirstCommit;
 import app.issues.FixVersions;
 import app.issues.Embedder;
 import app.issues.Initial;
@@ -80,7 +81,7 @@ public final class IssuesSimilarityTask {
     }
   }
 
-  private static final Population P = Population.IN_PROGRESS;
+  private final Population population;
 
   private final StudySource source;
   private final Progress progress;
@@ -95,8 +96,14 @@ public final class IssuesSimilarityTask {
    */
   public IssuesSimilarityTask(final StudySource source, final Progress progress,
       final Embedder embedder, final Clusterer clusterer) {
-    this(source, progress, ProjectSplit::differences, embedder, EmbeddingModel.DIMENSION,
-        clusterer);
+    this(source, progress, embedder, clusterer, Population.IN_PROGRESS);
+  }
+
+  /** The same for the matrix of {@code population}. */
+  public IssuesSimilarityTask(final StudySource source, final Progress progress,
+      final Embedder embedder, final Clusterer clusterer, final Population population) {
+    this(source, progress, e -> ProjectSplit.differences(e, population), embedder,
+        EmbeddingModel.DIMENSION, clusterer, population);
   }
 
   /**
@@ -107,15 +114,26 @@ public final class IssuesSimilarityTask {
   IssuesSimilarityTask(final StudySource source, final Progress progress,
       final Function<List<RowCache.Entry>, List<String>> split, final Embedder embedder,
       final int dimension, final Clusterer clusterer) {
+    this(source, progress, split, embedder, dimension, clusterer, Population.IN_PROGRESS);
+  }
+
+  /** The same for the matrix of {@code population}. */
+  IssuesSimilarityTask(final StudySource source, final Progress progress,
+      final Function<List<RowCache.Entry>, List<String>> split, final Embedder embedder,
+      final int dimension, final Clusterer clusterer, final Population population) {
     this.source = source;
     this.progress = progress;
     this.split = split;
     this.embedder = embedder;
     this.dimension = dimension;
     this.clusterer = clusterer;
+    this.population = population;
   }
 
   public Report run(final List<RowCache.Entry> entries) {
+    if (this.population == Population.FIRST_COMMIT) {
+      return firstCommit(entries);
+    }
     final ProjectSplit.Sizes found = ElasticNetSelection.sizes(entries);
     final List<String> refused = split.apply(entries);
     if (!refused.isEmpty()) {
@@ -136,7 +154,7 @@ public final class IssuesSimilarityTask {
     // as that In-Progress issue refuses, rather than leaving its fix version flag to be filled
     final List<String> unstarted = new ArrayList<>();
     for (final RowCache.Entry e : entries) {
-      final Universe.Unit u = universe.unit(P, e.unit().issueId());
+      final Universe.Unit u = universe.unit(Population.IN_PROGRESS, e.unit().issueId());
       if (u == null || u.start() != e.unit().startedAt().toEpochMilli()
           || u.resolved() != e.unit().resolvedAt().toEpochMilli()) {
         unstarted.add(e.unit().issueId());
@@ -198,10 +216,111 @@ public final class IssuesSimilarityTask {
       out.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values, absent), e.parts()));
     }
     // the outer test is left out of the gate, as of every report this stage prints
-    final List<String> training = entries.stream().filter(e -> "TRAIN".equals(e.outer(P)))
+    final List<String> training = entries.stream()
+        .filter(e -> "TRAIN".equals(e.outer(population)))
         .map(e -> e.unit().issueId()).toList();
     return new Report(refused, found, out, result, descriptions.size(), boundaries,
         counted.bots(), FixVersions.fidelity(universe, training));
+  }
+
+  /**
+   * The first-commit matrix ({@link Population#FIRST_COMMIT}): the same columns read at the first
+   * commit that counts, the matrix's start. Each description is the one {@link Initial#at}
+   * recovers at that instant; every history and median reads the target the extraction wrote
+   * ({@link FirstCommit#TARGET_COLUMN}), the training side's only and never the row's own, as
+   * {@link Augmentation} reads any target. The status is not read: no day boundary of the
+   * clicker and no active business days are written, the target's own boundary already in the
+   * matrix. Refuses, before the corpus is read, a split that is not its rule's and a row without
+   * its target of at least one business day or without the attributes of decision 16a; then an
+   * issue the corpus does not hold with the matrix's creation and first resolution, or whose
+   * start is not between them.
+   */
+  private Report firstCommit(final List<RowCache.Entry> entries) {
+    final ProjectSplit.Sizes found = ElasticNetSelection.sizes(entries);
+    final List<String> refused = new ArrayList<>(split.apply(entries));
+    if (refused.isEmpty()) {
+      final List<String> missing = new ArrayList<>();
+      for (final RowCache.Entry e : entries) {
+        final Double target = e.row().values().get(FirstCommit.TARGET_COLUMN);
+        if (target == null || target != Math.rint(target) || target < 1
+            || !e.row().values().keySet().containsAll(FirstCommit.ATTRIBUTE_COLUMNS)) {
+          missing.add(e.unit().issueId());
+        }
+      }
+      if (!missing.isEmpty()) {
+        refused.add(String.format("%,d rows have no target of at least one business day in %s "
+            + "or lack %s, the first %s; give the cache the first-commit extraction wrote",
+            missing.size(), FirstCommit.TARGET_COLUMN, FirstCommit.ATTRIBUTE_COLUMNS,
+            missing.get(0)));
+      }
+    }
+    if (!refused.isEmpty()) {
+      return new Report(refused, found, List.of(), null, 0, Map.of(), Set.of());
+    }
+
+    progress.phase(1, 3, "reading the corpus: %s", source.describe());
+    final Corpus corpus = source.load();
+    final Universe universe = Universe.of(corpus);
+    final List<String> unknown = new ArrayList<>();
+    for (final RowCache.Entry e : entries) {
+      if (!heldAsIs(universe, e)) {
+        unknown.add(e.unit().issueId());
+      }
+    }
+    if (!unknown.isEmpty()) {
+      return new Report(List.of(String.format("%,d issues of the matrix are not issues of the "
+          + "corpus with the same creation and first resolution and a start between them, the "
+          + "first %s", unknown.size(), unknown.get(0))), found, List.of(), null, 0, Map.of(),
+          Set.of());
+    }
+    final Map<String, String> descriptions = descriptions(entries, universe);
+    final Map<String, Integer> days = new HashMap<>(entries.size() * 2);
+    entries.forEach(e -> days.put(e.unit().issueId(),
+        e.row().values().get(FirstCommit.TARGET_COLUMN).intValue()));
+    final Map<Variant, Map<String, Integer>> target = new EnumMap<>(Variant.class);
+    for (final Variant v : Variant.values()) {
+      target.put(v, days);
+    }
+
+    progress.phase(2, 3, "Jaccard and embedding neighbours, K-means clusters and reporter medians "
+        + "of %,d issues, %,d with a description", entries.size(), descriptions.size());
+    final Augmentation.Result result =
+        Augmentation.run(issues(entries, descriptions, target), embedder, dimension, clusterer);
+
+    progress.phase(3, 3, "adding %d columns", Augmentation.columns().size());
+    final List<RowCache.Entry> out = new ArrayList<>(entries.size());
+    for (final RowCache.Entry e : entries) {
+      final Map<String, Double> values = new HashMap<>(e.row().values());
+      final Set<String> absent = new HashSet<>(e.row().absent());
+      final Map<String, Double> added = result.columns().get(e.unit().issueId());
+      for (final String column : columns()) {
+        final Double v = added.get(column);
+        if (v == null) {
+          absent.add(column);
+        } else {
+          values.put(column, v);
+        }
+      }
+      out.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values, absent), e.parts()));
+    }
+    final List<String> training = entries.stream()
+        .filter(e -> "TRAIN".equals(e.outer(population)))
+        .map(e -> e.unit().issueId()).toList();
+    return new Report(List.of(), found, out, result, descriptions.size(), Map.of(), Set.of(),
+        FixVersions.fidelity(universe, training));
+  }
+
+  /**
+   * Whether the corpus holds the issue of a first-commit row as the matrix has it: an issue of
+   * the universe with the same creation and first resolution, the start strictly after the
+   * creation, as the population's rule requires, and before the first resolution.
+   */
+  static boolean heldAsIs(final Universe universe, final RowCache.Entry e) {
+    final Universe.Unit u = universe.unit(e.unit().issueId());
+    final long start = e.unit().startedAt().toEpochMilli();
+    return u != null && u.created() == e.unit().createdAt().toEpochMilli()
+        && u.resolved() == e.unit().resolvedAt().toEpochMilli() && u.created() < start
+        && start < u.resolved();
   }
 
   /**
@@ -213,7 +332,7 @@ public final class IssuesSimilarityTask {
   }
 
   /** The rows as the augmentation reads them, each with its target in each variant. */
-  private static List<Augmentation.Issue> issues(final List<RowCache.Entry> entries,
+  private List<Augmentation.Issue> issues(final List<RowCache.Entry> entries,
       final Map<String, String> descriptions, final Map<Variant, Map<String, Integer>> target) {
     final List<Augmentation.Issue> out = new ArrayList<>(entries.size());
     for (final RowCache.Entry e : entries) {
@@ -222,7 +341,7 @@ public final class IssuesSimilarityTask {
       final long resolved = e.unit().resolvedAt().toEpochMilli();
       out.add(new Augmentation.Issue(id, e.unit().project(), e.unit().reporter(), start,
           resolved, target.get(Variant.INNER).get(id), target.get(Variant.OUTER).get(id),
-          e.outer(P), e.inner(P), descriptions.get(id)));
+          e.outer(population), e.inner(population), descriptions.get(id)));
     }
     return out;
   }

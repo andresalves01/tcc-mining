@@ -55,6 +55,27 @@ public final class FirstCommit {
       + "dates with explicit human activity; after the last mark only dates with human comments, "
       + "attachments or reviews; status not read";
 
+  /** The matrix column of the target in business days, written by the extraction. */
+  public static final String TARGET_COLUMN = "FC_target_days";
+
+  /** The matrix column of the hour, in UTC, the target's dates turn at. */
+  public static final String BOUNDARY_COLUMN = "FC_day_boundary_hour";
+
+  /**
+   * Decision 16a, a start attribute: the first commit's lines added plus removed in every file,
+   * known at the first commit.
+   */
+  public static final String FIRST_LINES = "FC_first_commit_lines";
+
+  /**
+   * Decision 16a, a retrospective attribute: the first commit's share of the issue's changed
+   * lines, whose total is known only at the first resolution.
+   */
+  public static final String FIRST_SHARE = "FC_first_commit_share";
+
+  /** The two attributes of decision 16a, in this order. */
+  public static final List<String> ATTRIBUTE_COLUMNS = List.of(FIRST_LINES, FIRST_SHARE);
+
   private static final long HOUR = 3_600_000L;
 
   /**

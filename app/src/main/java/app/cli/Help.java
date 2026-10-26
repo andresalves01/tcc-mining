@@ -49,9 +49,11 @@ public final class Help {
           PREPARED_DB       (TARGET_DB)         the issue stages read the prepared collections
                                                 (person_canonical, developer_contribution,
                                                 commit_complexity, issue_label) here; read only
-          POPULATION        IN_PROGRESS         issues-in-progress-extract: IN_PROGRESS or
-                                                FIRST_COMMIT (needs TARGET_DB and ISSUES_DB of
-                                                its own)
+          POPULATION        IN_PROGRESS         issues-in-progress-extract and -team:
+                                                IN_PROGRESS or FIRST_COMMIT (needs TARGET_DB and
+                                                ISSUES_DB of its own); the similarity and
+                                                retrospective stages take the population of the
+                                                matrix they read
           CACHE             (unset)             issues-in-progress-extract: the matrix written;
                                                 issues-in-progress-similarity: the one it reads
           WORK_DIR          build/identity-work

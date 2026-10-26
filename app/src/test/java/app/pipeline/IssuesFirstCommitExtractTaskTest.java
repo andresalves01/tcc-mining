@@ -168,4 +168,119 @@ class IssuesFirstCommitExtractTaskTest {
     assertThrows(IllegalArgumentException.class,
         () -> universe.unit(Population.FIRST_COMMIT, ExtractionFixture.id(1)));
   }
+
+  /** An issue of both populations, the first by id. */
+  private String common(final IssuesInProgressExtractTask.Report inProgress) {
+    final Set<String> started = inProgress.entries().stream().map(e -> e.unit().issueId())
+        .collect(Collectors.toSet());
+    return fc.extraction().entries().stream().map(e -> e.unit().issueId())
+        .filter(started::contains).sorted().findFirst().orElseThrow();
+  }
+
+  @Test
+  @DisplayName("decision 16a: the first commit's lines and its share of the issue's lines are "
+      + "written after the target; the pause flag, which reads the status, is not")
+  void firstCommitAttributesWithoutPause() {
+    assertEquals(IssuesFirstCommitExtractTask.COLUMNS, fc.extraction().columns()
+        .subList(fc.extraction().columns().size() - IssuesFirstCommitExtractTask.COLUMNS.size(),
+            fc.extraction().columns().size()));
+    assertTrue(!fc.extraction().columns().contains(IssuesInProgressExtractTask.PAUSED));
+    final Map<String, RowCache.Entry> entries = entries();
+    int checked = 0;
+    for (final IssueRow row : audit.rows()) {
+      if (row.side() == null) {
+        continue;
+      }
+      final Map<String, Double> v = entries.get(row.id()).row().values();
+      assertEquals((double) row.verdict().kept().getFirst().lines(),
+          v.get(app.issues.FirstCommit.FIRST_LINES), row.key());
+      assertEquals(row.verdict().firstShare(), v.get(app.issues.FirstCommit.FIRST_SHARE),
+          row.key());
+      assertTrue(v.get(app.issues.FirstCommit.FIRST_SHARE) < app.issues.FirstCommit.SHARE);
+      checked++;
+    }
+    assertTrue(checked > 0);
+    for (final RowCache.Entry e : fc.extraction().entries()) {
+      assertTrue(!e.row().values().containsKey(IssuesInProgressExtractTask.PAUSED));
+      assertTrue(!e.row().absent().contains(IssuesInProgressExtractTask.PAUSED));
+      assertTrue(e.row().values().keySet().containsAll(app.issues.FirstCommit.ATTRIBUTE_COLUMNS));
+    }
+    final IssuesInProgressExtractTask.Report inProgress =
+        new IssuesInProgressExtractTask(fixture.source(), SilentProgress.INSTANCE).run();
+    assertTrue(inProgress.columns().contains(IssuesInProgressExtractTask.PAUSED),
+        "the In Progress cache keeps it");
+  }
+
+  @Test
+  @DisplayName("the extracted counts observed during the work run from the first commit: a "
+      + "comment between the first In Progress and the first commit counts for In Progress only")
+  void observedFromTheFirstCommit() {
+    final ExtractionFixture before = new ExtractionFixture();
+    final String id = common(new IssuesInProgressExtractTask(before.source(),
+        SilentProgress.INSTANCE).run());
+    final ExtractionFixture with = new ExtractionFixture();
+    with.comment(id, "zed", ExtractionFixture.day(2) + 2 * ExtractionFixture.H);
+    final double fcBefore = value(new IssuesFirstCommitExtractTask(before.source(),
+        SilentProgress.INSTANCE).run().extraction().entries(), id, "K03_comments");
+    final double fcWith = value(new IssuesFirstCommitExtractTask(with.source(),
+        SilentProgress.INSTANCE).run().extraction().entries(), id, "K03_comments");
+    final double ipBefore = value(new IssuesInProgressExtractTask(before.source(),
+        SilentProgress.INSTANCE).run().entries(), id, "K03_comments");
+    final double ipWith = value(new IssuesInProgressExtractTask(with.source(),
+        SilentProgress.INSTANCE).run().entries(), id, "K03_comments");
+    assertEquals(fcBefore, fcWith, "before the first commit: not counted");
+    assertEquals(ipBefore + 1, ipWith, "after the first In Progress: counted");
+  }
+
+  @Test
+  @DisplayName("the start attributes and the team columns read at the first commit read nothing "
+      + "after it: a later commit of a new author changes none of them")
+  void nothingAfterTheFirstCommit() {
+    final ExtractionFixture later = new ExtractionFixture();
+    // after every first commit of the fixture, in project p, on an issue outside the population
+    later.commitOn("late", "p", "dev9", ExtractionFixture.day(2) + 4 * ExtractionFixture.H, 500,
+        902);
+    final IssuesFirstCommitExtractTask.Report other =
+        new IssuesFirstCommitExtractTask(later.source(), SilentProgress.INSTANCE).run();
+    assertEquals(fc.extraction().split(), other.extraction().split());
+    assertEquals(new java.util.TreeMap<>(fc.extraction().team()),
+        new java.util.TreeMap<>(other.extraction().team()));
+    final List<String> start = new java.util.ArrayList<>();
+    for (final app.issues.Attribute a : app.issues.Attributes.all()) {
+      if (a.atCreation() || app.issues.Attributes.EXECUTOR_AT_START.contains(a.name())) {
+        start.add(a.name());
+      }
+    }
+    start.add(app.issues.FirstCommit.FIRST_LINES);
+    int compared = 0;
+    for (final RowCache.Entry e : fc.extraction().entries()) {
+      for (final String column : start) {
+        assertEquals(e.row().values().get(column),
+            value(other.extraction().entries(), e.unit().issueId(), column, true),
+            e.unit().key() + " " + column);
+        compared++;
+      }
+    }
+    assertTrue(compared > 100);
+    // the commit is seen where the window reaches past the first commit
+    final String id = fc.extraction().entries().stream()
+        .filter(e -> e.unit().project().equals("p")).findFirst().orElseThrow().unit().issueId();
+    assertEquals(value(fc.extraction().entries(), id, "K19c2_project_commits_14d_obs") + 1,
+        value(other.extraction().entries(), id, "K19c2_project_commits_14d_obs"));
+  }
+
+  private static double value(final List<RowCache.Entry> entries, final String id,
+      final String column) {
+    return value(entries, id, column, false);
+  }
+
+  private static Double value(final List<RowCache.Entry> entries, final String id,
+      final String column, final boolean nullable) {
+    final Double v = entries.stream().filter(e -> e.unit().issueId().equals(id)).findFirst()
+        .orElseThrow().row().values().get(column);
+    if (v == null && !nullable) {
+      throw new AssertionError(id + " has no " + column);
+    }
+    return v;
+  }
 }

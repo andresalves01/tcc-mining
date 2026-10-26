@@ -110,7 +110,10 @@ public enum Command {
       applied, frozen, to every drawn issue), the same columns read at the
       first commit that counts (the executor is the assignee then, or else
       the first commit's author), time travel at that instant, and the
-      target and its parts as the FC_* columns. The cache's split columns
+      target and its parts as the FC_* columns, then the first commit's
+      lines (FC_first_commit_lines, a start attribute) and its share of
+      the issue's lines (FC_first_commit_share, a retrospective one); the
+      pause flag, which reads the status, is left out. The cache's split columns
       are primeiro_commit_externa and primeiro_commit_interna. Refuses the
       In Progress study's TARGET_DB and ISSUES_DB before reading anything;
       give PREPARED_DB=smartshark_tcc to read the prepared collections. Of
@@ -123,7 +126,10 @@ public enum Command {
       one line per issue, which issues-in-progress-similarity joins to the
       extracted matrix. Refuses when the extraction's time-travel gate
       fails; that gate does not check these four. Records the run in
-      ISSUES_DB; reads everything else."""),
+      ISSUES_DB; reads everything else.
+      With POPULATION=FIRST_COMMIT, the columns of the first-commit
+      population, read at the first commit that counts; refuses the In
+      Progress study's TARGET_DB and ISSUES_DB before reading anything."""),
 
   ISSUES_DOWNLOAD_MODEL("issues-download-model", new IssuesDownloadModelCommand(), """
       Issue duration from the first In Progress: downloads the
@@ -167,7 +173,15 @@ public enum Command {
       Reads CACHE, TEAM_COLUMNS, the model and the corpus; keeps the
       embeddings in EMBEDDING_CACHE;
       writes MATRIX and the diagnostics to REPORT_DIR; records the run in
-      ISSUES_DB."""),
+      ISSUES_DB.
+      A matrix of the first-commit population (its split columns
+      primeiro_commit_*) is read at the first commit that counts: the
+      descriptions there, and every median and history on the target the
+      extraction wrote (FC_target_days), the training side's only and
+      never the row's own. The status is not read and no day boundary or
+      active business days are written. Refuses the In Progress study's
+      TARGET_DB and ISSUES_DB, and a row without its target of at least
+      one business day or the first commit's size and share."""),
 
   ISSUES_RETROSPECTIVE("issues-in-progress-retrospective", new IssuesRetrospectiveCommand(), """
       Issue duration from the first In Progress, RETROSPECTIVE SCENARIO: adds to the similarity stage's matrix
@@ -201,7 +215,12 @@ public enum Command {
       commits (the expensive part); writes RETROSPECTIVE_MATRIX, never over
       MATRIX or a file that is not a retrospective matrix; records the run,
       with the coverage of each of the nine on the inner fitting and inner
-      validation, in ISSUES_DB. The other matrices are left untouched."""),
+      validation, in ISSUES_DB. The other matrices are left untouched.
+      A matrix of the first-commit population is read from the first
+      commit that counts to the first resolution: that commit replaces
+      the first In Progress in every window above, and the first
+      commit's size and share, written by the extraction, are copied as
+      they are. Refuses the In Progress study's TARGET_DB and ISSUES_DB."""),
 
   ISSUES_SIMILARITY_ELASTIC_NET("issues-in-progress-similarity-elastic-net",
       new IssuesSimilarityElasticNetCommand(), """

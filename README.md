@@ -158,7 +158,9 @@ learned on the inner fitting's waits and then applied, frozen, to every drawn is
 column of the In Progress extraction at the first commit that counts, checks time travel at that
 instant, and writes the target and its parts after them (`FC_target_days`,
 `FC_implementation_days`, `FC_tail_days`, `FC_capped_days`, `FC_marks`, `FC_patches` and
-`FC_day_boundary_hour`). The cache's split columns are `primeiro_commit_externa` and
+`FC_day_boundary_hour`), then the first commit's lines added and removed in every file
+(`FC_first_commit_lines`) and its share of the issue's changed lines (`FC_first_commit_share`).
+The In Progress column `PAUSA_volta_open` is left out, since this study does not read the status. The cache's split columns are `primeiro_commit_externa` and
 `primeiro_commit_interna`. Of the target it prints and records only the outer training's.
 
 The first-commit study writes to databases of its own, and the command refuses the In Progress
@@ -171,7 +173,42 @@ POPULATION=FIRST_COMMIT TARGET_DB=smartshark_first_commit \
   APP_OPTS=-Xmx6g CACHE=$RUN/first-commit-matrix.tsv $APP issues-in-progress-extract
 ```
 
-The later stages of the study do not read this population yet.
+### 6. Issue duration from the first commit: team, similarity and retrospective
+
+The next three stages take the first-commit population too. `issues-in-progress-team` reads
+`POPULATION` as the extraction does. The similarity and retrospective stages take the population
+of the matrix they read, from its split columns. All three refuse the In Progress study's
+`TARGET_DB` and `ISSUES_DB`.
+
+- **Team.** The four team columns, read at the first commit.
+- **Similarity.** The description at the first commit. Every similarity and reporter median reads
+  `FC_target_days` of its split's training side, never the issue's own. The status is not read,
+  so no `day_boundary_hour` or `active_business_days` is written: the target is already in the
+  matrix.
+- **Retrospective.** The nine columns over the window from the first commit to the first
+  resolution.
+
+```bash
+export POPULATION=FIRST_COMMIT TARGET_DB=smartshark_first_commit \
+  ISSUES_DB=smartshark_first_commit_issues PREPARED_DB=smartshark_tcc
+CACHE=$RUN/first-commit-matrix.tsv TEAM_COLUMNS=$RUN/team-columns.tsv APP_OPTS=-Xmx6g \
+  $APP issues-in-progress-team
+APP_OPTS=-Xmx8g CACHE=$RUN/first-commit-matrix.tsv TEAM_COLUMNS=$RUN/team-columns.tsv \
+  MATRIX=$RUN/augmented-matrix.tsv REPORT_DIR=$RUN/similarity-reports \
+  MODEL_DIR=$HOME/.cache/tcc-minilm-java EMBEDDING_CACHE=$RUN/embedding-cache \
+  $APP issues-in-progress-similarity
+MATRIX=$RUN/augmented-matrix.tsv RETROSPECTIVE_MATRIX=$RUN/retrospective-matrix.tsv \
+  $APP issues-in-progress-retrospective
+```
+
+The models read the first-commit target as their business days. They use the same sets as the In
+Progress study, plus the two attributes of the first commit:
+
+- the size closes the own start model, so both readings of the retrospective model read it too;
+- the share closes the retrospective columns of both readings.
+
+The literature sets are unchanged. Use `ElasticNetSelection.cells` with the population to get
+them. The selection and the reports do not read this population yet.
 
 ### Commands that only read
 

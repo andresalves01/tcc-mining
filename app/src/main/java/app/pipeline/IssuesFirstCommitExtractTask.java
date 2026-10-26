@@ -2,11 +2,13 @@ package app.pipeline;
 
 import app.issues.FirstCommit;
 import app.issues.ProjectSplit;
+import app.issues.RowCache;
 import app.issues.Universe;
 import app.issues.Universe.Part;
 import app.issues.Universe.Population;
 import app.issues.port.StudySource;
 import app.pipeline.port.Progress;
+import app.study.Row;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -29,23 +31,31 @@ import java.util.TreeSet;
  * counts: the issue's state undone to that instant, the executor the assignee then, or else the
  * first commit's author, the participants those who commented on or changed the issue before it.
  * The time-travel gate is checked at the same instant. After those, the target and its parts
- * ({@link #TARGET_COLUMNS}).
+ * ({@link #TARGET_COLUMNS}), then the first commit's size and its share of the issue's lines
+ * (decision 16a). The pause flag of the In Progress extraction is left out: it reads the status.
  */
 public final class IssuesFirstCommitExtractTask {
 
   /** The target in business days: {@link FirstCommit.Count#total}. */
-  public static final String TARGET = "FC_target_days";
+  public static final String TARGET = FirstCommit.TARGET_COLUMN;
   public static final String IMPLEMENTATION = "FC_implementation_days";
   public static final String TAIL = "FC_tail_days";
   public static final String CAPPED = "FC_capped_days";
   public static final String MARKS = "FC_marks";
   public static final String PATCHES = "FC_patches";
   /** The UTC hour the target's dates turn at: the first commit's author's day boundary. */
-  public static final String DAY_BOUNDARY = "FC_day_boundary_hour";
+  public static final String DAY_BOUNDARY = FirstCommit.BOUNDARY_COLUMN;
 
-  /** The columns written after the extracted ones, in this order. */
+  /** The target and its parts, written after the extracted columns, in this order. */
   public static final List<String> TARGET_COLUMNS =
       List.of(TARGET, IMPLEMENTATION, TAIL, CAPPED, MARKS, PATCHES, DAY_BOUNDARY);
+
+  /**
+   * Every column written after the extracted ones: the target and its parts, then the two
+   * attributes of decision 16a ({@link FirstCommit#ATTRIBUTE_COLUMNS}).
+   */
+  public static final List<String> COLUMNS = java.util.stream.Stream.of(TARGET_COLUMNS,
+      FirstCommit.ATTRIBUTE_COLUMNS).flatMap(List::stream).toList();
 
   /**
    * The extraction and what the first-commit population adds to it; of the outer test only the
@@ -118,6 +128,8 @@ public final class IssuesFirstCommitExtractTask {
       row.put(MARKS, (double) c.marks());
       row.put(PATCHES, (double) c.patches());
       row.put(DAY_BOUNDARY, (double) v.hour());
+      row.put(FirstCommit.FIRST_LINES, (double) first.lines());
+      row.put(FirstCommit.FIRST_SHARE, v.firstShare());
       target.put(u.id(), row);
     }
 
@@ -130,9 +142,30 @@ public final class IssuesFirstCommitExtractTask {
         source, progress, b.corpus(), b.universe(), units, studied, starter,
         Population.FIRST_COMMIT, drawn.parts(),
         IssuesInProgressExtractTask.summary(units.size() + zero, projects, drawn.parts()),
-        target, TARGET_COLUMNS, 6, PHASES);
-    return new Report(extraction, b.units().size(),
+        target, COLUMNS, 6, PHASES);
+    return new Report(withoutPause(extraction), b.units().size(),
         IssuesFirstCommitAuditTask.funnel(b.units().size(), drawn.verdicts()), drawn.threshold(),
         FirstCommit.summary(training));
+  }
+
+  /**
+   * The extraction without the pause flag ({@link IssuesInProgressExtractTask#PAUSED}): it reads
+   * the In Progress workflow, which this population does not start at, and the status is not read
+   * (spec decision 14; André, 25/10/2026). No column of the cache carries it.
+   */
+  static IssuesInProgressExtractTask.Report withoutPause(final IssuesInProgressExtractTask.Report r) {
+    final String paused = IssuesInProgressExtractTask.PAUSED;
+    final List<String> columns = r.columns().stream().filter(c -> !c.equals(paused)).toList();
+    final List<RowCache.Entry> entries = new ArrayList<>(r.entries().size());
+    for (final RowCache.Entry e : r.entries()) {
+      final Map<String, Double> values = new LinkedHashMap<>(e.row().values());
+      values.remove(paused);
+      final Set<String> absent = new java.util.HashSet<>(e.row().absent());
+      absent.remove(paused);
+      entries.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values, absent),
+          e.parts()));
+    }
+    return new IssuesInProgressExtractTask.Report(r.split(), r.travel(), r.executors(),
+        List.copyOf(entries), columns, r.team());
   }
 }

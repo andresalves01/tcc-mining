@@ -346,19 +346,23 @@ public final class ElasticNetSelection {
 
   /**
    * Outer training, outer test, inner fitting and inner validation rows, counted from the split
-   * labels: nothing else of an outer test row is read.
+   * labels: nothing else of an outer test row is read. The split read is the first-commit
+   * population's when the rows carry it, the In Progress one's otherwise.
    */
   public static ProjectSplit.Sizes sizes(final List<RowCache.Entry> entries) {
+    final Population split = entries.stream()
+        .anyMatch(e -> e.parts().containsKey(Population.FIRST_COMMIT))
+        ? Population.FIRST_COMMIT : P;
     int train = 0;
     int test = 0;
     int fit = 0;
     int validation = 0;
     for (final RowCache.Entry e : entries) {
-      if (TRAIN.equals(e.outer(P))) {
+      if (TRAIN.equals(e.outer(split))) {
         train++;
-        fit += TRAIN.equals(e.inner(P)) ? 1 : 0;
-        validation += TEST.equals(e.inner(P)) ? 1 : 0;
-      } else if (TEST.equals(e.outer(P))) {
+        fit += TRAIN.equals(e.inner(split)) ? 1 : 0;
+        validation += TEST.equals(e.inner(split)) ? 1 : 0;
+      } else if (TEST.equals(e.outer(split))) {
         test++;
       }
     }
@@ -797,9 +801,15 @@ public final class ElasticNetSelection {
    * Combination#all}'s order, the six models of each in theirs. What the selection may read.
    */
   public static List<Cell> everyCell(final Augmentation.Variant variant) {
+    return everyCell(variant, P);
+  }
+
+  /** {@link #everyCell(Augmentation.Variant)} for the sets of {@code population}. */
+  public static List<Cell> everyCell(final Augmentation.Variant variant,
+      final Population population) {
     final List<Cell> out = new ArrayList<>();
     for (final Combination c : Combination.all()) {
-      out.addAll(cells(c, variant));
+      out.addAll(cells(c, variant, population));
     }
     return List.copyOf(out);
   }
@@ -813,16 +823,23 @@ public final class ElasticNetSelection {
    */
   public static List<Cell> cells(final Map<String, Combination> combinations,
       final Augmentation.Variant variant) {
+    return cells(combinations, variant, P);
+  }
+
+  /** {@link #cells(Map, Augmentation.Variant)} for the sets of {@code population}. */
+  public static List<Cell> cells(final Map<String, Combination> combinations,
+      final Augmentation.Variant variant, final Population population) {
     if (!combinations.keySet().equals(Set.copyOf(WITH_SIMILARITY))) {
       throw new IllegalArgumentException("the models with the similarity medians are "
           + WITH_SIMILARITY + "; Jaccard n, embedding n and cluster k were given for "
           + combinations.keySet());
     }
     final List<Cell> out = new ArrayList<>(MODELS.size());
-    final List<Cell> without = cells(combinations.get(WITH_SIMILARITY.get(0)), variant);
+    final List<Cell> without =
+        cells(combinations.get(WITH_SIMILARITY.get(0)), variant, population);
     for (int m = 0; m < MODELS.size(); m++) {
       final Combination c = combinations.get(MODELS.get(m));
-      out.add(c == null ? without.get(m) : cells(c, variant).get(m));
+      out.add(c == null ? without.get(m) : cells(c, variant, population).get(m));
     }
     return List.copyOf(out);
   }
@@ -832,6 +849,21 @@ public final class ElasticNetSelection {
    * the three with the similarity medians at {@code c}; the other three do not depend on it.
    */
   public static List<Cell> cells(final Combination c, final Augmentation.Variant variant) {
+    return cells(c, variant, P);
+  }
+
+  /**
+   * {@link #cells(Combination, Augmentation.Variant)} for the sets of {@code population}. For
+   * {@link Population#FIRST_COMMIT} the two attributes of decision 16a join the own sets: the
+   * first commit's size ({@link FirstCommit#FIRST_LINES}, {@code log1p}) closes the own start
+   * model, so both readings of the retrospective model read it too; the first commit's share of
+   * the issue's lines ({@link FirstCommit#FIRST_SHARE}, raw) closes the retrospective columns of
+   * both readings, since its total is known only at the first resolution. The literature sets are
+   * the same in both populations.
+   */
+  public static List<Cell> cells(final Combination c, final Augmentation.Variant variant,
+      final Population population) {
+    final boolean firstCommit = population == Population.FIRST_COMMIT;
     // the own start model: the ten of the own specification, then the three medians
     final List<Attribute> start = new ArrayList<>();
     start.add(Attributes.byName("A01_desc_length"));
@@ -847,10 +879,19 @@ public final class ElasticNetSelection {
     start.add(revised(Augmentation.jaccard(c.jaccardN(), variant)));
     start.add(revised(Augmentation.embedding(c.embeddingN(), variant)));
     start.add(revised(Augmentation.cluster(c.clusterK(), variant)));
+    if (firstCommit) {
+      start.add(new Attribute(FirstCommit.FIRST_LINES, FirstCommit.FIRST_LINES, Family.OWN, null,
+          Construct.Kind.NUMERIC, Construct.Transform.LOG1P, false));
+    }
 
     // the main reading: the own start model, then content and assignee changes
     final List<Attribute> retrospective = new ArrayList<>(start);
     retrospective.addAll(retrospective(MAIN_READING));
+    if (firstCommit) {
+      retrospective.add(new Attribute(FirstCommit.FIRST_SHARE, FirstCommit.FIRST_SHARE,
+          Family.OWN, Scenario.Block.CONTENT, Construct.Kind.NUMERIC, Construct.Transform.NONE,
+          false));
+    }
     // the ceiling: the main reading, then the comments and the participants, nothing else
     final List<Attribute> withDiscussion = new ArrayList<>(retrospective);
     withDiscussion.addAll(retrospective(Retrospective.DISCUSSION));

@@ -131,19 +131,27 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
   }
 
   /**
+   * Refuses, before anything is read, a configuration that would record a stage of the
+   * first-commit study in the In Progress study's TARGET_DB or ISSUES_DB.
+   */
+  static void requireOwnDatabases(final PipelineConfig config) throws CommandFailedException {
+    if (config == null || PipelineConfig.DEFAULT_TARGET_DB.equals(config.targetDb())
+        || PipelineConfig.DEFAULT_ISSUES_DB.equals(config.issuesDb())) {
+      throw new CommandFailedException(List.of("  the first-commit study records its runs in "
+          + "databases of its own: set TARGET_DB and ISSUES_DB to names other than "
+          + PipelineConfig.DEFAULT_TARGET_DB + " and " + PipelineConfig.DEFAULT_ISSUES_DB
+          + ", and PREPARED_DB to where the prepared collections are read"));
+    }
+  }
+
+  /**
    * The first-commit extraction: refuses the In Progress study's databases before reading
    * anything, records the run in ISSUES_DB, writes the cache only when the gate passed.
    */
   private void firstCommit(final Context context, final String cache)
       throws CommandFailedException {
     final PipelineConfig config = context.config();
-    if (config == null || PipelineConfig.DEFAULT_TARGET_DB.equals(config.targetDb())
-        || PipelineConfig.DEFAULT_ISSUES_DB.equals(config.issuesDb())) {
-      throw new CommandFailedException(List.of("  POPULATION=FIRST_COMMIT records its run in "
-          + "databases of its own: set TARGET_DB and ISSUES_DB to names other than "
-          + PipelineConfig.DEFAULT_TARGET_DB + " and " + PipelineConfig.DEFAULT_ISSUES_DB
-          + ", and PREPARED_DB to where the prepared collections are read"));
-    }
+    requireOwnDatabases(config);
     final IssuesFirstCommitExtractTask.Report fc =
         new IssuesFirstCommitExtractTask(context.study(), context.progress()).run();
     final IssuesInProgressExtractTask.Report r = fc.extraction();
@@ -234,6 +242,9 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
     target.put("sum", a.sum());
     run.put("outer_training_target", target);
     run.put("target_columns", IssuesFirstCommitExtractTask.TARGET_COLUMNS);
+    run.put("attribute_columns", FirstCommit.ATTRIBUTE_COLUMNS);
+    run.put("not_written", IssuesInProgressExtractTask.PAUSED + ": it reads the status, which "
+        + "this study does not read");
     System.out.printf("%n  run recorded in ISSUES_DB (%s): %s%n", config.issuesDb(),
         context.issuesResults().record(run, List.of()));
 

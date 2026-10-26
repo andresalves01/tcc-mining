@@ -173,6 +173,9 @@ public final class BusinessDays {
    */
   public static Population population(final List<RowCache.Entry> entries,
       final Augmentation.Variant variant) {
+    if (firstCommit(entries)) {
+      return firstCommitPopulation(entries);
+    }
     if (AdjustedDuration.marked(entries) && entries.stream().anyMatch(e -> !AdjustedDuration.marked(e)))
       throw new IllegalArgumentException("mixed legacy and adjusted targets");
     final List<RowCache.Entry> out = new ArrayList<>(entries.size());
@@ -209,11 +212,71 @@ public final class BusinessDays {
         ElasticNetSelection.sizes(out));
   }
 
+  /**
+   * Whether the rows are of the first-commit study ({@link FirstCommit}), whose target the
+   * extraction wrote to {@link FirstCommit#TARGET_COLUMN}; refuses a mixture with other rows.
+   */
+  public static boolean firstCommit(final List<RowCache.Entry> entries) {
+    final long marked = entries.stream()
+        .filter(e -> e.row().values().containsKey(FirstCommit.TARGET_COLUMN)).count();
+    if (marked > 0 && marked < entries.size()) {
+      throw new IllegalArgumentException("mixed first-commit and other targets");
+    }
+    return marked > 0;
+  }
+
+  /**
+   * The matrix columns the target is read from, in {@code population}: the day boundary and the
+   * active business days the similarity stage writes for {@link Universe.Population#IN_PROGRESS},
+   * the target and its day boundary the extraction writes for {@link
+   * Universe.Population#FIRST_COMMIT}.
+   */
+  public static List<String> columns(final Universe.Population population) {
+    return switch (population) {
+      case IN_PROGRESS -> COLUMNS;
+      case FIRST_COMMIT -> List.of(FirstCommit.BOUNDARY_COLUMN, FirstCommit.TARGET_COLUMN);
+    };
+  }
+
+  /**
+   * The first-commit rows, each carrying its target ({@link FirstCommit#TARGET_COLUMN}) as its
+   * business days: the status is not read, and every history and model reads that target. Refuses
+   * a row without it or its day boundary, and a target that is not a whole number from 1 to the
+   * business days from the first commit to the first resolution at that boundary: the extraction
+   * draws only issues of at least one.
+   */
+  private static Population firstCommitPopulation(final List<RowCache.Entry> entries) {
+    final List<RowCache.Entry> out = new ArrayList<>(entries.size());
+    for (final RowCache.Entry e : entries) {
+      final Double hour = e.row().values().get(FirstCommit.BOUNDARY_COLUMN);
+      if (hour == null || hour != Math.rint(hour) || hour < 0 || hour > 23) {
+        throw new IllegalArgumentException(e.unit().issueId() + " has no day boundary in "
+            + FirstCommit.BOUNDARY_COLUMN + " (" + hour + ")");
+      }
+      final double target = e.row().values().get(FirstCommit.TARGET_COLUMN);
+      final int whole = whole(e.unit(), hour.intValue());
+      if (target != Math.rint(target) || target < 1 || target > whole) {
+        throw new IllegalArgumentException(e.unit().issueId() + " has " + target + " in "
+            + FirstCommit.TARGET_COLUMN + ", not a whole number from 1 to its " + whole
+            + " business days");
+      }
+      out.add(new RowCache.Entry(e.unit().withBusinessDays((int) target), e.row(), e.parts()));
+    }
+    return new Population(List.copyOf(out), ElasticNetSelection.sizes(entries),
+        ElasticNetSelection.sizes(out));
+  }
+
   public static String target(final List<RowCache.Entry> entries) {
+    if (firstCommit(entries)) {
+      return FirstCommit.RULE;
+    }
     return AdjustedDuration.marked(entries) ? AdjustedDuration.RULE : TARGET;
   }
 
   public static String populationRule(final List<RowCache.Entry> entries) {
+    if (firstCommit(entries)) {
+      return FirstCommit.POPULATION;
+    }
     return AdjustedDuration.marked(entries)
         ? "frozen original partitions; eligible code evidence required; zero durations retained"
         : POPULATION;

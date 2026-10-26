@@ -126,6 +126,29 @@ public final class ExtractionFixture {
     natives.put(cid, new FirstCommitFacts.Native(lines, "work on " + sha));
   }
 
+  /** A comment of {@code author} on issue {@code issue} at {@code at}. */
+  public void comment(final String issue, final String author, final long at) {
+    comments.add(new Corpus.Comment(issue, author, at, 5, false));
+  }
+
+  /** A commit of {@code lines} lines by {@code author} in {@code project}, linked to issue n. */
+  public void commitOn(final String sha, final String project, final String author,
+      final long at, final long lines, final int issue) {
+    commit(sha, project, author, at, lines, issue);
+  }
+
+  /** The issue's description is {@code after} now; it was its fixture's until {@code at}. */
+  public void describedLater(final String issue, final String after, final long at) {
+    final Corpus.Text was = texts.get(issue);
+    texts.put(issue, new Corpus.Text(was.title(), after, List.of(new Corpus.Event(issue, at,
+        "desc", "rep0", was.description(), after, (ext++) + "%%0"))));
+  }
+
+  /** The description the fixture gives the issue at its creation. */
+  public String description(final String issue) {
+    return texts.get(issue).description();
+  }
+
   Corpus corpus() {
     return new Corpus(issues, events, comments, List.of(), commits,
         Map.of("p", Set.of("P"), "q", Set.of("Q")), Map.of(), people, contributions, Map.of(),
