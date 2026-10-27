@@ -430,7 +430,26 @@ public enum Command {
       differences with intervals resampling whole projects. Reads MATRIX (a
       first-commit retrospective matrix, the outer training rows only) and
       ELASTIC_NET_PARAMETERS (written on it); writes share-ablation.md and
-      share-ablation.tsv to REPORT_DIR; nothing to the database.""");
+      share-ablation.tsv to REPORT_DIR; nothing to the database."""),
+
+  ISSUES_FIRST_COMMIT_TEST("issues-first-commit-test",
+      app.cli.commands.IssuesSimilarityTestCommand.firstCommit(), """
+      Issue duration from the first commit, outer mode only: OPENS AND SCORES
+      THE FIRST-COMMIT STUDY'S OUTER TEST, ONCE. The scoring of
+      issues-in-progress-similarity-test on the first-commit population: the
+      fourteen models refitted on the outer training rows at or below the
+      fence of the chosen k with the parameters read from
+      ELASTIC_NET_PARAMETERS (chosen nothing), every table read on the usual
+      flow and on all issues, the agreed comparisons and ordering intervals
+      resampling whole projects, prediction intervals, relevance, and the
+      side reading on the issues with Java code. Refuses, reading nothing,
+      unless MATRIX holds the first-commit population's split; refuses when
+      ISSUES_DB already holds a run of this step or REPORT_DIR already holds
+      predictions; refuses unless the parameters file was written for this
+      population on this matrix. Writes the predictions, diagnostics,
+      relevance and uncertainty to REPORT_DIR; records the run, with the
+      time the test was opened and the SHA-256 of every input and output, in
+      ISSUES_DB.""");
 
   private static final Map<String, Command> CommandMap = Arrays.stream(values())
       .collect(Collectors.toUnmodifiableMap(command -> command.token, command -> command));

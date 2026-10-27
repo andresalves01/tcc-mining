@@ -88,6 +88,17 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
 
   public static final String STAGE = "issues-in-progress-similarity-test";
 
+  /**
+   * The step that opens the first-commit study's outer test (its ticket 05): the same scoring on
+   * that population, run once. It refuses when ISSUES_DB already holds a run under this name or
+   * REPORT_DIR already holds predictions.
+   */
+  public static final String FIRST_COMMIT_STAGE = "issues-first-commit-test";
+
+  /** The first-commit study's outer test, a sentence of its own. */
+  static final String FIRST_COMMIT_EXAMINED = "the outer test is the first-commit population's "
+      + "draw of 30% per project, seed 1738, read for the first time by this run.";
+
   /** One line per scored issue, one column per model. */
   public static final String PREDICTIONS = "similarity-test-predictions.tsv";
 
@@ -143,6 +154,9 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
   /** Where each setting is read from: the environment, then the system properties. */
   private final Function<String, String> settings;
 
+  /** The population this step scores: the In Progress study's, or the first-commit study's. */
+  private final app.issues.Universe.Population study;
+
   public IssuesSimilarityTestCommand() {
     this(name -> {
       final String fromEnv = System.getenv(name);
@@ -155,7 +169,34 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
    *     environment of whoever runs them can never be read, let alone scored
    */
   IssuesSimilarityTestCommand(final Function<String, String> settings) {
+    this(settings, app.issues.Universe.Population.IN_PROGRESS);
+  }
+
+  /** The step for {@code study}: the In Progress study's test or the first-commit study's. */
+  IssuesSimilarityTestCommand(final Function<String, String> settings,
+      final app.issues.Universe.Population study) {
     this.settings = settings;
+    this.study = study;
+  }
+
+  /** The first-commit study's test step, settings from the environment. */
+  public static IssuesSimilarityTestCommand firstCommit() {
+    return new IssuesSimilarityTestCommand(name -> {
+      final String fromEnv = System.getenv(name);
+      return fromEnv == null || fromEnv.isBlank() ? System.getProperty(name) : fromEnv;
+    }, app.issues.Universe.Population.FIRST_COMMIT);
+  }
+
+  private boolean firstCommitStudy() {
+    return study == app.issues.Universe.Population.FIRST_COMMIT;
+  }
+
+  private String stage() {
+    return firstCommitStudy() ? FIRST_COMMIT_STAGE : STAGE;
+  }
+
+  private String examined() {
+    return firstCommitStudy() ? FIRST_COMMIT_EXAMINED : EXAMINED;
   }
 
   @Override
@@ -179,15 +220,41 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       }
     }
 
-    // the first-commit study's outer test is sealed (its ticket 05): refused on the matrix's
-    // header alone, before the parameters, any row or any label is read
+    // the first-commit study's outer test is sealed (its ticket 05): the In Progress step refuses
+    // its matrix on the header alone, before the parameters, any row or any label is read; the
+    // first-commit step takes only that matrix, and only once
     try {
-      if (Files.exists(matrix) && RowCache.splitPopulations(matrix)
-          .contains(app.issues.Universe.Population.FIRST_COMMIT)) {
-        throw new CommandFailedException(List.of("  REFUSED, nothing was read, scored, written "
-            + "or recorded: " + matrix + " holds the first-commit population's split; " + SEALED));
+      if (!firstCommitStudy()) {
+        if (Files.exists(matrix) && RowCache.splitPopulations(matrix)
+            .contains(app.issues.Universe.Population.FIRST_COMMIT)) {
+          throw new CommandFailedException(List.of("  REFUSED, nothing was read, scored, "
+              + "written or recorded: " + matrix + " holds the first-commit population's split; "
+              + SEALED));
+        }
+      } else {
+        IssuesInProgressExtractCommand.requireOwnDatabases(context.config());
+        if (!Files.exists(matrix)
+            || RowCache.splitPopulation(matrix) != app.issues.Universe.Population.FIRST_COMMIT) {
+          throw new CommandFailedException(List.of("  REFUSED, nothing was read, scored, "
+              + "written or recorded: " + matrix + " is not a matrix of the first-commit "
+              + "population's split"));
+        }
+        if (Files.exists(predictionsFile)) {
+          throw new CommandFailedException(List.of("  REFUSED, nothing was read, scored, "
+              + "written or recorded: " + predictionsFile + " exists; the first-commit study's "
+              + "outer test is opened once"));
+        }
+        final java.util.Optional<Boolean> before =
+            context.issuesResults().recorded(FIRST_COMMIT_STAGE);
+        if (before.isEmpty() || before.get()) {
+          throw new CommandFailedException(List.of("  REFUSED, nothing was read, scored, "
+              + "written or recorded: " + (before.isEmpty()
+                  ? "ISSUES_DB cannot tell whether a run of " + FIRST_COMMIT_STAGE + " exists"
+                  : "ISSUES_DB already holds a run of " + FIRST_COMMIT_STAGE)
+              + "; the first-commit study's outer test is opened once"));
+        }
       }
-    } catch (final IOException e) {
+    } catch (final IOException | IllegalArgumentException e) {
       throw new CommandFailedException(List.of("  could not read the inputs: " + e));
     }
 
@@ -205,6 +272,10 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       } catch (final IllegalArgumentException e) {
         throw refused(e.getMessage());
       }
+      if (chosen.population() != study) {
+        throw refused(elasticNet + " was written for " + chosen.population() + ", this step "
+            + "scores " + study);
+      }
       elasticNetSha = chosen.elasticNetSha();
       matrixSha = chosen.matrixSha();
       choices = chosen.choices();
@@ -220,7 +291,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final String splitReferenceSetting = settings.apply("SPLIT_REFERENCE_MATRIX");
     final List<String> split;
     if (splitReferenceSetting == null || splitReferenceSetting.isBlank()) {
-      split = ProjectSplit.differences(entries);
+      split = ProjectSplit.differences(entries, study);
     } else {
       final List<RowCache.Entry> reference;
       try {
@@ -228,7 +299,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       } catch (final IOException e) {
         throw refused("cannot read split reference: " + e);
       }
-      split = new ArrayList<>(ProjectSplit.differences(reference));
+      split = new ArrayList<>(ProjectSplit.differences(reference, study));
       if (split.isEmpty()) {
         final Map<String, RowCache.Entry> byId = new LinkedHashMap<>();
         for (final RowCache.Entry e : reference) {
@@ -240,10 +311,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         for (final RowCache.Entry e : entries) {
           final RowCache.Entry original = byId.get(e.unit().issueId());
           if (original == null || !original.unit().project().equals(e.unit().project())
-              || !original.outer(app.issues.Universe.Population.IN_PROGRESS).equals(
-                  e.outer(app.issues.Universe.Population.IN_PROGRESS))
-              || !original.inner(app.issues.Universe.Population.IN_PROGRESS).equals(
-                  e.inner(app.issues.Universe.Population.IN_PROGRESS))) {
+              || !original.outer(study).equals(e.outer(study))
+              || !original.inner(study).equals(e.inner(study))) {
             split.add("scored issue is absent from or moved relative to the full split: "
                 + e.unit().issueId());
             break;
@@ -254,7 +323,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     if (!split.isEmpty()) {
       throw refused(split.get(0));
     }
-    System.out.printf("%n  DURATION FROM IN PROGRESS -- DESCRIPTION SIMILARITY -- OUTER TEST%n");
+    System.out.printf("%n  DURATION FROM %s -- DESCRIPTION SIMILARITY -- OUTER TEST%n",
+        firstCommitStudy() ? "THE FIRST COMMIT" : "IN PROGRESS");
     System.out.printf("  matrix read %s  sha256 %s (%,d rows)%n", matrix, matrixSha,
         entries.size());
     System.out.println(choicesLine(elasticNet, elasticNetSha));
@@ -272,7 +342,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       throw refused(matrix + " has no column " + missing
           + IssuesSimilarityElasticNetCommand.retrospectiveHint(missing));
     }
-    final String unwritten = BusinessDays.unwritten(columns);
+    final String unwritten = BusinessDays.unwritten(columns, study);
     if (unwritten != null) {
       throw refused(matrix + ": " + unwritten);
     }
@@ -283,7 +353,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       throw refused(e.getMessage());
     }
 
-    System.out.printf("%n  NOTE: %s%n  NOTE: %s.%n", EXAMINED, EFFORT);
+    System.out.printf("%n  NOTE: %s%n  NOTE: %s.%n", examined(), EFFORT);
     System.out.printf("  target: %s; %s%n", BusinessDays.target(entries), BusinessDays.HOLIDAYS);
     System.out.printf("  population: %s%n", BusinessDays.populationRule(entries));
     System.out.printf("  issues of at least one business day: outer training %,d of %,d, outer "
@@ -297,16 +367,17 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final Map<String, PredictionIntervals.Calibration> calibrated;
     try {
       readings = SimilarityScoring.readings(population.entries(), choices, forests, cut.k(),
-          SimilarityScoring.Scope.RESERVED);
+          SimilarityScoring.Scope.RESERVED, study);
       // the coefficients of the refit on the outer training set, resampling its projects; no
       // forest's permutation importance, which would read the outer test's labels
       relevance = SimilarityScoring.relevance(population.entries(), choices, cut.k(),
-          SimilarityScoring.Scope.RESERVED);
+          SimilarityScoring.Scope.RESERVED, study);
       // the prediction intervals (ticket 24, item 53 viii): the inner models refitted and
       // calibrated on the whole usual-flow inner validation, applied to the outer models
       calibrated =
           PredictionIntervals.calibrated(PredictionIntervals.Sample.of(
-              SimilarityScoring.calibration(population.entries(), choices, forests, cut.k()), app.issues.AdjustedDuration.marked(entries) ? 0 : 1));
+              SimilarityScoring.calibration(population.entries(), choices, forests, cut.k(),
+                  study), app.issues.AdjustedDuration.marked(entries) ? 0 : 1));
       intervals = PredictionIntervals.outer(calibrated,
           PredictionIntervals.Sample.of(readings.main(), app.issues.AdjustedDuration.marked(entries) ? 0 : 1),
           PredictionIntervals.Sample.of(readings.complementary(), app.issues.AdjustedDuration.marked(entries) ? 0 : 1),
@@ -344,7 +415,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     for (final SimilarityScoring.Report reading : List.of(main, r)) {
       System.out.printf("%n  READING: %s%n", reading.reading().description());
       final List<Map<String, Object>> of = new ArrayList<>();
-      print(reading, of, choices);
+      print(reading, of, choices, sidePhrase());
       printIntervals(intervals.stream().filter(x -> x.reading() == reading.reading()).toList(),
           reading.bandTops(), of);
       final String name = reading.reading().name().toLowerCase(java.util.Locale.ROOT);
@@ -393,11 +464,15 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     }
 
     final Map<String, Object> run = new LinkedHashMap<>();
-    run.put("stage", STAGE);
+    run.put("stage", stage());
     run.put("mode", "outer");
-    run.put("outer_test", "scored");
+    run.put("outer_test", firstCommitStudy() ? "scored, opened for the first time" : "scored");
+    if (firstCommitStudy()) {
+      run.put("outer_test_opened_at", java.time.Instant.now().toString());
+    }
     run.put("models", r.models().stream().map(SimilarityScoring.Scored::name).toList());
     run.putAll(statements());
+    run.put("outer_test_draw", examined());
     run.put("target", BusinessDays.target(entries));
     run.put("population", BusinessDays.populationRule(entries));
     run.put("prediction_intervals", PredictionIntervals.rule(app.issues.AdjustedDuration.marked(entries) ? 0 : 1));
@@ -436,7 +511,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     run.put("fit_rows", r.fitRows());
     run.put("scored_rows", r.scoredRows());
     run.put("usual_flow_scored_rows", main.scoredRows());
-    run.put("scored_rows_with_implementation_commit", r.withCommitRows());
+    run.put(firstCommitStudy() ? "scored_rows_with_java_code"
+        : "scored_rows_with_implementation_commit", r.withCommitRows());
     run.put("inner_fit_rows", r.innerFitRows());
     run.put("final_lambda", "chosen lambda x fit_rows / inner_fit_rows; alpha as chosen");
     run.put("bootstrap_draws", ProjectBootstrap.DRAWS);
@@ -515,6 +591,11 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     }
     return new Chosen(sha256(elasticNetBytes), matrixSha, choices, forests, cut,
         ElasticNetSelection.headerPopulation(elasticNetLines.get(0)));
+  }
+
+  /** The scored issues the side reading keeps, in words. */
+  private String sidePhrase() {
+    return firstCommitStudy() ? "with Java code" : "with at least one implementation commit";
   }
 
   /** What the run record states about the test it scores. */
@@ -775,7 +856,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
 
   /** One reading's tables, printed, each line's document added to {@code rows}. */
   private static void print(final SimilarityScoring.Report r, final List<Map<String, Object>> rows,
-      final Map<String, ElasticNetSelection.Choice> choices) {
+      final Map<String, ElasticNetSelection.Choice> choices,
+      final String side) {
     System.out.printf("  %-24s %9s %12s %9s %9s  (w/o slow10%%: the rows at or under the "
         + "90th percentile of the truth, %,d of %,d; ties at it all kept)%n", "model", "MAE bd",
         "w/o slow10%", "Spearman", "pairwise", r.models().get(0).errors().trimmedN(),
@@ -815,8 +897,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     printOrderings(r.orderings());
     r.orderings().forEach(o -> rows.add(orderingRow(o)));
     System.out.printf("%n  side reading, the retrospective scenario on the %,d of %,d scored "
-        + "issues with at least one implementation commit, intervals resampling their projects%n",
-        r.withCommitRows(), r.scoredRows());
+        + "issues %s, intervals resampling their projects%n",
+        r.withCommitRows(), r.scoredRows(), side);
     for (final ProjectBootstrap.Gap g : r.withCommits()) {
       System.out.printf("  %-24s vs %-24s %10.3f [%10.3f, %10.3f]%s%n", g.a(), g.b(),
           g.gap(), g.low(), g.high(), g.tied() ? "  tie" : "");

@@ -24,4 +24,12 @@ public interface ResultStore {
    * @return the identifier of the execution, for the report to print
    */
   String record(Map<String, Object> run, List<Map<String, Object>> rows);
+
+  /**
+   * Whether a run of {@code stage} is already recorded; empty when this store cannot tell, which a
+   * step that runs once reads as a refusal.
+   */
+  default java.util.Optional<Boolean> recorded(final String stage) {
+    return java.util.Optional.empty();
+  }
 }
