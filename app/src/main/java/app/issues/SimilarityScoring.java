@@ -338,6 +338,15 @@ public final class SimilarityScoring {
         Parallel.threads(Parallel.BOOTSTRAP_THREADS), P);
   }
 
+  /** {@link #calibration(List, Map, Map, double)} on the split and sets of {@code population}. */
+  public static Report calibration(final List<RowCache.Entry> entries,
+      final Map<String, ElasticNetSelection.Choice> choices,
+      final Map<String, Forest.Choice> forests, final double k, final Population population) {
+    return score(entries, choices, forests, k, Scope.INNER, TailCut.Reading.USUAL_FLOW, false,
+        Parallel.threads(Parallel.ELASTIC_NET_THREADS),
+        Parallel.threads(Parallel.BOOTSTRAP_THREADS), population);
+  }
+
   /**
    * Refits, with no tail cut, and scores every scored issue: the scoring before ticket 23.
    *

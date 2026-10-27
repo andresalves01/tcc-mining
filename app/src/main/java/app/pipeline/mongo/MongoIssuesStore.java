@@ -37,6 +37,12 @@ public final class MongoIssuesStore implements ResultStore {
   }
 
   @Override
+  public java.util.Optional<Boolean> recorded(final String stage) {
+    return java.util.Optional.of(database.getCollection(RUNS)
+        .countDocuments(new Document("stage", stage)) > 0);
+  }
+
+  @Override
   public String record(final Map<String, Object> run, final List<Map<String, Object>> rows) {
     final ObjectId execution = new ObjectId();
     final Document header = new Document(run);
