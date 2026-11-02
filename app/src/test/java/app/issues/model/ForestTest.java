@@ -78,6 +78,22 @@ class ForestTest {
   }
 
   @Test
+  @DisplayName("the sweep fits its forests with the count of trees given, and the chosen point "
+      + "refitted with that count gives the same predictions; without one, 300")
+  void sweepTrees() {
+    final Fitting.Sides sides = Fitting.sides(corpus(), Fitting.Mode.INNER, Population.IN_PROGRESS);
+    final Cell cell = Cell.byLabel(CELL);
+    for (final int trees : new int[] {Forest.TREES, 500}) {
+      final Forest.Fitted f = Forest.sweep(cell, sides, 1, 1, trees);
+      final Forest.Frozen refit = Forest.frozen(cell, sides,
+          new Forest.Choice(f.share(), f.mtry(), f.nodeSize()), trees, 1, 1, false);
+      assertArrayEquals(refit.predicted(), f.predicted(), 0.0);
+    }
+    assertArrayEquals(Forest.sweep(cell, sides, 1, 1, Forest.TREES).predicted(),
+        Forest.sweep(cell, sides, 1, 1).predicted(), 0.0);
+  }
+
+  @Test
   @DisplayName("of grid points whose errors tie exactly, the first in the grid's order is kept: "
       + "the smaller share, then the smaller leaf")
   void tiesGoToTheFirstPoint() {

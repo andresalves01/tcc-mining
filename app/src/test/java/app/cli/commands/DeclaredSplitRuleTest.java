@@ -120,10 +120,11 @@ class DeclaredSplitRuleTest {
     final Path parameters = dir.resolve("elastic-net.tsv");
     assertEquals(SplitRule.TEMPORAL,
         ElasticNetSelection.headerRule(Files.readAllLines(parameters).getFirst()));
-    // the analogy estimate's choice and the forests' trees, as the temporal selection freezes them
-    final List<String> frozen = new ArrayList<>(ElasticNetSelection.analogyLines(ANALOGY));
-    frozen.add(ElasticNetSelection.treesLine(500));
-    Files.write(parameters, frozen, java.nio.file.StandardOpenOption.APPEND);
+    // the analogy estimate's choice and the forests' trees, as the temporal selection froze them
+    final List<ElasticNetSelection.Parameter> frozen =
+        ElasticNetSelection.read(Files.readAllLines(parameters));
+    assertTrue(ElasticNetSelection.analogy(frozen) != null);
+    assertEquals(500, ElasticNetSelection.trees(frozen).getAsInt());
 
     settings.remove(SplitRule.SETTING);
     final IssuesSimilarityTestCommand step =
@@ -207,10 +208,13 @@ class DeclaredSplitRuleTest {
     settings.put(SplitRule.SETTING, "temporal");
     new IssuesSimilarityElasticNetCommand(settings::get).run(context(own()));
     settings.put("REPORT_DIR", dir.resolve("test").toString());
+    final Path parameters = dir.resolve("elastic-net.tsv");
+    final List<String> written = Files.readAllLines(parameters);
+    Files.write(parameters, written.stream().filter(l -> !l.startsWith("analogy\t")).toList());
     assertTrue(refused(new IssuesSimilarityTestCommand(settings::get, Population.FIRST_COMMIT),
         context(own())).contains("freezes no choice of the analogy estimate"));
-    Files.write(dir.resolve("elastic-net.tsv"), ElasticNetSelection.analogyLines(ANALOGY),
-        java.nio.file.StandardOpenOption.APPEND);
+    Files.write(parameters, written.stream()
+        .filter(l -> !l.equals(ElasticNetSelection.treesLine(500))).toList());
     assertTrue(refused(new IssuesSimilarityTestCommand(settings::get, Population.FIRST_COMMIT),
         context(own())).contains("gives no tree count for the forests"));
     assertFalse(Files.exists(dir.resolve("test")));

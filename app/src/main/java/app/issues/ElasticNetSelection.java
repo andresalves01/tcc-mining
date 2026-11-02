@@ -268,9 +268,17 @@ public final class ElasticNetSelection {
    * @param validationRows the inner validation issues every choice was scored on
    * @param scored which they are: the usual flow, or, only as a check of the code before ticket
    *     23, all of them
+   * @param trees the trees of every forest swept ({@link #trees(SplitRule)})
+   * @param analogy the analogy estimate's choice on the same validation issues, the temporal
+   *     split's fifteenth model ({@link AnalogyEstimate#choose}); null under the random split,
+   *     where it is no declared model
+   * @param analogyFallback the value an issue without the candidate's median took in that
+   *     choice: the global median of the inner fitting rows at or below the chosen k's fence, the
+   *     declared reference's; NaN without the choice
    */
   public record Result(int fitRows, int validationRows, double projectMae,
-      double constantMae, List<Model> models, TailCut.Choice cut, TailCut.Reading scored) {}
+      double constantMae, List<Model> models, TailCut.Choice cut, TailCut.Reading scored,
+      int trees, AnalogyEstimate.Choice analogy, double analogyFallback) {}
 
   /**
    * A model's chosen mixture and penalty, and the values it reads the similarity medians at, as
@@ -400,6 +408,15 @@ public final class ElasticNetSelection {
   public static final String EVERY_MODEL = "every_model";
 
   private static final String TREES = "trees";
+
+  /**
+   * The trees of every forest the selection sweeps under {@code rule}: {@link
+   * Forest#LIBRARY_TREES} in the temporal split, {@link Forest#TREES} in the random one, whose
+   * outer test was opened with them.
+   */
+  public static int trees(final SplitRule rule) {
+    return rule == SplitRule.TEMPORAL ? Forest.LIBRARY_TREES : Forest.TREES;
+  }
 
   /** The line giving every forest's count of trees, as the parameters file writes it. */
   public static String treesLine(final int trees) {
@@ -560,6 +577,16 @@ public final class ElasticNetSelection {
    */
   public static List<String> parameters(final Result r, final String matrixSha,
       final Population population, final SplitRule rule) {
+    // the temporal split freezes the analogy estimate's choice and the forests' trees; the random
+    // split's file stays as every one written before it, with neither
+    if (rule == SplitRule.TEMPORAL ? r.analogy() == null : r.analogy() != null) {
+      throw new IllegalArgumentException("the analogy estimate is chosen under the temporal "
+          + "split alone, not under the " + rule.setting() + " one");
+    }
+    if (r.trees() != trees(rule)) {
+      throw new IllegalArgumentException("forests of " + r.trees() + " trees under the "
+          + rule.setting() + " split, whose forests have " + trees(rule));
+    }
     final List<String> out = new ArrayList<>();
     out.add(header(population, rule));
     out.add("# step\tname\tparameter\tvalue");
@@ -592,6 +619,10 @@ public final class ElasticNetSelection {
       out.add(String.join("\t", FOREST_STEP, name, MTRY_SHARE, Double.toString(f.share())));
       out.add(String.join("\t", FOREST_STEP, name, MTRY, Integer.toString(f.mtry())));
       out.add(String.join("\t", FOREST_STEP, name, NODE_SIZE, Integer.toString(f.nodeSize())));
+    }
+    if (rule == SplitRule.TEMPORAL) {
+      out.add(treesLine(r.trees()));
+      out.addAll(analogyLines(new AnalogyEstimate.Frozen(r.analogy().chosen())));
     }
     return out;
   }
@@ -805,16 +836,31 @@ public final class ElasticNetSelection {
    */
   public static Result run(final List<RowCache.Entry> entries, final int threads,
       final Population population) {
-    return select(entries, TailCut.GRID, TailCut.Reading.USUAL_FLOW, threads, population);
+    return run(entries, threads, population, SplitRule.RANDOM);
+  }
+
+  /**
+   * {@link #run(List, int, Population)} under {@code rule}. Under the temporal split (its
+   * ticket 06) two things differ: every forest is swept with {@link
+   * Forest#LIBRARY_TREES} trees; and, once the k is chosen, the analogy estimate's candidate is
+   * chosen by {@link AnalogyEstimate#choose} on the same validation issues every choice is scored
+   * on, in their inner columns, an issue without the candidate's median taking the global median
+   * of the inner fitting rows at or below the chosen k's fence, the declared reference's. Nothing
+   * of the fourteen's choices depends on it. Under the random split, nothing differs.
+   */
+  public static Result run(final List<RowCache.Entry> entries, final int threads,
+      final Population population, final SplitRule rule) {
+    return select(entries, TailCut.GRID, TailCut.Reading.USUAL_FLOW, threads, population, rule);
   }
 
   static Result select(final List<RowCache.Entry> entries, final List<Double> grid,
       final TailCut.Reading scored, final int threads) {
-    return select(entries, grid, scored, threads, P);
+    return select(entries, grid, scored, threads, P, SplitRule.RANDOM);
   }
 
   static Result select(final List<RowCache.Entry> entries, final List<Double> grid,
-      final TailCut.Reading scored, final int threads, final Population population) {
+      final TailCut.Reading scored, final int threads, final Population population,
+      final SplitRule rule) {
     final List<Cell> every = everyCell(Augmentation.Variant.INNER, population);
     final List<RowCache.Entry> training = BusinessDays.counted(
         entries.stream().filter(e -> TRAIN.equals(e.outer(population))).toList());
@@ -853,7 +899,8 @@ public final class ElasticNetSelection {
 
     final List<Callable<Forest.Fitted>> trees = new ArrayList<>(chosen.size());
     for (final Model m : chosen) {
-      trees.add(() -> Forest.sweep(m.fitted().cell(), cut, projectMae, constantMae));
+      trees.add(() -> Forest.sweep(m.fitted().cell(), cut, projectMae, constantMae,
+          trees(rule)));
     }
     final List<Forest.Fitted> forests = Parallel.map(threads, trees);
     final List<Model> out = new ArrayList<>(chosen.size());
@@ -862,9 +909,14 @@ public final class ElasticNetSelection {
       out.add(new Model(x.cell(), x.combination(), x.fitted(), x.removed(), x.combinations(),
           forests.get(m)));
     }
+    // the temporal split's fifteenth model, its fallback the global median learned just above
+    final double fallback = rule == SplitRule.TEMPORAL ? refs.constant(1)[0] : Double.NaN;
+    final AnalogyEstimate.Choice analogy = rule == SplitRule.TEMPORAL
+        ? AnalogyEstimate.choose(cut.scoreRows(), Augmentation.Variant.INNER, fallback, observed)
+        : null;
     return new Result(cut.fitUnits().size(), observed.length, projectMae, constantMae,
         List.copyOf(out), new TailCut.Choice(best.k(), best.fence(), usualFence,
-            List.copyOf(trials)), scored);
+            List.copyOf(trials)), scored, trees(rule), analogy, fallback);
   }
 
   /**

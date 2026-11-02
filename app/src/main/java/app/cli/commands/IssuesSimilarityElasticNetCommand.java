@@ -3,6 +3,7 @@ package app.cli.commands;
 import app.cli.CommandFailedException;
 import app.cli.CommandRunner;
 import app.cli.Context;
+import app.issues.AnalogyEstimate;
 import app.issues.Attribute;
 import app.issues.Attributes;
 import app.issues.Augmentation;
@@ -50,6 +51,14 @@ import java.util.function.Function;
  * at or below that k's fence. The chosen k, the model it was chosen on, both fences and every
  * k's error are printed, written to the parameters file and recorded.
  *
+ * <p><b>The first-commit study's temporal split</b> (its ticket 06). Under {@code
+ * SPLIT_RULE=temporal} every forest is swept with {@link Forest#LIBRARY_TREES} trees, and the
+ * analogy estimate, the fifteenth model, is chosen on the same usual-flow validation issues
+ * ({@link ElasticNetSelection#run(List, int, Population, SplitRule)}); the parameters file then
+ * names the rule in its header and gives the tree count and the chosen column, which the record
+ * states with every candidate's error. Under the random split the file and the record are as
+ * before it.
+ *
  * <p>The target is whole business days, on the issues of at least one ({@link BusinessDays}):
  * the outer training rows are read with each one's day boundary from the matrix, any of 0
  * business days dropped -- none since ticket 21, the split being drawn over the issues of at least
@@ -75,6 +84,21 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
       + "check, not a new contribution: it answers whether the small gains come from relations "
       + "the linear model cannot capture; added after an inner-validation prototype and before "
       + "the outer test was opened";
+
+  /** Why the temporal split's forests have their count of trees, for the record and reports. */
+  static final String TEMPORAL_TREES = "the temporal split's forests have the Smile library's "
+      + "default of " + Forest.LIBRARY_TREES + " trees, decided by the author on 02/11/2026 "
+      + "before any temporal result, in place of the " + Forest.TREES + " inherited from the "
+      + "pull-request study's gradient-boosting control, which were never evaluated; the random "
+      + "split keeps " + Forest.TREES;
+
+  /** What the analogy estimate's choice is, for the output and the run record. */
+  static final String ANALOGY_RULE = "analogy estimate, the fifteenth model of the temporal "
+      + "split: of the " + AnalogyEstimate.CANDIDATES.size() + " similarity medians, each read in "
+      + "its inner column as the estimate with no model around it, the one with the lowest MAE on "
+      + "the usual-flow inner validation, the first in order on a tie; an issue without it takes "
+      + "the global median of the inner fitting rows at or below the chosen k's fence; only the "
+      + "chosen column is frozen";
 
   /** Decision 16a in the first-commit study's sets, for its run records and reports. */
   static final String FIRST_COMMIT_ATTRIBUTES = "decision 16a: the first commit's lines added "
@@ -176,7 +200,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
       // the outer test was left behind on its split field, before any outcome was read
       population = BusinessDays.population(training, Augmentation.Variant.INNER);
       r = ElasticNetSelection.run(population.entries(),
-          app.model.Parallel.threads(app.model.Parallel.ELASTIC_NET_THREADS), study);
+          app.model.Parallel.threads(app.model.Parallel.ELASTIC_NET_THREADS), study, rule);
     } catch (final IllegalArgumentException e) {
       throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
           + e.getMessage()));
@@ -262,6 +286,17 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
       System.out.println(grid);
       rows.add(row(m));
     }
+    final boolean temporal = rule == SplitRule.TEMPORAL;
+    if (temporal) {
+      System.out.printf("%n  random forests: %d trees each (%s)%n", r.trees(), TEMPORAL_TREES);
+      System.out.printf(java.util.Locale.ROOT, "  %s; fallback %.3f bd (candidate: MAE bd, "
+          + "issues given the fallback, of %,d)%n", ANALOGY_RULE, r.analogyFallback(),
+          r.validationRows());
+      for (final AnalogyEstimate.Candidate c : r.analogy().candidates()) {
+        System.out.printf(java.util.Locale.ROOT, "    %-20s %.3f %,6d%s%n", c.name(), c.mae(),
+            c.fallbacks(), c.name().equals(r.analogy().chosen()) ? "  chosen" : "");
+      }
+    }
 
     final String parametersSha;
     try {
@@ -297,7 +332,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     run.put("cluster_k", Augmentation.CLUSTER_K);
     run.put("ties", "within a sweep the earlier point; across combinations the smaller Jaccard n, "
         + "then embedding n, then cluster k");
-    run.put("forest_grid", forestGrid());
+    run.put("forest_grid", forestGrid(r.trees()));
     run.put("forest_ties", "the first point of the grid in its order: the smaller column share, "
         + "then the smaller leaf");
     run.put("tail_cut", tailCut(cut));
@@ -308,6 +343,12 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     run.put("validation_scored", r.scored().description());
     run.put("project_mae_business_days", r.projectMae());
     run.put("constant_mae_business_days", r.constantMae());
+    if (temporal) {
+      // the temporal split's additions; the random split's record stays as it was
+      run.put("forest_trees", r.trees());
+      run.put("forest_trees_rule", TEMPORAL_TREES);
+      run.put("analogy_estimate", analogyRecord(r));
+    }
     run.put("seconds", (System.nanoTime() - began) / 1e9);
     run.put("java", System.getProperty("java.version"));
     System.out.printf("  run recorded in ISSUES_DB: %s%n",
@@ -450,10 +491,33 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     return out;
   }
 
+  /** The analogy estimate's choice as the run record states it. */
+  private static Map<String, Object> analogyRecord(final ElasticNetSelection.Result r) {
+    final Map<String, Object> out = new LinkedHashMap<>();
+    out.put("rule", ANALOGY_RULE);
+    out.put("column", r.analogy().chosen());
+    out.put("fallback_business_days", r.analogyFallback());
+    final List<Map<String, Object>> candidates = new ArrayList<>();
+    for (final AnalogyEstimate.Candidate c : r.analogy().candidates()) {
+      final Map<String, Object> one = new LinkedHashMap<>();
+      one.put("candidate", c.name());
+      one.put("mae_business_days", c.mae());
+      one.put("fallbacks", c.fallbacks());
+      candidates.add(one);
+    }
+    out.put("candidates", candidates);
+    return out;
+  }
+
   /** The forest's declared grid as a document, for the run records of both steps. */
   static Map<String, Object> forestGrid() {
+    return forestGrid(Forest.TREES);
+  }
+
+  /** {@link #forestGrid()} with {@code trees} trees per forest. */
+  static Map<String, Object> forestGrid(final int trees) {
     final Map<String, Object> out = new LinkedHashMap<>();
-    out.put("trees", Forest.TREES);
+    out.put("trees", trees);
     out.put("max_depth", Forest.MAX_DEPTH);
     out.put("mtry_shares", Arrays.stream(Forest.MTRY_SHARES).boxed().toList());
     out.put("node_sizes", Arrays.stream(Forest.NODE_SIZES).boxed().toList());

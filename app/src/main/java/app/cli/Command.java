@@ -288,7 +288,19 @@ public enum Command {
       (FC_target_days) and its sets, the own ones with the first commit's
       size and the retrospective ones with its share; the parameters file
       has a header of its own. It refuses the In Progress study's
-      TARGET_DB and ISSUES_DB before any row is read."""),
+      TARGET_DB and ISSUES_DB before any row is read. The split's rule is
+      the one SPLIT_RULE declares (random unless set), named in the
+      parameters file's header when it is not the random one. Under
+      SPLIT_RULE=temporal, two things differ: every forest is swept with
+      500 trees, the library's default (the random split keeps 300); and
+      the analogy estimate, the fifteenth model, is chosen on the same
+      usual-flow inner validation issues: of the nine similarity medians,
+      each read in its inner column as the estimate, the lowest MAE, the
+      first in order on a tie, an issue without it taking the global median
+      of the inner fitting rows at or below the chosen k's fence. The
+      parameters file then gives the tree count (forest every_model trees)
+      and the chosen column (analogy chosen column), and the run record
+      states both and every candidate's error."""),
 
   ISSUES_SIMILARITY_TEST("issues-in-progress-similarity-test",
       new IssuesSimilarityTestCommand(), """
@@ -395,7 +407,18 @@ public enum Command {
       its own file. Refuses unless the parameters file is the selection
       step's own for these models, its choices were made on that matrix,
       every outer training row is inner fitting or inner validation and
-      every column is present. Writes nothing to the database and records
+      every column is present, and unless its header's split rule is the
+      one SPLIT_RULE declares, which the report describes. Under
+      SPLIT_RULE=temporal the analogy estimate is the fifteenth model, read
+      in the inner column the parameters file froze, its fallback the
+      global median of the cut inner fitting rows, with its paired
+      comparisons; the forests are refitted with the file's tree count;
+      every model gets its MMRE and Pred(25); and, when the inner
+      validation holds a new project (issues there and none in the inner
+      fitting), every table but the prediction intervals is given again
+      without its issues, with their count. A temporal file without the
+      analogy's column or the tree count is refused, as is a random one
+      with the analogy's column. Writes nothing to the database and records
       no run. Also writes relative-error uncertainty and prediction-percentile
       TSVs: bias, pooled SD, shares within +/-25/50/100% and subgroup MAE,
       with project-bootstrap confidence intervals, overall, by observed

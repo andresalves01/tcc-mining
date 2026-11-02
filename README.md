@@ -272,27 +272,36 @@ An In Progress matrix under `SPLIT_RULE=temporal` is refused. The audit and the 
 draw the random split.
 
 The parameters file's header names the split rule its choices were made under. A header that
-names none, as every file written before the temporal split, is the random rule's. The first-commit
-test (`issues-first-commit-test`) refuses a parameters file of another rule than the run's. Under
-`SPLIT_RULE=temporal`:
+names none, as every file written before the temporal split, is the random rule's. The inner report
+and the first-commit test (`issues-first-commit-test`) refuse a parameters file of another rule
+than the run's. Under `SPLIT_RULE=temporal`:
 
-- **Analogy estimate.** It is the fifteenth model. The parameters file freezes its choice in one
-  line under the step `analogy`: the chosen similarity median (`column`). The test reads it and
-  chooses nothing. An issue without that median takes the global median learned on the same outer
-  training rows as the declared reference, so no fallback is frozen; a `fallback_business_days`
-  line is refused. The selection does not write the line yet; until it does, a temporal file
-  without it is refused. A random-split file with it is refused too: there the analogy estimate
+- **Analogy estimate.** It is the fifteenth model. The selection chooses it on the usual-flow
+  inner validation: of the nine similarity medians, each read in its inner column as the estimate,
+  the one with the lowest MAE, the first in order on a tie. There an issue without the median
+  takes the global median of the inner fitting rows at or below the chosen k's fence. The
+  parameters file freezes the choice in one line under the step `analogy`: the chosen similarity
+  median (`column`). The inner report and the test read it and choose nothing. An issue without
+  that median takes the global median learned on the same fitting rows as the declared reference,
+  so no fallback is frozen; a `fallback_business_days` line is refused. A temporal file without
+  the line is refused. A random-split file with it is refused too: there the analogy estimate
   stays exploratory.
-- **Forests.** A temporal file must give their tree count (below); one without it is refused.
+- **Forests.** They have 500 trees, the Smile library's default, decided by the author on
+  02/11/2026 before any temporal result. The selection sweeps them with 500 and writes the count
+  (below); a temporal file without it is refused.
+- **Inner report.** It gives every model's MMRE and Pred(25) and the analogy estimate's paired
+  comparisons. When a project of the inner validation has no inner fitting issue, every table but
+  the prediction intervals is given again without that project's issues.
 - **Opening.** It is recorded as `issues-first-commit-test-temporal`, and it runs once, as the
   random one does.
 
 The forests are refitted with the tree count the parameters file gives, in a line whose four
 tab-separated fields are `forest`, `every_model`, `trees` and the count. A random-split file
-without it, as every existing one, means 300 trees. The selection does not write this line yet.
+without it, as every existing one, means 300 trees, and the selection under the random rule
+still writes none.
 
-Under either rule, every reading is also given without the issues of new projects, with their
-count.
+In the test, under either rule, every reading is also given without the issues of new projects,
+with their count.
 
 ### Commands that only read
 

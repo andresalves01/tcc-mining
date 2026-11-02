@@ -376,29 +376,11 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     if (!split.isEmpty()) {
       throw refused(split.get(0));
     }
-    // the parameters file's own design: its header's split rule is the run's, and the analogy
-    // estimate is a declared model of the temporal split alone, frozen there and absent elsewhere
-    if (chosen.rule() != rule) {
-      throw refused(elasticNet + " was written under the split rule " + chosen.rule().setting()
-          + "; this run declares " + rule.setting() + " (" + SplitRule.SETTING + ")");
+    final String design = otherDesign(chosen, rule, elasticNet);
+    if (design != null) {
+      throw refused(design);
     }
     final AnalogyEstimate.Frozen analogy = chosen.analogy();
-    if (rule == SplitRule.TEMPORAL && analogy == null) {
-      throw refused(elasticNet + " freezes no choice of the analogy estimate, the fifteenth "
-          + "model of the temporal split; the selection of the temporal split must write it "
-          + "first");
-    }
-    if (rule == SplitRule.TEMPORAL && chosen.givenTrees().isEmpty()) {
-      throw refused(elasticNet + " gives no tree count for the forests (the line "
-          + ElasticNetSelection.FOREST_STEP + " " + ElasticNetSelection.EVERY_MODEL
-          + " trees <n>); a file of the temporal split must give it, and only a file of the "
-          + "random split is read at " + Forest.TREES + " trees without it");
-    }
-    if (rule != SplitRule.TEMPORAL && analogy != null) {
-      throw refused(elasticNet + " freezes a choice of the analogy estimate, a declared model of "
-          + "the first-commit study's temporal split alone; under the " + rule.setting()
-          + " split it is exploratory and never scored here");
-    }
     System.out.printf("%n  DURATION FROM %s -- DESCRIPTION SIMILARITY -- OUTER TEST%n",
         firstCommitStudy() ? "THE FIRST COMMIT" : "IN PROGRESS");
     System.out.printf("  matrix read %s  sha256 %s (%,d rows)%n", matrix, matrixSha,
@@ -618,7 +600,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     run.put("prediction_percentiles", EstimationUncertainty.PERCENTILE_RULE);
     run.put("spsp_context", UncertaintyTables.context());
     run.put("relevance", RELEVANCE_RULE);
-    run.put("forest_grid", IssuesSimilarityElasticNetCommand.forestGrid());
+    run.put("forest_grid", IssuesSimilarityElasticNetCommand.forestGrid(chosen.trees()));
     if (firstCommitStudy()) {
       run.put("forest_trees", chosen.trees());
     }
@@ -731,6 +713,36 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     return new Chosen(sha256(elasticNetBytes), matrixSha, choices, forests, cut,
         ElasticNetSelection.headerPopulation(elasticNetLines.get(0)),
         ElasticNetSelection.headerRule(elasticNetLines.get(0)), analogy, trees);
+  }
+
+  /**
+   * Why the parameters file is not of the design the run declares; null when it is. Its header's
+   * split rule must be the run's; the analogy estimate is a declared model of the temporal split
+   * alone, frozen there and absent elsewhere; a file of the temporal split must give the forests'
+   * tree count.
+   */
+  static String otherDesign(final Chosen chosen, final SplitRule rule, final Path elasticNet) {
+    if (chosen.rule() != rule) {
+      return elasticNet + " was written under the split rule " + chosen.rule().setting()
+          + "; this run declares " + rule.setting() + " (" + SplitRule.SETTING + ")";
+    }
+    if (rule == SplitRule.TEMPORAL && chosen.analogy() == null) {
+      return elasticNet + " freezes no choice of the analogy estimate, the fifteenth "
+          + "model of the temporal split; the selection of the temporal split must write it "
+          + "first";
+    }
+    if (rule == SplitRule.TEMPORAL && chosen.givenTrees().isEmpty()) {
+      return elasticNet + " gives no tree count for the forests (the line "
+          + ElasticNetSelection.FOREST_STEP + " " + ElasticNetSelection.EVERY_MODEL
+          + " trees <n>); a file of the temporal split must give it, and only a file of the "
+          + "random split is read at " + Forest.TREES + " trees without it";
+    }
+    if (rule != SplitRule.TEMPORAL && chosen.analogy() != null) {
+      return elasticNet + " freezes a choice of the analogy estimate, a declared model of "
+          + "the first-commit study's temporal split alone; under the " + rule.setting()
+          + " split it is exploratory and never scored here";
+    }
+    return null;
   }
 
   /**

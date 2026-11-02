@@ -33,6 +33,13 @@ public final class Forest {
    */
   public static final int TREES = 300;
 
+  /**
+   * Trees per forest in the first-commit study's temporal split: the Smile library's default,
+   * decided by the author on 02/11/2026, before any temporal result, in place of the 300 inherited
+   * from the pull-request study's gradient-boosting control, which were never evaluated.
+   */
+  public static final int LIBRARY_TREES = 500;
+
   /** The library's default depth limit, kept. */
   public static final int MAX_DEPTH = 20;
 
@@ -118,6 +125,16 @@ public final class Forest {
    */
   public static Fitted sweep(final Cell cell, final Fitting.Sides sides, final double referenceMae,
       final double constantMae) {
+    return sweep(cell, sides, referenceMae, constantMae, TREES);
+  }
+
+  /**
+   * {@link #sweep(Cell, Fitting.Sides, double, double)} with {@code trees} trees in every forest
+   * of the grid, as the split rule's selection asks ({@link
+   * app.issues.ElasticNetSelection#trees(app.issues.SplitRule)}).
+   */
+  public static Fitted sweep(final Cell cell, final Fitting.Sides sides, final double referenceMae,
+      final double constantMae, final int trees) {
     final DesignMatrix matrix = DesignMatrix.fittedOn(sides.fitRows(), cell.attributes());
     final double[][] x = matrix.applyAll(sides.fitRows());
     final double[][] xs = matrix.applyAll(sides.scoreRows());
@@ -137,7 +154,7 @@ public final class Forest {
       }
       tried.add(mtry);
       for (final int nodeSize : NODE_SIZES) {
-        final RandomForestModel model = RandomForestModel.fit(x, y, matrix.columns(), TREES, mtry,
+        final RandomForestModel model = RandomForestModel.fit(x, y, matrix.columns(), trees, mtry,
             MAX_DEPTH, nodeSize, SEED);
         final double[] hours = hours(model.predict(xs));
         final double mae = Fitting.mae(hours, sides.observed());
