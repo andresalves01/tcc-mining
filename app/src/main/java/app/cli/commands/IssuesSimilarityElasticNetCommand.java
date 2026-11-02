@@ -267,7 +267,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     try {
       refuseForeign(parameters);
       final Path partial = parameters.resolveSibling(parameters.getFileName() + ".partial");
-      Files.write(partial, ElasticNetSelection.parameters(r, matrixSha, study));
+      Files.write(partial, ElasticNetSelection.parameters(r, matrixSha, study, rule));
       Files.move(partial, parameters, StandardCopyOption.REPLACE_EXISTING,
           StandardCopyOption.ATOMIC_MOVE);
       parametersSha = Sha256.of(parameters);
@@ -490,8 +490,11 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
   /**
    * A file this step wrote and nothing appended to: its header and its own lines only, every one
    * of them an Elastic Net line for the matrix's inputs or for one of {@link
-   * ElasticNetSelection#MODELS}, a forest line for one of those models, or a tail cut line (which
-   * {@link ElasticNetSelection#tailCut} reads whole or refuses). A file written for the eleven
+   * ElasticNetSelection#MODELS}, a forest line for one of those models or for every one (the
+   * tree count, {@link ElasticNetSelection#trees}), a tail cut line (which {@link
+   * ElasticNetSelection#tailCut} reads whole or refuses), or a line of the analogy estimate's
+   * frozen choice (which {@link ElasticNetSelection#analogy} reads whole or refuses). The header
+   * may name the split rule ({@link ElasticNetSelection#headerRule}). A file written for the eleven
    * models before the fourteen were settled has another header, as has one written before ticket
    * 23, without the tail cut, one written before ticket 13, without the forests, or one of ticket
    * 14's six models, without the retrospective one; one of the models before ticket 12 ({@code
@@ -507,8 +510,10 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
               && (p.name().equals(ElasticNetSelection.INPUTS)
                   || ElasticNetSelection.MODELS.contains(p.name()))
               || p.step().equals(ElasticNetSelection.FOREST_STEP)
-                  && ElasticNetSelection.MODELS.contains(p.name())
-              || p.step().equals(ElasticNetSelection.TAIL_STEP));
+                  && (ElasticNetSelection.MODELS.contains(p.name())
+                      || p.name().equals(ElasticNetSelection.EVERY_MODEL))
+              || p.step().equals(ElasticNetSelection.TAIL_STEP)
+              || p.step().equals(ElasticNetSelection.ANALOGY_STEP));
     } catch (final IllegalArgumentException e) {
       return false;
     }

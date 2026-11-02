@@ -9,9 +9,11 @@ import java.util.List;
  * EXPLORATORY (the first-commit study's ticket 06): the <b>analogy estimate</b>, one similarity
  * median used directly as an issue's estimate, with no model around it, in the manner of
  * estimation by analogy (Shepperd and Schofield, 1997). An issue without one -- no neighbours, as
- * when its description at the start is empty -- takes a fallback, the global median. Outside the
- * fourteen declared models; the declared rule that a similarity median is read only inside a
- * model still holds for them.
+ * when its description at the start is empty -- takes a fallback, the global median. In the
+ * random split it is outside the fourteen declared models, an exploratory comparison; in the
+ * first-commit study's temporal split it is the fifteenth declared model, its choice frozen in the
+ * parameters file ({@link Frozen}). The declared rule that a similarity median is read only inside
+ * a model still holds for the other fourteen.
  *
  * <p>Also the two accuracy measures that paper reports, beside the study's own, both on the
  * magnitude of relative error (MRE), {@code |observed - estimate| / observed}: its mean, {@link
@@ -36,6 +38,24 @@ public final class AnalogyEstimate {
 
   /** The chosen candidate, and every candidate in {@link #CANDIDATES}' order. */
   public record Choice(String chosen, List<Candidate> candidates) {}
+
+  /**
+   * The choice as the parameters file freezes it, for the test to read and never make: the chosen
+   * candidate, without its split suffix. The fallback is not frozen: where the estimate is read,
+   * it is the global median learned on the same fitting rows as the declared reference (the inner
+   * fitting set on the inner side, the outer training set on the test, each cut at the fence of
+   * the chosen k).
+   */
+  public record Frozen(String column) {
+
+    /** Refuses a column not among {@link #CANDIDATES}. */
+    public Frozen {
+      if (!CANDIDATES.contains(column)) {
+        throw new IllegalArgumentException("the analogy estimate's column " + column
+            + " is not one of " + CANDIDATES);
+      }
+    }
+  }
 
   private AnalogyEstimate() {}
 

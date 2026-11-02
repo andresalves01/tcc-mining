@@ -3,6 +3,7 @@ package app.cli.commands;
 import app.cli.CommandFailedException;
 import app.cli.CommandRunner;
 import app.cli.Context;
+import app.issues.AnalogyEstimate;
 import app.issues.Augmentation;
 import app.issues.BusinessDays;
 import app.issues.DescriptionCleaner;
@@ -71,6 +72,21 @@ import java.util.function.Function;
  * overall and per band of the observed duration, read after the fact. The bands, the error
  * bands', are cut at the quartiles of the outer training rows fitted.
  *
+ * <p><b>The first-commit study's temporal split</b> (its ticket 07). The parameters file's header
+ * names the split rule its choices were made under ({@link ElasticNetSelection#headerRule}, the
+ * random one when it names none), and a file of another rule than the run's is refused. Under the
+ * temporal rule the analogy estimate ({@link AnalogyEstimate}) is the fifteenth model, its column
+ * read from the file ({@link ElasticNetSelection#analogy}), never chosen here, its fallback the
+ * global median the declared reference learns on the outer training; a temporal file without
+ * that choice is refused, and so is a file of another rule with it, where the analogy estimate
+ * stays exploratory. The forests are refitted with the file's tree count ({@link
+ * ElasticNetSelection#trees}); a temporal file must give it, a random one without it is at {@link
+ * Forest#TREES}. Every reading is also given without the issues of new
+ * projects, those with issues on the outer test side and none on the outer training side, with
+ * their count; with none, the readings without them are the readings themselves and are not
+ * repeated. The temporal opening is recorded under {@link #FIRST_COMMIT_TEMPORAL_STAGE} and, as
+ * the random one, runs once.
+ *
  * <p>Reads MATRIX and ELASTIC_NET_PARAMETERS, which gives per model its alpha and lambda, for
  * the three with the similarity medians the Jaccard n, embedding n and cluster k they read, and
  * its forest's column share and leaf; it chooses nothing. A parameters file without a forest for
@@ -97,9 +113,35 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
    */
   public static final String FIRST_COMMIT_STAGE = "issues-first-commit-test";
 
+  /**
+   * The step that opens the outer test of the first-commit study's temporal split, recorded under
+   * a name of its own: ISSUES_DB already holds the opening of the random split's, under {@link
+   * #FIRST_COMMIT_STAGE}, and each is opened once.
+   */
+  public static final String FIRST_COMMIT_TEMPORAL_STAGE = "issues-first-commit-test-temporal";
+
   /** The first-commit study's outer test, a sentence of its own. */
   static final String FIRST_COMMIT_EXAMINED = "the outer test is the first-commit population's "
       + "draw of 30% per project, seed 1738, read for the first time by this run.";
+
+  /** The outer test of the first-commit study's temporal split, a sentence of its own. */
+  static final String FIRST_COMMIT_TEMPORAL_EXAMINED = "the outer test is the first-commit "
+      + "population's temporal split: every issue whose first commit came after the cut, read "
+      + "for the first time by this run.";
+
+  /** What the analogy estimate is in the test, for the output and the run record. */
+  static final String ANALOGY_RULE = "the analogy estimate, the fifteenth model of the temporal "
+      + "split: the similarity median the parameters file froze, chosen on the usual-flow inner "
+      + "validation, read in its outer column as the estimate with no model around it; an issue "
+      + "without one takes the global median learned on the outer training rows at or below the "
+      + "fence, the declared reference's own value; nothing of it is chosen on the outer test";
+
+  /** What a new project is, for the output and the run record. */
+  static final String NEW_PROJECTS = "new projects: projects with issues on the outer test side "
+      + "and none on the outer training side, before the tail cut; there the project median is "
+      + "the global one, and every reading is also given without their issues (the line above "
+      + "counts after the tail cut, so it also holds a project whose training issues all lie "
+      + "above the fence)";
 
   /** One line per scored issue, one column per model. */
   public static final String PREDICTIONS = "similarity-test-predictions.tsv";
@@ -193,12 +235,14 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     return study == app.issues.Universe.Population.FIRST_COMMIT;
   }
 
-  private String stage() {
-    return firstCommitStudy() ? FIRST_COMMIT_STAGE : STAGE;
+  private String stage(final SplitRule rule) {
+    return !firstCommitStudy() ? STAGE
+        : rule == SplitRule.TEMPORAL ? FIRST_COMMIT_TEMPORAL_STAGE : FIRST_COMMIT_STAGE;
   }
 
-  private String examined() {
-    return firstCommitStudy() ? FIRST_COMMIT_EXAMINED : EXAMINED;
+  private String examined(final SplitRule rule) {
+    return !firstCommitStudy() ? EXAMINED
+        : rule == SplitRule.TEMPORAL ? FIRST_COMMIT_TEMPORAL_EXAMINED : FIRST_COMMIT_EXAMINED;
   }
 
   @Override
@@ -254,12 +298,12 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
               + "outer test is opened once"));
         }
         final java.util.Optional<Boolean> before =
-            context.issuesResults().recorded(FIRST_COMMIT_STAGE);
+            context.issuesResults().recorded(stage(rule));
         if (before.isEmpty() || before.get()) {
           throw new CommandFailedException(List.of("  REFUSED, nothing was read, scored, "
               + "written or recorded: " + (before.isEmpty()
-                  ? "ISSUES_DB cannot tell whether a run of " + FIRST_COMMIT_STAGE + " exists"
-                  : "ISSUES_DB already holds a run of " + FIRST_COMMIT_STAGE)
+                  ? "ISSUES_DB cannot tell whether a run of " + stage(rule) + " exists"
+                  : "ISSUES_DB already holds a run of " + stage(rule))
               + "; the first-commit study's outer test is opened once"));
         }
       }
@@ -272,10 +316,10 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final Map<String, ElasticNetSelection.Choice> choices;
     final Map<String, Forest.Choice> forests;
     final TailCut.Choice cut;
+    final Chosen chosen;
     final List<RowCache.Entry> entries;
     final List<String> columns;
     try {
-      final Chosen chosen;
       try {
         chosen = chosen(elasticNet, matrix);
       } catch (final IllegalArgumentException e) {
@@ -332,6 +376,29 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     if (!split.isEmpty()) {
       throw refused(split.get(0));
     }
+    // the parameters file's own design: its header's split rule is the run's, and the analogy
+    // estimate is a declared model of the temporal split alone, frozen there and absent elsewhere
+    if (chosen.rule() != rule) {
+      throw refused(elasticNet + " was written under the split rule " + chosen.rule().setting()
+          + "; this run declares " + rule.setting() + " (" + SplitRule.SETTING + ")");
+    }
+    final AnalogyEstimate.Frozen analogy = chosen.analogy();
+    if (rule == SplitRule.TEMPORAL && analogy == null) {
+      throw refused(elasticNet + " freezes no choice of the analogy estimate, the fifteenth "
+          + "model of the temporal split; the selection of the temporal split must write it "
+          + "first");
+    }
+    if (rule == SplitRule.TEMPORAL && chosen.givenTrees().isEmpty()) {
+      throw refused(elasticNet + " gives no tree count for the forests (the line "
+          + ElasticNetSelection.FOREST_STEP + " " + ElasticNetSelection.EVERY_MODEL
+          + " trees <n>); a file of the temporal split must give it, and only a file of the "
+          + "random split is read at " + Forest.TREES + " trees without it");
+    }
+    if (rule != SplitRule.TEMPORAL && analogy != null) {
+      throw refused(elasticNet + " freezes a choice of the analogy estimate, a declared model of "
+          + "the first-commit study's temporal split alone; under the " + rule.setting()
+          + " split it is exploratory and never scored here");
+    }
     System.out.printf("%n  DURATION FROM %s -- DESCRIPTION SIMILARITY -- OUTER TEST%n",
         firstCommitStudy() ? "THE FIRST COMMIT" : "IN PROGRESS");
     System.out.printf("  matrix read %s  sha256 %s (%,d rows)%n", matrix, matrixSha,
@@ -362,7 +429,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       throw refused(e.getMessage());
     }
 
-    System.out.printf("%n  NOTE: %s%n  NOTE: %s.%n", examined(), EFFORT);
+    System.out.printf("%n  NOTE: %s%n  NOTE: %s.%n", examined(rule), EFFORT);
     System.out.printf("  target: %s; %s%n", BusinessDays.target(entries), BusinessDays.HOLIDAYS);
     System.out.printf("  population: %s%n", BusinessDays.populationRule(entries));
     System.out.printf("  issues of at least one business day: outer training %,d of %,d, outer "
@@ -370,13 +437,21 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         population.kept().test(), population.all().test());
     System.out.printf("  the parameters are read, never chosen; the outer test is scored now%n");
     final long fitting = System.nanoTime();
+    // the lower end of the prediction intervals, in business days
+    final int floor = app.issues.AdjustedDuration.marked(entries) ? 0 : 1;
     final SimilarityScoring.Readings readings;
+    final SimilarityScoring.Readings withoutNew;
     final List<PredictionIntervals.Read> intervals;
+    final List<PredictionIntervals.Read> intervalsWithoutNew;
     final List<SimilarityScoring.Relevance> relevance;
     final Map<String, PredictionIntervals.Calibration> calibrated;
     try {
       readings = SimilarityScoring.readings(population.entries(), choices, forests, cut.k(),
-          SimilarityScoring.Scope.RESERVED, study);
+          SimilarityScoring.Scope.RESERVED, study, chosen.design());
+      // every reading again without the issues of new projects, when there is any
+      withoutNew = readings.complementary().newProjectRows() == 0 ? null
+          : SimilarityScoring.withoutNewProjects(population.entries(), choices, forests, cut.k(),
+              SimilarityScoring.Scope.RESERVED, study, chosen.design());
       // the coefficients of the refit on the outer training set, resampling its projects; no
       // forest's permutation importance, which would read the outer test's labels
       relevance = SimilarityScoring.relevance(population.entries(), choices, cut.k(),
@@ -386,11 +461,16 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       calibrated =
           PredictionIntervals.calibrated(PredictionIntervals.Sample.of(
               SimilarityScoring.calibration(population.entries(), choices, forests, cut.k(),
-                  study), app.issues.AdjustedDuration.marked(entries) ? 0 : 1));
+                  study, chosen.design()), floor));
       intervals = PredictionIntervals.outer(calibrated,
-          PredictionIntervals.Sample.of(readings.main(), app.issues.AdjustedDuration.marked(entries) ? 0 : 1),
-          PredictionIntervals.Sample.of(readings.complementary(), app.issues.AdjustedDuration.marked(entries) ? 0 : 1),
+          PredictionIntervals.Sample.of(readings.main(), floor),
+          PredictionIntervals.Sample.of(readings.complementary(), floor),
           Parallel.threads(Parallel.BOOTSTRAP_THREADS));
+      intervalsWithoutNew = withoutNew == null ? List.of()
+          : PredictionIntervals.outer(calibrated,
+              PredictionIntervals.Sample.of(withoutNew.main(), floor),
+              PredictionIntervals.Sample.of(withoutNew.complementary(), floor),
+              Parallel.threads(Parallel.BOOTSTRAP_THREADS));
     } catch (final IllegalArgumentException e) {
       throw refused(e.getMessage());
     }
@@ -411,23 +491,40 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     System.out.printf("  final lambda = chosen lambda x %,d / %,d, alpha as chosen; no "
         + "recalibration%n", r.fitRows(), r.innerFitRows());
     System.out.printf("  random forests (robustness check): %d trees, depth %d, seed %d, the chosen "
-        + "count of columns per split and the chosen leaf%n", Forest.TREES,
+        + "count of columns per split and the chosen leaf%n", chosen.trees(),
         Forest.MAX_DEPTH, Forest.SEED);
     System.out.printf("  test projects with no issue in training (there the project median is "
         + "the global one): %,d issues, %s%n", r.unseenRows(), r.unseenProjects());
+    System.out.printf("  %s: %d, with %,d issues of the outer test (%,d of the usual flow) %s%s%n",
+        NEW_PROJECTS, r.newProjects().size(), r.newProjectRows(), main.newProjectRows(),
+        r.newProjects(), withoutNew == null
+            ? "; with none, each reading without them is the reading itself" : "");
+    if (analogy == null) {
+      System.out.printf("  analogy estimate: absent; under the %s split it is not a model of "
+          + "this step%n", rule.setting());
+    } else {
+      System.out.printf(java.util.Locale.ROOT, "  %s: reads %s%s, fallback %.3f business days; "
+          + "issues given the fallback: %,d of %,d (usual flow %,d of %,d)%n", ANALOGY_RULE,
+          analogy.column(), Augmentation.Variant.OUTER.suffix(), globalMedian(r),
+          r.analogyFallbacks(), r.scoredRows(), main.analogyFallbacks(), main.scoredRows());
+    }
     System.out.printf("  error bands: %s; here %s business days, of the outer training rows "
         + "fitted%n", BusinessDays.BANDS, BusinessDays.bandLimits(r.bandTops()));
     System.out.printf("  prediction intervals: %s; %s; %s%n", PredictionIntervals.rule(app.issues.AdjustedDuration.marked(entries) ? 0 : 1),
         PredictionIntervals.FACTOR, PredictionIntervals.OUTER);
 
     final List<Map<String, Object>> rows = new ArrayList<>();
-    for (final SimilarityScoring.Report reading : List.of(main, r)) {
-      System.out.printf("%n  READING: %s%n", reading.reading().description());
+    final List<SimilarityScoring.Report> scored = new ArrayList<>(List.of(main, r));
+    if (withoutNew != null) {
+      scored.addAll(List.of(withoutNew.main(), withoutNew.complementary()));
+    }
+    for (final SimilarityScoring.Report reading : scored) {
+      System.out.printf("%n  READING: %s%n", readingDescription(reading));
       final List<Map<String, Object>> of = new ArrayList<>();
-      print(reading, of, choices, sidePhrase());
-      printIntervals(intervals.stream().filter(x -> x.reading() == reading.reading()).toList(),
-          reading.bandTops(), of);
-      final String name = reading.reading().name().toLowerCase(java.util.Locale.ROOT);
+      print(reading, of, choices, sidePhrase(), firstCommitStudy());
+      printIntervals((reading.withoutNewProjects() ? intervalsWithoutNew : intervals).stream()
+          .filter(x -> x.reading() == reading.reading()).toList(), reading.bandTops(), of);
+      final String name = readingName(reading);
       of.forEach(row -> row.put("reading", name));
       rows.addAll(of);
     }
@@ -473,7 +570,10 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     }
 
     final Map<String, Object> run = new LinkedHashMap<>();
-    run.put("stage", stage());
+    run.put("stage", stage(rule));
+    if (firstCommitStudy()) {
+      run.put("split_rule", rule.rule());
+    }
     run.put("mode", "outer");
     run.put("outer_test", firstCommitStudy() ? "scored, opened for the first time" : "scored");
     if (firstCommitStudy()) {
@@ -481,7 +581,15 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     }
     run.put("models", r.models().stream().map(SimilarityScoring.Scored::name).toList());
     run.putAll(statements());
-    run.put("outer_test_draw", examined());
+    run.put("outer_test_draw", examined(rule));
+    // the first-commit study's additions (its temporal split's ticket 07); the In Progress
+    // study's record stays as it was
+    if (firstCommitStudy()) {
+      run.put("analogy_estimate", analogy == null
+          ? "absent: not a model of this step under the " + rule.setting() + " split"
+          : analogyRecord(analogy, r, main));
+      run.put("new_projects", newProjects(r, main, withoutNew));
+    }
     run.put("target", BusinessDays.target(entries));
     run.put("population", BusinessDays.populationRule(entries));
     run.put("prediction_intervals", PredictionIntervals.rule(app.issues.AdjustedDuration.marked(entries) ? 0 : 1));
@@ -511,6 +619,9 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     run.put("spsp_context", UncertaintyTables.context());
     run.put("relevance", RELEVANCE_RULE);
     run.put("forest_grid", IssuesSimilarityElasticNetCommand.forestGrid());
+    if (firstCommitStudy()) {
+      run.put("forest_trees", chosen.trees());
+    }
     run.put("forest_permutation_importance", "not read: it would read the outer test's labels");
     run.put("candidates", candidates(choices));
     run.put("tail_cut", tailCut(r.fences()));
@@ -551,10 +662,27 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
    * @param matrixSha the SHA-256 of the matrix, the one the choices were made on
    * @param cut the tail cut the selection chose (ticket 23): its k, fences and grid
    * @param population the population the parameters file was written for, by its header
+   * @param rule the split rule the parameters file was written under, by its header: the random
+   *     one when it names none
+   * @param analogy the analogy estimate's frozen choice; null when the file has none
+   * @param givenTrees every forest's count of trees, as the file gives it; empty when it gives
+   *     none
    */
   record Chosen(String elasticNetSha, String matrixSha,
       Map<String, ElasticNetSelection.Choice> choices, Map<String, Forest.Choice> forests,
-      TailCut.Choice cut, app.issues.Universe.Population population) {}
+      TailCut.Choice cut, app.issues.Universe.Population population, SplitRule rule,
+      AnalogyEstimate.Frozen analogy, java.util.OptionalInt givenTrees) {
+
+    /** Every forest's count of trees: the file's, or {@link Forest#TREES} when it gives none. */
+    int trees() {
+      return givenTrees.orElse(Forest.TREES);
+    }
+
+    /** What the file freezes beyond the fourteen's choices, as the scoring reads it. */
+    SimilarityScoring.Design design() {
+      return new SimilarityScoring.Design(analogy, trees());
+    }
+  }
 
   /**
    * The choices of {@code elasticNet}, refused -- an {@link IllegalArgumentException} with the
@@ -583,6 +711,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         ElasticNetSelection.choices(enParameters);
     final Map<String, Forest.Choice> forests = ElasticNetSelection.forests(enParameters);
     final TailCut.Choice cut = ElasticNetSelection.tailCut(enParameters);
+    final AnalogyEstimate.Frozen analogy = ElasticNetSelection.analogy(enParameters);
+    final java.util.OptionalInt trees = ElasticNetSelection.trees(enParameters);
     if (!Set.copyOf(ElasticNetSelection.MODELS).equals(choices.keySet())) {
       throw new IllegalArgumentException(elasticNet + " holds alpha and lambda for "
           + choices.keySet() + "; the models are " + ElasticNetSelection.MODELS);
@@ -599,7 +729,57 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
           + matrix + " (sha256 " + matrixSha + ")");
     }
     return new Chosen(sha256(elasticNetBytes), matrixSha, choices, forests, cut,
-        ElasticNetSelection.headerPopulation(elasticNetLines.get(0)));
+        ElasticNetSelection.headerPopulation(elasticNetLines.get(0)),
+        ElasticNetSelection.headerRule(elasticNetLines.get(0)), analogy, trees);
+  }
+
+  /**
+   * A reading's name in the run record's rows: its tail cut reading, and whether the issues of
+   * new projects were left out.
+   */
+  static String readingName(final SimilarityScoring.Report reading) {
+    return reading.reading().name().toLowerCase(java.util.Locale.ROOT)
+        + (reading.withoutNewProjects() ? "_without_new_projects" : "");
+  }
+
+  /** A reading in words, as printed. */
+  private static String readingDescription(final SimilarityScoring.Report reading) {
+    return reading.reading().description() + (reading.withoutNewProjects()
+        ? String.format(", without the %,d issues of the %d new projects %s",
+            reading.newProjectRows(), reading.newProjects().size(), reading.newProjects())
+        : "");
+  }
+
+  /** The global median a report's references learned: the analogy estimate's fallback. */
+  private static double globalMedian(final SimilarityScoring.Report r) {
+    return r.models().stream().filter(m -> m.name().equals(SimilarityScoring.GLOBAL)).findFirst()
+        .orElseThrow().predicted()[0];
+  }
+
+  /** The analogy estimate as the run record states it. */
+  private static Map<String, Object> analogyRecord(final AnalogyEstimate.Frozen analogy,
+      final SimilarityScoring.Report all, final SimilarityScoring.Report usual) {
+    final Map<String, Object> out = new LinkedHashMap<>();
+    out.put("rule", ANALOGY_RULE);
+    out.put("column", analogy.column() + Augmentation.Variant.OUTER.suffix());
+    out.put("fallback_business_days", globalMedian(all));
+    out.put("fallbacks", List.of(all.analogyFallbacks(), all.scoredRows()));
+    out.put("usual_flow_fallbacks", List.of(usual.analogyFallbacks(), usual.scoredRows()));
+    return out;
+  }
+
+  /** The new projects as the run record states them. */
+  private static Map<String, Object> newProjects(final SimilarityScoring.Report all,
+      final SimilarityScoring.Report usual, final SimilarityScoring.Readings withoutNew) {
+    final Map<String, Object> out = new LinkedHashMap<>();
+    out.put("rule", NEW_PROJECTS);
+    out.put("projects", List.copyOf(all.newProjects()));
+    out.put("issues", all.newProjectRows());
+    out.put("usual_flow_issues", usual.newProjectRows());
+    out.put("readings_without_them", withoutNew == null
+        ? "none apart: with no new project each reading without them is the reading itself"
+        : List.of(readingName(withoutNew.main()), readingName(withoutNew.complementary())));
+    return out;
   }
 
   /** The scored issues the side reading keeps, in words. */
@@ -793,9 +973,10 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
 
   /**
    * @param choice the model's parameters; null for a reference
+   * @param observed the scored issues' truth, for the MMRE and Pred(25); null to record neither
    */
   private static Map<String, Object> modelRow(final SimilarityScoring.Scored m,
-      final ElasticNetSelection.Choice choice) {
+      final ElasticNetSelection.Choice choice, final double[] observed) {
     final Map<String, Object> row = new LinkedHashMap<>();
     row.put("kind", "model");
     row.put("model", m.name());
@@ -807,6 +988,10 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     row.put("gain_over_global_percent", s.gainOverConstantPercent());
     row.put("spearman", s.spearman());
     row.put("pairwise", s.pairwise());
+    if (observed != null) {
+      row.put("mmre", AnalogyEstimate.mmre(m.predicted(), observed));
+      row.put("pred25", AnalogyEstimate.pred25(m.predicted(), observed));
+    }
     final Breakdown.Errors e = m.errors();
     row.put("abs_error_p50_business_days", e.p50());
     row.put("abs_error_p90_business_days", e.p90());
@@ -864,18 +1049,25 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
   }
 
   /** One reading's tables, printed, each line's document added to {@code rows}. */
+  /**
+   * @param relative whether each model's row records its MMRE and Pred(25): in the first-commit
+   *     study, whose literature on estimation by analogy reports them; the In Progress study's rows
+   *     stay as they were
+   */
   private static void print(final SimilarityScoring.Report r, final List<Map<String, Object>> rows,
       final Map<String, ElasticNetSelection.Choice> choices,
-      final String side) {
-    System.out.printf("  %-24s %9s %12s %9s %9s  (w/o slow10%%: the rows at or under the "
-        + "90th percentile of the truth, %,d of %,d; ties at it all kept)%n", "model", "MAE bd",
-        "w/o slow10%", "Spearman", "pairwise", r.models().get(0).errors().trimmedN(),
-        r.scoredRows());
+      final String side, final boolean relative) {
+    System.out.printf("  %-24s %9s %12s %9s %9s %9s %9s  (w/o slow10%%: the rows at or under "
+        + "the 90th percentile of the truth, %,d of %,d; ties at it all kept; MMRE and Pred(25) "
+        + "on |observed - estimate| / observed)%n", "model", "MAE bd", "w/o slow10%", "Spearman",
+        "pairwise", "MMRE", "Pred(25)", r.models().get(0).errors().trimmedN(), r.scoredRows());
     for (final SimilarityScoring.Scored m : r.models()) {
       final Score sc = m.score();
-      System.out.printf("  %-24s %9.3f %12.3f %9.3f %9.3f%n", m.name(), sc.mae(),
-          m.errors().trimmedMae(), sc.spearman(), sc.pairwise());
-      rows.add(modelRow(m, choices.get(m.name())));
+      System.out.printf("  %-24s %9.3f %12.3f %9.3f %9.3f %9.3f %9.3f%n", m.name(), sc.mae(),
+          m.errors().trimmedMae(), sc.spearman(), sc.pairwise(),
+          AnalogyEstimate.mmre(m.predicted(), r.observed()),
+          AnalogyEstimate.pred25(m.predicted(), r.observed()));
+      rows.add(modelRow(m, choices.get(m.name()), relative ? r.observed() : null));
       if (m.forest() != null) {
         System.out.printf("    %-22s mtry %d (share %.3f), leaf %d%n", "", m.forest().mtry(),
             m.forest().share(), m.forest().nodeSize());

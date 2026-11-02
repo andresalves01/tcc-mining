@@ -10,6 +10,8 @@ import app.cli.CommandRunner;
 import app.cli.Context;
 import app.config.PipelineConfig;
 import app.identity.Strictness;
+import app.issues.AnalogyEstimate;
+import app.issues.ElasticNetSelection;
 import app.issues.ProjectSplit;
 import app.issues.SplitRule;
 import app.issues.TemporalSplit;
@@ -115,6 +117,13 @@ class DeclaredSplitRuleTest {
     settings.put(SplitRule.SETTING, "temporal");
     new IssuesSimilarityElasticNetCommand(settings::get).run(context(own()));
     settings.put("REPORT_DIR", dir.resolve("test").toString());
+    final Path parameters = dir.resolve("elastic-net.tsv");
+    assertEquals(SplitRule.TEMPORAL,
+        ElasticNetSelection.headerRule(Files.readAllLines(parameters).getFirst()));
+    // the analogy estimate's choice and the forests' trees, as the temporal selection freezes them
+    final List<String> frozen = new ArrayList<>(ElasticNetSelection.analogyLines(ANALOGY));
+    frozen.add(ElasticNetSelection.treesLine(500));
+    Files.write(parameters, frozen, java.nio.file.StandardOpenOption.APPEND);
 
     settings.remove(SplitRule.SETTING);
     final IssuesSimilarityTestCommand step =
@@ -126,7 +135,86 @@ class DeclaredSplitRuleTest {
     settings.put(SplitRule.SETTING, "temporal");
     step.run(context(own()));
     assertEquals(2, runs.size());
-    assertTrue(Files.exists(dir.resolve("test").resolve(IssuesSimilarityTestCommand.PREDICTIONS)));
+    final Path predictions = dir.resolve("test").resolve(IssuesSimilarityTestCommand.PREDICTIONS);
+    assertTrue(Files.exists(predictions));
+    // the opening of the temporal split's test, under its own stage name, with the fifteenth model
+    final Map<String, Object> run = runs.getLast();
+    assertEquals(IssuesSimilarityTestCommand.FIRST_COMMIT_TEMPORAL_STAGE, run.get("stage"));
+    assertEquals(TemporalSplit.RULE, run.get("split_rule"));
+    assertEquals(IssuesSimilarityTestCommand.FIRST_COMMIT_TEMPORAL_EXAMINED,
+        run.get("outer_test_draw"));
+    assertEquals(15, ((List<?>) run.get("models")).size());
+    assertTrue(((List<?>) run.get("models")).contains(app.issues.SimilarityScoring.ANALOGY));
+    assertTrue(Files.readAllLines(predictions).getFirst()
+        .contains(app.issues.SimilarityScoring.ANALOGY));
+    assertTrue(run.containsKey("new_projects"));
+    assertEquals(500, run.get("forest_trees"));
+  }
+
+  /** The analogy estimate's frozen choice the tests append for the temporal selection. */
+  private static final AnalogyEstimate.Frozen ANALOGY =
+      new AnalogyEstimate.Frozen("jaccard_median_10");
+
+  @Test
+  @DisplayName("first-commit test step: a parameters file whose header declares another split rule "
+      + "than the run's is refused, as is a temporal one without the analogy estimate's choice "
+      + "and a random one with it, before anything is scored or recorded")
+  void parametersOfAnotherDesign() throws Exception {
+    final Map<String, String> settings = new HashMap<>();
+    settings.put("MATRIX", SelectionFixture.write(dir.resolve("random.tsv"),
+        Population.FIRST_COMMIT).toString());
+    final Path parameters = dir.resolve("elastic-net.tsv");
+    settings.put("ELASTIC_NET_PARAMETERS", parameters.toString());
+    new IssuesSimilarityElasticNetCommand(settings::get).run(context(own()));
+    settings.put("REPORT_DIR", dir.resolve("test").toString());
+    final List<String> random = Files.readAllLines(parameters);
+    assertEquals(SplitRule.RANDOM, ElasticNetSelection.headerRule(random.getFirst()));
+    final IssuesSimilarityTestCommand step =
+        new IssuesSimilarityTestCommand(settings::get, Population.FIRST_COMMIT);
+
+    // the header declares the temporal rule; the matrix and the run, the random one
+    final List<String> temporal = new ArrayList<>(random);
+    temporal.set(0, ElasticNetSelection.header(Population.FIRST_COMMIT, SplitRule.TEMPORAL));
+    temporal.addAll(ElasticNetSelection.analogyLines(ANALOGY));
+    Files.write(parameters, temporal);
+    assertTrue(refused(step, context(own())).contains("written under the split rule temporal"));
+
+    // a random file with the analogy estimate's choice: there it is exploratory
+    final List<String> withAnalogy = new ArrayList<>(random);
+    withAnalogy.addAll(ElasticNetSelection.analogyLines(ANALOGY));
+    Files.write(parameters, withAnalogy);
+    assertTrue(refused(step, context(own())).contains("exploratory"));
+    assertFalse(Files.exists(dir.resolve("test")));
+    assertEquals(1, runs.size());
+
+    // the random file as the selection wrote it is scored, the fourteen alone
+    Files.write(parameters, random);
+    step.run(context(own()));
+    assertEquals(2, runs.size());
+    assertEquals(IssuesSimilarityTestCommand.FIRST_COMMIT_STAGE, runs.getLast().get("stage"));
+    assertEquals(14, ((List<?>) runs.getLast().get("models")).size());
+    // a file without the trees' line, as every file of the random split: the forests at 300
+    assertEquals(300, runs.getLast().get("forest_trees"));
+  }
+
+  @Test
+  @DisplayName("first-commit test step: a temporal parameters file without the analogy "
+      + "estimate's choice is refused, and so is one without the forests' tree count")
+  void temporalWithoutAnalogy() throws Exception {
+    final Map<String, String> settings = new HashMap<>();
+    settings.put("MATRIX", SelectionFixture.temporal(dir.resolve("temporal.tsv")).toString());
+    settings.put("ELASTIC_NET_PARAMETERS", dir.resolve("elastic-net.tsv").toString());
+    settings.put(SplitRule.SETTING, "temporal");
+    new IssuesSimilarityElasticNetCommand(settings::get).run(context(own()));
+    settings.put("REPORT_DIR", dir.resolve("test").toString());
+    assertTrue(refused(new IssuesSimilarityTestCommand(settings::get, Population.FIRST_COMMIT),
+        context(own())).contains("freezes no choice of the analogy estimate"));
+    Files.write(dir.resolve("elastic-net.tsv"), ElasticNetSelection.analogyLines(ANALOGY),
+        java.nio.file.StandardOpenOption.APPEND);
+    assertTrue(refused(new IssuesSimilarityTestCommand(settings::get, Population.FIRST_COMMIT),
+        context(own())).contains("gives no tree count for the forests"));
+    assertFalse(Files.exists(dir.resolve("test")));
+    assertEquals(1, runs.size());
   }
 
   @Test

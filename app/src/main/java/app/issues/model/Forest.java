@@ -26,7 +26,11 @@ import java.util.Random;
  */
 public final class Forest {
 
-  /** Trees per forest, fixed rather than swept: more trees only steady the average. */
+  /**
+   * Trees per forest, fixed rather than swept: more trees only steady the average. The count of
+   * every file of the random split; the parameters file may give another ({@link
+   * app.issues.ElasticNetSelection#trees}).
+   */
   public static final int TREES = 300;
 
   /** The library's default depth limit, kept. */
@@ -161,6 +165,16 @@ public final class Forest {
    */
   public static Frozen frozen(final Cell cell, final Fitting.Sides sides, final Choice choice,
       final double referenceMae, final double constantMae, final boolean importance) {
+    return frozen(cell, sides, choice, TREES, referenceMae, constantMae, importance);
+  }
+
+  /**
+   * {@link #frozen(Cell, Fitting.Sides, Choice, double, double, boolean)} with {@code trees}
+   * trees, as the parameters file gives them ({@link app.issues.ElasticNetSelection#trees}).
+   */
+  public static Frozen frozen(final Cell cell, final Fitting.Sides sides, final Choice choice,
+      final int trees, final double referenceMae, final double constantMae,
+      final boolean importance) {
     final DesignMatrix matrix = DesignMatrix.fittedOn(sides.fitRows(), cell.attributes());
     if (choice.mtry() > matrix.columns().size()) {
       throw new IllegalArgumentException(cell.label() + "'s forest draws " + choice.mtry()
@@ -169,7 +183,7 @@ public final class Forest {
     final double[][] x = matrix.applyAll(sides.fitRows());
     final double[][] xs = matrix.applyAll(sides.scoreRows());
     final RandomForestModel model = RandomForestModel.fit(x, Fitting.target(sides.fitUnits()),
-        matrix.columns(), TREES, choice.mtry(), MAX_DEPTH, choice.nodeSize(), SEED);
+        matrix.columns(), trees, choice.mtry(), MAX_DEPTH, choice.nodeSize(), SEED);
     final double[] hours = hours(model.predict(xs));
     return new Frozen(cell, choice.share(), choice.mtry(), choice.nodeSize(), matrix.columns(),
         matrix.dropped(), hours,

@@ -320,10 +320,146 @@ public final class ElasticNetSelection {
     return population == Population.FIRST_COMMIT ? HEADER_FIRST_COMMIT : HEADER;
   }
 
+  /**
+   * What follows a header to name the split rule its choices were made under, then the rule as
+   * {@link SplitRule#setting} writes it. The random rule is never named: a header without this
+   * mark, as every file written before the temporal split, is the random rule's.
+   */
+  public static final String RULE_MARK = "; the split rule: ";
+
+  /**
+   * The header of {@code population}'s parameters file under {@code rule}: {@link
+   * #header(Population)}, followed for a rule other than the random one by {@link #RULE_MARK} and
+   * its name.
+   */
+  public static String header(final Population population, final SplitRule rule) {
+    return rule == SplitRule.RANDOM ? header(population)
+        : header(population) + RULE_MARK + rule.setting();
+  }
+
   /** The population a parameters file's header was written for; null for another header. */
   public static Population headerPopulation(final String header) {
-    return HEADER.equals(header) ? Population.IN_PROGRESS
-        : HEADER_FIRST_COMMIT.equals(header) ? Population.FIRST_COMMIT : null;
+    if (headerRule(header) == null) {
+      return null;
+    }
+    final String base = base(header);
+    return HEADER.equals(base) ? Population.IN_PROGRESS
+        : HEADER_FIRST_COMMIT.equals(base) ? Population.FIRST_COMMIT : null;
+  }
+
+  /**
+   * The split rule a parameters file's header was written under: the random one when it names
+   * none; null for another header, or a rule that names nothing.
+   */
+  public static SplitRule headerRule(final String header) {
+    if (header == null) {
+      return null;
+    }
+    final String base = base(header);
+    if (!HEADER.equals(base) && !HEADER_FIRST_COMMIT.equals(base)) {
+      return null;
+    }
+    if (base.length() == header.length()) {
+      return SplitRule.RANDOM;
+    }
+    final String named = header.substring(base.length() + RULE_MARK.length());
+    for (final SplitRule r : SplitRule.values()) {
+      if (r.setting().equals(named)) {
+        return r;
+      }
+    }
+    return null;
+  }
+
+  /** The header without its rule mark and what follows it. */
+  private static String base(final String header) {
+    final int mark = header.indexOf(RULE_MARK);
+    return mark < 0 ? header : header.substring(0, mark);
+  }
+
+  /**
+   * The step of the analogy estimate's frozen choice in the parameters file, the first-commit
+   * study's temporal split only: one line under the name {@code chosen}, its {@code column}, a
+   * candidate of {@link AnalogyEstimate#CANDIDATES} without its split suffix ({@link
+   * #analogyLines}). No fallback is frozen: it is learned where the estimate is read ({@link
+   * AnalogyEstimate.Frozen}), and a fallback line is refused.
+   */
+  public static final String ANALOGY_STEP = "analogy";
+
+  private static final String COLUMN = "column";
+
+  /** A fallback line, which a file of an earlier draft of the contract would carry; refused. */
+  private static final String FALLBACK = "fallback_business_days";
+
+  /**
+   * The name, under {@link #FOREST_STEP}, of the line giving every forest's count of trees: one
+   * line, its parameter {@code trees}, its value a whole number ({@link #treesLine}). A file
+   * of the random split without it is at {@link Forest#TREES}; one of the temporal split must
+   * give it.
+   */
+  public static final String EVERY_MODEL = "every_model";
+
+  private static final String TREES = "trees";
+
+  /** The line giving every forest's count of trees, as the parameters file writes it. */
+  public static String treesLine(final int trees) {
+    return String.join("\t", FOREST_STEP, EVERY_MODEL, TREES, Integer.toString(trees));
+  }
+
+  /**
+   * Every forest's count of trees, the file's line of {@link #EVERY_MODEL}; empty when it has
+   * none. Refuses a count below one, or a line of {@link #EVERY_MODEL} with another parameter.
+   */
+  public static java.util.OptionalInt trees(final List<Parameter> parameters) {
+    java.util.OptionalInt trees = java.util.OptionalInt.empty();
+    for (final Parameter p : parameters) {
+      if (p.step().equals(FOREST_STEP) && p.name().equals(EVERY_MODEL)) {
+        if (!p.parameter().equals(TREES)) {
+          throw new IllegalArgumentException("no forest parameter " + p.parameter()
+              + " for every model: there it is " + TREES + " alone");
+        }
+        final int n = Integer.parseInt(p.value());
+        if (n < 1) {
+          throw new IllegalArgumentException("forests of " + n + " trees");
+        }
+        trees = java.util.OptionalInt.of(n);
+      }
+    }
+    return trees;
+  }
+
+  /** The analogy estimate's frozen choice, as the parameters file writes it. */
+  public static List<String> analogyLines(final AnalogyEstimate.Frozen frozen) {
+    return List.of(String.join("\t", ANALOGY_STEP, CHOSEN, COLUMN, frozen.column()));
+  }
+
+  /**
+   * The analogy estimate's frozen choice; null when the file has no line of {@link
+   * #ANALOGY_STEP}. Refuses a fallback line, which is never frozen, and a line of another name or
+   * parameter.
+   */
+  public static AnalogyEstimate.Frozen analogy(final List<Parameter> parameters) {
+    String column = null;
+    boolean any = false;
+    for (final Parameter p : parameters) {
+      if (!p.step().equals(ANALOGY_STEP)) {
+        continue;
+      }
+      any = true;
+      if (p.parameter().equals(FALLBACK)) {
+        throw new IllegalArgumentException("the analogy estimate's " + FALLBACK + " is not "
+            + "frozen: it is the global median learned where the estimate is read");
+      }
+      if (!p.name().equals(CHOSEN) || !p.parameter().equals(COLUMN)) {
+        throw new IllegalArgumentException("no analogy line " + p.name() + " " + p.parameter()
+            + ": the analogy estimate's choice is its " + CHOSEN + " " + COLUMN + " alone");
+      }
+      column = p.value();
+    }
+    if (!any) {
+      return null;
+    }
+    return new AnalogyEstimate.Frozen(column);
   }
 
   /** The step of the tail cut's lines in the parameters file (ticket 23). */
@@ -415,8 +551,17 @@ public final class ElasticNetSelection {
   /** {@link #parameters(Result, String)} under {@code population}'s header. */
   public static List<String> parameters(final Result r, final String matrixSha,
       final Population population) {
+    return parameters(r, matrixSha, population, SplitRule.RANDOM);
+  }
+
+  /**
+   * {@link #parameters(Result, String)} under {@code population}'s header for {@code rule}
+   * ({@link #header(Population, SplitRule)}).
+   */
+  public static List<String> parameters(final Result r, final String matrixSha,
+      final Population population, final SplitRule rule) {
     final List<String> out = new ArrayList<>();
-    out.add(header(population));
+    out.add(header(population, rule));
     out.add("# step\tname\tparameter\tvalue");
     out.add(String.join("\t", STEP, INPUTS, MATRIX_SHA, matrixSha));
     final TailCut.Choice cut = r.cut();
@@ -461,6 +606,9 @@ public final class ElasticNetSelection {
     for (final Parameter p : parameters) {
       if (!p.step().equals(FOREST_STEP)) {
         continue;
+      }
+      if (p.name().equals(EVERY_MODEL)) {
+        continue; // the tree count, which trees reads
       }
       if (!List.of(MTRY_SHARE, MTRY, NODE_SIZE).contains(p.parameter())) {
         throw new IllegalArgumentException("no forest parameter " + p.parameter() + " in " + p);
