@@ -13,6 +13,7 @@ import app.issues.ProjectSplit;
 import app.issues.Retrospective;
 import app.issues.RowCache;
 import app.issues.SimilarityScoring;
+import app.issues.SplitRule;
 import app.issues.TailCut;
 import app.issues.model.Fitting;
 import app.issues.model.Forest;
@@ -75,7 +76,8 @@ import java.util.function.Function;
  * its forest's column share and leaf; it chooses nothing. A parameters file without a forest for
  * every model, or written for other models, is refused. Refuses, scoring, writing and recording nothing, unless the parameters file
  * exists and is the step's own, its choices were made on this very matrix (by SHA-256), every
- * row's split is the one its rule draws ({@link ProjectSplit}), and the matrix has every column
+ * row's split is the one the rule the run declares draws ({@link SplitRule}, setting {@code
+ * SPLIT_RULE}), and the matrix has every column
  * the models read.
  * Beside the error comparisons, the ordering intervals, a declared measure stated before the
  * outer test was opened ({@link #ORDERING}, {@link ProjectBootstrap#ordering}), printed and
@@ -204,6 +206,13 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final Path matrix = path(settings, "MATRIX");
     final Path elasticNet = path(settings, "ELASTIC_NET_PARAMETERS");
     final Path reports = path(settings, "REPORT_DIR");
+    final SplitRule rule;
+    try {
+      rule = SplitRule.declared(settings.apply(SplitRule.SETTING), study);
+    } catch (final IllegalArgumentException e) {
+      throw new CommandFailedException(List.of("  REFUSED, nothing was read, scored, written or "
+          + "recorded: " + e.getMessage()));
+    }
     final Path predictionsFile = reports.resolve(PREDICTIONS);
     final Path diagnosticsFile = reports.resolve(DIAGNOSTICS);
     final Path inputsFile = reports.resolve(INPUTS);
@@ -291,7 +300,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final String splitReferenceSetting = settings.apply("SPLIT_REFERENCE_MATRIX");
     final List<String> split;
     if (splitReferenceSetting == null || splitReferenceSetting.isBlank()) {
-      split = ProjectSplit.differences(entries, study);
+      split = rule.differences(entries, study);
     } else {
       final List<RowCache.Entry> reference;
       try {
@@ -299,7 +308,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       } catch (final IOException e) {
         throw refused("cannot read split reference: " + e);
       }
-      split = new ArrayList<>(ProjectSplit.differences(reference, study));
+      split = new ArrayList<>(rule.differences(reference, study));
       if (split.isEmpty()) {
         final Map<String, RowCache.Entry> byId = new LinkedHashMap<>();
         for (final RowCache.Entry e : reference) {

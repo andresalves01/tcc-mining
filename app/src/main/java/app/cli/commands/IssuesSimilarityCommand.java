@@ -12,6 +12,7 @@ import app.issues.Extractor;
 import app.issues.FirstCommit;
 import app.issues.ProjectSplit;
 import app.issues.RowCache;
+import app.issues.SplitRule;
 import app.issues.TeamColumns;
 import app.issues.Universe.Population;
 import app.model.Parallel;
@@ -41,10 +42,10 @@ import java.util.function.Function;
  * reference ({@link ReferenceCheck}); otherwise the run is refused.
  *
  * <p>Reads CACHE, the revised team columns {@code issues-in-progress-team} wrote to TEAM_COLUMNS,
- * and the corpus; refuses, writing and recording nothing, unless every row's split is the one its
- * rule draws ({@link ProjectSplit}) and the team file holds exactly the matrix's issues. Embeds
- * the descriptions
- * with the pinned model in MODEL_DIR, verified on load, through the {@link EmbeddingCache} in
+ * and the corpus; refuses, writing and recording nothing, unless every row's split is the one the
+ * rule the run declares draws ({@link SplitRule}, setting {@code SPLIT_RULE}) and the team file
+ * holds exactly the matrix's issues. Embeds the descriptions with the pinned model in MODEL_DIR,
+ * verified on load, through the {@link EmbeddingCache} in
  * EMBEDDING_CACHE, which it saves whenever the model computed anything, even when the stage then
  * fails; the descriptions the cache misses are embedded on the threads EMBEDDING_THREADS asks
  * for, every processor when unset, with the same vectors as on one. The clusters are Smile's
@@ -142,6 +143,13 @@ public final class IssuesSimilarityCommand implements CommandRunner {
       throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
           + e.getMessage()));
     }
+    final SplitRule rule;
+    try {
+      rule = SplitRule.declared(settings.apply(SplitRule.SETTING), population);
+    } catch (final IllegalArgumentException e) {
+      throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
+          + e.getMessage()));
+    }
     final boolean firstCommit = population == Population.FIRST_COMMIT;
     if (firstCommit) {
       IssuesInProgressExtractCommand.requireOwnDatabases(context.config());
@@ -189,7 +197,7 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     final long augmenting = System.nanoTime();
     try {
       r = new IssuesSimilarityTask(context.study(), context.progress(), embeddings, clusterer,
-          population).run(entries);
+          population, rule).run(entries);
     } catch (final RuntimeException e) {
       throw new CommandFailedException(List.of("  the similarity stage failed, nothing was "
           + "written or recorded but the embeddings already computed: " + e));
@@ -333,8 +341,10 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     run.put("embedding_threads", embeddingThreads);
     run.put("augmentation_seconds", augmentationSeconds);
     run.put("history", HISTORY);
-    run.put("split_rule", ProjectSplit.RULE);
-    run.put("split_seed", ProjectSplit.SEED);
+    run.put("split_rule", rule.rule());
+    if (rule == SplitRule.RANDOM) {
+      run.put("split_seed", ProjectSplit.SEED);
+    }
     if (firstCommit) {
       run.put("study_population", population.name());
       run.put("target", FirstCommit.RULE);

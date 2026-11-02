@@ -4,10 +4,10 @@ import app.issues.Augmentation;
 import app.issues.BusinessDays;
 import app.issues.Corpus;
 import app.issues.DayBoundaries;
-import app.issues.ProjectSplit;
 import app.issues.Releases;
 import app.issues.Retrospective;
 import app.issues.RowCache;
+import app.issues.SplitRule;
 import app.issues.Universe;
 import app.issues.Universe.Population;
 import app.issues.World;
@@ -33,7 +33,7 @@ import java.util.function.Function;
  * reads the projects' release dates from the tags of the corpus (ticket 19). The wait on blocking
  * issues is no longer written: no model reads it.
  *
- * <p>The split is checked first against its rule ({@link ProjectSplit#differences}), and a
+ * <p>The split is checked first against its rule ({@link SplitRule#differences}), and a
  * difference refuses the run before the corpus is read; so does an issue of the matrix the corpus
  * does not hold as an In-Progress issue, or one whose first In Progress or first resolution there
  * is not the matrix's. The bots are the accounts {@link DayBoundaries#bots} finds over the
@@ -81,7 +81,13 @@ public final class IssuesRetrospectiveTask {
    */
   public IssuesRetrospectiveTask(final StudySource source, final ChangedMethodSource methods,
       final Progress progress, final Population population) {
-    this(source, methods, progress, e -> ProjectSplit.differences(e, population), population);
+    this(source, methods, progress, population, SplitRule.RANDOM);
+  }
+
+  /** The same, the split checked against {@code rule}, the one the run declares. */
+  public IssuesRetrospectiveTask(final StudySource source, final ChangedMethodSource methods,
+      final Progress progress, final Population population, final SplitRule rule) {
+    this(source, methods, progress, e -> rule.differences(e, population), population);
   }
 
   /**

@@ -103,6 +103,10 @@ public final class Help {
                                                 -inner-report read it
           AUDIT_DIR         (unset)             issues-first-commit-audit: where audit.md and
                                                 per-issue.tsv go
+          SPLIT_RULE        random              random | temporal: the rule the similarity,
+                                                retrospective, selection and test stages check
+                                                the matrix's sides against; temporal for the
+                                                first-commit study's matrix only
         """);
   }
 

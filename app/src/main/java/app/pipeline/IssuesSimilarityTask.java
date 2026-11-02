@@ -14,6 +14,7 @@ import app.issues.Embedder;
 import app.issues.Initial;
 import app.issues.ProjectSplit;
 import app.issues.RowCache;
+import app.issues.SplitRule;
 import app.issues.Universe;
 import app.issues.Universe.Population;
 import app.issues.port.StudySource;
@@ -34,9 +35,9 @@ import java.util.function.Function;
  * The similarity stage after the in-progress extraction: the extracted matrix in, the same matrix
  * with the {@link Augmentation} columns added out.
  *
- * <p>The split is checked first: every row's verdicts must be those its rule draws over the
- * matrix's issues ({@link ProjectSplit}), and a difference refuses the run before the corpus is
- * read, as a matrix of the temporal cut does; so does a corpus missing any issue of the matrix,
+ * <p>The split is checked first: every row's verdicts must be those the run's rule draws over the
+ * matrix's issues ({@link SplitRule}), and a difference refuses the run before the corpus is
+ * read, as a matrix drawn by another rule does; so does a corpus missing any issue of the matrix,
  * since its description could not be read. Each description is the one {@link Initial#at}
  * recovers at the issue's first In Progress, as the language report reads it, cleaned by
  * {@link DescriptionCleaner}. Every row of the matrix stays, a missing value missing.
@@ -91,7 +92,7 @@ public final class IssuesSimilarityTask {
   private final Clusterer clusterer;
 
   /**
-   * The split checked against its rule ({@link ProjectSplit#differences}), the descriptions
+   * The split checked against the random rule ({@link ProjectSplit#differences}), the descriptions
    * embedded by {@code embedder} into the model's size, the clusters fitted by {@code clusterer}.
    */
   public IssuesSimilarityTask(final StudySource source, final Progress progress,
@@ -102,7 +103,14 @@ public final class IssuesSimilarityTask {
   /** The same for the matrix of {@code population}. */
   public IssuesSimilarityTask(final StudySource source, final Progress progress,
       final Embedder embedder, final Clusterer clusterer, final Population population) {
-    this(source, progress, e -> ProjectSplit.differences(e, population), embedder,
+    this(source, progress, embedder, clusterer, population, SplitRule.RANDOM);
+  }
+
+  /** The same, the split checked against {@code rule}, the one the run declares. */
+  public IssuesSimilarityTask(final StudySource source, final Progress progress,
+      final Embedder embedder, final Clusterer clusterer, final Population population,
+      final SplitRule rule) {
+    this(source, progress, e -> rule.differences(e, population), embedder,
         EmbeddingModel.DIMENSION, clusterer, population);
   }
 

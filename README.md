@@ -248,6 +248,20 @@ MATRIX=$RUN/retrospective-matrix.tsv ELASTIC_NET_PARAMETERS=$RUN/elastic-net-par
   REPORT_DIR=$RUN/inner-report $APP issues-in-progress-similarity-inner-report
 ```
 
+### Split rule
+
+The similarity, retrospective, selection and test stages check every row's sides against the rule
+named in `SPLIT_RULE` before they read anything else of the matrix, and refuse a matrix whose sides
+are not that rule's:
+
+- `random`, the default: the rule above, stratified by project.
+- `temporal`, for the first-commit study only: the candidates ordered by their first commit, the
+  issue id breaking ties; the cut is the instant at position ⌈0.7·n⌉, and training is every first
+  commit at or before it, the ties included; the inner split is the same rule on the training side.
+
+An In Progress matrix under `SPLIT_RULE=temporal` is refused. The audit and the extraction still
+draw the random split.
+
 ### Commands that only read
 
 `check`, `help`, `issues-first-commit-audit` and `issues-first-commit-share-ablation` write

@@ -9,6 +9,7 @@ import app.issues.DayBoundaries;
 import app.issues.FirstCommit;
 import app.issues.Retrospective;
 import app.issues.RowCache;
+import app.issues.SplitRule;
 import app.issues.Universe.Population;
 import app.pipeline.IssuesRetrospectiveTask;
 import app.pipeline.IssuesSimilarityTask;
@@ -30,11 +31,12 @@ import java.util.function.Function;
  *
  * <p>Reads MATRIX (the similarity stage's), the corpus and the methods each implementation commit
  * changed; refuses, writing and recording nothing, unless MATRIX has the similarity stage's columns
- * and the day boundary and none of the nine, every row's split is the one its rule draws ({@link
- * app.issues.ProjectSplit}), and the corpus holds every issue of the matrix as it is. Writes the
- * matrix with the nine columns to RETROSPECTIVE_MATRIX, never over MATRIX nor over a file that is
- * not a retrospective matrix, and records the run, with the SHA-256 of both files and the
- * coverage of each of the nine on the inner fitting and inner validation, in ISSUES_DB. The outer
+ * and the day boundary and none of the nine, every row's split is the one the rule the run
+ * declares draws ({@link SplitRule}, setting {@code SPLIT_RULE}), and the corpus holds every
+ * issue of the matrix as it is. Writes the matrix with the nine columns to RETROSPECTIVE_MATRIX,
+ * never over MATRIX nor over a file that is not a retrospective matrix, and records the run, with
+ * the SHA-256 of both files and the coverage of each of the nine on the inner fitting and inner
+ * validation, in ISSUES_DB. The outer
  * test's rows get their columns, so the test can later read them; nothing of them is counted or
  * reported here.
  */
@@ -86,6 +88,7 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
     final List<RowCache.Entry> entries;
     final List<String> columns;
     final Population population;
+    final SplitRule rule;
     try {
       refuseForeign(out);
       columns = new ArrayList<>(RowCache.columns(matrix));
@@ -96,6 +99,7 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
       entries = RowCache.read(matrix);
       try {
         population = RowCache.population(entries);
+        rule = SplitRule.declared(settings.apply(SplitRule.SETTING), population);
       } catch (final IllegalArgumentException e) {
         throw refused(e.getMessage());
       }
@@ -134,7 +138,7 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
     final IssuesRetrospectiveTask.Report r;
     try {
       r = new IssuesRetrospectiveTask(context.study(), context.changedMethods(),
-          context.progress(), population).run(entries);
+          context.progress(), population, rule).run(entries);
     } catch (final IllegalArgumentException e) {
       throw refused(e.getMessage());
     }

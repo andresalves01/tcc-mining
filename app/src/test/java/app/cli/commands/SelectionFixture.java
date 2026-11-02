@@ -9,6 +9,7 @@ import app.issues.FirstCommit;
 import app.issues.IssueUnit;
 import app.issues.ProjectSplit;
 import app.issues.RowCache;
+import app.issues.SplitRule;
 import app.issues.Universe.Part;
 import app.issues.Universe.Population;
 import app.issues.model.Cell;
@@ -121,7 +122,44 @@ final class SelectionFixture {
 
   /** Writes {@code population}'s matrix to {@code path}, its columns sorted by name. */
   static Path write(final Path path, final Population population) throws IOException {
-    final List<RowCache.Entry> entries = entries(population);
+    return write(path, entries(population), population);
+  }
+
+  /**
+   * The first-commit matrix at the temporal split's sides: the same rows, the issues of the four
+   * projects started in turn, one project after the other, so every project is on both sides;
+   * each resolution its target's business days after its start.
+   */
+  static Path temporal(final Path path) throws IOException {
+    final Population population = Population.FIRST_COMMIT;
+    final List<RowCache.Entry> moved = new ArrayList<>();
+    final List<SplitRule.Candidate> candidates = new ArrayList<>();
+    int n = 0;
+    for (final RowCache.Entry e : entries(population)) {
+      final IssueUnit u = e.unit();
+      final Instant start = CREATED.plusSeconds(3600L * 7 * ((n % 38) * 4 + n / 38 + 1));
+      final int days = e.row().values().get(FirstCommit.TARGET_COLUMN).intValue();
+      moved.add(new RowCache.Entry(new IssueUnit(u.issueId(), u.key(), u.project(), u.reporter(),
+          u.executor(), u.createdAt(), after(start, days), u.reason(), u.moved(), start),
+          e.row(), e.parts()));
+      candidates.add(new SplitRule.Candidate(u.issueId(), u.project(), start));
+      n++;
+    }
+    final ProjectSplit.Parts parts = SplitRule.TEMPORAL.draw(candidates);
+    final List<RowCache.Entry> out = new ArrayList<>();
+    for (final RowCache.Entry e : moved) {
+      final String id = e.unit().issueId();
+      final Part inner = parts.inner().get(id);
+      final Map<Population, String[]> verdicts = new EnumMap<>(Population.class);
+      verdicts.put(population, new String[] {parts.outer().get(id).name(),
+          inner == null ? "" : inner.name()});
+      out.add(new RowCache.Entry(e.unit(), e.row(), verdicts));
+    }
+    return write(path, out, population);
+  }
+
+  private static Path write(final Path path, final List<RowCache.Entry> entries,
+      final Population population) throws IOException {
     final List<String> columns = new ArrayList<>(new LinkedHashSet<>(entries.stream()
         .flatMap(e -> e.row().values().keySet().stream()).sorted().toList()));
     RowCache.write(path, entries, columns, List.of(population));

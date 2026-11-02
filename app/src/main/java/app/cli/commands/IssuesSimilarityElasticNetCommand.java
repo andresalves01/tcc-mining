@@ -11,6 +11,7 @@ import app.issues.ElasticNetSelection;
 import app.issues.ProjectSplit;
 import app.issues.Retrospective;
 import app.issues.RowCache;
+import app.issues.SplitRule;
 import app.issues.TailCut;
 import app.issues.Universe.Population;
 import app.issues.model.Cell;
@@ -55,9 +56,11 @@ import java.util.function.Function;
  * one -- and the selection runs on the rest.
  *
  * <p>Reads MATRIX, the one {@code issues-in-progress-retrospective} wrote, which has every
- * model's columns; refuses, writing and recording nothing, unless every row's split is the one its
- * rule draws ({@link ProjectSplit}) and the matrix has the day boundary and every column the
- * models declare at every combination. Of the outer test only the ids, the projects and the split
+ * model's columns; refuses, writing and recording nothing, unless every row's split is the one the
+ * rule the run declares draws ({@link SplitRule}, setting {@code SPLIT_RULE}, random unless the
+ * first-commit study's matrix is declared temporal) and the matrix has the day boundary and
+ * every column the models declare at every combination. Of the outer test only the ids, the
+ * projects and the split
  * labels are read, to count it and to check the split. Writes the choices to
  * ELASTIC_NET_PARAMETERS, never over a file holding
  * anything but this step's own lines under its own header, a check made before anything is fitted
@@ -115,6 +118,13 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
       throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
           + e.getMessage()));
     }
+    final SplitRule rule;
+    try {
+      rule = SplitRule.declared(settings.apply(SplitRule.SETTING), study);
+    } catch (final IllegalArgumentException e) {
+      throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
+          + e.getMessage()));
+    }
     final boolean firstCommit = study == Population.FIRST_COMMIT;
     if (firstCommit) {
       // before any row is read: the first-commit study records its runs in its own databases
@@ -141,7 +151,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     System.out.printf("  matrix read %s  sha256 %s (%,d rows)%n", matrix, matrixSha,
         entries.size());
 
-    final List<String> split = ProjectSplit.differences(entries, study);
+    final List<String> split = rule.differences(entries, study);
     if (!split.isEmpty()) {
       throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
           + split.get(0)));
@@ -270,7 +280,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     run.put("stage", STAGE);
     run.put("mode", "inner");
     run.put("outer_test", "not read");
-    run.put("split_rule", ProjectSplit.RULE);
+    run.put("split_rule", rule.rule());
     run.putAll(statements(study));
     run.put("target", BusinessDays.target(training));
     run.put("population", BusinessDays.populationRule(training));

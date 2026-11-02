@@ -17,9 +17,12 @@ import app.issues.DurationEvidence;
 import app.issues.Embedder;
 import app.issues.Extractor;
 import app.issues.FirstCommit;
+import app.issues.ProjectSplit;
 import app.issues.Retrospective;
 import app.issues.RowCache;
+import app.issues.SplitRule;
 import app.issues.TeamColumns;
+import app.issues.Universe;
 import app.issues.Universe.Population;
 import app.issues.port.ResultStore;
 import app.issues.port.StudySource;
@@ -36,6 +39,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -309,6 +313,79 @@ class FirstCommitStagesTest {
     final CommandFailedException model = assertThrows(CommandFailedException.class,
         () -> new IssuesSimilarityCommand(settings::get).run(context(firstCommit(), fixture)));
     assertTrue(String.join("\n", model.lines()).contains("MODEL_DIR"), model.lines().toString());
+    assertEquals(0, loads);
+    assertFalse(Files.exists(matrix));
+    assertTrue(records.isEmpty());
+  }
+
+  // ------------------------------------------------------------------ the declared rule
+
+  /** The rows at the temporal split's sides, drawn over their first commits. */
+  private static List<RowCache.Entry> temporal(final List<RowCache.Entry> entries) {
+    final List<SplitRule.Candidate> candidates = entries.stream().map(e -> new SplitRule
+        .Candidate(e.unit().issueId(), e.unit().project(), e.unit().startedAt())).toList();
+    final ProjectSplit.Parts parts = SplitRule.TEMPORAL.draw(candidates);
+    final List<RowCache.Entry> out = new ArrayList<>();
+    for (final RowCache.Entry e : entries) {
+      final String id = e.unit().issueId();
+      final Universe.Part inner = parts.inner().get(id);
+      final Map<Population, String[]> sides = new EnumMap<>(Population.class);
+      sides.put(Population.FIRST_COMMIT, new String[] {parts.outer().get(id).name(),
+          inner == null ? "" : inner.name()});
+      out.add(new RowCache.Entry(e.unit(), e.row(), sides));
+    }
+    return out;
+  }
+
+  @Test
+  @DisplayName("similarity and retrospective: a matrix at the temporal split's sides is refused "
+      + "under the random rule, before the corpus is read, and read under the temporal one")
+  void temporalSides() {
+    final ExtractionFixture fixture = new ExtractionFixture();
+    final IssuesInProgressExtractTask.Report r = extraction(fixture);
+    final List<RowCache.Entry> sides = TeamColumns.join(temporal(r.entries()), r.team());
+    assertFalse(ProjectSplit.differences(sides, Population.FIRST_COMMIT).isEmpty(),
+        "the fixture's two splits differ");
+
+    loads = 0;
+    assertFalse(new IssuesSimilarityTask(counted(fixture.source()), SilentProgress.INSTANCE,
+        StagesFixture.WORDS, new SmileKMeans(), Population.FIRST_COMMIT).run(sides).refused()
+        .isEmpty());
+    assertEquals(0, loads);
+    final IssuesSimilarityTask.Report s = new IssuesSimilarityTask(fixture.source(),
+        SilentProgress.INSTANCE, StagesFixture.WORDS, new SmileKMeans(), Population.FIRST_COMMIT,
+        SplitRule.TEMPORAL).run(sides);
+    assertEquals(List.of(), s.refused());
+
+    assertFalse(new IssuesRetrospectiveTask(counted(fixture.source()), StagesFixture.methods(),
+        SilentProgress.INSTANCE, Population.FIRST_COMMIT).run(s.entries()).refused().isEmpty());
+    assertEquals(0, loads);
+    assertEquals(List.of(), new IssuesRetrospectiveTask(fixture.source(),
+        StagesFixture.methods(), SilentProgress.INSTANCE, Population.FIRST_COMMIT,
+        SplitRule.TEMPORAL).run(s.entries()).refused());
+  }
+
+  @Test
+  @DisplayName("similarity command, an In Progress matrix under SPLIT_RULE=temporal: refused "
+      + "before the model or the corpus is read")
+  void similarityCommandInProgressIsRandomAlone() throws Exception {
+    final ExtractionFixture fixture = new ExtractionFixture();
+    final IssuesInProgressExtractTask.Report r =
+        new IssuesInProgressExtractTask(fixture.source(), SilentProgress.INSTANCE).run();
+    final Path cache = dir.resolve("cache.tsv");
+    final Path team = dir.resolve("team.tsv");
+    final Path matrix = dir.resolve("matrix.tsv");
+    RowCache.write(cache, r.entries(), r.columns(), List.of(Population.IN_PROGRESS));
+    TeamColumns.write(team, r.team());
+    final Map<String, String> settings = Map.of("CACHE", cache.toString(), "TEAM_COLUMNS",
+        team.toString(), "MATRIX", matrix.toString(), "REPORT_DIR", dir.resolve("r").toString(),
+        "MODEL_DIR", dir.resolve("no-model").toString(), "EMBEDDING_CACHE",
+        dir.resolve("e").toString(), SplitRule.SETTING, "temporal");
+    loads = 0;
+    final CommandFailedException refused = assertThrows(CommandFailedException.class,
+        () -> new IssuesSimilarityCommand(settings::get).run(context(defaults(), fixture)));
+    assertTrue(String.join("\n", refused.lines()).contains("SPLIT_RULE=temporal"),
+        refused.lines().toString());
     assertEquals(0, loads);
     assertFalse(Files.exists(matrix));
     assertTrue(records.isEmpty());
