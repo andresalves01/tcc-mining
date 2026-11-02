@@ -75,8 +75,9 @@ _Avoid_: outlier removal, trimming
 ### Splits
 
 **Training side** / **Test side**:
-The two parts of a random split stratified by project: about 70% of each project's issues to
-training, the rest to test.
+The two parts of a split. In the In Progress study, a random split stratified by project: about
+70% of each project's issues to training, the rest to test. In the first-commit study, the
+**temporal split** (see **Duration from the first commit**).
 
 **Outer training** / **Outer test**:
 The split of the whole population; the outer test is sealed until the author opens it once.
@@ -259,6 +260,35 @@ at least two commits that count once duplicates are removed, a first commit belo
 issue's changed lines, code on at least two dates, no commit linked to another issue, and a
 duration of at least one business day. It observes how most of the work is done, not how long
 what was left takes.
+
+**Candidate**:
+An issue that passes every rule of the first-commit population that does not depend on the
+duration; the temporal split's cuts are taken on the candidates, so no learned value decides them.
+
+**Temporal split**:
+The first-commit study's split, its main design: the candidates ordered by their first commit;
+training holds those whose first commit is at or before the **cut**, test holds every other one.
+No issue is set aside. The inner split is the same rule inside the training side. Every value the
+study learns, the wait cap included, is learned on its training side.
+_Avoid_: chronological split, time-based holdout
+
+**Cut**:
+The instant that separates the two sides of the temporal split: the 70% quantile of the
+candidates' first-commit instants (for the inner split, of the training side's).
+_Avoid_: fence (the fence is on the duration), cut-off date
+
+**Crossing issue**:
+A training issue whose first resolution comes after the cut. It stays in training, so its label
+was not yet known at the cut; a declared threat, not a reason to set it aside.
+
+**New project**:
+A project with issues on the test side and none on the training side; there the project median
+is the global one, and every reading is also given without its issues.
+
+**Random split (first-commit study)**:
+The first-commit study's original split, random and stratified by project, whose outer test was
+opened on 27/10/2026; since the temporal split became the main design, a complementary reading.
+_Avoid_: main split, confirmatory split
 
 **Mark**:
 A commit that counts, or a human patch attached after the first commit and before the first
