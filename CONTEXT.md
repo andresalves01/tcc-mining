@@ -117,7 +117,13 @@ The median duration of the historical issues whose descriptions at the start are
 one's: by shared words (**Jaccard median**), by sentence embeddings (**embedding median**), or among
 the members of the nearest embedding cluster (**cluster median**). Read only inside a model, never
 as an estimate on its own.
-_Avoid_: direct predictor, similarity score
+_Avoid_: direct predictor, similarity score, analogy estimate
+
+**Analogy estimate**:
+One similarity median used directly as an issue's estimate, with no model around it, in the manner
+of estimation by analogy (Shepperd and Schofield, 1997); an issue without one takes the global
+median. An exploratory point of comparison with the models, outside the fourteen declared ones.
+_Avoid_: similarity median (which is only an attribute inside a model)
 
 **Reporter median**:
 The median duration of the reporter's other issues in the same project, from the history.
@@ -232,6 +238,13 @@ The observed duration minus the estimate, divided by the estimate. Positive mean
 Zero estimates remain in the population and absolute-error measures, but have undefined relative
 error and are counted separately. The mean signed relative error measures bias; its pooled sample
 standard deviation describes spread. Shares within ±25%, ±50% and ±100% use positive estimates.
+
+**Magnitude of relative error** (MRE):
+The absolute difference between the observed duration and the estimate, divided by the observed
+duration, as estimation by analogy measures accuracy (Shepperd and Schofield, 1997). Its mean is
+the **MMRE**; **Pred(25)** is the share of issues with an MRE at or below 0.25. An estimate below the
+observed errs by at most 100%, one above it without bound.
+_Avoid_: relative error (which is signed and divided by the estimate)
 
 **SPSP uncertainty context**:
 Comparison with published effort-uncertainty scenarios. Under fixed staff dedication, effort and

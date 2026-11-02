@@ -432,6 +432,22 @@ public enum Command {
       ELASTIC_NET_PARAMETERS (written on it); writes share-ablation.md and
       share-ablation.tsv to REPORT_DIR; nothing to the database."""),
 
+  ISSUES_FIRST_COMMIT_ANALOGY("issues-first-commit-analogy",
+      new app.cli.commands.IssuesFirstCommitAnalogyCommand(), """
+      Issue duration from the first commit, ANALOGY ESTIMATE, read-only and
+      EXPLORATORY: added after the outer test was opened, it confirms
+      nothing. One similarity median used directly as the estimate, in the
+      manner of Shepperd and Schofield (1997), the candidate with the lowest
+      MAE on the usual-flow inner validation; an issue without neighbours
+      takes the global median. Read on the outer test beside the fourteen
+      models as the test wrote them, on all issues and on the usual flow:
+      MAE, Spearman, pairwise ordering, MMRE and Pred(25), and the analogy
+      estimate against the two medians and the six start models with
+      intervals resampling whole projects. Reads MATRIX,
+      ELASTIC_NET_PARAMETERS and TEST_PREDICTIONS; writes
+      analogy-comparison.md and analogy-predictions.tsv to ANALOGY_DIR;
+      nothing to any database."""),
+
   ISSUES_FIRST_COMMIT_TEST("issues-first-commit-test",
       app.cli.commands.IssuesSimilarityTestCommand.firstCommit(), """
       Issue duration from the first commit, outer mode only: OPENS AND SCORES
