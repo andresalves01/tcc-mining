@@ -300,7 +300,7 @@ is the global one, and every reading is also given without its issues.
 
 **Random split (first-commit study)**:
 The first-commit study's original split, random and stratified by project, whose outer test was
-opened on 27/10/2026; since the temporal split became the main design, a complementary reading.
+opened on 27/10/2026; since the temporal split became the main design, a complementary analysis.
 _Avoid_: main split, confirmatory split
 
 **Mark**:
