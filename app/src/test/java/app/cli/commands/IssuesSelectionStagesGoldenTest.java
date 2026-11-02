@@ -121,10 +121,40 @@ class IssuesSelectionStagesGoldenTest {
   }
 
   static String golden() throws Exception {
-    try (InputStream in = IssuesSelectionStagesGoldenTest.class.getResourceAsStream(GOLDEN)) {
-      assertNotNull(in, "the golden file " + GOLDEN);
+    return golden(GOLDEN);
+  }
+
+  static String golden(final String name) throws Exception {
+    try (InputStream in = IssuesSelectionStagesGoldenTest.class.getResourceAsStream(name)) {
+      assertNotNull(in, "the golden file " + name);
       return new String(in.readAllBytes(), StandardCharsets.UTF_8);
     }
+  }
+
+  /**
+   * The first-commit study's random split, pinned as the selection and the inner report gave it
+   * before its temporal split's selection (ticket 06): the golden file was written by this same
+   * test at commit e434e76 and must not change.
+   */
+  static final String FIRST_COMMIT_GOLDEN = "first-commit-random-selection-golden.txt";
+
+  private static PipelineConfig own() {
+    return new PipelineConfig("mongodb://127.0.0.1:27017", "smartshark_2_2",
+        "smartshark_first_commit", "smartshark_first_commit_issues", "smartshark_tcc",
+        Path.of("build/work"), Path.of("build/cache"), Duration.ofMillis(250),
+        Strictness.EMAIL_AND_FULL_NAME, Optional.empty());
+  }
+
+  @Test
+  @DisplayName("the first-commit study's selection and inner report under the random split write "
+      + "and record, byte for byte, what they did before the temporal split's selection: 300 "
+      + "trees, no analogy estimate, the random rule")
+  void firstCommitRandomUnchanged() throws Exception {
+    final String actual = stages(dir, Population.FIRST_COMMIT, own());
+    final Path out = Path.of("build", "golden", FIRST_COMMIT_GOLDEN);
+    Files.createDirectories(out.getParent());
+    Files.writeString(out, actual);
+    assertEquals(golden(FIRST_COMMIT_GOLDEN), actual);
   }
 
   @Test

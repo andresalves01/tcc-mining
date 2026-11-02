@@ -3,6 +3,7 @@ package app.cli.commands;
 import app.cli.CommandFailedException;
 import app.cli.CommandRunner;
 import app.cli.Context;
+import app.issues.AnalogyEstimate;
 import app.issues.Augmentation;
 import app.issues.BusinessDays;
 import app.issues.ElasticNetSelection;
@@ -12,6 +13,7 @@ import app.issues.PredictionIntervals;
 import app.issues.ProjectSplit;
 import app.issues.RowCache;
 import app.issues.SimilarityScoring;
+import app.issues.SplitRule;
 import app.issues.TailCut;
 import app.issues.Universe.Population;
 import app.issues.model.Forest;
@@ -59,6 +61,15 @@ import java.util.function.Function;
  * each reading, overall and per band of the observed duration (the error bands, read after the
  * fact), the halves by whole projects; nothing of them chooses a model, k or column. The report's
  * header states each model's prediction span.
+ *
+ * <p><b>The first-commit study's temporal split</b> (its ticket 06). The parameters file's split
+ * rule must be the one {@code SPLIT_RULE} declares, which the report describes ({@link
+ * IssuesSimilarityTestCommand#otherDesign}). Under the temporal rule the analogy estimate is the
+ * fifteenth model, read in the inner column the file froze, its fallback the global median of the
+ * inner fitting rows at or below the chosen k's fence, and the forests are refitted with the file's
+ * tree count; every model gets its MMRE and Pred(25); and when the inner validation holds a new
+ * project, both readings are given again without its issues, the prediction intervals apart. Under
+ * the random rule the files are as before it.
  *
  * <p><b>Optimistic.</b> The settings were chosen on this same inner validation, so every figure
  * of the report is optimistic; the report says so on top. It is a reading of the development
@@ -127,8 +138,6 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
       + "lambda, the similarity medians' n and k, each forest's column share and leaf) were chosen "
       + "on this same inner validation; this is a reading of the development rows, not the test";
 
-  private static final Population P = Population.IN_PROGRESS;
-
   private final Function<String, String> settings;
 
   public IssuesSimilarityInnerReportCommand() {
@@ -161,6 +170,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
 
     final IssuesSimilarityTestCommand.Chosen chosen;
     final Population study;
+    final SplitRule rule;
     final List<RowCache.Entry> training;
     final List<String> columns;
     try {
@@ -174,6 +184,17 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
       if (chosen.population() != study) {
         throw refused(elasticNet + " was written for " + chosen.population() + ", the matrix "
             + "holds the split of " + study);
+      }
+      // the design the run declares, before any row is read: the parameters file's split rule,
+      // and under the temporal one the analogy estimate's choice and the forests' tree count
+      try {
+        rule = SplitRule.declared(settings.apply(SplitRule.SETTING), study);
+      } catch (final IllegalArgumentException e) {
+        throw refused(e.getMessage());
+      }
+      final String design = IssuesSimilarityTestCommand.otherDesign(chosen, rule, elasticNet);
+      if (design != null) {
+        throw refused(design);
       }
       // the outer training rows only: every other row is left behind on its split field
       training = RowCache.read(matrix, study, "TRAIN");
@@ -196,8 +217,8 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     // here, with the outer test left behind, only what the outer training shows of it
     if (s.train() == 0 || s.innerFit() + s.innerSelection() != s.train()) {
       throw refused(String.format("%,d of %,d outer training rows are neither inner fitting nor "
-          + "inner validation; the random split sets none aside (a matrix of the temporal cut "
-          + "does)", s.train() - s.innerFit() - s.innerSelection(), s.train()));
+          + "inner validation; neither split rule sets any aside",
+          s.train() - s.innerFit() - s.innerSelection(), s.train()));
     }
     final List<String> missing;
     try {
@@ -215,8 +236,10 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     if (unwritten != null) {
       throw refused(matrix + ": " + unwritten);
     }
+    final boolean temporal = rule == SplitRule.TEMPORAL;
     final BusinessDays.Population population;
     final SimilarityScoring.Readings readings;
+    final SimilarityScoring.Readings withoutNew;
     final List<SimilarityScoring.Relevance> relevance;
     try {
       population = BusinessDays.population(training, Augmentation.Variant.INNER);
@@ -233,7 +256,13 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
             usualFence, chosen.cut().fence(), chosen.cut().usualFence()));
       }
       readings = SimilarityScoring.readings(population.entries(), chosen.choices(),
-          chosen.forests(), chosen.cut().k(), SimilarityScoring.Scope.INNER, study);
+          chosen.forests(), chosen.cut().k(), SimilarityScoring.Scope.INNER, study,
+          chosen.design());
+      // the temporal split's readings again without the issues of new projects, when any
+      withoutNew = !temporal || readings.complementary().newProjects().isEmpty() ? null
+          : SimilarityScoring.withoutNewProjects(population.entries(), chosen.choices(),
+              chosen.forests(), chosen.cut().k(), SimilarityScoring.Scope.INNER, study,
+              chosen.design());
       relevance = SimilarityScoring.relevance(population.entries(), chosen.choices(),
           chosen.cut().k(), SimilarityScoring.Scope.INNER, study);
     } catch (final IllegalArgumentException e) {
@@ -246,14 +275,15 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
         PredictionIntervals.Sample.of(readings.complementary(), app.issues.AdjustedDuration.marked(training) ? 0 : 1),
         Parallel.threads(Parallel.BOOTSTRAP_THREADS));
     final Map<String, List<String>> files = new LinkedHashMap<>();
-    files.put(REPORT, report(readings, intervals, relevance, population, chosen, matrix,
-        elasticNet, study));
+    files.put(REPORT, report(readings, withoutNew, intervals, relevance, population, chosen,
+        matrix, elasticNet, study, rule));
     final Side side = Side.of(study);
+    final List<SimilarityScoring.Report> scored = readingsOf(readings, withoutNew);
     files.put(PREDICTIONS, predictions(readings, side));
-    files.put(MODELS, models(readings));
-    files.put(BANDS, bands(readings));
-    files.put(COMPARISONS, comparisons(readings, side));
-    files.put(ORDERING, ordering(readings));
+    files.put(MODELS, models(scored, temporal));
+    files.put(BANDS, bands(scored));
+    files.put(COMPARISONS, comparisons(scored, side));
+    files.put(ORDERING, ordering(scored));
     files.put(DIAGNOSTICS, IssuesSimilarityTestCommand.diagnostics(main));
     files.put(IMPORTANCE, IssuesSimilarityTestCommand.importance(main));
     files.put(INTERVALS, intervals(intervals, main.bandTops()));
@@ -290,14 +320,22 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
         String.join(", ", files.keySet()));
   }
 
-  /** Both readings, the main one first. */
-  private static List<SimilarityScoring.Report> both(final SimilarityScoring.Readings r) {
-    return List.of(r.main(), r.complementary());
+  /**
+   * Both readings, the main one first, then, when given, both again without the issues of new
+   * projects.
+   */
+  private static List<SimilarityScoring.Report> readingsOf(final SimilarityScoring.Readings r,
+      final SimilarityScoring.Readings withoutNew) {
+    return withoutNew == null ? List.of(r.main(), r.complementary())
+        : List.of(r.main(), r.complementary(), withoutNew.main(), withoutNew.complementary());
   }
 
-  /** A reading's name in the files' first column: {@code usual_flow} or {@code all}. */
+  /**
+   * A reading's name in the files' first column: {@code usual_flow} or {@code all}, followed by
+   * {@code _without_new_projects} when their issues were left out.
+   */
   static String name(final SimilarityScoring.Report r) {
-    return r.reading().name().toLowerCase(Locale.ROOT);
+    return IssuesSimilarityTestCommand.readingName(r);
   }
 
   /**
@@ -348,30 +386,37 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     return out;
   }
 
-  /** Per reading and model: the error, the gains, the ordering and the error's distribution. */
-  static List<String> models(final SimilarityScoring.Readings readings) {
+  /**
+   * Per reading and model: the error, the gains, the ordering and the error's distribution, and,
+   * when {@code relative}, the MMRE and Pred(25) ({@link AnalogyEstimate#mmre}).
+   */
+  static List<String> models(final List<SimilarityScoring.Report> reports,
+      final boolean relative) {
     final List<String> out = new ArrayList<>();
     out.add("reading\tmodel\tkind\tn\tmae_bd\tgain_over_global_percent\tgain_over_project_percent"
         + "\tspearman\tpairwise\tabs_error_p50_bd\tabs_error_p75_bd\tabs_error_p90_bd"
-        + "\tabs_error_p99_bd\tmae_without_slowest_tenth_bd\trows_without_slowest_tenth");
-    for (final SimilarityScoring.Report r : both(readings)) {
+        + "\tabs_error_p99_bd\tmae_without_slowest_tenth_bd\trows_without_slowest_tenth"
+        + (relative ? "\tmmre\tpred25" : ""));
+    for (final SimilarityScoring.Report r : reports) {
       for (final SimilarityScoring.Scored m : r.models()) {
         final Score s = m.score();
         final Breakdown.Errors e = m.errors();
         out.add(String.join("\t", name(r), m.name(), m.kind(), Integer.toString(s.n()),
             d(s.mae()), d(s.gainOverConstantPercent()), d(s.gainPercent()), d(s.spearman()),
             d(s.pairwise()), d(e.p50()), d(e.p75()), d(e.p90()), d(e.p99()), d(e.trimmedMae()),
-            Integer.toString(e.trimmedN())));
+            Integer.toString(e.trimmedN())) + (relative ? "\t"
+                + d(AnalogyEstimate.mmre(m.predicted(), r.observed())) + "\t"
+                + d(AnalogyEstimate.pred25(m.predicted(), r.observed())) : ""));
       }
     }
     return out;
   }
 
   /** Per reading, model and band of the true business days, the error. */
-  static List<String> bands(final SimilarityScoring.Readings readings) {
+  static List<String> bands(final List<SimilarityScoring.Report> reports) {
     final List<String> out = new ArrayList<>();
     out.add("reading\tmodel\tband\tn\tmedian_truth_bd\tmae_bd\tmedian_abs_error_bd");
-    for (final SimilarityScoring.Report r : both(readings)) {
+    for (final SimilarityScoring.Report r : reports) {
       for (final SimilarityScoring.Scored m : r.models()) {
         for (final Breakdown.Band b : m.bands()) {
           out.add(String.join("\t", name(r), m.name(), b.label(), Integer.toString(b.n()),
@@ -384,17 +429,13 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
 
   /**
    * Per reading, the paired comparisons, then the side reading on the issues with and without a
-   * commit.
+   * commit, those named by {@code side}.
    */
-  static List<String> comparisons(final SimilarityScoring.Readings readings) {
-    return comparisons(readings, Side.IMPLEMENTATION_COMMIT);
-  }
-
-  /** {@link #comparisons(SimilarityScoring.Readings)} with the side reading named by {@code side}. */
-  static List<String> comparisons(final SimilarityScoring.Readings readings, final Side side) {
+  static List<String> comparisons(final List<SimilarityScoring.Report> reports,
+      final Side side) {
     final List<String> out = new ArrayList<>();
     out.add("reading\tissues\trows\ta\tb\tmae_diff_bd\tci_low\tci_high\ttie");
-    for (final SimilarityScoring.Report r : both(readings)) {
+    for (final SimilarityScoring.Report r : reports) {
       gaps(out, name(r), "all scored", r.scoredRows(), r.comparisons());
       gaps(out, name(r), side.with(), r.withCommitRows(), r.withCommits());
       gaps(out, name(r), side.without(), r.scoredRows() - r.withCommitRows(),
@@ -412,11 +453,11 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
   }
 
   /** Per reading, the ordering intervals, a declared measure. */
-  static List<String> ordering(final SimilarityScoring.Readings readings) {
+  static List<String> ordering(final List<SimilarityScoring.Report> reports) {
     final List<String> out = new ArrayList<>();
     out.add("reading\ta\tb\tspearman_diff\tspearman_ci_low\tspearman_ci_high\tspearman_tie"
         + "\tpairwise_diff\tpairwise_ci_low\tpairwise_ci_high\tpairwise_tie");
-    for (final SimilarityScoring.Report r : both(readings)) {
+    for (final SimilarityScoring.Report r : reports) {
       for (final ProjectBootstrap.Ordering o : r.orderings()) {
         out.add(String.join("\t", name(r), o.a(), o.b(), d(o.spearman().gap()),
             d(o.spearman().low()), d(o.spearman().high()), Boolean.toString(o.spearman().tied()),
@@ -431,22 +472,23 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
    * The report in words and tables: the optimism stated first, then the tail cut, then every
    * table of the main reading, the usual flow, then the same of the complementary one, every
    * validation issue.
+   *
+   * <p>Under the temporal split it also states the forests' tree count, the analogy estimate's
+   * frozen column and fallback, and the new projects of the inner validation, gives every model's
+   * MMRE and Pred(25), and, with {@code withoutNew}, every table again without the issues of new
+   * projects, the prediction intervals apart.
+   *
+   * @param withoutNew both readings without the issues of new projects; null when there are none
+   *     or the split is the random one
+   * @param study the study, whose title the report names
+   * @param rule the split rule the run declares, which the report describes
    */
   static List<String> report(final SimilarityScoring.Readings readings,
-      final PredictionIntervals.Inner intervals,
+      final SimilarityScoring.Readings withoutNew, final PredictionIntervals.Inner intervals,
       final List<SimilarityScoring.Relevance> relevance, final BusinessDays.Population population,
       final IssuesSimilarityTestCommand.Chosen chosen, final Path matrix,
-      final Path elasticNet) {
-    return report(readings, intervals, relevance, population, chosen, matrix, elasticNet,
-        P);
-  }
-
-  /** {@link #report} for the study of {@code study}, whose title it names. */
-  static List<String> report(final SimilarityScoring.Readings readings,
-      final PredictionIntervals.Inner intervals,
-      final List<SimilarityScoring.Relevance> relevance, final BusinessDays.Population population,
-      final IssuesSimilarityTestCommand.Chosen chosen, final Path matrix,
-      final Path elasticNet, final Population study) {
+      final Path elasticNet, final Population study, final SplitRule rule) {
+    final boolean temporal = rule == SplitRule.TEMPORAL;
     final SimilarityScoring.Report r = readings.complementary();
     final SimilarityScoring.Fences fences = r.fences();
     final Side side = Side.of(study);
@@ -461,7 +503,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
         + "only, the others left behind on their split field");
     md.add("- choices: " + elasticNet + " (sha256 " + chosen.elasticNetSha() + ")");
     md.add("- target: " + BusinessDays.target(population.entries()) + "; " + BusinessDays.HOLIDAYS);
-    md.add("- split: " + ProjectSplit.RULE);
+    md.add("- split: " + rule.rule());
     md.add("- population: " + BusinessDays.populationRule(population.entries()) + "; inner fitting "
         + population.kept().innerFit() + " of " + population.all().innerFit()
         + ", inner validation " + population.kept().innerSelection() + " of "
@@ -485,6 +527,24 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
         + r.withCommitRows() + " of them " + side.phrase());
     md.add("- validation projects with no fitting issue (the project median is the global one "
         + "there): " + r.unseenRows() + " issues, " + r.unseenProjects());
+    if (temporal) {
+      final String newProjects = "projects with inner validation issues and no inner fitting "
+          + "issue before the tail cut";
+      md.add(withoutNew == null ? f("- new projects in the inner validation: 0 (%s); the "
+          + "readings without them would be the readings themselves", newProjects)
+          : f("- new projects in the inner validation: %d, with %d issues (%d of the usual flow) "
+              + "%s (%s); every table but the prediction intervals is given again below without "
+              + "the issues of new projects", r.newProjects().size(), r.newProjectRows(),
+              readings.main().newProjectRows(), r.newProjects(), newProjects));
+      md.add("- random forests: " + chosen.trees() + " trees each; "
+          + IssuesSimilarityElasticNetCommand.TEMPORAL_TREES);
+      md.add(f("- %s; here %s%s, chosen on this same usual-flow inner validation; fallback "
+          + "%.3f business days; issues given it: %d of %d (usual flow %d of %d); MMRE and "
+          + "Pred(25), on |observed - estimate| / observed, for every model",
+          IssuesSimilarityElasticNetCommand.ANALOGY_RULE, chosen.analogy().column(),
+          Augmentation.Variant.INNER.suffix(), global(r), r.analogyFallbacks(), r.scoredRows(),
+          readings.main().analogyFallbacks(), readings.main().scoredRows()));
+    }
     md.add("- " + ElasticNetSelection.RETROSPECTIVE + ": "
         + ElasticNetSelection.RETROSPECTIVE_ROLE);
     md.add("- " + ElasticNetSelection.WITH_DISCUSSION + ": "
@@ -516,17 +576,43 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     md.add("- the factors recomputed on A and B together, for later use, are in " + CALIBRATION
         + "; those of A, which the check reads, in " + INTERVALS);
     md.add("");
-    section(md, readings.main(), intervals, "Main reading: the usual flow", side);
-    section(md, r, intervals, "Complementary reading: all issues", side);
+    section(md, readings.main(), intervals, "Main reading: the usual flow", side, temporal);
+    section(md, r, intervals, "Complementary reading: all issues", side, temporal);
+    if (withoutNew != null) {
+      section(md, withoutNew.main(), intervals, "Main reading: the usual flow"
+          + without(withoutNew.main()), side, temporal);
+      section(md, withoutNew.complementary(), intervals, "Complementary reading: all issues"
+          + without(withoutNew.complementary()), side, temporal);
+    }
     relevance(md, relevance, readings.main());
     md.add("Files beside this one: " + String.join(", ", OUTPUTS.subList(1, OUTPUTS.size()))
         + ".");
     return md;
   }
 
-  /** Every table of one reading, under its own heading. */
+  /** A heading's note on a reading without the issues of new projects: how many, of which. */
+  private static String without(final SimilarityScoring.Report r) {
+    return f(" without the issues of new projects (%d issues of %s)", r.newProjectRows(),
+        r.newProjects());
+  }
+
+  /**
+   * The global median a report's references learned (the global median's estimate is that one
+   * value for every issue): the analogy estimate's fallback.
+   */
+  private static double global(final SimilarityScoring.Report r) {
+    return r.models().stream().filter(m -> m.name().equals(SimilarityScoring.GLOBAL)).findFirst()
+        .orElseThrow().predicted()[0];
+  }
+
+  /**
+   * Every table of one reading, under its own heading; with {@code relative}, each model's MMRE
+   * and Pred(25) too. A reading without the issues of new projects has no interval table: the
+   * intervals are calibrated and checked on the halves of every issue.
+   */
   private static void section(final List<String> md, final SimilarityScoring.Report r,
-      final PredictionIntervals.Inner intervals, final String title, final Side side) {
+      final PredictionIntervals.Inner intervals, final String title, final Side side,
+      final boolean relative) {
     md.add("## " + title + " (" + r.scoredRows() + " issues)");
     md.add("");
     md.add(r.reading().description() + ".");
@@ -534,14 +620,18 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     md.add("### Every model (business days)");
     md.add("");
     md.add("| model | kind | MAE | gain vs global % | gain vs project % | Spearman | pairwise "
-        + "| abs error p50 | p75 | p90 | MAE w/o slowest tenth |");
-    md.add("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
+        + "| abs error p50 | p75 | p90 | MAE w/o slowest tenth |" + (relative ? " MMRE | Pred(25) |"
+            : ""));
+    md.add("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|" + (relative ? "---:|---:|"
+        : ""));
     for (final SimilarityScoring.Scored m : r.models()) {
       final Score s = m.score();
       final Breakdown.Errors e = m.errors();
       md.add(f("| %s | %s | %.3f | %+.2f | %+.2f | %.3f | %.3f | %.2f | %.2f | %.2f | %.3f |",
           m.name(), m.kind(), s.mae(), s.gainOverConstantPercent(), s.gainPercent(),
-          s.spearman(), s.pairwise(), e.p50(), e.p75(), e.p90(), e.trimmedMae()));
+          s.spearman(), s.pairwise(), e.p50(), e.p75(), e.p90(), e.trimmedMae())
+          + (relative ? f(" %.3f | %.3f |", AnalogyEstimate.mmre(m.predicted(), r.observed()),
+              AnalogyEstimate.pred25(m.predicted(), r.observed())) : ""));
     }
     md.add("");
     md.add(f("### MAE by band of the true business days (at the quartiles of the cut fitting rows, "
@@ -586,7 +676,12 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
           o.pairwise().high(), o.pairwise().tied() ? " tie" : ""));
     }
     md.add("");
-    intervalTable(md, r, intervals);
+    if (r.withoutNewProjects()) {
+      md.add("The prediction intervals are read on every issue of the reading only, above.");
+      md.add("");
+    } else {
+      intervalTable(md, r, intervals);
+    }
   }
 
   /**

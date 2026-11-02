@@ -148,7 +148,7 @@ public final class IssuesFirstCommitAnalogyCommand implements CommandRunner {
   }
 
   /** The choice, on the usual-flow inner validation issues; the outer test is not read here. */
-  private static Inner inner(final List<RowCache.Entry> entries, final double k) {
+  static Inner inner(final List<RowCache.Entry> entries, final double k) {
     final List<RowCache.Entry> training = entries.stream()
         .filter(e -> "TRAIN".equals(e.outer(Population.FIRST_COMMIT))).toList();
     final Fitting.Sides whole = Fitting.sides(

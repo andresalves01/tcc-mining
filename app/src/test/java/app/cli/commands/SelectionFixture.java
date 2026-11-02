@@ -131,6 +131,16 @@ final class SelectionFixture {
    * each resolution its target's business days after its start.
    */
   static Path temporal(final Path path) throws IOException {
+    return temporal(path, 0);
+  }
+
+  /**
+   * {@link #temporal(Path)} with the first {@code newIssues} inner validation issues, in the
+   * order of their start, moved to a fifth project, {@code p4}, which then has issues on the
+   * inner validation side alone: a new project there. The temporal rule reads no project, so the
+   * sides are the same.
+   */
+  static Path temporal(final Path path, final int newIssues) throws IOException {
     final Population population = Population.FIRST_COMMIT;
     final List<RowCache.Entry> moved = new ArrayList<>();
     final List<SplitRule.Candidate> candidates = new ArrayList<>();
@@ -146,6 +156,10 @@ final class SelectionFixture {
       n++;
     }
     final ProjectSplit.Parts parts = SplitRule.TEMPORAL.draw(candidates);
+    final List<String> renamed = moved.stream()
+        .filter(e -> parts.inner().get(e.unit().issueId()) == Part.TEST)
+        .sorted(java.util.Comparator.comparing((RowCache.Entry e) -> e.unit().startedAt()))
+        .limit(newIssues).map(e -> e.unit().issueId()).toList();
     final List<RowCache.Entry> out = new ArrayList<>();
     for (final RowCache.Entry e : moved) {
       final String id = e.unit().issueId();
@@ -153,7 +167,11 @@ final class SelectionFixture {
       final Map<Population, String[]> verdicts = new EnumMap<>(Population.class);
       verdicts.put(population, new String[] {parts.outer().get(id).name(),
           inner == null ? "" : inner.name()});
-      out.add(new RowCache.Entry(e.unit(), e.row(), verdicts));
+      final IssueUnit u = e.unit();
+      final IssueUnit unit = !renamed.contains(id) ? u : new IssueUnit(u.issueId(), u.key(),
+          "p4", u.reporter(), u.executor(), u.createdAt(), u.resolvedAt(), u.reason(), u.moved(),
+          u.startedAt());
+      out.add(new RowCache.Entry(unit, e.row(), verdicts));
     }
     return write(path, out, population);
   }
