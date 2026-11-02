@@ -1,5 +1,6 @@
 package app.pipeline.mongo;
 
+import app.issues.SplitRule;
 import app.issues.port.ResultStore;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoDatabase;
@@ -29,16 +30,44 @@ public final class MongoIssuesStore implements ResultStore {
   public static final String RESULTS = "results";
 
   private final MongoDatabase database;
-  private final String name;
+  private final String runs;
+  private final String results;
 
   public MongoIssuesStore(final MongoClient client, final String database) {
-    this.database = client.getDatabase(database);
-    this.name = database;
+    this(client.getDatabase(database), "");
+  }
+
+  /** The store over {@code runs} and {@code results}, each with {@code suffix}. */
+  private MongoIssuesStore(final MongoDatabase database, final String suffix) {
+    this.database = database;
+    this.runs = RUNS + suffix;
+    this.results = RESULTS + suffix;
+  }
+
+  /**
+   * The random design's runs in {@code runs} and {@code results}, as always; another design's in
+   * the same names with its suffix ({@link SplitRule#collectionSuffix}), such as {@code
+   * runs_temporal}.
+   */
+  @Override
+  public ResultStore design(final SplitRule rule) {
+    return new MongoIssuesStore(database, rule.collectionSuffix());
+  }
+
+  /** The design of every run in this store's run collection; reads two fields of each. */
+  @Override
+  public java.util.Optional<java.util.Set<SplitRule>> designs() {
+    final java.util.Set<SplitRule> out = java.util.EnumSet.noneOf(SplitRule.class);
+    for (final Document d : database.getCollection(runs).find()
+        .projection(new Document(SplitRule.DESIGN_FIELD, 1).append(SplitRule.RULE_FIELD, 1))) {
+      out.add(SplitRule.recordedBy(d));
+    }
+    return java.util.Optional.of(out);
   }
 
   @Override
   public java.util.Optional<Boolean> recorded(final String stage) {
-    return java.util.Optional.of(database.getCollection(RUNS)
+    return java.util.Optional.of(database.getCollection(runs)
         .countDocuments(new Document("stage", stage)) > 0);
   }
 
@@ -48,7 +77,7 @@ public final class MongoIssuesStore implements ResultStore {
     final Document header = new Document(run);
     header.put("_id", execution);
     header.put("recorded_at", new Date());
-    database.getCollection(RUNS).insertOne(header);
+    database.getCollection(runs).insertOne(header);
 
     if (!rows.isEmpty()) {
       final List<Document> documents = new ArrayList<>(rows.size());
@@ -57,7 +86,7 @@ public final class MongoIssuesStore implements ResultStore {
         document.put("run_id", execution);
         documents.add(document);
       }
-      database.getCollection(RESULTS).insertMany(documents);
+      database.getCollection(results).insertMany(documents);
     }
     return execution.toHexString();
   }

@@ -122,7 +122,12 @@ public enum Command {
       are primeiro_commit_externa and primeiro_commit_interna. Refuses the
       In Progress study's TARGET_DB and ISSUES_DB before reading anything;
       give PREPARED_DB=smartshark_tcc to read the prepared collections. Of
-      the target it prints and records the outer training's alone."""),
+      the target it prints and records the outer training's alone. It
+      draws the rule SPLIT_RULE names (random by default); under temporal
+      it records its run in ISSUES_DB's runs_temporal, with both cuts, the
+      training issues crossing them and the new projects, and it refuses,
+      before reading anything, a run collection holding another design's
+      runs."""),
 
   ISSUES_IN_PROGRESS_TEAM("issues-in-progress-team", new IssuesInProgressTeamCommand(), """
       Issue duration from the first In Progress: runs the extraction and

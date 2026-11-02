@@ -104,10 +104,11 @@ public final class Help {
           AUDIT_DIR         (unset)             issues-first-commit-audit: where audit.md and
                                                 per-issue.tsv go
           SPLIT_RULE        random              random | temporal: the rule the first-commit
-                                                audit draws, and the similarity, retrospective,
-                                                selection and test stages check the matrix's
-                                                sides against; temporal for the first-commit
-                                                study only
+                                                audit and extraction draw, and the similarity,
+                                                retrospective, selection and test stages check
+                                                the matrix's sides against; temporal for the
+                                                first-commit study only, whose extraction then
+                                                records its run in runs_temporal
         """);
   }
 

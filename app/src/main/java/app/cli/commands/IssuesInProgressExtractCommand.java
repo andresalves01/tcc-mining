@@ -6,19 +6,24 @@ import app.cli.Context;
 import app.issues.BusinessDays;
 import app.issues.ProjectSplit;
 import app.issues.RowCache;
+import app.issues.SplitRule;
 import app.issues.TimeTravel;
 import app.issues.Universe.Population;
 import app.config.PipelineConfig;
 import app.issues.FirstCommit;
+import app.issues.port.ResultStore;
 import app.pipeline.IssuesFirstCommitAuditTask;
 import app.pipeline.IssuesFirstCommitExtractTask;
 import app.pipeline.IssuesInProgressExtractTask;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 
 /**
@@ -31,7 +36,11 @@ import java.util.function.Function;
  * <p>With POPULATION=FIRST_COMMIT, the first-commit population instead ({@link
  * IssuesFirstCommitExtractTask}): the audit's population, split, cap and target, the columns read
  * at the first commit. It refuses the In Progress study's TARGET_DB and ISSUES_DB, so its run is
- * recorded in a database of its own, and prints of the target the outer training's alone.
+ * recorded in a database of its own, and prints of the target the outer training's alone. The
+ * split is the rule SPLIT_RULE declares ({@link SplitRule}), random by default; the run is recorded
+ * in that design's own run collection ({@link ResultStore#design}), and the stage refuses one that
+ * already holds another design's runs. Under the temporal rule the record adds the cuts, the
+ * issues crossing them and the new projects. The In Progress population refuses a temporal rule.
  */
 public final class IssuesInProgressExtractCommand implements CommandRunner {
 
@@ -69,8 +78,15 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
     if (cache == null || cache.isBlank()) {
       throw new CommandFailedException(List.of("  CACHE=<output file> is required"));
     }
-    if (population(settings.apply("POPULATION")) == Population.FIRST_COMMIT) {
-      firstCommit(context, cache);
+    final Population population = population(settings.apply("POPULATION"));
+    final SplitRule rule;
+    try {
+      rule = SplitRule.declared(settings.apply(SplitRule.SETTING), population);
+    } catch (final IllegalArgumentException e) {
+      throw new CommandFailedException(List.of("  " + e.getMessage()));
+    }
+    if (population == Population.FIRST_COMMIT) {
+      firstCommit(context, cache, rule);
       return;
     }
     final IssuesInProgressExtractTask.Report r =
@@ -130,6 +146,11 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
         r.entries().size(), r.columns().size());
   }
 
+  /** The issues of every project in {@code perProject}. */
+  private static int issues(final Map<String, Integer> perProject) {
+    return perProject.values().stream().mapToInt(Integer::intValue).sum();
+  }
+
   /**
    * Refuses, before anything is read, a configuration that would record a stage of the
    * first-commit study in the In Progress study's TARGET_DB or ISSUES_DB.
@@ -145,15 +166,47 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
   }
 
   /**
-   * The first-commit extraction: refuses the In Progress study's databases before reading
-   * anything, records the run in ISSUES_DB, writes the cache only when the gate passed.
+   * The store of {@code rule}'s design ({@link ResultStore#design}), refused, before anything is
+   * read, when its run collection already holds a run of another design, or cannot tell.
    */
-  private void firstCommit(final Context context, final String cache)
+  static ResultStore requireOwnDesign(final ResultStore store, final SplitRule rule)
+      throws CommandFailedException {
+    final ResultStore own;
+    final Optional<Set<SplitRule>> designs;
+    try {
+      own = store.design(rule);
+      designs = own.designs();
+    } catch (final RuntimeException e) {
+      throw new CommandFailedException(List.of("  the runs of the " + rule.setting()
+          + " design cannot be told apart from another design's: " + e.getMessage()));
+    }
+    if (designs.isEmpty()) {
+      throw new CommandFailedException(List.of("  the run store cannot tell which design its "
+          + "runs were drawn under, so the " + rule.setting() + " design is not recorded in it"));
+    }
+    final Set<SplitRule> others = EnumSet.noneOf(SplitRule.class);
+    others.addAll(designs.get());
+    others.remove(rule);
+    if (!others.isEmpty()) {
+      throw new CommandFailedException(List.of("  the run collection of the " + rule.setting()
+          + " design (suffix '" + rule.collectionSuffix() + "') already holds runs of " + others
+          + ": nothing is written over another design"));
+    }
+    return own;
+  }
+
+  /**
+   * The first-commit extraction: refuses the In Progress study's databases, and a run collection
+   * holding another design's runs, before reading anything; records the run in ISSUES_DB, in the
+   * collection of {@code rule}'s design; writes the cache only when the gate passed.
+   */
+  private void firstCommit(final Context context, final String cache, final SplitRule rule)
       throws CommandFailedException {
     final PipelineConfig config = context.config();
     requireOwnDatabases(config);
+    final ResultStore store = requireOwnDesign(context.issuesResults(), rule);
     final IssuesFirstCommitExtractTask.Report fc =
-        new IssuesFirstCommitExtractTask(context.study(), context.progress()).run();
+        new IssuesFirstCommitExtractTask(context.study(), context.progress(), rule).run();
     final IssuesInProgressExtractTask.Report r = fc.extraction();
     final var s = r.split();
 
@@ -165,10 +218,18 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
     System.out.printf("%n  POPULATION AND SPLIT%n");
     System.out.printf("    %,d issues past every rule but the target's, %,d of a target of 0 "
         + "never drawn%n", s.started(), s.zeroDays());
-    System.out.printf("    %s%n", ProjectSplit.RULE);
+    System.out.printf("    %s%n", rule.rule());
     System.out.printf("    %,d issues of %,d projects  training %,d  test %,d%n", s.rows(),
         s.projects(), s.train(), s.test());
     System.out.printf("    inner fitting %,d  inner validation %,d%n", s.fit(), s.validation());
+    final IssuesFirstCommitExtractTask.Temporal tc = fc.temporal();
+    if (tc != null) {
+      System.out.printf("    outer cut %s  inner cut %s%n", tc.cuts().outer(), tc.cuts().inner());
+      System.out.printf("    crossing the cut: %,d outer training issues, %,d inner fitting "
+          + "issues (first resolution after the cut)%n", tc.crossing(), tc.innerCrossing());
+      System.out.printf("    new projects (outer test alone): %,d, with %,d issues %s%n",
+          tc.newProjects().size(), issues(tc.newProjects()), tc.newProjects());
+    }
     final FirstCommit.Threshold t = fc.threshold();
     System.out.printf("%n  WAIT CAP, LEARNED ON THE INNER FITTING%n");
     System.out.printf(EN, "    Q1 %.2f  median %.2f  Q3 %.2f  fence %.2f  cap %d business days"
@@ -216,9 +277,27 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
     cap.put("cap", t.cap());
     cap.put("waits", t.gaps());
     run.put("wait_cap", cap);
-    run.put("split_rule", ProjectSplit.RULE);
-    run.put("split_seed", ProjectSplit.SEED);
-    run.put("split_share", ProjectSplit.SHARE);
+    if (tc == null) {
+      run.put(SplitRule.RULE_FIELD, ProjectSplit.RULE);
+      run.put("split_seed", ProjectSplit.SEED);
+      run.put("split_share", ProjectSplit.SHARE);
+    } else {
+      run.put(SplitRule.DESIGN_FIELD, rule.setting());
+      run.put(SplitRule.RULE_FIELD, rule.rule());
+      final Map<String, Object> cuts = new LinkedHashMap<>();
+      cuts.put("outer", tc.cuts().outer().toString());
+      cuts.put("inner", tc.cuts().inner().toString());
+      run.put("split_cuts", cuts);
+      final Map<String, Object> crossing = new LinkedHashMap<>();
+      crossing.put("outer_training", tc.crossing());
+      crossing.put("inner_fitting", tc.innerCrossing());
+      run.put("crossing_the_cut", crossing);
+      final Map<String, Object> newProjects = new LinkedHashMap<>();
+      newProjects.put("projects", tc.newProjects().size());
+      newProjects.put("issues", issues(tc.newProjects()));
+      newProjects.put("issues_per_project", new LinkedHashMap<>(tc.newProjects()));
+      run.put("new_projects", newProjects);
+    }
     final Map<String, Object> sizes = new LinkedHashMap<>();
     sizes.put("fixed_base", fc.base());
     sizes.put("past_every_rule_but_the_target", s.started());
@@ -245,8 +324,8 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
     run.put("attribute_columns", FirstCommit.ATTRIBUTE_COLUMNS);
     run.put("not_written", IssuesInProgressExtractTask.PAUSED + ": it reads the status, which "
         + "this study does not read");
-    System.out.printf("%n  run recorded in ISSUES_DB (%s): %s%n", config.issuesDb(),
-        context.issuesResults().record(run, List.of()));
+    System.out.printf("%n  run recorded in ISSUES_DB (%s, runs%s): %s%n", config.issuesDb(),
+        rule.collectionSuffix(), store.record(run, List.of()));
 
     if (!r.passed()) {
       throw new CommandFailedException(List.of("", "  REFUSED: the gate failed -- the cache was NOT "

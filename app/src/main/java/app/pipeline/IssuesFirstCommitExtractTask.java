@@ -4,6 +4,7 @@ import app.issues.FirstCommit;
 import app.issues.ProjectSplit;
 import app.issues.RowCache;
 import app.issues.SplitRule;
+import app.issues.TemporalSplit;
 import app.issues.Universe;
 import app.issues.Universe.Part;
 import app.issues.Universe.Population;
@@ -24,9 +25,10 @@ import java.util.TreeSet;
  * columns of the In Progress extraction read at the first commit instead of the first In Progress.
  *
  * <p><b>Population and split.</b> The audit's base and selection at the limit of {@link
- * FirstCommit#SHARE}, its split ({@link ProjectSplit}) over the issues of a target of at least one
- * business day, and its cap, learned on the inner fitting's waits alone and then applied, frozen,
- * to every drawn issue. The cache holds the drawn issues only.
+ * FirstCommit#SHARE}, its split by the run's rule ({@link SplitRule}: {@link ProjectSplit} unless
+ * the temporal rule is declared) over the issues of a target of at least one business day, and
+ * its cap, learned on the inner fitting's waits alone and then applied, frozen, to every drawn
+ * issue. The cache holds the drawn issues only.
  *
  * <p><b>Columns.</b> Every column of the In Progress extraction, read at the first commit that
  * counts: the issue's state undone to that instant, the executor the assignee then, or else the
@@ -68,19 +70,41 @@ public final class IssuesFirstCommitExtractTask {
    * @param funnel what is left after each rule, as the audit prints it
    * @param threshold the cap learned on the inner fitting
    * @param training the target of the outer training
+   * @param temporal what the temporal rule adds; null under the random rule
    */
   public record Report(IssuesInProgressExtractTask.Report extraction, int base,
       List<IssuesFirstCommitAuditTask.Step> funnel, FirstCommit.Threshold threshold,
-      FirstCommit.Summary training) {}
+      FirstCommit.Summary training, Temporal temporal) {}
+
+  /**
+   * What the temporal rule adds to the extraction, as the audit counts it; nothing here reads a
+   * target of the outer test.
+   *
+   * @param cuts the instants of the outer and the inner cut
+   * @param crossing the outer training issues whose first resolution comes after the outer cut
+   * @param innerCrossing the inner fitting issues whose first resolution comes after the inner cut
+   * @param newProjects the projects with issues on the outer test alone, and how many there
+   */
+  public record Temporal(TemporalSplit.Cuts cuts, int crossing, int innerCrossing,
+      Map<String, Integer> newProjects) {}
 
   private static final int PHASES = 6;
 
   private final StudySource source;
   private final Progress progress;
+  private final SplitRule rule;
 
+  /** The extraction under the random rule. */
   public IssuesFirstCommitExtractTask(final StudySource source, final Progress progress) {
+    this(source, progress, SplitRule.RANDOM);
+  }
+
+  /** The extraction whose sides, cap and target are drawn by {@code rule}, as the audit's. */
+  public IssuesFirstCommitExtractTask(final StudySource source, final Progress progress,
+      final SplitRule rule) {
     this.source = source;
     this.progress = progress;
+    this.rule = rule;
   }
 
   public Report run() {
@@ -89,8 +113,7 @@ public final class IssuesFirstCommitExtractTask {
 
     progress.phase(4, PHASES, "selection, split and cap");
     final IssuesFirstCommitAuditTask.Drawn drawn =
-        IssuesFirstCommitAuditTask.draw(b.issues(), FirstCommit.SHARE, b.boundary(),
-            SplitRule.RANDOM);
+        IssuesFirstCommitAuditTask.draw(b.issues(), FirstCommit.SHARE, b.boundary(), rule);
     final int cap = drawn.threshold().cap();
     final List<Universe.Unit> units = new ArrayList<>(drawn.parts().outer().size());
     final Map<String, String> projects = new HashMap<>(drawn.parts().outer().size() * 2);
@@ -147,7 +170,19 @@ public final class IssuesFirstCommitExtractTask {
         target, COLUMNS, 6, PHASES);
     return new Report(withoutPause(extraction), b.units().size(),
         IssuesFirstCommitAuditTask.funnel(b.units().size(), drawn.verdicts()), drawn.threshold(),
-        FirstCommit.summary(training));
+        FirstCommit.summary(training),
+        rule == SplitRule.TEMPORAL ? temporal(b.issues(), drawn, projects) : null);
+  }
+
+  /** The cuts, the issues crossing them and the new projects of a temporal draw. */
+  private static Temporal temporal(final Map<String, FirstCommit.Issue> issues,
+      final IssuesFirstCommitAuditTask.Drawn drawn, final Map<String, String> projects) {
+    final TemporalSplit.Cuts cuts = TemporalSplit.cuts(drawn.candidates());
+    final ProjectSplit.Parts parts = drawn.parts();
+    return new Temporal(cuts,
+        IssuesFirstCommitAuditTask.crossing(issues, parts.outer(), cuts.outer()),
+        IssuesFirstCommitAuditTask.crossing(issues, parts.inner(), cuts.inner()),
+        IssuesFirstCommitAuditTask.newProjects(projects, parts.outer()));
   }
 
   /**
