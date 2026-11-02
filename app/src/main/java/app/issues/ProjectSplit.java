@@ -108,7 +108,15 @@ public final class ProjectSplit {
       final Population population) {
     final Map<String, String> projects = new HashMap<>(entries.size() * 2);
     entries.forEach(e -> projects.put(e.unit().issueId(), e.unit().project()));
-    final Parts parts = draw(projects);
+    return differences(entries, population, draw(projects), "seed " + SEED);
+  }
+
+  /**
+   * Where the matrix's verdicts under {@code population} are not {@code parts}, the sides a rule
+   * drew again over the matrix's own issues; {@code rule} names that rule in the message.
+   */
+  static List<String> differences(final List<RowCache.Entry> entries,
+      final Population population, final Parts parts, final String rule) {
     int wrong = 0;
     String first = null;
     for (final RowCache.Entry e : entries) {
@@ -125,6 +133,6 @@ public final class ProjectSplit {
     }
     return wrong == 0 ? List.of() : List.of(String.format("%,d of %,d rows are not at the "
         + "verdicts of the split's rule (%s), the first %s; the matrix was not extracted with "
-        + "it", wrong, entries.size(), "seed " + SEED, first));
+        + "it", wrong, entries.size(), rule, first));
   }
 }

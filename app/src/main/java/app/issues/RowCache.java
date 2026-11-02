@@ -164,10 +164,12 @@ public final class RowCache {
   }
 
   /**
-   * Every row of a cache with its id, key, project and split verdicts only, in the cache's order:
-   * no value, date or outcome of any row is parsed, the outer test's included. Each unit has no
-   * dates and each row no values; what reads them is the split's rule ({@link
-   * ProjectSplit#differences}) and the split's sizes, never a model.
+   * Every row of a cache with its id, key, project, start and split verdicts only, in the cache's
+   * order: no value, outcome or other date of any row is parsed, the outer test's included. Each
+   * unit has no date but its start (in a first-commit matrix, its first commit that counts), null
+   * when the cache writes none, and each row no values; what reads them is the split's rule
+   * ({@link SplitRule#differences}: the temporal one reads the start, the instant it orders the
+   * issues by) and the split's sizes, never a model.
    */
   public static List<Entry> splits(final Path path) throws IOException {
     final List<String> lines = Files.readAllLines(path, StandardCharsets.UTF_8);
@@ -180,8 +182,12 @@ public final class RowCache {
         throw new IOException(path + ": column " + i + " should be " + BASE.get(i));
       }
     }
+    int startedAt = -1;
     final Map<Population, Integer> partAt = new EnumMap<>(Population.class);
     for (int i = 0; i < header.length; i++) {
+      if (header[i].equals(STARTED)) {
+        startedAt = i;
+      }
       for (final Population p : Population.values()) {
         if (header[i].equals(prefix(p) + "_externa")) {
           partAt.put(p, i);
@@ -196,8 +202,9 @@ public final class RowCache {
       final String id = field(line, 0);
       final Map<Population, String[]> parts = new EnumMap<>(Population.class);
       partAt.forEach((p, k) -> put(parts, p, field(line, k), field(line, k + 1)));
+      final Instant started = startedAt < 0 ? null : Instant.parse(field(line, startedAt));
       out.add(new Entry(new IssueUnit(id, field(line, 1), field(line, 2), null, null, null,
-          null, null, false, null), new Row(id, Map.of(), Set.of()), parts));
+          null, null, false, started), new Row(id, Map.of(), Set.of()), parts));
     }
     return out;
   }

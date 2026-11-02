@@ -38,6 +38,11 @@ class RowCacheTest {
    * corrupted after their split fields: a value, a date and a field count no read could parse.
    */
   private Path corrupted() throws IOException {
+    return corrupted("2016-");
+  }
+
+  /** The same, with only the dates that begin with {@code dates} corrupted. */
+  private Path corrupted(final String dates) throws IOException {
     final Path path = dir.resolve("matrix.tsv");
     RowCache.write(path, List.of(entry("a", "TRAIN", "TRAIN"), entry("b", "TEST", ""),
         entry("c", "TRAIN", "TEST"), entry("x", "CROSSES", "")), List.of("A01_desc_length"),
@@ -45,7 +50,7 @@ class RowCacheTest {
     final List<String> lines = new ArrayList<>(Files.readAllLines(path));
     for (int k = 1; k < lines.size(); k++) {
       if (lines.get(k).contains("\tTEST\t\t") || lines.get(k).contains("\tCROSSES\t")) {
-        lines.set(k, lines.get(k).replace("2016-", "not-a-date-").replace("\t12.0", "\tnot a "
+        lines.set(k, lines.get(k).replace(dates, "not-a-date-").replace("\t12.0", "\tnot a "
             + "number\textra"));
       }
     }
@@ -84,10 +89,14 @@ class RowCacheTest {
   }
 
   @Test
-  @DisplayName("the split alone: every row's id, key, project and verdicts, no value or date "
-      + "parsed, and the population read from the header")
+  @DisplayName("the split alone: every row's id, key, project, start and verdicts, no value or "
+      + "other date parsed, and the population read from the header")
   void readsTheSplitAlone() throws IOException {
-    final Path path = corrupted();
+    // the creation (10:00) and the resolution (three days on) corrupted, the start (11:00) kept
+    final Path path = corrupted("2016-03-01T10");
+    Files.write(path, Files.readAllLines(path).stream()
+        .map(l -> l.contains("not-a-date") ? l.replace("2016-03-04T10", "not-a-date") : l)
+        .toList());
     final List<RowCache.Entry> splits = RowCache.splits(path);
     assertEquals(List.of("a", "b", "c", "x"),
         splits.stream().map(e -> e.unit().issueId()).toList());
@@ -98,6 +107,8 @@ class RowCacheTest {
     assertEquals("P-b", splits.get(1).unit().key());
     assertEquals("p", splits.get(1).unit().project());
     assertEquals(Map.of(), splits.get(1).row().values());
+    assertEquals(Instant.parse("2016-03-01T11:00:00Z"), splits.get(1).unit().startedAt());
+    assertEquals(null, splits.get(1).unit().createdAt());
     assertEquals(Population.IN_PROGRESS, RowCache.splitPopulation(path));
     assertEquals(List.of(Population.IN_PROGRESS), RowCache.splitPopulations(path));
 
