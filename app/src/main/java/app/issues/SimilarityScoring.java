@@ -37,7 +37,10 @@ import java.util.concurrent.Callable;
  * and Kikas at the start, the main reading of the own retrospective model, the same with the
  * comments and the participants, a ceiling and not a competitor, and Kikas's retrospective one;
  * and the six random forests beside them ({@link #forest(String)}), a robustness check. A
- * similarity median is an attribute of the models that read it and is never scored alone.
+ * similarity median is an attribute of the models that read it and is never scored alone, but by
+ * the analogy estimate: when the parameters freeze its choice ({@link AnalogyEstimate.Frozen}, the
+ * first-commit study's temporal split), it is a fifteenth model beside the references, its column
+ * read as it is with no model around it.
  *
  * <p><b>Refit.</b> The alpha is kept and the lambda is multiplied by the ratio of the outer
  * training rows to the inner fitting rows ({@link
@@ -99,6 +102,22 @@ public final class SimilarityScoring {
 
   public static final String GLOBAL = "global_median";
   public static final String PROJECT = "project_median";
+
+  /**
+   * The analogy estimate ({@link AnalogyEstimate}), the fifteenth model of the first-commit
+   * study's temporal split, scored beside the references when the parameters freeze its choice.
+   */
+  public static final String ANALOGY = "analogy_estimate";
+
+  /**
+   * The models the analogy estimate is compared with beyond the two references, which {@link
+   * #pairs} draws for every model: the three start models and their forests, the models an SPSP
+   * would use at the start, as the exploratory comparison drew them.
+   */
+  public static final List<String> ANALOGY_AGAINST = List.of(
+      ElasticNetSelection.BEFORE_PRESSURE, ElasticNetSelection.ALZUBAIDI_START,
+      ElasticNetSelection.KIKAS_START, forest(ElasticNetSelection.BEFORE_PRESSURE),
+      forest(ElasticNetSelection.ALZUBAIDI_START), forest(ElasticNetSelection.KIKAS_START));
 
   private static final String RETROSPECTIVE = ElasticNetSelection.RETROSPECTIVE;
 
@@ -234,6 +253,31 @@ public final class SimilarityScoring {
   public record Relevance(String model, int fitRows, int projects,
       List<Coefficient> coefficients) {}
 
+  /**
+   * What a parameters file freezes beyond the fourteen models' choices, as the test reads it: the
+   * analogy estimate's choice, and the count of trees every forest is refitted with.
+   *
+   * @param analogy the analogy estimate's frozen choice; null for none, the fourteen alone
+   * @param trees the trees per forest, {@link Forest#TREES} when the file gives none
+   */
+  public record Design(AnalogyEstimate.Frozen analogy, int trees) {
+
+    /** Refuses a count of trees below one. */
+    public Design {
+      if (trees < 1) {
+        throw new IllegalArgumentException("a forest of " + trees + " trees");
+      }
+    }
+
+    /** {@code analogy}, and the forests at {@link Forest#TREES}. */
+    public static Design of(final AnalogyEstimate.Frozen analogy) {
+      return new Design(analogy, Forest.TREES);
+    }
+  }
+
+  /** The fourteen models, the forests at {@link Forest#TREES}: every file of the random split. */
+  private static final Design FOURTEEN = Design.of(null);
+
   /** Both readings of one fit: the usual flow, the main one, and every scored issue. */
   public record Readings(Report main, Report complementary) {}
 
@@ -255,13 +299,22 @@ public final class SimilarityScoring {
    * @param withoutCommits the same pairs on the scored issues without one, for contrast
    * @param orderings the ordering intervals (ticket 16, a declared measure) of {@link
    *     #orderingPairs}
+   * @param withoutNewProjects whether the issues of new projects were left out of the scored ones
+   *     ({@link #withoutNewProjects})
+   * @param newProjects the new projects: those with issues on the scored side and none on the
+   *     fitting side before the tail cut, in order of name
+   * @param newProjectRows the issues of the reading that belong to a new project, counted before
+   *     any is left out
+   * @param analogyFallbacks the scored issues the analogy estimate gave its fallback; 0 without it
    */
   public record Report(Scope scope, TailCut.Reading reading, Fences fences, double[] bandTops,
       int fitRows, int scoredRows, int innerFitRows,
       List<IssueUnit> scoredUnits, double[] observed, List<Scored> models,
       List<ProjectBootstrap.Gap> comparisons, Set<String> unseenProjects, int unseenRows,
       int withCommitRows, List<ProjectBootstrap.Gap> withCommits, boolean[] implementationCommit,
-      List<ProjectBootstrap.Gap> withoutCommits, List<ProjectBootstrap.Ordering> orderings) {}
+      List<ProjectBootstrap.Gap> withoutCommits, List<ProjectBootstrap.Ordering> orderings,
+      boolean withoutNewProjects, Set<String> newProjects, int newProjectRows,
+      int analogyFallbacks) {}
 
   private SimilarityScoring() {}
 
@@ -316,11 +369,77 @@ public final class SimilarityScoring {
       final Map<String, ElasticNetSelection.Choice> choices,
       final Map<String, Forest.Choice> forests, final double k, final Scope scope,
       final int fitThreads, final int drawThreads, final Population population) {
+    return readings(entries, choices, forests, k, scope, fitThreads, drawThreads, population,
+        FOURTEEN);
+  }
+
+  /**
+   * {@link #readings(List, Map, Map, double, Scope, Population)} with what the parameters froze
+   * beyond the fourteen's choices, on the threads {@link Parallel} asks for.
+   */
+  public static Readings readings(final List<RowCache.Entry> entries,
+      final Map<String, ElasticNetSelection.Choice> choices,
+      final Map<String, Forest.Choice> forests, final double k, final Scope scope,
+      final Population population, final Design design) {
+    return readings(entries, choices, forests, k, scope,
+        Parallel.threads(Parallel.ELASTIC_NET_THREADS),
+        Parallel.threads(Parallel.BOOTSTRAP_THREADS), population, design);
+  }
+
+  /**
+   * {@link #readings(List, Map, Map, double, Scope, int, int, Population)} with what the
+   * parameters froze beyond the fourteen's choices ({@link Design}): the analogy estimate, if any,
+   * beside the references, its column in the scope's variant, its frozen fallback where an issue
+   * has none; every forest at the given count of trees. Nothing of it is chosen here.
+   */
+  public static Readings readings(final List<RowCache.Entry> entries,
+      final Map<String, ElasticNetSelection.Choice> choices,
+      final Map<String, Forest.Choice> forests, final double k, final Scope scope,
+      final int fitThreads, final int drawThreads, final Population population,
+      final Design design) {
+    return both(entries, choices, forests, k, scope, fitThreads, drawThreads, population, design,
+        false);
+  }
+
+  /**
+   * Both readings of {@link #readings(List, Map, Map, double, Scope, int, int, Population,
+   * Design)} without the issues of new projects, the projects with issues on the
+   * scored side and none on the fitting side: the same fits, every figure read again on the other
+   * issues alone, the intervals resampling their projects.
+   */
+  public static Readings withoutNewProjects(final List<RowCache.Entry> entries,
+      final Map<String, ElasticNetSelection.Choice> choices,
+      final Map<String, Forest.Choice> forests, final double k, final Scope scope,
+      final int fitThreads, final int drawThreads, final Population population,
+      final Design design) {
+    return both(entries, choices, forests, k, scope, fitThreads, drawThreads, population, design,
+        true);
+  }
+
+  /** The usual flow and every scored issue, the issues of new projects left out or not. */
+  private static Readings both(final List<RowCache.Entry> entries,
+      final Map<String, ElasticNetSelection.Choice> choices,
+      final Map<String, Forest.Choice> forests, final double k, final Scope scope,
+      final int fitThreads, final int drawThreads, final Population population,
+      final Design design, final boolean withoutNew) {
     return new Readings(
         score(entries, choices, forests, k, scope, TailCut.Reading.USUAL_FLOW, true, fitThreads,
-            drawThreads, population),
+            drawThreads, population, design, withoutNew),
         score(entries, choices, forests, k, scope, TailCut.Reading.ALL, true, fitThreads,
-            drawThreads, population));
+            drawThreads, population, design, withoutNew));
+  }
+
+  /**
+   * {@link #withoutNewProjects(List, Map, Map, double, Scope, int, int, Population,
+   * Design)} on the threads {@link Parallel} asks for.
+   */
+  public static Readings withoutNewProjects(final List<RowCache.Entry> entries,
+      final Map<String, ElasticNetSelection.Choice> choices,
+      final Map<String, Forest.Choice> forests, final double k, final Scope scope,
+      final Population population, final Design design) {
+    return withoutNewProjects(entries, choices, forests, k, scope,
+        Parallel.threads(Parallel.ELASTIC_NET_THREADS),
+        Parallel.threads(Parallel.BOOTSTRAP_THREADS), population, design);
   }
 
   /**
@@ -335,16 +454,28 @@ public final class SimilarityScoring {
       final Map<String, Forest.Choice> forests, final double k) {
     return score(entries, choices, forests, k, Scope.INNER, TailCut.Reading.USUAL_FLOW, false,
         Parallel.threads(Parallel.ELASTIC_NET_THREADS),
-        Parallel.threads(Parallel.BOOTSTRAP_THREADS), P);
+        Parallel.threads(Parallel.BOOTSTRAP_THREADS), P, FOURTEEN, false);
   }
 
   /** {@link #calibration(List, Map, Map, double)} on the split and sets of {@code population}. */
   public static Report calibration(final List<RowCache.Entry> entries,
       final Map<String, ElasticNetSelection.Choice> choices,
       final Map<String, Forest.Choice> forests, final double k, final Population population) {
+    return calibration(entries, choices, forests, k, population, FOURTEEN);
+  }
+
+  /**
+   * {@link #calibration(List, Map, Map, double, Population)} with what the parameters froze
+   * beyond the fourteen's choices ({@link Design}): the analogy estimate, if any, read in its inner
+   * column with its frozen fallback, and the forests at the given count of trees.
+   */
+  public static Report calibration(final List<RowCache.Entry> entries,
+      final Map<String, ElasticNetSelection.Choice> choices,
+      final Map<String, Forest.Choice> forests, final double k, final Population population,
+      final Design design) {
     return score(entries, choices, forests, k, Scope.INNER, TailCut.Reading.USUAL_FLOW, false,
         Parallel.threads(Parallel.ELASTIC_NET_THREADS),
-        Parallel.threads(Parallel.BOOTSTRAP_THREADS), population);
+        Parallel.threads(Parallel.BOOTSTRAP_THREADS), population, design, false);
   }
 
   /**
@@ -377,7 +508,7 @@ public final class SimilarityScoring {
       final Map<String, Forest.Choice> forests, final Scope scope, final int fitThreads,
       final int drawThreads) {
     return score(entries, choices, forests, TailCut.NO_CUT, scope, TailCut.Reading.ALL, true,
-        fitThreads, drawThreads, P);
+        fitThreads, drawThreads, P, FOURTEEN, false);
   }
 
   /**
@@ -386,12 +517,16 @@ public final class SimilarityScoring {
    *
    * @param compared whether the paired comparisons, the ordering intervals and the side reading
    *     are drawn; without them their lists are empty
+   * @param design the analogy estimate's frozen choice, if any, and the forests' tree count
+   * @param withoutNew whether the issues of new projects are left out of the scored ones
    */
   private static Report score(final List<RowCache.Entry> entries,
       final Map<String, ElasticNetSelection.Choice> choices,
       final Map<String, Forest.Choice> forests, final double k, final Scope scope,
       final TailCut.Reading reading, final boolean compared, final int fitThreads,
-      final int drawThreads, final Population population) {
+      final int drawThreads, final Population population, final Design design,
+      final boolean withoutNew) {
+    final AnalogyEstimate.Frozen analogy = design.analogy();
     if (!new LinkedHashSet<>(ElasticNetSelection.MODELS).equals(choices.keySet())) {
       throw new IllegalArgumentException("the parameters hold alpha and lambda for "
           + choices.keySet() + "; the models are " + ElasticNetSelection.MODELS);
@@ -408,8 +543,17 @@ public final class SimilarityScoring {
     final double fence = TailCut.fence(whole.fitUnits(), k);
     final double usualFence = TailCut.fence(whole.fitUnits(), TailCut.USUAL_FLOW_K);
     final Fitting.Sides cut = TailCut.cut(whole, fence);
-    final Fitting.Sides sides = reading == TailCut.Reading.ALL ? cut
+    final Fitting.Sides read = reading == TailCut.Reading.ALL ? cut
         : TailCut.usualFlow(cut, usualFence);
+    // the new projects: issues on the scored side, none on the fitting side before the cut
+    final Set<String> trained = new HashSet<>();
+    whole.fitUnits().forEach(u -> trained.add(u.project()));
+    final Set<String> newProjects = new TreeSet<>();
+    whole.scoreUnits().stream().map(IssueUnit::project).filter(p -> !trained.contains(p))
+        .forEach(newProjects::add);
+    final int newProjectRows = (int) read.scoreUnits().stream()
+        .filter(u -> newProjects.contains(u.project())).count();
+    final Fitting.Sides sides = withoutNew ? seenOnly(read, trained) : read;
     final Fences fences = new Fences(k, fence, usualFence, whole.fitUnits().size(),
         TailCut.usualFlow(cut, usualFence).scoreUnits().size(), cut.scoreUnits().size());
     // the rows the lambdas were chosen on: the inner fitting set cut at its own fence of this k
@@ -430,6 +574,16 @@ public final class SimilarityScoring {
     final List<Scored> models = new ArrayList<>();
     models.add(given(GLOBAL, globalMedian, observed, projectMae, constantMae, tops));
     models.add(given(PROJECT, projectMedian, observed, projectMae, constantMae, tops));
+    int analogyFallbacks = 0;
+    if (analogy != null) {
+      final AnalogyEstimate.Estimate e = AnalogyEstimate.estimate(sides.scoreRows(),
+          analogy.column() + scope.variant().suffix(), analogy.fallback());
+      analogyFallbacks = e.fallbacks();
+      models.add(new Scored(ANALOGY, "analogy", e.values(),
+          Score.of(ANALOGY, e.values(), observed, projectMae, constantMae),
+          Breakdown.errors(e.values(), observed), BusinessDays.bands(e.values(), observed, tops),
+          null, List.of(), null));
+    }
 
     final List<Callable<Scored>> refits = new ArrayList<>(cells.size());
     for (final Cell cell : cells) {
@@ -456,7 +610,8 @@ public final class SimilarityScoring {
             ElasticNetSelection.kept(cell, sides.fitRows(), scope.fittingSet());
         final String name = forest(cell.label());
         final Forest.Frozen f = Forest.frozen(new Cell(name, cell.family(), cell.scenario(),
-            kept.cell().attributes()), sides, c, projectMae, constantMae, scope.importance());
+            kept.cell().attributes()), sides, c, design.trees(), projectMae, constantMae,
+            scope.importance());
         return new Scored(name, "forest", f.predicted(), f.score(),
             Breakdown.errors(f.predicted(), observed),
             BusinessDays.bands(f.predicted(), observed, tops), null, kept.removed(), f);
@@ -505,7 +660,27 @@ public final class SimilarityScoring {
     }
     return new Report(scope, reading, fences, tops, fitRows, observed.length, innerFitRows,
         List.copyOf(sides.scoreUnits()), observed, List.copyOf(models), List.copyOf(comparisons),
-        unseen, unseenRows, withCommit.size(), side, commit, contrast, List.copyOf(orderings));
+        unseen, unseenRows, withCommit.size(), side, commit, contrast, List.copyOf(orderings),
+        withoutNew, java.util.Collections.unmodifiableSet(newProjects), newProjectRows,
+        analogyFallbacks);
+  }
+
+  /**
+   * The sides with only the scored issues of the projects {@code trained}; the fitting side as it
+   * is.
+   */
+  private static Fitting.Sides seenOnly(final Fitting.Sides sides, final Set<String> trained) {
+    final List<IssueUnit> units = new ArrayList<>();
+    final List<app.study.Row> rows = new ArrayList<>();
+    for (int i = 0; i < sides.scoreUnits().size(); i++) {
+      if (trained.contains(sides.scoreUnits().get(i).project())) {
+        units.add(sides.scoreUnits().get(i));
+        rows.add(sides.scoreRows().get(i));
+      }
+    }
+    final double[] observed = units.stream().mapToDouble(IssueUnit::duration).toArray();
+    return new Fitting.Sides(sides.fitUnits(), sides.fitRows(), List.copyOf(units),
+        List.copyOf(rows), observed);
   }
 
   /**
@@ -660,7 +835,9 @@ public final class SimilarityScoring {
    * median, and each but the global median against the project median, so the two references are
    * compared once. Then, of the forests, in the order of {@code models}: the forests of the same
    * agreed pairs, in the same order; each forest against the global median; each forest against
-   * the project median. A pair is drawn only when both its models are among {@code models}.
+   * the project median. Last, with the analogy estimate among {@code models}, it against each of
+   * {@link #ANALOGY_AGAINST}; against the two references it is drawn above, as every model is. A
+   * pair is drawn only when both its models are among {@code models}.
    */
   public static List<String[]> pairs(final List<String> models) {
     final List<String> forests = new ArrayList<>();
@@ -695,6 +872,13 @@ public final class SimilarityScoring {
     }
     for (final String f : trees) {
       out.add(new String[] {f, PROJECT});
+    }
+    if (models.contains(ANALOGY)) {
+      for (final String b : ANALOGY_AGAINST) {
+        if (models.contains(b)) {
+          out.add(new String[] {ANALOGY, b});
+        }
+      }
     }
     return List.copyOf(out);
   }

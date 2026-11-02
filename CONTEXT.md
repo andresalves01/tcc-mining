@@ -116,13 +116,15 @@ The issue's description as it stood at its start, with Jira markup removed.
 The median duration of the historical issues whose descriptions at the start are closest to this
 one's: by shared words (**Jaccard median**), by sentence embeddings (**embedding median**), or among
 the members of the nearest embedding cluster (**cluster median**). Read only inside a model, never
-as an estimate on its own.
+as an estimate on its own, except as the **analogy estimate**.
 _Avoid_: direct predictor, similarity score, analogy estimate
 
 **Analogy estimate**:
 One similarity median used directly as an issue's estimate, with no model around it, in the manner
 of estimation by analogy (Shepperd and Schofield, 1997); an issue without one takes the global
-median. An exploratory point of comparison with the models, outside the fourteen declared ones.
+median. In the random split of the first-commit study, an exploratory point of comparison
+outside the fourteen declared models. In its temporal split, the fifteenth declared model, its
+choice frozen on the inner validation and only read on the test.
 _Avoid_: similarity median (which is only an attribute inside a model)
 
 **Reporter median**:

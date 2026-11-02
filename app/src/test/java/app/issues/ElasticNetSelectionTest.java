@@ -1422,4 +1422,84 @@ class ElasticNetSelectionTest {
     assertTrue(TailCut.GRID.contains(k), "k " + k + " is not one of the grid " + TailCut.GRID);
     return ElasticNetSelection.select(entries, List.of(k), scored, threads);
   }
+
+  @Test
+  @DisplayName("the header names the split rule when it is not the random one; a header without a "
+      + "rule, as every file before the temporal split, is the random one; the population is "
+      + "read the same either way")
+  void headerSplitRule() {
+    for (final Population p : Population.values()) {
+      assertEquals(ElasticNetSelection.header(p),
+          ElasticNetSelection.header(p, SplitRule.RANDOM));
+      assertEquals(SplitRule.RANDOM, ElasticNetSelection.headerRule(ElasticNetSelection.header(p)));
+      assertEquals(p, ElasticNetSelection.headerPopulation(ElasticNetSelection.header(p)));
+    }
+    final String temporal = ElasticNetSelection.header(Population.FIRST_COMMIT,
+        SplitRule.TEMPORAL);
+    assertTrue(temporal.startsWith(ElasticNetSelection.HEADER_FIRST_COMMIT), temporal);
+    assertEquals(SplitRule.TEMPORAL, ElasticNetSelection.headerRule(temporal));
+    assertEquals(Population.FIRST_COMMIT, ElasticNetSelection.headerPopulation(temporal));
+    // a rule that names nothing, or another header, is no header of this step
+    final String odd = ElasticNetSelection.HEADER_FIRST_COMMIT
+        + ElasticNetSelection.RULE_MARK + "weekly";
+    assertNull(ElasticNetSelection.headerRule(odd));
+    assertNull(ElasticNetSelection.headerPopulation(odd));
+    assertNull(ElasticNetSelection.headerRule("# something else"));
+  }
+
+  @Test
+  @DisplayName("the analogy estimate's frozen choice, its column and fallback, reads back exactly; "
+      + "a file without it has none; an incomplete or unknown choice is refused")
+  void analogyChoice() {
+    final AnalogyEstimate.Frozen frozen = new AnalogyEstimate.Frozen("embedding_median_10", 3.0);
+    final List<String> lines = new ArrayList<>(List.of(ElasticNetSelection.HEADER_FIRST_COMMIT,
+        "elastic-net\tinputs\tmatrix_sha256\tcd34"));
+    assertNull(ElasticNetSelection.analogy(ElasticNetSelection.read(lines)));
+    lines.addAll(ElasticNetSelection.analogyLines(frozen));
+    assertEquals(List.of("analogy\tchosen\tcolumn\tembedding_median_10",
+        "analogy\tchosen\tfallback_business_days\t3.0"), lines.subList(2, 4));
+    assertEquals(frozen, ElasticNetSelection.analogy(ElasticNetSelection.read(lines)));
+    // the other readers skip the analogy's lines
+    assertEquals(Map.of(), ElasticNetSelection.choices(ElasticNetSelection.read(lines)));
+    assertEquals(Map.of(), ElasticNetSelection.forests(ElasticNetSelection.read(lines)));
+
+    final List<String> partial = lines.subList(0, 3);
+    assertThrows(IllegalArgumentException.class,
+        () -> ElasticNetSelection.analogy(ElasticNetSelection.read(partial)));
+    final List<String> extra = new ArrayList<>(lines);
+    extra.add("analogy\tchosen\tmae_business_days\t1.5");
+    assertThrows(IllegalArgumentException.class,
+        () -> ElasticNetSelection.analogy(ElasticNetSelection.read(extra)));
+    assertThrows(IllegalArgumentException.class,
+        () -> new AnalogyEstimate.Frozen("jaccard_median_7", 3.0));
+    assertThrows(IllegalArgumentException.class,
+        () -> new AnalogyEstimate.Frozen("jaccard_median_5", Double.NaN));
+    assertThrows(IllegalArgumentException.class,
+        () -> new AnalogyEstimate.Frozen("jaccard_median_5", 0));
+  }
+
+  @Test
+  @DisplayName("the forests' tree count: absent, as in every file before the temporal split, it is "
+      + Forest.TREES + "; given, it is read back exactly, and no forest's choice reads it; "
+      + "a count below one is refused")
+  void forestTrees() {
+    final List<String> lines = new ArrayList<>(List.of(ElasticNetSelection.HEADER_FIRST_COMMIT,
+        "forest\tkikas_start\tmtry_share\t" + (1.0 / 3), "forest\tkikas_start\tmtry\t1",
+        "forest\tkikas_start\tnode_size\t25"));
+    assertEquals(300, Forest.TREES);
+    assertEquals(Forest.TREES, ElasticNetSelection.trees(ElasticNetSelection.read(lines)));
+    lines.add(ElasticNetSelection.treesLine(500));
+    assertEquals("forest\tevery_model\ttrees\t500", lines.getLast());
+    assertEquals(500, ElasticNetSelection.trees(ElasticNetSelection.read(lines)));
+    assertEquals(Set.of("kikas_start"),
+        ElasticNetSelection.forests(ElasticNetSelection.read(lines)).keySet());
+    final List<String> none = new ArrayList<>(lines);
+    none.set(none.size() - 1, "forest\tevery_model\ttrees\t0");
+    assertThrows(IllegalArgumentException.class,
+        () -> ElasticNetSelection.trees(ElasticNetSelection.read(none)));
+    final List<String> odd = new ArrayList<>(lines);
+    odd.set(odd.size() - 1, "forest\tevery_model\tdepth\t20");
+    assertThrows(IllegalArgumentException.class,
+        () -> ElasticNetSelection.trees(ElasticNetSelection.read(odd)));
+  }
 }

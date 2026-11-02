@@ -271,6 +271,28 @@ are not that rule's:
 An In Progress matrix under `SPLIT_RULE=temporal` is refused. The audit and the extraction still
 draw the random split.
 
+The parameters file's header names the split rule its choices were made under. A header that
+names none, as every file written before the temporal split, is the random rule's. The first-commit
+test (`issues-first-commit-test`) refuses a parameters file of another rule than the run's. Under
+`SPLIT_RULE=temporal`:
+
+- **Analogy estimate.** It is the fifteenth model. The parameters file freezes its choice in two
+  lines under the step `analogy`: the chosen similarity median (`column`) and the value an issue
+  without one takes (`fallback_business_days`). The test reads both and chooses nothing. The
+  selection does not write these lines yet; until it does, a temporal file without them is
+  refused. A random-split file with them is refused too: there the
+  analogy estimate stays exploratory.
+- **Opening.** It is recorded as `issues-first-commit-test-temporal`, and it runs once, as the
+  random one does.
+
+Under either rule, the forests are refitted with the tree count the parameters file gives, in a
+line whose four tab-separated fields are `forest`, `every_model`, `trees` and the count. A file
+without it, as every file of the random split, means 300 trees. The selection does not write this
+line yet.
+
+Under either rule, every reading is also given without the issues of new projects, with their
+count.
+
 ### Commands that only read
 
 `check`, `help`, `issues-first-commit-audit`, `issues-first-commit-share-ablation` and

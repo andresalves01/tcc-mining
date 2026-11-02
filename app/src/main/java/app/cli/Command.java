@@ -462,10 +462,17 @@ public enum Command {
       unless MATRIX holds the first-commit population's split; refuses when
       ISSUES_DB already holds a run of this step or REPORT_DIR already holds
       predictions; refuses unless the parameters file was written for this
-      population on this matrix. Writes the predictions, diagnostics,
-      relevance and uncertainty to REPORT_DIR; records the run, with the
-      time the test was opened and the SHA-256 of every input and output, in
-      ISSUES_DB.""");
+      population on this matrix, and unless its header's split rule is the
+      one SPLIT_RULE declares (a header naming none is the random one).
+      Under SPLIT_RULE=temporal the analogy estimate is the fifteenth model,
+      its column and fallback read from the parameters file (refused
+      without them; a file of the random split holding them is refused
+      too), and the opening is recorded as
+      issues-first-commit-test-temporal. Every reading is also given
+      without the issues of new projects, with their count. Writes the
+      predictions, diagnostics, relevance and uncertainty to REPORT_DIR;
+      records the run, with the time the test was opened and the SHA-256 of
+      every input and output, in ISSUES_DB.""");
 
   private static final Map<String, Command> CommandMap = Arrays.stream(values())
       .collect(Collectors.toUnmodifiableMap(command -> command.token, command -> command));

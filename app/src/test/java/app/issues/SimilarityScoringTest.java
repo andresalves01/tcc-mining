@@ -1329,4 +1329,161 @@ class SimilarityScoringTest {
       }
     }
   }
+
+  /**
+   * {@link #corpus} with a seventh project, "pnew", of ten issues on the outer test side alone:
+   * copies of p0's outer test issues, under ids and a project of their own.
+   */
+  private static List<RowCache.Entry> withNewProject() {
+    final List<RowCache.Entry> out = new ArrayList<>(corpus());
+    for (final RowCache.Entry e : corpus()) {
+      final IssueUnit u = e.unit();
+      if (u.project().equals("p0") && "TEST".equals(e.outer(Population.IN_PROGRESS))) {
+        final String id = "new-" + u.issueId();
+        out.add(new RowCache.Entry(new IssueUnit(id, "K-" + id, "pnew", u.reporter(),
+            u.executor(), u.createdAt(), u.resolvedAt(), u.reason(), u.moved(), u.startedAt(),
+            u.businessDays()), new Row(id, e.row().values(), e.row().absent()), e.parts()));
+      }
+    }
+    return out;
+  }
+
+  @Test
+  @DisplayName("a project only on the outer test side is a new project: its project median is "
+      + "the global one, and the readings without new projects leave out its issues, every model "
+      + "fitted as before")
+  void readingsWithoutNewProjects() {
+    final List<RowCache.Entry> entries = withNewProject();
+    final SimilarityScoring.Readings with = SimilarityScoring.readings(entries, choices(0.2),
+        forests(), TailCut.NO_CUT, RESERVED, 1, 1);
+    final SimilarityScoring.Readings without = SimilarityScoring.withoutNewProjects(entries,
+        choices(0.2), forests(), TailCut.NO_CUT, RESERVED, 1, 1, Population.IN_PROGRESS,
+        SimilarityScoring.Design.of(null));
+    for (final SimilarityScoring.Report r : List.of(with.main(), with.complementary(),
+        without.main(), without.complementary())) {
+      assertEquals(Set.of("pnew"), r.newProjects());
+    }
+    final SimilarityScoring.Report all = with.complementary();
+    assertEquals(70, all.scoredRows());
+    assertEquals(10, all.newProjectRows());
+    assertFalse(all.withoutNewProjects());
+    final double[] global = model(all, "global_median").predicted();
+    final double[] project = model(all, "project_median").predicted();
+    for (int i = 0; i < all.scoredRows(); i++) {
+      if (all.scoredUnits().get(i).project().equals("pnew")) {
+        assertEquals(global[i], project[i], 0.0);
+      }
+    }
+    final SimilarityScoring.Report seen = without.complementary();
+    assertTrue(seen.withoutNewProjects());
+    assertEquals(60, seen.scoredRows());
+    assertEquals(10, seen.newProjectRows());
+    assertTrue(seen.scoredUnits().stream().noneMatch(u -> u.project().equals("pnew")));
+    // the same fits: every other issue keeps its prediction, model by model
+    final Map<String, Integer> at = new HashMap<>();
+    for (int i = 0; i < all.scoredRows(); i++) {
+      at.put(all.scoredUnits().get(i).issueId(), i);
+    }
+    for (final SimilarityScoring.Scored m : seen.models()) {
+      final double[] before = model(all, m.name()).predicted();
+      for (int i = 0; i < seen.scoredRows(); i++) {
+        assertEquals(before[at.get(seen.scoredUnits().get(i).issueId())], m.predicted()[i], 0.0,
+            m.name());
+      }
+    }
+    // and the figures are those of the original corpus, which has no new project
+    final SimilarityScoring.Readings original = SimilarityScoring.readings(corpus(), choices(0.2),
+        forests(), TailCut.NO_CUT, RESERVED, 1, 1);
+    assertEquals(Set.of(), original.complementary().newProjects());
+    assertEquals(0, original.complementary().newProjectRows());
+    for (final SimilarityScoring.Scored m : original.complementary().models()) {
+      assertEquals(m.score().mae(), model(seen, m.name()).score().mae(), 1e-12, m.name());
+    }
+    assertEquals(original.main().scoredRows(), without.main().scoredRows());
+  }
+
+  @Test
+  @DisplayName("the analogy estimate, frozen in the parameters, is a model beside the references: "
+      + "its column in the scope's variant, the frozen fallback where an issue has none, "
+      + "compared with the references and the start models; absent, nothing changes")
+  void analogyEstimate() {
+    final List<RowCache.Entry> entries = corpus();
+    // the cluster medians are missing on every fourth row: some issues take the fallback
+    final AnalogyEstimate.Frozen frozen = new AnalogyEstimate.Frozen("cluster_median_16", 4.0);
+    final SimilarityScoring.Readings r = SimilarityScoring.readings(entries, choices(0.2),
+        forests(), TailCut.NO_CUT, RESERVED, 1, 1, Population.IN_PROGRESS,
+        SimilarityScoring.Design.of(frozen));
+    final SimilarityScoring.Report all = r.complementary();
+    final List<String> names = all.models().stream().map(SimilarityScoring.Scored::name).toList();
+    assertEquals(List.of("global_median", "project_median", SimilarityScoring.ANALOGY),
+        names.subList(0, 3));
+    assertEquals(MODELS.size() + 1, names.size());
+    final SimilarityScoring.Scored analogy = model(all, SimilarityScoring.ANALOGY);
+    assertEquals("analogy", analogy.kind());
+    final Map<String, Row> rows = new HashMap<>();
+    entries.forEach(e -> rows.put(e.unit().issueId(), e.row()));
+    int fallbacks = 0;
+    for (int i = 0; i < all.scoredRows(); i++) {
+      final Double v = rows.get(all.scoredUnits().get(i).issueId()).values()
+          .get("cluster_median_16_outer");
+      if (v == null) {
+        fallbacks++;
+        assertEquals(4.0, analogy.predicted()[i], 0.0);
+      } else {
+        assertEquals(v, analogy.predicted()[i], 0.0);
+      }
+    }
+    assertTrue(fallbacks > 0);
+    assertEquals(fallbacks, all.analogyFallbacks());
+    final java.util.Set<String> compared = new java.util.HashSet<>();
+    all.comparisons().forEach(g -> compared.add(g.a() + " | " + g.b()));
+    for (final String b : List.of("global_median", "project_median", OWN, "alzubaidi_start",
+        "kikas_start", OWN + "_forest", "alzubaidi_start_forest", "kikas_start_forest")) {
+      assertTrue(compared.contains(SimilarityScoring.ANALOGY + " | " + b), b);
+    }
+    // the inner calibration reads the inner column, with the same fallback
+    final SimilarityScoring.Report inner = SimilarityScoring.calibration(entries, choices(0.2),
+        forests(), TailCut.NO_CUT, Population.IN_PROGRESS,
+        SimilarityScoring.Design.of(frozen));
+    final SimilarityScoring.Scored innerAnalogy = model(inner, SimilarityScoring.ANALOGY);
+    for (int i = 0; i < inner.scoredRows(); i++) {
+      final Double v = rows.get(inner.scoredUnits().get(i).issueId()).values()
+          .get("cluster_median_16_inner");
+      assertEquals(v == null ? 4.0 : v, innerAnalogy.predicted()[i], 0.0);
+    }
+    // without it, the fourteen as before, bit for bit
+    final SimilarityScoring.Readings none = SimilarityScoring.readings(entries, choices(0.2),
+        forests(), TailCut.NO_CUT, RESERVED, 1, 1, Population.IN_PROGRESS,
+        SimilarityScoring.Design.of(null));
+    final SimilarityScoring.Readings before = SimilarityScoring.readings(entries, choices(0.2),
+        forests(), TailCut.NO_CUT, RESERVED, 1, 1);
+    assertEquals(SimilarityScoring.predictions(before.complementary()),
+        SimilarityScoring.predictions(none.complementary()));
+    assertEquals(0, none.complementary().analogyFallbacks());
+    for (final SimilarityScoring.Scored m : before.complementary().models()) {
+      assertEquals(m.score().mae(), model(all, m.name()).score().mae(), 0.0, m.name());
+    }
+  }
+
+  @Test
+  @DisplayName("the forests are refitted with the tree count the parameters give: the default, "
+      + Forest.TREES + ", bit for bit as before; another count moves the forests alone")
+  void forestTrees() {
+    final List<RowCache.Entry> entries = corpus();
+    final SimilarityScoring.Report before = SimilarityScoring.readings(entries, choices(0.2),
+        forests(), TailCut.NO_CUT, RESERVED, 1, 1).complementary();
+    final SimilarityScoring.Report same = SimilarityScoring.readings(entries, choices(0.2),
+        forests(), TailCut.NO_CUT, RESERVED, 1, 1, Population.IN_PROGRESS,
+        new SimilarityScoring.Design(null, Forest.TREES)).complementary();
+    assertEquals(SimilarityScoring.predictions(before), SimilarityScoring.predictions(same));
+    final SimilarityScoring.Report more = SimilarityScoring.readings(entries, choices(0.2),
+        forests(), TailCut.NO_CUT, RESERVED, 1, 1, Population.IN_PROGRESS,
+        new SimilarityScoring.Design(null, 500)).complementary();
+    for (final SimilarityScoring.Scored m : before.models()) {
+      final boolean moved = !java.util.Arrays.equals(m.predicted(),
+          model(more, m.name()).predicted());
+      assertEquals(m.forest() != null, moved, m.name());
+    }
+    assertThrows(IllegalArgumentException.class, () -> new SimilarityScoring.Design(null, 0));
+  }
 }
