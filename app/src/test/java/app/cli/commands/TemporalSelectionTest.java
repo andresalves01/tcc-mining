@@ -55,9 +55,26 @@ class TemporalSelectionTest {
     final ResultStore store = new ResultStore() {
       @Override
       public String record(final Map<String, Object> run, final List<Map<String, Object>> r) {
-        runs.add(run);
-        rows.add(r);
-        return "run";
+        throw new AssertionError("temporal selection recorded in the random collection");
+      }
+
+      @Override
+      public ResultStore design(final SplitRule rule) {
+        assertEquals(SplitRule.TEMPORAL, rule);
+        return new ResultStore() {
+          @Override
+          public String record(final Map<String, Object> run, final List<Map<String, Object>> r) {
+            runs.add(run);
+            rows.add(r);
+            return "temporal-run";
+          }
+
+          @Override
+          public Optional<java.util.Set<SplitRule>> designs() {
+            return Optional.of(runs.stream().map(SplitRule::recordedBy)
+                .collect(java.util.stream.Collectors.toSet()));
+          }
+        };
       }
 
       @Override

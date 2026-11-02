@@ -150,9 +150,15 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
           + e.getMessage()));
     }
     final boolean firstCommit = study == Population.FIRST_COMMIT;
+    final app.issues.port.ResultStore store;
     if (firstCommit) {
       // before any row is read: the first-commit study records its runs in its own databases
       IssuesInProgressExtractCommand.requireOwnDatabases(context.config());
+      store = rule == SplitRule.TEMPORAL
+          ? IssuesInProgressExtractCommand.requireOwnDesign(context.issuesResults(), rule)
+          : context.issuesResults();
+    } else {
+      store = context.issuesResults();
     }
 
     final String matrixSha;
@@ -316,6 +322,9 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     run.put("mode", "inner");
     run.put("outer_test", "not read");
     run.put("split_rule", rule.rule());
+    if (firstCommit && rule == SplitRule.TEMPORAL) {
+      run.put(SplitRule.DESIGN_FIELD, rule.setting());
+    }
     run.putAll(statements(study));
     run.put("target", BusinessDays.target(training));
     run.put("population", BusinessDays.populationRule(training));
@@ -352,7 +361,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     run.put("seconds", (System.nanoTime() - began) / 1e9);
     run.put("java", System.getProperty("java.version"));
     System.out.printf("  run recorded in ISSUES_DB: %s%n",
-        context.issuesResults().record(run, rows));
+        store.record(run, rows));
   }
 
   /**

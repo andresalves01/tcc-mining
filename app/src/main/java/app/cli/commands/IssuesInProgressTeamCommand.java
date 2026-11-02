@@ -4,10 +4,12 @@ import app.cli.CommandFailedException;
 import app.cli.CommandRunner;
 import app.cli.Context;
 import app.issues.Extractor;
+import app.issues.SplitRule;
 import app.issues.TeamColumns;
 import app.issues.Universe.Population;
 import app.pipeline.IssuesFirstCommitExtractTask;
 import app.pipeline.IssuesInProgressExtractTask;
+import app.issues.port.ResultStore;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -56,11 +58,24 @@ public final class IssuesInProgressTeamCommand implements CommandRunner {
     final Population population =
         IssuesInProgressExtractCommand.population(settings.apply("POPULATION"));
     final boolean firstCommit = population == Population.FIRST_COMMIT;
+    final SplitRule rule;
+    try {
+      rule = SplitRule.declared(settings.apply(SplitRule.SETTING), population);
+    } catch (final IllegalArgumentException e) {
+      throw new CommandFailedException(List.of("  " + e.getMessage()));
+    }
+    final ResultStore store;
     if (firstCommit) {
       IssuesInProgressExtractCommand.requireOwnDatabases(context.config());
+      store = rule == SplitRule.TEMPORAL
+          ? IssuesInProgressExtractCommand.requireOwnDesign(context.issuesResults(), rule)
+          : context.issuesResults();
+    } else {
+      store = context.issuesResults();
     }
     final IssuesInProgressExtractTask.Report r = firstCommit
-        ? new IssuesFirstCommitExtractTask(context.study(), context.progress()).run().extraction()
+        ? new IssuesFirstCommitExtractTask(context.study(), context.progress(), rule).run()
+            .extraction()
         : new IssuesInProgressExtractTask(context.study(), context.progress()).run();
 
     System.out.printf("%n  DURATION FROM %s -- REVISED TEAM COLUMNS%n",
@@ -91,12 +106,16 @@ public final class IssuesInProgressTeamCommand implements CommandRunner {
     if (firstCommit) {
       run.put("study_population", population.name());
       run.put("read_at", "the first commit that counts");
+      if (rule == SplitRule.TEMPORAL) {
+        run.put(SplitRule.DESIGN_FIELD, rule.setting());
+        run.put(SplitRule.RULE_FIELD, rule.rule());
+      }
     }
     run.put("gate_time_travel", r.travelPassed());
     run.put("rows", r.team().size());
     run.put("columns", Extractor.TEAM_REVISED);
     run.put("team_columns_sha256", sha);
     System.out.printf("  run recorded in ISSUES_DB: %s%n",
-        context.issuesResults().record(run, List.of()));
+        store.record(run, List.of()));
   }
 }

@@ -16,6 +16,7 @@ import app.issues.RowCache;
 import app.issues.SimilarityScoring;
 import app.issues.SplitRule;
 import app.issues.TailCut;
+import app.issues.port.ResultStore;
 import app.issues.model.Fitting;
 import app.issues.model.Forest;
 import app.issues.model.ProjectBootstrap;
@@ -261,6 +262,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final Path diagnosticsFile = reports.resolve(DIAGNOSTICS);
     final Path inputsFile = reports.resolve(INPUTS);
     final Path relevanceFile = reports.resolve(RELEVANCE);
+    ResultStore store = context.issuesResults();
     final long began = System.nanoTime();
     for (final Path out : List.of(predictionsFile, diagnosticsFile, inputsFile, relevanceFile,
         reports.resolve(UNCERTAINTY), reports.resolve(PERCENTILES),
@@ -292,13 +294,16 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
               + "written or recorded: " + matrix + " is not a matrix of the first-commit "
               + "population's split"));
         }
+        if (rule == SplitRule.TEMPORAL) {
+          store = IssuesInProgressExtractCommand.requireOwnDesign(store, rule);
+        }
         if (Files.exists(predictionsFile)) {
           throw new CommandFailedException(List.of("  REFUSED, nothing was read, scored, "
               + "written or recorded: " + predictionsFile + " exists; the first-commit study's "
               + "outer test is opened once"));
         }
         final java.util.Optional<Boolean> before =
-            context.issuesResults().recorded(stage(rule));
+            store.recorded(stage(rule));
         if (before.isEmpty() || before.get()) {
           throw new CommandFailedException(List.of("  REFUSED, nothing was read, scored, "
               + "written or recorded: " + (before.isEmpty()
@@ -555,6 +560,9 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     run.put("stage", stage(rule));
     if (firstCommitStudy()) {
       run.put("split_rule", rule.rule());
+      if (rule == SplitRule.TEMPORAL) {
+        run.put(SplitRule.DESIGN_FIELD, rule.setting());
+      }
     }
     run.put("mode", "outer");
     run.put("outer_test", firstCommitStudy() ? "scored, opened for the first time" : "scored");
@@ -634,7 +642,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     run.put("model_revision", EmbeddingModel.REVISION);
     run.put("cleaner", DescriptionCleaner.VERSION);
     System.out.printf("  run recorded in ISSUES_DB: %s%n",
-        context.issuesResults().record(run, rows));
+        store.record(run, rows));
   }
 
   /**

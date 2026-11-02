@@ -15,6 +15,7 @@ import app.issues.RowCache;
 import app.issues.SplitRule;
 import app.issues.TeamColumns;
 import app.issues.Universe.Population;
+import app.issues.port.ResultStore;
 import app.model.Parallel;
 import app.pipeline.IssuesSimilarityTask;
 import app.pipeline.clustering.SmileKMeans;
@@ -151,8 +152,14 @@ public final class IssuesSimilarityCommand implements CommandRunner {
           + e.getMessage()));
     }
     final boolean firstCommit = population == Population.FIRST_COMMIT;
+    final ResultStore store;
     if (firstCommit) {
       IssuesInProgressExtractCommand.requireOwnDatabases(context.config());
+      store = rule == SplitRule.TEMPORAL
+          ? IssuesInProgressExtractCommand.requireOwnDesign(context.issuesResults(), rule)
+          : context.issuesResults();
+    } else {
+      store = context.issuesResults();
     }
     System.out.printf("%n  DURATION FROM %s -- DESCRIPTION SIMILARITY%n",
         firstCommit ? "THE FIRST COMMIT" : "IN PROGRESS");
@@ -342,6 +349,9 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     run.put("augmentation_seconds", augmentationSeconds);
     run.put("history", HISTORY);
     run.put("split_rule", rule.rule());
+    if (firstCommit && rule == SplitRule.TEMPORAL) {
+      run.put(SplitRule.DESIGN_FIELD, rule.setting());
+    }
     if (rule == SplitRule.RANDOM) {
       run.put("split_seed", ProjectSplit.SEED);
     }
@@ -367,7 +377,7 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     run.put("java", System.getProperty("java.version"));
     run.put("processors", Runtime.getRuntime().availableProcessors());
     System.out.printf("  run recorded in ISSUES_DB: %s%n",
-        context.issuesResults().record(run, rows));
+        store.record(run, rows));
   }
 
   /**

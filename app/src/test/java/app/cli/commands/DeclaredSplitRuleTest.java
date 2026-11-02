@@ -40,6 +40,8 @@ class DeclaredSplitRuleTest {
   @TempDir Path dir;
 
   private final List<Map<String, Object>> runs = new ArrayList<>();
+  private final List<Map<String, Object>> randomRuns = new ArrayList<>();
+  private final List<Map<String, Object>> temporalRuns = new ArrayList<>();
 
   private static PipelineConfig own() {
     return new PipelineConfig("mongodb://127.0.0.1:27017", "smartshark_2_2",
@@ -59,12 +61,47 @@ class DeclaredSplitRuleTest {
       @Override
       public String record(final Map<String, Object> run, final List<Map<String, Object>> rows) {
         runs.add(run);
+        randomRuns.add(run);
         return "run";
       }
 
       @Override
       public Optional<Boolean> recorded(final String stage) {
-        return Optional.of(runs.stream().anyMatch(r -> stage.equals(r.get("stage"))));
+        return Optional.of(randomRuns.stream().anyMatch(r -> stage.equals(r.get("stage"))));
+      }
+
+      @Override
+      public ResultStore design(final SplitRule rule) {
+        if (rule == SplitRule.RANDOM) {
+          return this;
+        }
+        return new ResultStore() {
+          @Override
+          public String record(final Map<String, Object> run,
+              final List<Map<String, Object>> rows) {
+            runs.add(run);
+            temporalRuns.add(run);
+            return "temporal-run";
+          }
+
+          @Override
+          public Optional<Boolean> recorded(final String stage) {
+            return Optional.of(temporalRuns.stream()
+                .anyMatch(r -> stage.equals(r.get("stage"))));
+          }
+
+          @Override
+          public Optional<java.util.Set<SplitRule>> designs() {
+            return Optional.of(temporalRuns.stream().map(SplitRule::recordedBy)
+                .collect(java.util.stream.Collectors.toSet()));
+          }
+        };
+      }
+
+      @Override
+      public Optional<java.util.Set<SplitRule>> designs() {
+        return Optional.of(randomRuns.stream().map(SplitRule::recordedBy)
+            .collect(java.util.stream.Collectors.toSet()));
       }
     };
     return new Context(config, null, null, null, null, null, null, null, null, null, null,
@@ -145,6 +182,7 @@ class DeclaredSplitRuleTest {
     assertEquals(IssuesSimilarityTestCommand.FIRST_COMMIT_TEMPORAL_EXAMINED,
         run.get("outer_test_draw"));
     assertEquals(15, ((List<?>) run.get("models")).size());
+    assertEquals(2, temporalRuns.size(), "selection and test use the temporal collection");
     assertTrue(((List<?>) run.get("models")).contains(app.issues.SimilarityScoring.ANALOGY));
     assertTrue(Files.readAllLines(predictions).getFirst()
         .contains(app.issues.SimilarityScoring.ANALOGY));

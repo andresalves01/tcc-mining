@@ -107,8 +107,8 @@ public final class Help {
                                                 audit and extraction draw, and the similarity,
                                                 retrospective, selection and test stages check
                                                 the matrix's sides against; temporal for the
-                                                first-commit study only, whose extraction then
-                                                records its run in runs_temporal
+                                                first-commit study only, whose writing stages
+                                                record their runs in runs_temporal
         """);
   }
 

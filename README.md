@@ -280,8 +280,10 @@ The first-commit extraction draws the rule named in `SPLIT_RULE` too, so the mat
 (learned on that rule's inner fitting) and the target are the audit's under the same rule. Each
 design records its extraction run in collections of its own in `ISSUES_DB`: the random design in
 `runs` and `results`, as always, and the temporal design in `runs_temporal` and `results_temporal`.
-The later stages still record in `runs`, so do not run them under `temporal` until they too
-record by design. A run
+The team, similarity, retrospective, selection and test stages record in the collection of
+their declared design too. Under `temporal`, that is `runs_temporal` and, when a stage writes
+result rows, `results_temporal`. A temporal run refuses a collection holding another design before
+it reads the corpus or writes files. A run
 recorded with a `split_design` field is of that design; one without it is of the temporal design
 when its `split_rule` is the temporal rule's words, and of the random design otherwise. Before it
 reads anything, the extraction refuses a run collection that already holds a run of another design.

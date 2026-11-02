@@ -63,6 +63,7 @@ class FirstCommitStagesTest {
   @TempDir Path dir;
 
   private final List<Map<String, Object>> records = new ArrayList<>();
+  private final List<Map<String, Object>> temporalRecords = new ArrayList<>();
   private int loads;
 
   private static PipelineConfig config(final String target, final String issues) {
@@ -113,9 +114,39 @@ class FirstCommitStagesTest {
   }
 
   private Context context(final PipelineConfig config, final ExtractionFixture fixture) {
-    final ResultStore store = (run, rows) -> {
-      records.add(run);
-      return "run-" + records.size();
+    final ResultStore store = new ResultStore() {
+      @Override
+      public String record(final Map<String, Object> run, final List<Map<String, Object>> rows) {
+        records.add(run);
+        return "run-" + records.size();
+      }
+
+      @Override
+      public ResultStore design(final SplitRule rule) {
+        if (rule == SplitRule.RANDOM) {
+          return this;
+        }
+        return new ResultStore() {
+          @Override
+          public String record(final Map<String, Object> run,
+              final List<Map<String, Object>> rows) {
+            temporalRecords.add(run);
+            return "temporal-run-" + temporalRecords.size();
+          }
+
+          @Override
+          public Optional<Set<SplitRule>> designs() {
+            return Optional.of(temporalRecords.stream().map(SplitRule::recordedBy)
+                .collect(Collectors.toSet()));
+          }
+        };
+      }
+
+      @Override
+      public Optional<Set<SplitRule>> designs() {
+        return Optional.of(records.stream().map(SplitRule::recordedBy)
+            .collect(Collectors.toSet()));
+      }
     };
     return new Context(config, null, null, null, null, null, null, null, null, null, null,
         SilentProgress.INSTANCE, counted(fixture.source()), store, StagesFixture.methods());
@@ -363,6 +394,128 @@ class FirstCommitStagesTest {
     assertEquals(List.of(), new IssuesRetrospectiveTask(fixture.source(),
         StagesFixture.methods(), SilentProgress.INSTANCE, Population.FIRST_COMMIT,
         SplitRule.TEMPORAL).run(s.entries()).refused());
+  }
+
+  @Test
+  @DisplayName("temporal similarity learns medians and embedding groups from each training "
+      + "side alone, even when the validation and test labels are much larger")
+  void temporalHistoriesDoNotReadReservedLabels() {
+    final ExtractionFixture fixture = new ExtractionFixture();
+    final IssuesInProgressExtractTask.Report r = extraction(fixture);
+    final List<RowCache.Entry> labelled = new ArrayList<>();
+    int n = 0;
+    for (final RowCache.Entry e : temporal(r.entries())) {
+      final String outer = e.outer(Population.FIRST_COMMIT);
+      final String inner = e.inner(Population.FIRST_COMMIT);
+      final int base = "TEST".equals(outer) ? 9000 : "TEST".equals(inner) ? 5000 : 1000;
+      final Map<String, Double> values = new HashMap<>(e.row().values());
+      values.put(FirstCommit.TARGET_COLUMN, (double) (base + n++));
+      labelled.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values,
+          e.row().absent()), e.parts()));
+    }
+    final IssuesSimilarityTask.Report s = new IssuesSimilarityTask(fixture.source(),
+        SilentProgress.INSTANCE, StagesFixture.WORDS, new SmileKMeans(),
+        Population.FIRST_COMMIT, SplitRule.TEMPORAL)
+        .run(TeamColumns.join(labelled, r.team()));
+    assertEquals(List.of(), s.refused());
+    int observed = 0;
+    for (final RowCache.Entry e : s.entries()) {
+      for (final String column : Augmentation.columns()) {
+        final Double value = e.row().values().get(column);
+        if (value == null) {
+          continue;
+        }
+        assertTrue(value < (column.endsWith(Augmentation.Variant.INNER.suffix())
+            ? 5000 : 9000), column + " of " + e.unit().key() + " is " + value);
+        observed++;
+      }
+    }
+    assertTrue(observed > 50);
+    final int fitting = (int) labelled.stream()
+        .filter(e -> "TRAIN".equals(e.inner(Population.FIRST_COMMIT))).count();
+    final int training = (int) labelled.stream()
+        .filter(e -> "TRAIN".equals(e.outer(Population.FIRST_COMMIT))).count();
+    assertEquals(fitting, s.result().histories().get(0).history());
+    assertEquals(training, s.result().histories().get(1).history());
+    assertTrue(s.result().clusterFits().stream()
+        .allMatch(f -> f.vectors() <= (f.variant() == Augmentation.Variant.INNER
+            ? fitting : training)));
+  }
+
+  @Test
+  @DisplayName("the temporal team run uses its own collection and refuses a mixed collection "
+      + "before reading the corpus")
+  void temporalTeamRun() throws Exception {
+    final Map<String, String> settings = Map.of("TEAM_COLUMNS",
+        dir.resolve("temporal-team.tsv").toString(), "POPULATION", "FIRST_COMMIT",
+        "SPLIT_RULE", "temporal");
+    final ExtractionFixture fixture = new ExtractionFixture();
+    temporalRecords.add(Map.of("stage", "earlier", "split_rule", ProjectSplit.RULE));
+    final CommandFailedException refused = assertThrows(CommandFailedException.class,
+        () -> new IssuesInProgressTeamCommand(settings::get).run(context(firstCommit(), fixture)));
+    assertTrue(String.join("\n", refused.lines()).contains("already holds runs"));
+    assertEquals(0, loads);
+    assertFalse(Files.exists(dir.resolve("temporal-team.tsv")));
+
+    temporalRecords.clear();
+    new IssuesInProgressTeamCommand(settings::get).run(context(firstCommit(), fixture));
+    assertTrue(records.isEmpty());
+    assertEquals(1, temporalRecords.size());
+    assertEquals(SplitRule.TEMPORAL, SplitRule.recordedBy(temporalRecords.getFirst()));
+  }
+
+  @Test
+  @DisplayName("similarity refuses a mixed temporal run collection before loading its model")
+  void temporalSimilarityRunStore() throws Exception {
+    final ExtractionFixture fixture = new ExtractionFixture();
+    final IssuesInProgressExtractTask.Report r = extraction(fixture);
+    final Path cache = dir.resolve("temporal-cache.tsv");
+    final Path team = dir.resolve("temporal-team.tsv");
+    final Path matrix = dir.resolve("temporal-augmented.tsv");
+    RowCache.write(cache, temporal(r.entries()), r.columns(), List.of(Population.FIRST_COMMIT));
+    TeamColumns.write(team, r.team());
+    final Map<String, String> settings = Map.of("CACHE", cache.toString(), "TEAM_COLUMNS",
+        team.toString(), "MATRIX", matrix.toString(), "REPORT_DIR", dir.resolve("r").toString(),
+        "MODEL_DIR", dir.resolve("no-model").toString(), "EMBEDDING_CACHE",
+        dir.resolve("e").toString(), "SPLIT_RULE", "temporal");
+    temporalRecords.add(Map.of("stage", "earlier", "split_rule", ProjectSplit.RULE));
+    loads = 0;
+    final CommandFailedException refused = assertThrows(CommandFailedException.class,
+        () -> new IssuesSimilarityCommand(settings::get).run(context(firstCommit(), fixture)));
+    assertTrue(String.join("\n", refused.lines()).contains("already holds runs"));
+    assertEquals(0, loads);
+    assertFalse(Files.exists(matrix));
+
+    temporalRecords.clear();
+    final CommandFailedException model = assertThrows(CommandFailedException.class,
+        () -> new IssuesSimilarityCommand(settings::get).run(context(firstCommit(), fixture)));
+    assertTrue(String.join("\n", model.lines()).contains("MODEL_DIR"));
+    assertTrue(records.isEmpty());
+  }
+
+  @Test
+  @DisplayName("retrospective writes a temporal matrix run only to the temporal collection")
+  void temporalRetrospectiveRun() throws Exception {
+    final ExtractionFixture fixture = new ExtractionFixture();
+    final IssuesInProgressExtractTask.Report r = extraction(fixture);
+    final IssuesSimilarityTask.Report s = new IssuesSimilarityTask(fixture.source(),
+        SilentProgress.INSTANCE, StagesFixture.WORDS, new SmileKMeans(),
+        Population.FIRST_COMMIT, SplitRule.TEMPORAL)
+        .run(TeamColumns.join(temporal(r.entries()), r.team()));
+    assertEquals(List.of(), s.refused());
+    final List<String> columns = new ArrayList<>(r.columns());
+    columns.addAll(Extractor.TEAM_REVISED);
+    final Path matrix = dir.resolve("temporal-similarity.tsv");
+    final Path out = dir.resolve("temporal-retrospective.tsv");
+    IssuesSimilarityCommand.writeMatrix(matrix, s, columns, Population.FIRST_COMMIT);
+    final Map<String, String> settings = Map.of("MATRIX", matrix.toString(),
+        "RETROSPECTIVE_MATRIX", out.toString(), "SPLIT_RULE", "temporal");
+    new IssuesRetrospectiveCommand(settings::get).run(context(firstCommit(), fixture));
+    assertTrue(records.isEmpty());
+    assertEquals(1, temporalRecords.size());
+    assertEquals(SplitRule.TEMPORAL, SplitRule.recordedBy(temporalRecords.getFirst()));
+    assertEquals(List.of(), SplitRule.TEMPORAL.differences(RowCache.read(out),
+        Population.FIRST_COMMIT));
   }
 
   @Test

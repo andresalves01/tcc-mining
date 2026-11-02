@@ -139,7 +139,9 @@ public enum Command {
       ISSUES_DB; reads everything else.
       With POPULATION=FIRST_COMMIT, the columns of the first-commit
       population, read at the first commit that counts; refuses the In
-      Progress study's TARGET_DB and ISSUES_DB before reading anything."""),
+      Progress study's TARGET_DB and ISSUES_DB before reading anything.
+      Under SPLIT_RULE=temporal, records in runs_temporal and refuses a
+      collection containing another design before reading the corpus."""),
 
   ISSUES_DOWNLOAD_MODEL("issues-download-model", new IssuesDownloadModelCommand(), """
       Issue duration from the first In Progress: downloads the

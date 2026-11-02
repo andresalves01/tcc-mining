@@ -11,6 +11,7 @@ import app.issues.Retrospective;
 import app.issues.RowCache;
 import app.issues.SplitRule;
 import app.issues.Universe.Population;
+import app.issues.port.ResultStore;
 import app.pipeline.IssuesRetrospectiveTask;
 import app.pipeline.IssuesSimilarityTask;
 import java.io.IOException;
@@ -126,8 +127,14 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
       throw new CommandFailedException(List.of("  could not read " + matrix + ": " + e));
     }
     final boolean firstCommit = population == Population.FIRST_COMMIT;
+    final ResultStore store;
     if (firstCommit) {
       IssuesInProgressExtractCommand.requireOwnDatabases(context.config());
+      store = rule == SplitRule.TEMPORAL
+          ? IssuesInProgressExtractCommand.requireOwnDesign(context.issuesResults(), rule)
+          : context.issuesResults();
+    } else {
+      store = context.issuesResults();
     }
 
     System.out.printf("%n  DURATION FROM %s -- DESCRIPTION SIMILARITY -- RETROSPECTIVE "
@@ -174,6 +181,10 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
 
     final Map<String, Object> run = new LinkedHashMap<>();
     run.put("stage", STAGE);
+    if (firstCommit && rule == SplitRule.TEMPORAL) {
+      run.put(SplitRule.DESIGN_FIELD, rule.setting());
+      run.put(SplitRule.RULE_FIELD, rule.rule());
+    }
     run.putAll(statements(population));
     if (firstCommit) {
       run.putAll(firstCommitStatements());
@@ -197,7 +208,7 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
     run.put("outer_test", "columns written, nothing counted or reported");
     run.put("seconds", (System.nanoTime() - began) / 1e9);
     System.out.printf("  run recorded in ISSUES_DB: %s%n",
-        context.issuesResults().record(run, List.of()));
+        store.record(run, List.of()));
   }
 
   /** What the run record states about the scenario and its definitions. */
