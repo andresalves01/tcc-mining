@@ -1,6 +1,7 @@
 package app.cli.commands;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -36,22 +37,31 @@ class IssuesFirstCommitAuditCommandTest {
 
   /** Ten issues in the population, each with two commits two business days apart. */
   private static StudySource source() {
+    return source(0);
+  }
+
+  /**
+   * The same ten issues, issue n's dates moved {@code weeks * (n - 1)} weeks later; with 0 every
+   * first commit is on the same instant.
+   */
+  private static StudySource source(final int weeks) {
     final List<Corpus.Issue> issues = new ArrayList<>();
     final List<Corpus.Event> events = new ArrayList<>();
     final List<Corpus.Commit> commits = new ArrayList<>();
     final Map<String, FirstCommitFacts.Native> facts = new HashMap<>();
     for (int n = 1; n <= 10; n++) {
       final String id = String.format("%024x", n);
-      issues.add(new Corpus.Issue(id, "P-" + n, "p", MONDAY, "rep", "rep", null, "Bug", "Major",
+      final long monday = MONDAY + 7L * weeks * (n - 1) * DAY;
+      issues.add(new Corpus.Issue(id, "P-" + n, "p", monday, "rep", "rep", null, "Bug", "Major",
           null, List.of(), List.of()));
-      events.add(new Corpus.Event(id, MONDAY + 20 * DAY, "status", "x", "Open", "Resolved",
+      events.add(new Corpus.Event(id, monday + 20 * DAY, "status", "x", "Open", "Resolved",
           n + "%%0"));
-      events.add(new Corpus.Event(id, MONDAY + 20 * DAY, "resolution", "x", null, "Fixed",
+      events.add(new Corpus.Event(id, monday + 20 * DAY, "resolution", "x", null, "Fixed",
           n + "%%1"));
-      commits.add(new Corpus.Commit("a" + n, "p", "ha" + n, "dev", MONDAY + DAY, MONDAY + DAY, 1,
+      commits.add(new Corpus.Commit("a" + n, "p", "ha" + n, "dev", monday + DAY, monday + DAY, 1,
           List.of(id)));
-      commits.add(new Corpus.Commit("b" + n, "p", "hb" + n, "dev", MONDAY + 3 * DAY,
-          MONDAY + 3 * DAY, 1, List.of(id)));
+      commits.add(new Corpus.Commit("b" + n, "p", "hb" + n, "dev", monday + 3 * DAY,
+          monday + 3 * DAY, 1, List.of(id)));
       facts.put("a" + n, new FirstCommitFacts.Native(10L, "start " + n));
       facts.put("b" + n, new FirstCommitFacts.Native(30L, "finish " + n));
     }
@@ -93,11 +103,15 @@ class IssuesFirstCommitAuditCommandTest {
 
   /** A context whose only data port is the corpus reader: any database write fails. */
   private static Context context() {
+    return context(source());
+  }
+
+  private static Context context(final StudySource source) {
     final ResultStore refuses = (run, rows) -> {
       throw new AssertionError("the audit records nothing in a database");
     };
     return new Context(null, null, null, null, null, null, null, null, null, null, null,
-        SilentProgress.INSTANCE, source(), refuses, null);
+        SilentProgress.INSTANCE, source, refuses, null);
   }
 
   @Test
@@ -127,5 +141,44 @@ class IssuesFirstCommitAuditCommandTest {
   void needsDirectory() {
     assertThrows(CommandFailedException.class,
         () -> new IssuesFirstCommitAuditCommand(Map.<String, String>of()::get).run(context()));
+  }
+
+  @Test
+  @DisplayName("under SPLIT_RULE=temporal the summary gives the cuts, the sides, the crossings "
+      + "and the censoring, and of the test only counts and dates")
+  void temporal() throws Exception {
+    final Path out = dir.resolve("temporal");
+    new IssuesFirstCommitAuditCommand(Map.of("AUDIT_DIR", out.toString(),
+        "SPLIT_RULE", "temporal")::get).run(context(source(1)));
+    final String md = Files.readString(out.resolve("audit.md"));
+    assertTrue(md.contains("| 10 | 1 | 7 | 3 | 5 | 2 |"), md);
+    assertTrue(md.contains("temporal: the candidates ordered by their first commit"), md);
+    assertTrue(md.contains("2024-02-13T12:00:00Z"), "the outer cut, Tuesday of week 6: " + md);
+    assertTrue(md.contains("2024-01-30T12:00:00Z"), "the inner cut, Tuesday of week 4: " + md);
+    assertTrue(md.contains("| teste externo | 3 | 1 | — | — | — | — |"),
+        "of the test, its size and its projects alone: " + md);
+    assertTrue(md.contains("## Censura no fim dos dados"), md);
+    assertTrue(md.contains("Issues de treino que cruzam o corte externo"), md);
+    assertTrue(md.contains("divisão aleatória"), "the random rule's cap beside it: " + md);
+    final List<String> lines = Files.readAllLines(out.resolve("per-issue.tsv"));
+    assertEquals(1 + 7, lines.size(), "the header and the training side, never the test side");
+  }
+
+  @Test
+  @DisplayName("the random rule, the default, writes none of the temporal sections")
+  void randomHasNoTemporalSections() throws Exception {
+    final Path out = dir.resolve("random");
+    new IssuesFirstCommitAuditCommand(Map.of("AUDIT_DIR", out.toString())::get)
+        .run(context(source(1)));
+    final String md = Files.readString(out.resolve("audit.md"));
+    assertFalse(md.contains("Censura"), md);
+    assertFalse(md.contains("Corte externo"), md);
+  }
+
+  @Test
+  @DisplayName("refuses a SPLIT_RULE it does not know")
+  void unknownRule() {
+    assertThrows(CommandFailedException.class, () -> new IssuesFirstCommitAuditCommand(
+        Map.of("AUDIT_DIR", dir.toString(), "SPLIT_RULE", "monthly")::get).run(context()));
   }
 }

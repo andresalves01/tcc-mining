@@ -9,6 +9,8 @@ import app.issues.FirstCommitFacts;
 import app.issues.IssueUnit;
 import app.issues.ProjectSplit;
 import app.issues.RowCache;
+import app.issues.SplitRule;
+import app.issues.TemporalSplit;
 import app.issues.Universe;
 import app.issues.Universe.Part;
 import app.issues.Universe.Population;
@@ -18,6 +20,7 @@ import app.pipeline.port.Progress;
 import app.study.Row;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -30,10 +33,12 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 /**
- * The first-commit population and its target on the training side, read only: the base, the commits that count, the selection ({@link FirstCommit}), the
- * split ({@link ProjectSplit}) over the issues of a target of at least one business day, the cap
- * learned on the inner fitting alone, and the target of the outer training. Of the outer test only
- * its size leaves this task.
+ * The first-commit population and its target on the training side, read only: the base, the
+ * commits that count, the selection ({@link FirstCommit}), the split drawn by the run's rule
+ * ({@link SplitRule}) over the issues of a target of at least one business day, the cap learned on
+ * the inner fitting alone, and the target of the outer training. Of the outer test only its size
+ * leaves this task, and under the temporal rule also its projects and the dates of its first
+ * commits ({@link Temporal}), never a target.
  *
  * <p><b>Commits that count.</b> Linked to the issue, authored before its first resolution, not a
  * merge, by a human: neither the person nor the ledger flags the account as a bot, and neither the
@@ -113,23 +118,79 @@ public final class IssuesFirstCommitAuditTask {
    */
   public record Report(int bots, CodeTotals code, List<Step> funnel, DuplicateTotals duplicates, Sizes sizes,
       FirstCommit.Threshold threshold, Training training, List<Sensitivity> sensitivity,
-      Map<Side, Map<Side, Integer>> overlap, List<IssueRow> rows) {}
+      Map<Side, Map<Side, Integer>> overlap, List<IssueRow> rows, SplitRule rule,
+      Temporal temporal) {}
+
+  /** How many projects have issues on each side. */
+  public record Projects(int train, int test, int fit, int validation) {}
+
+  /**
+   * What the temporal rule adds to the report; none of it is a target of the outer test.
+   *
+   * @param fit the target of the inner fitting
+   * @param validation the target of the inner validation
+   * @param newProjects the projects with issues on the outer test alone, and how many there
+   * @param newInnerProjects the projects with issues on the inner validation alone, and how many
+   * @param crossing the outer training issues whose first resolution comes after the outer cut
+   * @param innerCrossing the inner fitting issues whose first resolution comes after the inner cut
+   * @param random the cap the random rule learns on the same issues, for comparison
+   */
+  public record Temporal(TemporalSplit.Cuts cuts, Projects projects, FirstCommit.Summary fit,
+      FirstCommit.Summary validation, Map<String, Integer> newProjects,
+      Map<String, Integer> newInnerProjects, int crossing, int innerCrossing,
+      FirstCommit.Threshold random, Censoring censoring) {}
+
+  /**
+   * The censoring at the end of the data, in dates and counts alone.
+   *
+   * <p>The end of a project's data is its latest Jira record: an issue's creation, a changelog
+   * event or a comment, all stamped by the tracker. Commit dates are written by the author's clock
+   * and are left out; the latest one is given apart. The end of the data is the latest project
+   * end.
+   *
+   * <p>The issues counted are those of the universe without a first resolution as Fixed whose
+   * first native commit that counts (linked, human, not a merge, before the first resolution when
+   * there is one; pull-request originals are not read for them) comes after the outer cut.
+   *
+   * @param unresolved of them, with no first resolution by the end of the data: censored
+   * @param otherReason of them, first resolved with a reason other than Fixed
+   * @param unitless of them, resolved (Fixed or not) but without a unit (no reporter, or resolved
+   *     at creation), so outside the base
+   * @param unresolvedDays the calendar days from each censored issue's first commit to the end
+   * @param unresolvedProjectDays the same to the end of its project's data
+   * @param testDays the calendar days from each outer test issue's first commit to the end
+   * @param testProjectDays the same to the end of its project's data
+   */
+  public record Censoring(Instant end, Map<String, Instant> projectEnds, Instant lastCommit,
+      int unresolved, int otherReason, int unitless, FirstCommit.Summary unresolvedDays,
+      FirstCommit.Summary unresolvedProjectDays, FirstCommit.Summary testDays,
+      FirstCommit.Summary testProjectDays) {}
 
   private final StudySource source;
   private final Progress progress;
+  private final SplitRule rule;
 
+  /** The audit under the random rule. */
   public IssuesFirstCommitAuditTask(final StudySource source, final Progress progress) {
+    this(source, progress, SplitRule.RANDOM);
+  }
+
+  public IssuesFirstCommitAuditTask(final StudySource source, final Progress progress,
+      final SplitRule rule) {
     this.source = source;
     this.progress = progress;
+    this.rule = rule;
   }
 
   /**
    * The issues under one limit, split, the cap learned and the training counted.
    *
+   * @param candidates the issues drawn, with the instant of their first kept commit
    * @param training the target of each outer training issue, at the cap
    */
-  record Drawn(Map<String, FirstCommit.Verdict> verdicts, ProjectSplit.Parts parts,
-      Sizes sizes, FirstCommit.Threshold threshold, Map<String, FirstCommit.Count> training) {}
+  record Drawn(Map<String, FirstCommit.Verdict> verdicts, List<SplitRule.Candidate> candidates,
+      ProjectSplit.Parts parts, Sizes sizes, FirstCommit.Threshold threshold,
+      Map<String, FirstCommit.Count> training) {}
 
   /**
    * The base and what the rules read of each of its issues.
@@ -159,7 +220,7 @@ public final class IssuesFirstCommitAuditTask {
     final FirstCommit.Boundary boundary = b.boundary();
     final Map<Double, Drawn> drawn = new LinkedHashMap<>();
     for (final double limit : FirstCommit.SENSITIVITY) {
-      drawn.put(limit, draw(issues, limit, boundary));
+      drawn.put(limit, draw(issues, limit, boundary, rule));
     }
     final Drawn main = drawn.get(FirstCommit.SHARE);
 
@@ -208,10 +269,13 @@ public final class IssuesFirstCommitAuditTask {
     drawn.forEach((limit, d) -> sensitivity.add(new Sensitivity(limit, d.sizes(), d.threshold(),
         FirstCommit.summary(d.training().values().stream().map(FirstCommit.Count::total)
             .toList()))));
+    final Temporal temporal = rule == SplitRule.TEMPORAL
+        ? temporal(b, main, draw(issues, FirstCommit.SHARE, boundary, SplitRule.RANDOM).threshold())
+        : null;
     return new Report(bots.size(),
         new CodeTotals(tally.counted, tally.originals, tally.replaced), funnel,
         new DuplicateTotals(dupIssues, sameAuthorDate, sameTitleLines, belowTwo), main.sizes(),
-        main.threshold(), training(main.training()), sensitivity, overlap, rows);
+        main.threshold(), training(main.training()), sensitivity, overlap, rows, rule, temporal);
   }
 
   /**
@@ -272,6 +336,15 @@ public final class IssuesFirstCommitAuditTask {
     return p == null || !p.bot();
   }
 
+  /** Whether a native commit can count: dated, not a merge, by a human. */
+  static boolean counts(final Corpus.Commit c, final Corpus corpus, final Set<String> bots) {
+    if (c.parents() > 1 || c.authoredAt() == null || !human(c.author(), corpus.people(), bots)) {
+      return false;
+    }
+    final Corpus.Contribution k = corpus.contributions().get(c.id());
+    return k == null || !k.bot();
+  }
+
   /** Per base issue, its linked native commits: human, not a merge, before its resolution. */
   static Map<String, List<Corpus.Commit>> natives(final Corpus corpus,
       final List<Universe.Unit> base, final Set<String> bots) {
@@ -279,11 +352,7 @@ public final class IssuesFirstCommitAuditTask {
     base.forEach(u -> byId.put(u.id(), u));
     final Map<String, List<Corpus.Commit>> out = new HashMap<>();
     for (final Corpus.Commit c : corpus.commits()) {
-      if (c.parents() > 1 || c.authoredAt() == null || !human(c.author(), corpus.people(), bots)) {
-        continue;
-      }
-      final Corpus.Contribution k = corpus.contributions().get(c.id());
-      if (k != null && k.bot()) {
+      if (!counts(c, corpus, bots)) {
         continue;
       }
       for (final String issue : new LinkedHashSet<>(c.linked())) {
@@ -387,18 +456,26 @@ public final class IssuesFirstCommitAuditTask {
 
   // ------------------------------------------------------------------ population and target
 
+  /**
+   * The issues under one limit, the sides drawn by {@code rule} over those in the population, the
+   * cap learned on the inner fitting's waits alone, and the outer training's targets at that cap.
+   * The temporal rule orders them by their first kept commit.
+   */
   static Drawn draw(final Map<String, FirstCommit.Issue> issues, final double limit,
-      final FirstCommit.Boundary boundary) {
+      final FirstCommit.Boundary boundary, final SplitRule rule) {
     final Map<String, FirstCommit.Verdict> verdicts = new LinkedHashMap<>();
     final Map<String, String> projects = new HashMap<>();
+    final List<SplitRule.Candidate> candidates = new ArrayList<>();
     issues.forEach((id, i) -> {
       final FirstCommit.Verdict v = FirstCommit.select(i, limit, boundary);
       verdicts.put(id, v);
       if (v.eligible()) {
         projects.put(id, i.project());
+        candidates.add(new SplitRule.Candidate(id, i.project(),
+            Instant.ofEpochMilli(v.kept().getFirst().at())));
       }
     });
-    final ProjectSplit.Parts parts = ProjectSplit.draw(projects);
+    final ProjectSplit.Parts parts = rule.draw(candidates);
     final List<Integer> gaps = new ArrayList<>();
     parts.inner().forEach((id, part) -> {
       if (part == Part.TRAIN) {
@@ -417,7 +494,8 @@ public final class IssuesFirstCommitAuditTask {
         training.put(id, c);
       }
     });
-    return new Drawn(verdicts, parts, sizes(projects, parts), threshold, training);
+    return new Drawn(verdicts, List.copyOf(candidates), parts, sizes(projects, parts), threshold,
+        training);
   }
 
   static Sizes sizes(final Map<String, String> projects, final ProjectSplit.Parts parts) {
@@ -470,6 +548,154 @@ public final class IssuesFirstCommitAuditTask {
     }
     return new Training(FirstCommit.summary(counts.values().stream().map(FirstCommit.Count::total)
         .toList()), implementation, tail, capped, withPatches);
+  }
+
+  // ------------------------------------------------------------------ the temporal report
+
+  /** The temporal report of {@code main}, drawn by the temporal rule; {@code random} beside it. */
+  static Temporal temporal(final Base b, final Drawn main, final FirstCommit.Threshold random) {
+    final TemporalSplit.Cuts cuts = TemporalSplit.cuts(main.candidates());
+    final Map<String, String> projects = new HashMap<>(main.candidates().size() * 2);
+    main.candidates().forEach(c -> projects.put(c.id(), c.project()));
+    final Map<Side, Set<String>> sideProjects = new EnumMap<>(Side.class);
+    final Map<Side, List<Integer>> targets = new EnumMap<>(Side.class);
+    int crossing = 0;
+    int innerCrossing = 0;
+    final List<SplitRule.Candidate> test = new ArrayList<>();
+    for (final SplitRule.Candidate c : main.candidates()) {
+      final Side side = side(main.parts(), c.id());
+      sideProjects.computeIfAbsent(side, x -> new TreeSet<>()).add(c.project());
+      if (side == Side.TEST) {
+        test.add(c);
+        continue;
+      }
+      targets.computeIfAbsent(side, x -> new ArrayList<>())
+          .add(main.training().get(c.id()).total());
+      final long resolved = b.issues().get(c.id()).resolved();
+      if (resolved > cuts.outer().toEpochMilli()) {
+        crossing++;
+      }
+      if (side == Side.FIT && resolved > cuts.inner().toEpochMilli()) {
+        innerCrossing++;
+      }
+    }
+    final Set<String> train = new TreeSet<>(sideProjects.getOrDefault(Side.FIT, Set.of()));
+    train.addAll(sideProjects.getOrDefault(Side.VALIDATION, Set.of()));
+    final Projects counts = new Projects(train.size(),
+        sideProjects.getOrDefault(Side.TEST, Set.of()).size(),
+        sideProjects.getOrDefault(Side.FIT, Set.of()).size(),
+        sideProjects.getOrDefault(Side.VALIDATION, Set.of()).size());
+    return new Temporal(cuts, counts, summaryOrNull(targets.get(Side.FIT)),
+        summaryOrNull(targets.get(Side.VALIDATION)),
+        perProject(TemporalSplit.newProjects(projects, main.parts().outer()), projects,
+            main.parts().outer()),
+        perProject(TemporalSplit.newProjects(projects, main.parts().inner()), projects,
+            main.parts().inner()),
+        crossing, innerCrossing, random,
+        censoring(b.corpus(), b.universe(), b.bots(), cuts.outer(), test));
+  }
+
+  /**
+   * Of the projects {@code chosen}, how many issues each has on the {@link Part#TEST} part of
+   * {@code sides} (the outer test, or the inner validation), in order of name.
+   */
+  private static Map<String, Integer> perProject(final Set<String> chosen,
+      final Map<String, String> projects, final Map<String, Part> sides) {
+    final Map<String, Integer> out = new TreeMap<>();
+    sides.forEach((id, part) -> {
+      if (part == Part.TEST && chosen.contains(projects.get(id))) {
+        out.merge(projects.get(id), 1, Integer::sum);
+      }
+    });
+    return out;
+  }
+
+  private static FirstCommit.Summary summaryOrNull(final List<Integer> values) {
+    return values == null || values.isEmpty() ? null : FirstCommit.summary(values);
+  }
+
+  /** The censoring at the end of the data ({@link Censoring}), over the universe. */
+  static Censoring censoring(final Corpus corpus, final Universe universe, final Set<String> bots,
+      final Instant cut, final Collection<SplitRule.Candidate> test) {
+    final Map<String, String> projectOf = new HashMap<>();
+    final Map<String, Long> ends = new TreeMap<>();
+    // per issue outside the base, the instant its commits must precede: its first resolution
+    final Map<String, Long> bounds = new HashMap<>();
+    int unresolvedIssues = 0;
+    for (final String id : universe.universe()) {
+      final Corpus.Issue i = universe.issue(id);
+      projectOf.put(id, i.project());
+      ends.merge(i.project(), i.created(), Math::max);
+      final List<Corpus.Event> events = universe.events(id);
+      for (final Corpus.Event e : events) {
+        if (e.at() != null) {
+          ends.merge(i.project(), e.at(), Math::max);
+        }
+      }
+      final Universe.Unit u = universe.unit(id);
+      if (u == null || !"Fixed".equals(u.reason())) {
+        final Long resolved = Universe.firstResolution(events);
+        bounds.put(id, resolved == null ? Long.MAX_VALUE : resolved);
+      }
+    }
+    for (final Corpus.Comment c : corpus.comments()) {
+      final String p = projectOf.get(c.issue());
+      if (p != null && c.at() != null) {
+        ends.merge(p, c.at(), Math::max);
+      }
+    }
+    long lastCommit = Long.MIN_VALUE;
+    final Map<String, Long> first = new HashMap<>();
+    for (final Corpus.Commit c : corpus.commits()) {
+      if (c.authoredAt() != null) {
+        lastCommit = Math.max(lastCommit, c.authoredAt());
+      }
+      if (!counts(c, corpus, bots)) {
+        continue;
+      }
+      for (final String issue : c.linked()) {
+        final Long bound = bounds.get(issue);
+        if (bound != null && c.authoredAt() < bound) {
+          first.merge(issue, c.authoredAt(), Math::min);
+        }
+      }
+    }
+    final long end = ends.values().stream().mapToLong(Long::longValue).max().orElseThrow();
+    int otherReason = 0;
+    int unitless = 0;
+    final List<Integer> toEnd = new ArrayList<>();
+    final List<Integer> toProjectEnd = new ArrayList<>();
+    for (final Map.Entry<String, Long> e : new TreeMap<>(first).entrySet()) {
+      if (e.getValue() <= cut.toEpochMilli()) {
+        continue;
+      }
+      if (bounds.get(e.getKey()) == Long.MAX_VALUE) {
+        unresolvedIssues++;
+        toEnd.add(days(e.getValue(), end));
+        toProjectEnd.add(days(e.getValue(), ends.get(projectOf.get(e.getKey()))));
+      } else if (universe.unit(e.getKey()) != null) {
+        otherReason++;
+      } else {
+        unitless++;
+      }
+    }
+    final List<Integer> testToEnd = new ArrayList<>();
+    final List<Integer> testToProjectEnd = new ArrayList<>();
+    for (final SplitRule.Candidate c : test) {
+      testToEnd.add(days(c.firstCommit().toEpochMilli(), end));
+      testToProjectEnd.add(days(c.firstCommit().toEpochMilli(), ends.get(c.project())));
+    }
+    final Map<String, Instant> projectEnds = new TreeMap<>();
+    ends.forEach((p, t) -> projectEnds.put(p, Instant.ofEpochMilli(t)));
+    return new Censoring(Instant.ofEpochMilli(end), projectEnds,
+        lastCommit == Long.MIN_VALUE ? null : Instant.ofEpochMilli(lastCommit), unresolvedIssues,
+        otherReason, unitless, summaryOrNull(toEnd), summaryOrNull(toProjectEnd),
+        summaryOrNull(testToEnd), summaryOrNull(testToProjectEnd));
+  }
+
+  /** Whole calendar days from {@code from} to {@code to}, rounded down. */
+  private static int days(final long from, final long to) {
+    return (int) Math.floorDiv(to - from, World.DAY);
   }
 
   /** The side of each issue of the In Progress population, drawn as its extraction draws it. */

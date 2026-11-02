@@ -3,6 +3,7 @@ package app.pipeline;
 import app.issues.FirstCommit;
 import app.issues.ProjectSplit;
 import app.issues.RowCache;
+import app.issues.SplitRule;
 import app.issues.Universe;
 import app.issues.Universe.Part;
 import app.issues.Universe.Population;
@@ -88,7 +89,8 @@ public final class IssuesFirstCommitExtractTask {
 
     progress.phase(4, PHASES, "selection, split and cap");
     final IssuesFirstCommitAuditTask.Drawn drawn =
-        IssuesFirstCommitAuditTask.draw(b.issues(), FirstCommit.SHARE, b.boundary());
+        IssuesFirstCommitAuditTask.draw(b.issues(), FirstCommit.SHARE, b.boundary(),
+            SplitRule.RANDOM);
     final int cap = drawn.threshold().cap();
     final List<Universe.Unit> units = new ArrayList<>(drawn.parts().outer().size());
     final Map<String, String> projects = new HashMap<>(drawn.parts().outer().size() * 2);

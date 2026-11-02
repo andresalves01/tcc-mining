@@ -48,12 +48,17 @@ public enum Command {
       the first commit below 50% of the changed lines of every file, code
       on at least two dates at the first author's day boundary, no commit
       linked to another issue, and a target of at least one business day.
-      Draws the split with the In Progress rule over them, learns the cap on
-      the waits between commits and patches on the inner fitting only, and
-      counts the target of the outer training. Also reports the limits of
-      30% and 70% and the overlap with the In Progress split. Of the outer
-      test only its size is written. Writes audit.md and per-issue.tsv to
-      AUDIT_DIR; writes nothing to any database and records no run."""),
+      Draws the split with the rule SPLIT_RULE names over them (random by
+      default, the In Progress rule), learns the cap on the waits between
+      commits and patches on the inner fitting only, and counts the target
+      of the outer training. Also reports the limits of 30% and 70% and the
+      overlap with the In Progress split. Of the outer test only its size is
+      written. With SPLIT_RULE=temporal it adds the cuts, the target of each
+      training side, the projects of each side and the new ones, the issues
+      that cross the cuts, the random rule's cap, and the censoring at the
+      end of the data (dates and counts only). Writes audit.md and
+      per-issue.tsv to AUDIT_DIR; writes nothing to any database and records
+      no run."""),
 
   CHECK("check", new CheckCommand(), """
       Report what the source corpus holds before a stage spends an hour on it:
