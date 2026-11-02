@@ -62,7 +62,8 @@ main ones:
 | `APP_OPTS` | (unset) | JVM options, such as `-Xmx8g` |
 
 The issue stages read and write files whose paths you give in `CACHE`, `TEAM_COLUMNS`, `MATRIX`,
-`RETROSPECTIVE_MATRIX`, `ELASTIC_NET_PARAMETERS`, `REPORT_DIR`, `MODEL_DIR` and `EMBEDDING_CACHE`.
+`RETROSPECTIVE_MATRIX`, `ELASTIC_NET_PARAMETERS`, `TEST_PREDICTIONS`, `REPORT_DIR`, `ANALOGY_DIR`,
+`MODEL_DIR` and `EMBEDDING_CACHE`.
 `app help` describes each one.
 
 ## The pipeline
@@ -236,13 +237,13 @@ projects, and the similarity medians only inside the models.
   `ELASTIC_NET_PARAMETERS`, writes `share-ablation.md` and `share-ablation.tsv` to `REPORT_DIR`,
   and writes nothing to MongoDB.
 - **Analogy estimate (exploratory).** `issues-first-commit-analogy` was added after the outer
-  test was opened and confirms nothing. It uses one similarity median directly as the estimate,
-  in the manner of Shepperd and Schofield (1997), choosing the candidate with the lowest MAE on the
-  usual-flow inner validation; an issue without neighbours takes the global median. It reads it on
-  the outer test beside the fourteen models, as the test wrote them, with MMRE and Pred(25) added.
-  It reads `MATRIX`, `ELASTIC_NET_PARAMETERS` and `TEST_PREDICTIONS`, writes
-  `analogy-comparison.md` and `analogy-predictions.tsv` to `ANALOGY_DIR`, and writes nothing to
-  MongoDB.
+  test of the random split was opened and confirms nothing. It uses one similarity median directly
+  as the estimate, in the manner of Shepperd and Schofield (1997), choosing the candidate with the
+  lowest MAE on the usual-flow inner validation; an issue without neighbours takes the global
+  median. It reads it on that outer test beside the fourteen models, as the test wrote them, with
+  MMRE and Pred(25) added. It reads `MATRIX`, `ELASTIC_NET_PARAMETERS` and `TEST_PREDICTIONS`,
+  writes `analogy-comparison.md` and `analogy-predictions.tsv` to `ANALOGY_DIR`, and writes nothing
+  to MongoDB.
 - **Outer test.** `issues-in-progress-similarity-test` refuses a first-commit matrix on its header
   alone. That outer test stays sealed until it is opened once, with the design frozen and the
   author's authorisation.

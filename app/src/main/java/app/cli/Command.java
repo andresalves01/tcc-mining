@@ -435,8 +435,8 @@ public enum Command {
   ISSUES_FIRST_COMMIT_ANALOGY("issues-first-commit-analogy",
       new app.cli.commands.IssuesFirstCommitAnalogyCommand(), """
       Issue duration from the first commit, ANALOGY ESTIMATE, read-only and
-      EXPLORATORY: added after the outer test was opened, it confirms
-      nothing. One similarity median used directly as the estimate, in the
+      EXPLORATORY: added after the random split's outer test was opened, it
+      confirms nothing. One similarity median used directly as the estimate, in the
       manner of Shepperd and Schofield (1997), the candidate with the lowest
       MAE on the usual-flow inner validation; an issue without neighbours
       takes the global median. Read on the outer test beside the fourteen
