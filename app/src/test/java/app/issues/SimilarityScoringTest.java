@@ -1403,13 +1403,14 @@ class SimilarityScoringTest {
   }
 
   @Test
-  @DisplayName("the analogy estimate, frozen in the parameters, is a model beside the references: "
-      + "its column in the scope's variant, the frozen fallback where an issue has none, "
-      + "compared with the references and the start models; absent, nothing changes")
+  @DisplayName("the analogy estimate, its column frozen in the parameters, is a model beside the "
+      + "references: its column in the scope's variant; where an issue has none, the global "
+      + "median the declared reference learns on the same fitting rows; compared with the "
+      + "references and the start models; absent, nothing changes")
   void analogyEstimate() {
     final List<RowCache.Entry> entries = corpus();
     // the cluster medians are missing on every fourth row: some issues take the fallback
-    final AnalogyEstimate.Frozen frozen = new AnalogyEstimate.Frozen("cluster_median_16", 4.0);
+    final AnalogyEstimate.Frozen frozen = new AnalogyEstimate.Frozen("cluster_median_16");
     final SimilarityScoring.Readings r = SimilarityScoring.readings(entries, choices(0.2),
         forests(), TailCut.NO_CUT, RESERVED, 1, 1, Population.IN_PROGRESS,
         SimilarityScoring.Design.of(frozen));
@@ -1422,13 +1423,14 @@ class SimilarityScoringTest {
     assertEquals("analogy", analogy.kind());
     final Map<String, Row> rows = new HashMap<>();
     entries.forEach(e -> rows.put(e.unit().issueId(), e.row()));
+    final double[] global = model(all, "global_median").predicted();
     int fallbacks = 0;
     for (int i = 0; i < all.scoredRows(); i++) {
       final Double v = rows.get(all.scoredUnits().get(i).issueId()).values()
           .get("cluster_median_16_outer");
       if (v == null) {
         fallbacks++;
-        assertEquals(4.0, analogy.predicted()[i], 0.0);
+        assertEquals(global[i], analogy.predicted()[i], 0.0);
       } else {
         assertEquals(v, analogy.predicted()[i], 0.0);
       }
@@ -1441,15 +1443,16 @@ class SimilarityScoringTest {
         "kikas_start", OWN + "_forest", "alzubaidi_start_forest", "kikas_start_forest")) {
       assertTrue(compared.contains(SimilarityScoring.ANALOGY + " | " + b), b);
     }
-    // the inner calibration reads the inner column, with the same fallback
+    // the inner calibration reads the inner column, its fallback the inner fitting's median
     final SimilarityScoring.Report inner = SimilarityScoring.calibration(entries, choices(0.2),
         forests(), TailCut.NO_CUT, Population.IN_PROGRESS,
         SimilarityScoring.Design.of(frozen));
     final SimilarityScoring.Scored innerAnalogy = model(inner, SimilarityScoring.ANALOGY);
+    final double[] innerGlobal = model(inner, "global_median").predicted();
     for (int i = 0; i < inner.scoredRows(); i++) {
       final Double v = rows.get(inner.scoredUnits().get(i).issueId()).values()
           .get("cluster_median_16_inner");
-      assertEquals(v == null ? 4.0 : v, innerAnalogy.predicted()[i], 0.0);
+      assertEquals(v == null ? innerGlobal[i] : v, innerAnalogy.predicted()[i], 0.0);
     }
     // without it, the fourteen as before, bit for bit
     final SimilarityScoring.Readings none = SimilarityScoring.readings(entries, choices(0.2),

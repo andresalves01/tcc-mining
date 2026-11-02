@@ -76,9 +76,12 @@ import java.util.function.Function;
  * names the split rule its choices were made under ({@link ElasticNetSelection#headerRule}, the
  * random one when it names none), and a file of another rule than the run's is refused. Under the
  * temporal rule the analogy estimate ({@link AnalogyEstimate}) is the fifteenth model, its column
- * and fallback read from the file ({@link ElasticNetSelection#analogy}), never chosen here; a
- * temporal file without that choice is refused, and so is a file of another rule with it, where
- * the analogy estimate stays exploratory. Every reading is also given without the issues of new
+ * read from the file ({@link ElasticNetSelection#analogy}), never chosen here, its fallback the
+ * global median the declared reference learns on the outer training; a temporal file without
+ * that choice is refused, and so is a file of another rule with it, where the analogy estimate
+ * stays exploratory. The forests are refitted with the file's tree count ({@link
+ * ElasticNetSelection#trees}); a temporal file must give it, a random one without it is at {@link
+ * Forest#TREES}. Every reading is also given without the issues of new
  * projects, those with issues on the outer test side and none on the outer training side, with
  * their count; with none, the readings without them are the readings themselves and are not
  * repeated. The temporal opening is recorded under {@link #FIRST_COMMIT_TEMPORAL_STAGE} and, as
@@ -130,7 +133,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
   static final String ANALOGY_RULE = "the analogy estimate, the fifteenth model of the temporal "
       + "split: the similarity median the parameters file froze, chosen on the usual-flow inner "
       + "validation, read in its outer column as the estimate with no model around it; an issue "
-      + "without one takes the fallback the file froze; nothing of it is chosen on the outer test";
+      + "without one takes the global median learned on the outer training rows at or below the "
+      + "fence, the declared reference's own value; nothing of it is chosen on the outer test";
 
   /** What a new project is, for the output and the run record. */
   static final String NEW_PROJECTS = "new projects: projects with issues on the outer test side "
@@ -384,6 +388,12 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
           + "model of the temporal split; the selection of the temporal split must write it "
           + "first");
     }
+    if (rule == SplitRule.TEMPORAL && chosen.givenTrees().isEmpty()) {
+      throw refused(elasticNet + " gives no tree count for the forests (the line "
+          + ElasticNetSelection.FOREST_STEP + " " + ElasticNetSelection.EVERY_MODEL
+          + " trees <n>); a file of the temporal split must give it, and only a file of the "
+          + "random split is read at " + Forest.TREES + " trees without it");
+    }
     if (rule != SplitRule.TEMPORAL && analogy != null) {
       throw refused(elasticNet + " freezes a choice of the analogy estimate, a declared model of "
           + "the first-commit study's temporal split alone; under the " + rule.setting()
@@ -495,7 +505,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     } else {
       System.out.printf(java.util.Locale.ROOT, "  %s: reads %s%s, fallback %.3f business days; "
           + "issues given the fallback: %,d of %,d (usual flow %,d of %,d)%n", ANALOGY_RULE,
-          analogy.column(), Augmentation.Variant.OUTER.suffix(), analogy.fallback(),
+          analogy.column(), Augmentation.Variant.OUTER.suffix(), globalMedian(r),
           r.analogyFallbacks(), r.scoredRows(), main.analogyFallbacks(), main.scoredRows());
     }
     System.out.printf("  error bands: %s; here %s business days, of the outer training rows "
@@ -655,16 +665,22 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
    * @param rule the split rule the parameters file was written under, by its header: the random
    *     one when it names none
    * @param analogy the analogy estimate's frozen choice; null when the file has none
-   * @param trees every forest's count of trees: {@link Forest#TREES} when the file gives none
+   * @param givenTrees every forest's count of trees, as the file gives it; empty when it gives
+   *     none
    */
   record Chosen(String elasticNetSha, String matrixSha,
       Map<String, ElasticNetSelection.Choice> choices, Map<String, Forest.Choice> forests,
       TailCut.Choice cut, app.issues.Universe.Population population, SplitRule rule,
-      AnalogyEstimate.Frozen analogy, int trees) {
+      AnalogyEstimate.Frozen analogy, java.util.OptionalInt givenTrees) {
+
+    /** Every forest's count of trees: the file's, or {@link Forest#TREES} when it gives none. */
+    int trees() {
+      return givenTrees.orElse(Forest.TREES);
+    }
 
     /** What the file freezes beyond the fourteen's choices, as the scoring reads it. */
     SimilarityScoring.Design design() {
-      return new SimilarityScoring.Design(analogy, trees);
+      return new SimilarityScoring.Design(analogy, trees());
     }
   }
 
@@ -696,7 +712,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final Map<String, Forest.Choice> forests = ElasticNetSelection.forests(enParameters);
     final TailCut.Choice cut = ElasticNetSelection.tailCut(enParameters);
     final AnalogyEstimate.Frozen analogy = ElasticNetSelection.analogy(enParameters);
-    final int trees = ElasticNetSelection.trees(enParameters);
+    final java.util.OptionalInt trees = ElasticNetSelection.trees(enParameters);
     if (!Set.copyOf(ElasticNetSelection.MODELS).equals(choices.keySet())) {
       throw new IllegalArgumentException(elasticNet + " holds alpha and lambda for "
           + choices.keySet() + "; the models are " + ElasticNetSelection.MODELS);
@@ -734,13 +750,19 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         : "");
   }
 
+  /** The global median a report's references learned: the analogy estimate's fallback. */
+  private static double globalMedian(final SimilarityScoring.Report r) {
+    return r.models().stream().filter(m -> m.name().equals(SimilarityScoring.GLOBAL)).findFirst()
+        .orElseThrow().predicted()[0];
+  }
+
   /** The analogy estimate as the run record states it. */
   private static Map<String, Object> analogyRecord(final AnalogyEstimate.Frozen analogy,
       final SimilarityScoring.Report all, final SimilarityScoring.Report usual) {
     final Map<String, Object> out = new LinkedHashMap<>();
     out.put("rule", ANALOGY_RULE);
     out.put("column", analogy.column() + Augmentation.Variant.OUTER.suffix());
-    out.put("fallback_business_days", analogy.fallback());
+    out.put("fallback_business_days", globalMedian(all));
     out.put("fallbacks", List.of(all.analogyFallbacks(), all.scoredRows()));
     out.put("usual_flow_fallbacks", List.of(usual.analogyFallbacks(), usual.scoredRows()));
     return out;

@@ -153,7 +153,7 @@ class DeclaredSplitRuleTest {
 
   /** The analogy estimate's frozen choice the tests append for the temporal selection. */
   private static final AnalogyEstimate.Frozen ANALOGY =
-      new AnalogyEstimate.Frozen("jaccard_median_10", 2.0);
+      new AnalogyEstimate.Frozen("jaccard_median_10");
 
   @Test
   @DisplayName("first-commit test step: a parameters file whose header declares another split rule "
@@ -199,7 +199,7 @@ class DeclaredSplitRuleTest {
 
   @Test
   @DisplayName("first-commit test step: a temporal parameters file without the analogy "
-      + "estimate's choice is refused")
+      + "estimate's choice is refused, and so is one without the forests' tree count")
   void temporalWithoutAnalogy() throws Exception {
     final Map<String, String> settings = new HashMap<>();
     settings.put("MATRIX", SelectionFixture.temporal(dir.resolve("temporal.tsv")).toString());
@@ -209,6 +209,10 @@ class DeclaredSplitRuleTest {
     settings.put("REPORT_DIR", dir.resolve("test").toString());
     assertTrue(refused(new IssuesSimilarityTestCommand(settings::get, Population.FIRST_COMMIT),
         context(own())).contains("freezes no choice of the analogy estimate"));
+    Files.write(dir.resolve("elastic-net.tsv"), ElasticNetSelection.analogyLines(ANALOGY),
+        java.nio.file.StandardOpenOption.APPEND);
+    assertTrue(refused(new IssuesSimilarityTestCommand(settings::get, Population.FIRST_COMMIT),
+        context(own())).contains("gives no tree count for the forests"));
     assertFalse(Files.exists(dir.resolve("test")));
     assertEquals(1, runs.size());
   }

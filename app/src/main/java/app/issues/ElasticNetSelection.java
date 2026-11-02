@@ -379,20 +379,23 @@ public final class ElasticNetSelection {
 
   /**
    * The step of the analogy estimate's frozen choice in the parameters file, the first-commit
-   * study's temporal split only: two lines under the name {@code chosen}, its {@code column}, a
-   * candidate of {@link AnalogyEstimate#CANDIDATES} without its split suffix, and its {@code
-   * fallback_business_days}, as Java prints the double ({@link #analogyLines}).
+   * study's temporal split only: one line under the name {@code chosen}, its {@code column}, a
+   * candidate of {@link AnalogyEstimate#CANDIDATES} without its split suffix ({@link
+   * #analogyLines}). No fallback is frozen: it is learned where the estimate is read ({@link
+   * AnalogyEstimate.Frozen}), and a fallback line is refused.
    */
   public static final String ANALOGY_STEP = "analogy";
 
   private static final String COLUMN = "column";
 
+  /** A fallback line, which a file of an earlier draft of the contract would carry; refused. */
   private static final String FALLBACK = "fallback_business_days";
 
   /**
    * The name, under {@link #FOREST_STEP}, of the line giving every forest's count of trees: one
    * line, its parameter {@code trees}, its value a whole number ({@link #treesLine}). A file
-   * without it, as every file of the random split, is at {@link Forest#TREES}.
+   * of the random split without it is at {@link Forest#TREES}; one of the temporal split must
+   * give it.
    */
   public static final String EVERY_MODEL = "every_model";
 
@@ -404,22 +407,22 @@ public final class ElasticNetSelection {
   }
 
   /**
-   * Every forest's count of trees: the file's line of {@link #EVERY_MODEL}, or {@link
-   * Forest#TREES} when it has none. Refuses a count below one, or a line of {@link #EVERY_MODEL}
-   * with another parameter.
+   * Every forest's count of trees, the file's line of {@link #EVERY_MODEL}; empty when it has
+   * none. Refuses a count below one, or a line of {@link #EVERY_MODEL} with another parameter.
    */
-  public static int trees(final List<Parameter> parameters) {
-    int trees = Forest.TREES;
+  public static java.util.OptionalInt trees(final List<Parameter> parameters) {
+    java.util.OptionalInt trees = java.util.OptionalInt.empty();
     for (final Parameter p : parameters) {
       if (p.step().equals(FOREST_STEP) && p.name().equals(EVERY_MODEL)) {
         if (!p.parameter().equals(TREES)) {
           throw new IllegalArgumentException("no forest parameter " + p.parameter()
               + " for every model: there it is " + TREES + " alone");
         }
-        trees = Integer.parseInt(p.value());
-        if (trees < 1) {
-          throw new IllegalArgumentException("forests of " + trees + " trees");
+        final int n = Integer.parseInt(p.value());
+        if (n < 1) {
+          throw new IllegalArgumentException("forests of " + n + " trees");
         }
+        trees = java.util.OptionalInt.of(n);
       }
     }
     return trees;
@@ -427,36 +430,36 @@ public final class ElasticNetSelection {
 
   /** The analogy estimate's frozen choice, as the parameters file writes it. */
   public static List<String> analogyLines(final AnalogyEstimate.Frozen frozen) {
-    return List.of(String.join("\t", ANALOGY_STEP, CHOSEN, COLUMN, frozen.column()),
-        String.join("\t", ANALOGY_STEP, CHOSEN, FALLBACK, Double.toString(frozen.fallback())));
+    return List.of(String.join("\t", ANALOGY_STEP, CHOSEN, COLUMN, frozen.column()));
   }
 
   /**
    * The analogy estimate's frozen choice; null when the file has no line of {@link
-   * #ANALOGY_STEP}. Refuses a choice without both its lines, or with a line of another name or
+   * #ANALOGY_STEP}. Refuses a fallback line, which is never frozen, and a line of another name or
    * parameter.
    */
   public static AnalogyEstimate.Frozen analogy(final List<Parameter> parameters) {
-    final Map<String, String> v = new HashMap<>();
+    String column = null;
+    boolean any = false;
     for (final Parameter p : parameters) {
       if (!p.step().equals(ANALOGY_STEP)) {
         continue;
       }
-      if (!p.name().equals(CHOSEN) || !List.of(COLUMN, FALLBACK).contains(p.parameter())) {
-        throw new IllegalArgumentException("no analogy line " + p.name() + " " + p.parameter()
-            + ": the analogy estimate's choice is its " + CHOSEN + " " + COLUMN + " and "
-            + FALLBACK);
+      any = true;
+      if (p.parameter().equals(FALLBACK)) {
+        throw new IllegalArgumentException("the analogy estimate's " + FALLBACK + " is not "
+            + "frozen: it is the global median learned where the estimate is read");
       }
-      v.put(p.parameter(), p.value());
+      if (!p.name().equals(CHOSEN) || !p.parameter().equals(COLUMN)) {
+        throw new IllegalArgumentException("no analogy line " + p.name() + " " + p.parameter()
+            + ": the analogy estimate's choice is its " + CHOSEN + " " + COLUMN + " alone");
+      }
+      column = p.value();
     }
-    if (v.isEmpty()) {
+    if (!any) {
       return null;
     }
-    if (!v.keySet().equals(Set.of(COLUMN, FALLBACK))) {
-      throw new IllegalArgumentException("the analogy estimate's choice has not both its "
-          + COLUMN + " and " + FALLBACK + ": " + v);
-    }
-    return new AnalogyEstimate.Frozen(v.get(COLUMN), Double.parseDouble(v.get(FALLBACK)));
+    return new AnalogyEstimate.Frozen(column);
   }
 
   /** The step of the tail cut's lines in the parameters file (ticket 23). */

@@ -41,20 +41,18 @@ public final class AnalogyEstimate {
 
   /**
    * The choice as the parameters file freezes it, for the test to read and never make: the chosen
-   * candidate, without its split suffix, and the fallback, in business days, an issue without one
-   * takes.
+   * candidate, without its split suffix. The fallback is not frozen: where the estimate is read,
+   * it is the global median learned on the same fitting rows as the declared reference (the inner
+   * fitting set on the inner side, the outer training set on the test, each cut at the fence of
+   * the chosen k).
    */
-  public record Frozen(String column, double fallback) {
+  public record Frozen(String column) {
 
-    /** Refuses a column not among {@link #CANDIDATES}, or a fallback not a positive number. */
+    /** Refuses a column not among {@link #CANDIDATES}. */
     public Frozen {
       if (!CANDIDATES.contains(column)) {
         throw new IllegalArgumentException("the analogy estimate's column " + column
             + " is not one of " + CANDIDATES);
-      }
-      if (!(fallback > 0) || Double.isInfinite(fallback)) {
-        throw new IllegalArgumentException("the analogy estimate's fallback " + fallback
-            + " is not a positive count of business days");
       }
     }
   }

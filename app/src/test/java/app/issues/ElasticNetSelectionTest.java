@@ -1448,49 +1448,52 @@ class ElasticNetSelectionTest {
   }
 
   @Test
-  @DisplayName("the analogy estimate's frozen choice, its column and fallback, reads back exactly; "
-      + "a file without it has none; an incomplete or unknown choice is refused")
+  @DisplayName("the analogy estimate's frozen choice, its column alone, reads back exactly; a file "
+      + "without it has none; a fallback line, or any other, is refused: the fallback is learned "
+      + "where the estimate is read")
   void analogyChoice() {
-    final AnalogyEstimate.Frozen frozen = new AnalogyEstimate.Frozen("embedding_median_10", 3.0);
+    final AnalogyEstimate.Frozen frozen = new AnalogyEstimate.Frozen("embedding_median_10");
     final List<String> lines = new ArrayList<>(List.of(ElasticNetSelection.HEADER_FIRST_COMMIT,
         "elastic-net\tinputs\tmatrix_sha256\tcd34"));
     assertNull(ElasticNetSelection.analogy(ElasticNetSelection.read(lines)));
     lines.addAll(ElasticNetSelection.analogyLines(frozen));
-    assertEquals(List.of("analogy\tchosen\tcolumn\tembedding_median_10",
-        "analogy\tchosen\tfallback_business_days\t3.0"), lines.subList(2, 4));
+    assertEquals(List.of("analogy\tchosen\tcolumn\tembedding_median_10"),
+        lines.subList(2, lines.size()));
     assertEquals(frozen, ElasticNetSelection.analogy(ElasticNetSelection.read(lines)));
     // the other readers skip the analogy's lines
     assertEquals(Map.of(), ElasticNetSelection.choices(ElasticNetSelection.read(lines)));
     assertEquals(Map.of(), ElasticNetSelection.forests(ElasticNetSelection.read(lines)));
 
-    final List<String> partial = lines.subList(0, 3);
-    assertThrows(IllegalArgumentException.class,
-        () -> ElasticNetSelection.analogy(ElasticNetSelection.read(partial)));
+    final List<String> fallback = new ArrayList<>(lines);
+    fallback.add("analogy\tchosen\tfallback_business_days\t3.0");
+    assertTrue(assertThrows(IllegalArgumentException.class,
+        () -> ElasticNetSelection.analogy(ElasticNetSelection.read(fallback))).getMessage()
+        .contains("fallback"));
     final List<String> extra = new ArrayList<>(lines);
     extra.add("analogy\tchosen\tmae_business_days\t1.5");
     assertThrows(IllegalArgumentException.class,
         () -> ElasticNetSelection.analogy(ElasticNetSelection.read(extra)));
+    final List<String> alone = new ArrayList<>(lines.subList(0, 2));
+    alone.add("analogy\tchosen\tfallback_business_days\t3.0");
     assertThrows(IllegalArgumentException.class,
-        () -> new AnalogyEstimate.Frozen("jaccard_median_7", 3.0));
+        () -> ElasticNetSelection.analogy(ElasticNetSelection.read(alone)));
     assertThrows(IllegalArgumentException.class,
-        () -> new AnalogyEstimate.Frozen("jaccard_median_5", Double.NaN));
-    assertThrows(IllegalArgumentException.class,
-        () -> new AnalogyEstimate.Frozen("jaccard_median_5", 0));
+        () -> new AnalogyEstimate.Frozen("jaccard_median_7"));
   }
 
   @Test
   @DisplayName("the forests' tree count: absent, as in every file before the temporal split, it is "
-      + Forest.TREES + "; given, it is read back exactly, and no forest's choice reads it; "
-      + "a count below one is refused")
+      + Forest.TREES + " (the line is reported absent); given, it is read back exactly, and no "
+      + "forest's choice reads it; a count below one is refused")
   void forestTrees() {
     final List<String> lines = new ArrayList<>(List.of(ElasticNetSelection.HEADER_FIRST_COMMIT,
         "forest\tkikas_start\tmtry_share\t" + (1.0 / 3), "forest\tkikas_start\tmtry\t1",
         "forest\tkikas_start\tnode_size\t25"));
     assertEquals(300, Forest.TREES);
-    assertEquals(Forest.TREES, ElasticNetSelection.trees(ElasticNetSelection.read(lines)));
+    assertTrue(ElasticNetSelection.trees(ElasticNetSelection.read(lines)).isEmpty());
     lines.add(ElasticNetSelection.treesLine(500));
     assertEquals("forest\tevery_model\ttrees\t500", lines.getLast());
-    assertEquals(500, ElasticNetSelection.trees(ElasticNetSelection.read(lines)));
+    assertEquals(500, ElasticNetSelection.trees(ElasticNetSelection.read(lines)).getAsInt());
     assertEquals(Set.of("kikas_start"),
         ElasticNetSelection.forests(ElasticNetSelection.read(lines)).keySet());
     final List<String> none = new ArrayList<>(lines);

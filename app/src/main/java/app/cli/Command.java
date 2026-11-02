@@ -465,9 +465,10 @@ public enum Command {
       population on this matrix, and unless its header's split rule is the
       one SPLIT_RULE declares (a header naming none is the random one).
       Under SPLIT_RULE=temporal the analogy estimate is the fifteenth model,
-      its column and fallback read from the parameters file (refused
-      without them; a file of the random split holding them is refused
-      too), and the opening is recorded as
+      its column read from the parameters file and its fallback the global
+      median learned on the outer training (refused without the column; a
+      file of the random split holding it is refused too), the forests' tree
+      count must be given there, and the opening is recorded as
       issues-first-commit-test-temporal. Every reading is also given
       without the issues of new projects, with their count. Writes the
       predictions, diagnostics, relevance and uncertainty to REPORT_DIR;

@@ -389,8 +389,9 @@ public final class SimilarityScoring {
   /**
    * {@link #readings(List, Map, Map, double, Scope, int, int, Population)} with what the
    * parameters froze beyond the fourteen's choices ({@link Design}): the analogy estimate, if any,
-   * beside the references, its column in the scope's variant, its frozen fallback where an issue
-   * has none; every forest at the given count of trees. Nothing of it is chosen here.
+   * beside the references, its column in the scope's variant; where an issue has none, the global
+   * median learned on the same fitting rows as the declared reference; every forest at the given
+   * count of trees. Nothing of it is chosen here.
    */
   public static Readings readings(final List<RowCache.Entry> entries,
       final Map<String, ElasticNetSelection.Choice> choices,
@@ -467,7 +468,8 @@ public final class SimilarityScoring {
   /**
    * {@link #calibration(List, Map, Map, double, Population)} with what the parameters froze
    * beyond the fourteen's choices ({@link Design}): the analogy estimate, if any, read in its inner
-   * column with its frozen fallback, and the forests at the given count of trees.
+   * column with the inner fitting rows' global median as its fallback, and the forests at the
+   * given count of trees.
    */
   public static Report calibration(final List<RowCache.Entry> entries,
       final Map<String, ElasticNetSelection.Choice> choices,
@@ -576,8 +578,9 @@ public final class SimilarityScoring {
     models.add(given(PROJECT, projectMedian, observed, projectMae, constantMae, tops));
     int analogyFallbacks = 0;
     if (analogy != null) {
+      // the fallback is the declared global median, learned on the same fitting rows
       final AnalogyEstimate.Estimate e = AnalogyEstimate.estimate(sides.scoreRows(),
-          analogy.column() + scope.variant().suffix(), analogy.fallback());
+          analogy.column() + scope.variant().suffix(), refs.constant(1)[0]);
       analogyFallbacks = e.fallbacks();
       models.add(new Scored(ANALOGY, "analogy", e.values(),
           Score.of(ANALOGY, e.values(), observed, projectMae, constantMae),
