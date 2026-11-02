@@ -10,16 +10,21 @@ import app.issues.DurationEvidence;
 import app.issues.FirstCommit;
 import app.issues.FirstCommit.Rule;
 import app.issues.FirstCommitFacts;
+import app.issues.ProjectSplit;
 import app.issues.RowCache;
+import app.issues.SplitRule;
+import app.issues.Universe.Part;
 import app.issues.World;
 import app.issues.port.StudySource;
 import app.pipeline.IssuesFirstCommitAuditTask.IssueRow;
 import app.pipeline.IssuesFirstCommitAuditTask.Report;
+import app.pipeline.IssuesFirstCommitAuditTask.Side;
 import app.pipeline.port.SilentProgress;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -297,5 +302,74 @@ class IssuesFirstCommitAuditTaskTest {
     assertEquals(r.sizes().train(), total);
     assertFalse(r.overlap().containsKey(IssuesFirstCommitAuditTask.Side.TEST));
     assertEquals(1, outside, "Q-110 never went to In Progress");
+  }
+
+  // ------------------------------------------------------------------ the draw, by rule
+
+  private static final FirstCommit.Boundary MIDNIGHT = (author, project, at) -> 0;
+
+  /**
+   * An issue of the population drawn from by hand: its first commit on the Monday of week
+   * {@code week}, the second {@code gap} business days later, resolved an hour after it.
+   */
+  private static FirstCommit.Issue started(final int n, final String project, final int week,
+      final int gap) {
+    final long first = day(1 + 7 * week);
+    final long second = first + gap * World.DAY;
+    return new FirstCommit.Issue(id(n), project.toUpperCase() + "-" + n, project, first - H,
+        second + H, List.of(
+            new FirstCommit.Code("a" + n, "dev", first, 10L, "start " + n, Set.of(), false),
+            new FirstCommit.Code("b" + n, "dev", second, 30L, "finish " + n, Set.of(), false)),
+        List.of(), List.of());
+  }
+
+  @Test
+  @DisplayName("the random rule draws ProjectSplit's sides over the population, as the audit "
+      + "before the rule became a parameter, and learns the cap on their inner fitting")
+  void randomRuleDrawsProjectSplit() {
+    final Map<String, FirstCommit.Issue> from = new LinkedHashMap<>();
+    final Map<String, String> projects = new HashMap<>();
+    for (int n = 1; n <= 23; n++) {
+      final FirstCommit.Issue i = started(n, n % 3 == 0 ? "q" : "p", n % 9, 1 + n % 4);
+      from.put(i.id(), i);
+      projects.put(i.id(), i.project());
+    }
+    final IssuesFirstCommitAuditTask.Drawn d = IssuesFirstCommitAuditTask.draw(from,
+        FirstCommit.SHARE, MIDNIGHT, SplitRule.RANDOM);
+    final ProjectSplit.Parts today = ProjectSplit.draw(projects);
+    assertEquals(today, d.parts());
+    final List<Integer> gaps = new ArrayList<>();
+    today.inner().forEach((id, part) -> {
+      if (part == Part.TRAIN) {
+        gaps.addAll(FirstCommit.gaps(from.get(id), d.verdicts().get(id)));
+      }
+    });
+    assertEquals(FirstCommit.threshold(gaps), d.threshold());
+  }
+
+  @Test
+  @DisplayName("the temporal rule learns the cap on its inner fitting's waits alone, and the "
+      + "training targets are counted with it")
+  void temporalCap() {
+    final Map<String, FirstCommit.Issue> from = new LinkedHashMap<>();
+    for (int week = 0; week < 10; week++) {
+      final FirstCommit.Issue i = started(week + 1, "p", week, week < 5 ? 1 : 3);
+      from.put(i.id(), i);
+    }
+    final IssuesFirstCommitAuditTask.Drawn d = IssuesFirstCommitAuditTask.draw(from,
+        FirstCommit.SHARE, MIDNIGHT, SplitRule.TEMPORAL);
+    for (int week = 0; week < 10; week++) {
+      final Side expected = week < 5 ? Side.FIT : week < 7 ? Side.VALIDATION : Side.TEST;
+      assertEquals(expected, IssuesFirstCommitAuditTask.side(d.parts(), id(week + 1)),
+          "week " + week);
+    }
+    // the five waits of one day of the inner fitting alone; with the validation's or the test's
+    // waits of three days the cap would be three
+    assertEquals(FirstCommit.threshold(List.of(1, 1, 1, 1, 1)), d.threshold());
+    assertEquals(1, d.threshold().cap());
+    assertEquals(7, d.training().size(), "the outer training alone carries a target");
+    final FirstCommit.Count validation = d.training().get(id(6));
+    assertEquals(1, validation.total(), "Monday to Thursday, the wait capped at one day");
+    assertEquals(2, validation.capped());
   }
 }

@@ -143,10 +143,11 @@ MongoDB. It needs `MATRIX`, `ADJUSTED_DIR`, `BOT_ACCOUNTS`, `START_DESCRIPTIONS`
 an issue's first commit to its first resolution. It keeps the issues resolved as Fixed at their
 first resolution, created before their first commit, with at least two commits once duplicates are
 gone, a first commit below 50% of the changed lines, code on at least two dates and no commit linked
-to another issue. It draws the split with the rule of the In Progress study, learns the cap on the
-waits between commits and patches on the inner fitting only, and counts the target of the outer
-training. It also reports the limits of 30% and 70% and the overlap with the In Progress split.
-Of the outer test it writes only the size.
+to another issue. It draws the split with the rule named in `SPLIT_RULE` (random by default, the
+rule of the In Progress study), learns the cap on the waits between commits and patches on the
+inner fitting only, and counts the target of the outer training. It also reports the limits of 30%
+and 70% and the overlap with the In Progress split. Of the outer test it writes only the size
+(under `temporal`, also its projects and the dates of its first commits; see "Split rule").
 
 It needs `AUDIT_DIR`, where it writes `audit.md` and `per-issue.tsv`, and writes nothing to
 MongoDB. Give it `APP_OPTS=-Xmx6g`.
@@ -268,8 +269,13 @@ are not that rule's:
   issue id breaking ties; the cut is the instant at position ⌈0.7·n⌉, and training is every first
   commit at or before it, the ties included; the inner split is the same rule on the training side.
 
-An In Progress matrix under `SPLIT_RULE=temporal` is refused. The audit and the extraction still
-draw the random split.
+An In Progress matrix under `SPLIT_RULE=temporal` is refused. The audit draws the rule named in
+`SPLIT_RULE`; under `temporal` its summary adds the two cuts, the target of the inner fitting, the
+inner validation and the outer training, the projects of each side and the new ones, the training
+issues that cross the cut, the cap the random rule learns on the same issues, and the censoring at
+the end of the data: the latest Jira record, and the issues whose first commit comes after the cut
+with no first resolution as Fixed. Of the outer test it gives only counts and dates. The extraction
+still draws the random split.
 
 ### Commands that only read
 
