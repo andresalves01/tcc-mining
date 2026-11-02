@@ -274,8 +274,21 @@ An In Progress matrix under `SPLIT_RULE=temporal` is refused. The audit draws th
 inner validation and the outer training, the projects of each side and the new ones, the training
 issues that cross the cut, the cap the random rule learns on the same issues, and the censoring at
 the end of the data: the latest Jira record, and the issues whose first commit comes after the cut
-with no first resolution as Fixed. Of the outer test it gives only counts and dates. The extraction
-still draws the random split.
+with no first resolution as Fixed. Of the outer test it gives only counts and dates.
+
+The first-commit extraction draws the rule named in `SPLIT_RULE` too, so the matrix's sides, the cap
+(learned on that rule's inner fitting) and the target are the audit's under the same rule. Each
+design records its extraction run in collections of its own in `ISSUES_DB`: the random design in
+`runs` and `results`, as always, and the temporal design in `runs_temporal` and `results_temporal`.
+The later stages still record in `runs`, so do not run them under `temporal` until they too
+record by design. A run
+recorded with a `split_design` field is of that design; one without it is of the temporal design
+when its `split_rule` is the temporal rule's words, and of the random design otherwise. Before it
+reads anything, the extraction refuses a run collection that already holds a run of another design.
+Under `temporal` its run record adds `split_design`, the instants of both cuts (`split_cuts`), the
+training issues whose first resolution comes after each cut (`crossing_the_cut`) and the new
+projects with their issues (`new_projects`); under `random` the record and the matrix are those of
+before, byte for byte. The extraction writes nothing to `TARGET_DB`.
 
 ### Commands that only read
 

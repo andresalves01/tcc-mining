@@ -1,5 +1,6 @@
 package app.issues.port;
 
+import app.issues.SplitRule;
 import java.util.List;
 import java.util.Map;
 
@@ -30,6 +31,27 @@ public interface ResultStore {
    * step that runs once reads as a refusal.
    */
   default java.util.Optional<Boolean> recorded(final String stage) {
+    return java.util.Optional.empty();
+  }
+
+  /**
+   * The store of the runs drawn under {@code rule}: this one for the random rule, whose runs keep
+   * the collections they were always recorded in; collections of their own, named with {@link
+   * SplitRule#collectionSuffix}, for any other. A store that keeps the random design's runs alone
+   * refuses another rule.
+   */
+  default ResultStore design(final SplitRule rule) {
+    if (rule == SplitRule.RANDOM) {
+      return this;
+    }
+    throw new UnsupportedOperationException("this store records the random design's runs alone");
+  }
+
+  /**
+   * The designs of the runs this store already holds ({@link SplitRule#recordedBy}); empty when
+   * this store cannot tell, which a stage that must not mix designs reads as a refusal.
+   */
+  default java.util.Optional<java.util.Set<SplitRule>> designs() {
     return java.util.Optional.empty();
   }
 }

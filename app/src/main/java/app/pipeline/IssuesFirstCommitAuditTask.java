@@ -559,8 +559,6 @@ public final class IssuesFirstCommitAuditTask {
     main.candidates().forEach(c -> projects.put(c.id(), c.project()));
     final Map<Side, Set<String>> sideProjects = new EnumMap<>(Side.class);
     final Map<Side, List<Integer>> targets = new EnumMap<>(Side.class);
-    int crossing = 0;
-    int innerCrossing = 0;
     final List<SplitRule.Candidate> test = new ArrayList<>();
     for (final SplitRule.Candidate c : main.candidates()) {
       final Side side = side(main.parts(), c.id());
@@ -571,13 +569,6 @@ public final class IssuesFirstCommitAuditTask {
       }
       targets.computeIfAbsent(side, x -> new ArrayList<>())
           .add(main.training().get(c.id()).total());
-      final long resolved = b.issues().get(c.id()).resolved();
-      if (resolved > cuts.outer().toEpochMilli()) {
-        crossing++;
-      }
-      if (side == Side.FIT && resolved > cuts.inner().toEpochMilli()) {
-        innerCrossing++;
-      }
     }
     final Set<String> train = new TreeSet<>(sideProjects.getOrDefault(Side.FIT, Set.of()));
     train.addAll(sideProjects.getOrDefault(Side.VALIDATION, Set.of()));
@@ -587,12 +578,36 @@ public final class IssuesFirstCommitAuditTask {
         sideProjects.getOrDefault(Side.VALIDATION, Set.of()).size());
     return new Temporal(cuts, counts, summaryOrNull(targets.get(Side.FIT)),
         summaryOrNull(targets.get(Side.VALIDATION)),
-        perProject(TemporalSplit.newProjects(projects, main.parts().outer()), projects,
-            main.parts().outer()),
-        perProject(TemporalSplit.newProjects(projects, main.parts().inner()), projects,
-            main.parts().inner()),
-        crossing, innerCrossing, random,
+        newProjects(projects, main.parts().outer()), newProjects(projects, main.parts().inner()),
+        crossing(b.issues(), main.parts().outer(), cuts.outer()),
+        crossing(b.issues(), main.parts().inner(), cuts.inner()), random,
         censoring(b.corpus(), b.universe(), b.bots(), cuts.outer(), test));
+  }
+
+  /**
+   * The issues on the training part of {@code sides} whose first resolution comes after {@code
+   * cut}: with the outer sides and cut, the outer training issues that cross the cut; with the
+   * inner ones, the inner fitting's.
+   */
+  static int crossing(final Map<String, FirstCommit.Issue> issues, final Map<String, Part> sides,
+      final Instant cut) {
+    int n = 0;
+    for (final Map.Entry<String, Part> e : sides.entrySet()) {
+      if (e.getValue() == Part.TRAIN && issues.get(e.getKey()).resolved() > cut.toEpochMilli()) {
+        n++;
+      }
+    }
+    return n;
+  }
+
+  /**
+   * The projects with issues on the {@link Part#TEST} part of {@code sides} and none on its
+   * training part, with how many issues each has there, in order of name; {@code projects} maps
+   * each issue id to its project.
+   */
+  static Map<String, Integer> newProjects(final Map<String, String> projects,
+      final Map<String, Part> sides) {
+    return perProject(TemporalSplit.newProjects(projects, sides), projects, sides);
   }
 
   /**

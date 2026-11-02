@@ -77,6 +77,38 @@ public enum SplitRule {
   /** The rule in words, for the help text and the run records. */
   public abstract String rule();
 
+  /**
+   * The record field that names the split design a run was drawn under; only the runs of a design
+   * other than the random one write it ({@link #recordedBy}).
+   */
+  public static final String DESIGN_FIELD = "split_design";
+
+  /** The record field that gives the split's rule in words ({@link #rule}). */
+  public static final String RULE_FIELD = "split_rule";
+
+  /**
+   * The suffix of the collections the runs of this design are recorded in: none for the random
+   * rule, so its runs keep the collections they were always recorded in; {@code _temporal} for the
+   * temporal one, so neither design's runs land among the other's.
+   */
+  public String collectionSuffix() {
+    return this == RANDOM ? "" : "_" + setting();
+  }
+
+  /**
+   * The design a recorded run was drawn under: the rule its {@link #DESIGN_FIELD} names; without
+   * one, the temporal rule when its {@link #RULE_FIELD} is the temporal rule's words, otherwise the
+   * random rule, as every run recorded before the temporal design. A design no rule names is
+   * refused.
+   */
+  public static SplitRule recordedBy(final Map<String, ?> run) {
+    final Object design = run.get(DESIGN_FIELD);
+    if (design != null) {
+      return of(design.toString());
+    }
+    return TemporalSplit.RULE.equals(run.get(RULE_FIELD)) ? TEMPORAL : RANDOM;
+  }
+
   /** The setting's name in lower case, as a run writes it. */
   public String setting() {
     return name().toLowerCase(Locale.ROOT);

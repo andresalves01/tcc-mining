@@ -57,4 +57,28 @@ class SplitRuleTest {
     assertEquals(ProjectSplit.RULE, SplitRule.RANDOM.rule());
     assertEquals(TemporalSplit.RULE, SplitRule.TEMPORAL.rule());
   }
+
+  @Test
+  @DisplayName("the runs of each design are recorded in collections of their own: the random "
+      + "design's keep their names, the temporal design's take a suffix")
+  void collections() {
+    assertEquals("", SplitRule.RANDOM.collectionSuffix());
+    assertEquals("_temporal", SplitRule.TEMPORAL.collectionSuffix());
+  }
+
+  @Test
+  @DisplayName("the design of a recorded run: its split_design, or else the temporal rule when its "
+      + "split_rule is the temporal rule's words, or else random, as every run recorded before")
+  void recordedBy() {
+    assertEquals("split_design", SplitRule.DESIGN_FIELD);
+    assertEquals(SplitRule.RANDOM, SplitRule.recordedBy(Map.of("stage", "x")));
+    assertEquals(SplitRule.RANDOM, SplitRule.recordedBy(Map.of("split_rule", ProjectSplit.RULE)));
+    assertEquals(SplitRule.TEMPORAL,
+        SplitRule.recordedBy(Map.of("split_rule", TemporalSplit.RULE)));
+    assertEquals(SplitRule.TEMPORAL, SplitRule.recordedBy(Map.of("split_design", "temporal")));
+    assertEquals(SplitRule.RANDOM, SplitRule.recordedBy(Map.of("split_design", "random",
+        "split_rule", ProjectSplit.RULE)));
+    assertThrows(IllegalArgumentException.class,
+        () -> SplitRule.recordedBy(Map.of("split_design", "weekly")));
+  }
 }

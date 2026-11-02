@@ -1,12 +1,15 @@
 package app.pipeline;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import app.issues.ProjectSplit;
 import app.issues.RowCache;
+import app.issues.SplitRule;
 import app.issues.Universe;
 import app.issues.Universe.Population;
 import app.pipeline.IssuesFirstCommitAuditTask.IssueRow;
@@ -103,6 +106,77 @@ class IssuesFirstCommitExtractTaskTest {
     final long test = entries.stream()
         .filter(e -> "TEST".equals(e.outer(Population.FIRST_COMMIT))).count();
     assertEquals(fc.extraction().split().test(), test);
+  }
+
+  @Test
+  @DisplayName("the random rule is the default: the same extraction, with nothing of the temporal "
+      + "rule")
+  void randomByDefault() {
+    final IssuesFirstCommitExtractTask.Report random = new IssuesFirstCommitExtractTask(
+        fixture.source(), SilentProgress.INSTANCE, SplitRule.RANDOM).run();
+    assertEquals(fc.extraction().split(), random.extraction().split());
+    assertEquals(sides(fc.extraction().entries()), sides(random.extraction().entries()));
+    assertEquals(fc.extraction().entries().stream().map(RowCache.Entry::row).toList(),
+        random.extraction().entries().stream().map(RowCache.Entry::row).toList());
+    assertEquals(fc.threshold(), random.threshold());
+    assertNull(fc.temporal());
+    assertNull(random.temporal());
+  }
+
+  /** Each entry's id, outer side and inner side, in order. */
+  private static List<String> sides(final List<RowCache.Entry> entries) {
+    return entries.stream().map(e -> e.unit().issueId() + " "
+        + e.outer(Population.FIRST_COMMIT) + " " + e.inner(Population.FIRST_COMMIT)).toList();
+  }
+
+  @Test
+  @DisplayName("under the temporal rule: the audit's sides, cap and training targets, its cuts, "
+      + "crossing issues and new projects, the same columns, and a matrix the temporal check "
+      + "accepts and the random one does not")
+  void temporal() {
+    final IssuesFirstCommitExtractTask.Report t = new IssuesFirstCommitExtractTask(
+        fixture.source(), SilentProgress.INSTANCE, SplitRule.TEMPORAL).run();
+    final IssuesFirstCommitAuditTask.Report a = new IssuesFirstCommitAuditTask(fixture.source(),
+        SilentProgress.INSTANCE, SplitRule.TEMPORAL).run();
+    final var s = t.extraction().split();
+    final var sizes = a.sizes();
+    assertEquals(List.of(sizes.rows(), sizes.projects(), sizes.train(), sizes.test(), sizes.fit(),
+        sizes.validation()),
+        List.of(s.rows(), s.projects(), s.train(), s.test(), s.fit(), s.validation()));
+    assertEquals(a.threshold(), t.threshold());
+    assertEquals(a.training().target(), t.training());
+    assertEquals(a.temporal().cuts(), t.temporal().cuts());
+    assertEquals(a.temporal().crossing(), t.temporal().crossing());
+    assertEquals(a.temporal().innerCrossing(), t.temporal().innerCrossing());
+    assertEquals(a.temporal().newProjects(), t.temporal().newProjects());
+    assertTrue(t.temporal().cuts().inner().isBefore(t.temporal().cuts().outer()));
+
+    final Map<String, RowCache.Entry> entries = t.extraction().entries().stream()
+        .collect(Collectors.toMap(e -> e.unit().issueId(), e -> e));
+    int training = 0;
+    for (final IssueRow row : a.rows()) {
+      if (row.side() == null) {
+        assertFalse(entries.containsKey(row.id()), row.key() + " left the population");
+        continue;
+      }
+      training++;
+      final RowCache.Entry e = entries.get(row.id());
+      assertEquals("TRAIN", e.outer(Population.FIRST_COMMIT));
+      assertEquals(row.side() == IssuesFirstCommitAuditTask.Side.FIT ? "TRAIN" : "TEST",
+          e.inner(Population.FIRST_COMMIT));
+      assertEquals((double) row.count().total(),
+          e.row().values().get(IssuesFirstCommitExtractTask.TARGET), row.key());
+    }
+    assertEquals(sizes.train(), training);
+
+    assertEquals(fc.extraction().columns(), t.extraction().columns());
+    assertEquals(List.of(), SplitRule.TEMPORAL.differences(t.extraction().entries(),
+        Population.FIRST_COMMIT));
+    assertNotEquals(List.of(), SplitRule.RANDOM.differences(t.extraction().entries(),
+        Population.FIRST_COMMIT), "the fixture's two rules draw different sides");
+    for (final RowCache.Entry e : t.extraction().entries()) {
+      assertTrue(e.row().values().get(IssuesFirstCommitExtractTask.TARGET) >= 1);
+    }
   }
 
   @Test

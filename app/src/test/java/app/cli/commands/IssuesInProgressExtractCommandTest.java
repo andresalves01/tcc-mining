@@ -14,6 +14,8 @@ import app.issues.Corpus;
 import app.issues.DurationEvidence;
 import app.issues.FirstCommitFacts;
 import app.issues.RowCache;
+import app.issues.SplitRule;
+import app.issues.TemporalSplit;
 import app.issues.Universe.Population;
 import app.issues.port.ResultStore;
 import app.issues.port.StudySource;
@@ -25,9 +27,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -44,7 +48,8 @@ class IssuesInProgressExtractCommandTest {
 
   @TempDir Path dir;
 
-  private final List<Map<String, Object>> records = new ArrayList<>();
+  private final Map<String, List<Map<String, Object>>> collections = new HashMap<>();
+  private final List<Map<String, Object>> records = runs("runs");
   private int loads;
 
   private static PipelineConfig config(final String target, final String issues,
@@ -99,12 +104,47 @@ class IssuesInProgressExtractCommandTest {
   }
 
   private Context context(final PipelineConfig config) {
-    final ResultStore store = (run, rows) -> {
-      records.add(run);
-      return "run-" + records.size();
-    };
+    return context(config, new Store("runs"));
+  }
+
+  private Context context(final PipelineConfig config, final ResultStore store) {
     return new Context(config, null, null, null, null, null, null, null, null, null, null,
         SilentProgress.INSTANCE, source(), store, null);
+  }
+
+  /** The runs held by the collection {@code name}. */
+  private List<Map<String, Object>> runs(final String name) {
+    return collections.computeIfAbsent(name, k -> new ArrayList<>());
+  }
+
+  /**
+   * A store of run collections held in memory, as the Mongo one keeps them: the random design's
+   * in {@code runs}, every other design's in {@code runs} with the design's suffix.
+   */
+  private final class Store implements ResultStore {
+    private final String collection;
+
+    Store(final String collection) {
+      this.collection = collection;
+    }
+
+    @Override
+    public String record(final Map<String, Object> run, final List<Map<String, Object>> rows) {
+      runs(collection).add(run);
+      return collection + "-" + runs(collection).size();
+    }
+
+    @Override
+    public ResultStore design(final SplitRule rule) {
+      return new Store("runs" + rule.collectionSuffix());
+    }
+
+    @Override
+    public Optional<Set<SplitRule>> designs() {
+      final Set<SplitRule> out = new HashSet<>();
+      runs(collection).forEach(r -> out.add(SplitRule.recordedBy(r)));
+      return Optional.of(out);
+    }
   }
 
   private static String goldenCache() throws Exception {
@@ -201,5 +241,118 @@ class IssuesInProgressExtractCommandTest {
         Map.of("CACHE", dir.resolve("x.tsv").toString(), "POPULATION", "CREATION")::get)
         .run(context(firstCommit())));
     assertEquals(0, loads);
+  }
+
+  private static String golden(final String name) throws Exception {
+    try (InputStream in = app.pipeline.ExtractionFixture.class.getResourceAsStream(name)) {
+      assertNotNull(in, name);
+      return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+    }
+  }
+
+  @Test
+  @DisplayName("POPULATION=FIRST_COMMIT under the random rule, unset or named, writes the cache "
+      + "and the run record of before, byte for byte, to the collection of before")
+  void firstCommitRandomAsBefore() throws Exception {
+    for (final Map<String, String> rule : List.of(Map.<String, String>of(),
+        Map.of("SPLIT_RULE", "random"))) {
+      collections.values().forEach(List::clear);
+      final Path cache = dir.resolve("first-commit-" + rule.size() + ".tsv");
+      final Map<String, String> settings = new HashMap<>(rule);
+      settings.put("CACHE", cache.toString());
+      settings.put("POPULATION", "FIRST_COMMIT");
+      new IssuesInProgressExtractCommand(settings::get).run(context(firstCommit()));
+      assertEquals(golden("first-commit-extract-golden.tsv"), Files.readString(cache));
+      assertEquals(1, records.size());
+      assertEquals(golden("first-commit-extract-golden-run.txt"),
+          records.getFirst().toString() + "\n");
+      assertTrue(runs("runs_temporal").isEmpty());
+    }
+  }
+
+  @Test
+  @DisplayName("POPULATION=FIRST_COMMIT SPLIT_RULE=temporal records in the temporal design's own "
+      + "collection the rule, both cuts, the crossing issues, the new projects and the cap, and "
+      + "writes a cache of the same columns whose sides the temporal check accepts")
+  void firstCommitTemporal() throws Exception {
+    final Path cache = dir.resolve("temporal.tsv");
+    new IssuesInProgressExtractCommand(Map.of("CACHE", cache.toString(),
+        "POPULATION", "FIRST_COMMIT", "SPLIT_RULE", "temporal")::get).run(context(firstCommit()));
+    assertEquals(1, loads);
+    assertTrue(records.isEmpty(), "nothing in the random design's collection");
+    assertEquals(1, runs("runs_temporal").size());
+    final Map<String, Object> run = runs("runs_temporal").getFirst();
+    assertEquals("temporal", run.get("split_design"));
+    assertEquals(TemporalSplit.RULE, run.get("split_rule"));
+    assertFalse(run.containsKey("split_seed"));
+    assertFalse(run.containsKey("split_share"));
+    final Map<?, ?> cuts = (Map<?, ?>) run.get("split_cuts");
+    final Instant outer = Instant.parse((String) cuts.get("outer"));
+    final Instant inner = Instant.parse((String) cuts.get("inner"));
+    assertTrue(inner.isBefore(outer));
+    final Map<?, ?> crossing = (Map<?, ?>) run.get("crossing_the_cut");
+    assertTrue(crossing.get("outer_training") instanceof Integer);
+    assertTrue(crossing.get("inner_fitting") instanceof Integer);
+    final Map<?, ?> fresh = (Map<?, ?>) run.get("new_projects");
+    final Map<?, ?> perProject = (Map<?, ?>) fresh.get("issues_per_project");
+    assertEquals(perProject.size(), fresh.get("projects"));
+    assertEquals(perProject.values().stream().mapToInt(v -> (Integer) v).sum(),
+        fresh.get("issues"));
+    assertTrue(((Map<?, ?>) run.get("wait_cap")).containsKey("cap"));
+    assertEquals(SplitRule.TEMPORAL, SplitRule.recordedBy(run));
+
+    final List<RowCache.Entry> back = RowCache.read(cache);
+    assertEquals(List.of(), SplitRule.TEMPORAL.differences(back, Population.FIRST_COMMIT));
+    assertEquals(golden("first-commit-extract-golden.tsv").lines().findFirst().orElseThrow(),
+        Files.readAllLines(cache).getFirst(), "the same columns as the random design's matrix");
+    final Map<?, ?> sizes = (Map<?, ?>) run.get("split_sizes");
+    final Map<String, Integer> sides = new HashMap<>();
+    back.forEach(e -> sides.merge(e.outer(Population.FIRST_COMMIT), 1, Integer::sum));
+    assertEquals(sizes.get("outer_training"), sides.get("TRAIN"));
+    assertEquals(sizes.get("outer_test"), sides.get("TEST"));
+  }
+
+  @Test
+  @DisplayName("the first-commit extraction refuses, before reading anything, a run collection "
+      + "that already holds a run of another design, or a store that cannot tell")
+  void refusesAnotherDesign() {
+    final Path cache = dir.resolve("cache.tsv");
+    runs("runs_temporal").add(new HashMap<>(Map.of("stage", "issues-in-progress-extract",
+        "split_rule", app.issues.ProjectSplit.RULE)));
+    assertThrows(CommandFailedException.class, () -> new IssuesInProgressExtractCommand(
+        Map.of("CACHE", cache.toString(), "POPULATION", "FIRST_COMMIT",
+            "SPLIT_RULE", "temporal")::get).run(context(firstCommit())));
+    collections.values().forEach(List::clear);
+    records.add(new HashMap<>(Map.of("stage", "issues-in-progress-similarity",
+        "split_rule", TemporalSplit.RULE)));
+    assertThrows(CommandFailedException.class, () -> new IssuesInProgressExtractCommand(
+        Map.of("CACHE", cache.toString(), "POPULATION", "FIRST_COMMIT")::get)
+        .run(context(firstCommit())));
+    collections.values().forEach(List::clear);
+    final ResultStore blind = (run, rows) -> "run";
+    for (final String rule : List.of("random", "temporal")) {
+      assertThrows(CommandFailedException.class, () -> new IssuesInProgressExtractCommand(
+          Map.of("CACHE", cache.toString(), "POPULATION", "FIRST_COMMIT",
+              "SPLIT_RULE", rule)::get).run(context(firstCommit(), blind)));
+    }
+    assertEquals(0, loads, "the corpus was not read");
+    assertTrue(collections.values().stream().allMatch(List::isEmpty), "nothing was recorded");
+    assertFalse(Files.exists(cache));
+  }
+
+  @Test
+  @DisplayName("a temporal rule, or an unknown one, is refused for the In Progress population "
+      + "before reading anything")
+  void inProgressRefusesTemporal() {
+    for (final String rule : List.of("temporal", "weekly")) {
+      assertThrows(CommandFailedException.class, () -> new IssuesInProgressExtractCommand(
+          Map.of("CACHE", dir.resolve("x.tsv").toString(), "SPLIT_RULE", rule)::get)
+          .run(context(defaults())));
+    }
+    assertThrows(CommandFailedException.class, () -> new IssuesInProgressExtractCommand(
+        Map.of("CACHE", dir.resolve("x.tsv").toString(), "POPULATION", "FIRST_COMMIT",
+            "SPLIT_RULE", "weekly")::get).run(context(firstCommit())));
+    assertEquals(0, loads);
+    assertTrue(records.isEmpty());
   }
 }
