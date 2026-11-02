@@ -7,9 +7,9 @@ import app.issues.Extractor;
 import app.issues.SplitRule;
 import app.issues.TeamColumns;
 import app.issues.Universe.Population;
+import app.issues.port.ResultStore;
 import app.pipeline.IssuesFirstCommitExtractTask;
 import app.pipeline.IssuesInProgressExtractTask;
-import app.issues.port.ResultStore;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -64,15 +64,7 @@ public final class IssuesInProgressTeamCommand implements CommandRunner {
     } catch (final IllegalArgumentException e) {
       throw new CommandFailedException(List.of("  " + e.getMessage()));
     }
-    final ResultStore store;
-    if (firstCommit) {
-      IssuesInProgressExtractCommand.requireOwnDatabases(context.config());
-      store = rule == SplitRule.TEMPORAL
-          ? IssuesInProgressExtractCommand.requireOwnDesign(context.issuesResults(), rule)
-          : context.issuesResults();
-    } else {
-      store = context.issuesResults();
-    }
+    final ResultStore store = IssuesInProgressExtractCommand.runStore(context, population, rule);
     final IssuesInProgressExtractTask.Report r = firstCommit
         ? new IssuesFirstCommitExtractTask(context.study(), context.progress(), rule).run()
             .extraction()

@@ -18,6 +18,7 @@ import app.issues.Universe.Population;
 import app.issues.model.Cell;
 import app.issues.model.Fitting;
 import app.issues.model.Forest;
+import app.issues.port.ResultStore;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -150,16 +151,8 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
           + e.getMessage()));
     }
     final boolean firstCommit = study == Population.FIRST_COMMIT;
-    final app.issues.port.ResultStore store;
-    if (firstCommit) {
-      // before any row is read: the first-commit study records its runs in its own databases
-      IssuesInProgressExtractCommand.requireOwnDatabases(context.config());
-      store = rule == SplitRule.TEMPORAL
-          ? IssuesInProgressExtractCommand.requireOwnDesign(context.issuesResults(), rule)
-          : context.issuesResults();
-    } else {
-      store = context.issuesResults();
-    }
+    // before any row is read, choose the run store of the declared design
+    final ResultStore store = IssuesInProgressExtractCommand.runStore(context, study, rule);
 
     final String matrixSha;
     final List<RowCache.Entry> entries;

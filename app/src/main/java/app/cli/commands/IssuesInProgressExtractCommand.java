@@ -195,6 +195,17 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
     return own;
   }
 
+  /** The run store of a later stage, leaving the existing random run path unchanged. */
+  static ResultStore runStore(final Context context, final Population population,
+      final SplitRule rule) throws CommandFailedException {
+    if (population != Population.FIRST_COMMIT) {
+      return context.issuesResults();
+    }
+    requireOwnDatabases(context.config());
+    return rule == SplitRule.TEMPORAL
+        ? requireOwnDesign(context.issuesResults(), rule) : context.issuesResults();
+  }
+
   /**
    * The first-commit extraction: refuses the In Progress study's databases, and a run collection
    * holding another design's runs, before reading anything; records the run in ISSUES_DB, in the

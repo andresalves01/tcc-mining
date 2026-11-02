@@ -127,15 +127,7 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
       throw new CommandFailedException(List.of("  could not read " + matrix + ": " + e));
     }
     final boolean firstCommit = population == Population.FIRST_COMMIT;
-    final ResultStore store;
-    if (firstCommit) {
-      IssuesInProgressExtractCommand.requireOwnDatabases(context.config());
-      store = rule == SplitRule.TEMPORAL
-          ? IssuesInProgressExtractCommand.requireOwnDesign(context.issuesResults(), rule)
-          : context.issuesResults();
-    } else {
-      store = context.issuesResults();
-    }
+    final ResultStore store = IssuesInProgressExtractCommand.runStore(context, population, rule);
 
     System.out.printf("%n  DURATION FROM %s -- DESCRIPTION SIMILARITY -- RETROSPECTIVE "
         + "SCENARIO%n", firstCommit ? "THE FIRST COMMIT" : "IN PROGRESS");

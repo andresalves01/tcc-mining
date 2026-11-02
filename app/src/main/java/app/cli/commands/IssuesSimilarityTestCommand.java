@@ -16,10 +16,10 @@ import app.issues.RowCache;
 import app.issues.SimilarityScoring;
 import app.issues.SplitRule;
 import app.issues.TailCut;
-import app.issues.port.ResultStore;
 import app.issues.model.Fitting;
 import app.issues.model.Forest;
 import app.issues.model.ProjectBootstrap;
+import app.issues.port.ResultStore;
 import app.model.Parallel;
 import app.pipeline.embedding.EmbeddingModel;
 import app.study.model.Breakdown;
@@ -295,7 +295,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
               + "population's split"));
         }
         if (rule == SplitRule.TEMPORAL) {
-          store = IssuesInProgressExtractCommand.requireOwnDesign(store, rule);
+          store = IssuesInProgressExtractCommand.runStore(context, study, rule);
         }
         if (Files.exists(predictionsFile)) {
           throw new CommandFailedException(List.of("  REFUSED, nothing was read, scored, "

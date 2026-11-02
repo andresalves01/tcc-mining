@@ -152,15 +152,7 @@ public final class IssuesSimilarityCommand implements CommandRunner {
           + e.getMessage()));
     }
     final boolean firstCommit = population == Population.FIRST_COMMIT;
-    final ResultStore store;
-    if (firstCommit) {
-      IssuesInProgressExtractCommand.requireOwnDatabases(context.config());
-      store = rule == SplitRule.TEMPORAL
-          ? IssuesInProgressExtractCommand.requireOwnDesign(context.issuesResults(), rule)
-          : context.issuesResults();
-    } else {
-      store = context.issuesResults();
-    }
+    final ResultStore store = IssuesInProgressExtractCommand.runStore(context, population, rule);
     System.out.printf("%n  DURATION FROM %s -- DESCRIPTION SIMILARITY%n",
         firstCommit ? "THE FIRST COMMIT" : "IN PROGRESS");
     System.out.printf("  matrix read %s  sha256 %s (%,d rows)%n", cache, cacheSha,
