@@ -300,7 +300,7 @@ public enum Command {
       of the inner fitting rows at or below the chosen k's fence. The
       parameters file then gives the tree count (forest every_model trees)
       and the chosen column (analogy chosen column), and the run record
-      states both and every candidate's error."""),
+      states both and every similarity median's error."""),
 
   ISSUES_SIMILARITY_TEST("issues-in-progress-similarity-test",
       new IssuesSimilarityTestCommand(), """
@@ -411,7 +411,8 @@ public enum Command {
       one SPLIT_RULE declares, which the report describes. Under
       SPLIT_RULE=temporal the analogy estimate is the fifteenth model, read
       in the inner column the parameters file froze, its fallback the
-      global median of the cut inner fitting rows, with its paired
+      global median of the inner fitting rows at or below the chosen k's
+      fence, with its paired
       comparisons; the forests are refitted with the file's tree count;
       every model gets its MMRE and Pred(25); and, when the inner
       validation holds a new project (issues there and none in the inner

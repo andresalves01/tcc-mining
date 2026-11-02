@@ -56,8 +56,8 @@ import java.util.function.Function;
  * analogy estimate, the fifteenth model, is chosen on the same usual-flow validation issues
  * ({@link ElasticNetSelection#run(List, int, Population, SplitRule)}); the parameters file then
  * names the rule in its header and gives the tree count and the chosen column, which the record
- * states with every candidate's error. Under the random split the file and the record are as
- * before it.
+ * states with every similarity median's error. Under the random split the file and the record
+ * are as before it.
  *
  * <p>The target is whole business days, on the issues of at least one ({@link BusinessDays}):
  * the outer training rows are read with each one's day boundary from the matrix, any of 0
@@ -289,7 +289,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     final boolean temporal = rule == SplitRule.TEMPORAL;
     if (temporal) {
       System.out.printf("%n  random forests: %d trees each (%s)%n", r.trees(), TEMPORAL_TREES);
-      System.out.printf(java.util.Locale.ROOT, "  %s; fallback %.3f bd (candidate: MAE bd, "
+      System.out.printf(java.util.Locale.ROOT, "  %s; fallback %.3f bd (similarity median: MAE bd, "
           + "issues given the fallback, of %,d)%n", ANALOGY_RULE, r.analogyFallback(),
           r.validationRows());
       for (final AnalogyEstimate.Candidate c : r.analogy().candidates()) {
@@ -497,15 +497,15 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     out.put("rule", ANALOGY_RULE);
     out.put("column", r.analogy().chosen());
     out.put("fallback_business_days", r.analogyFallback());
-    final List<Map<String, Object>> candidates = new ArrayList<>();
+    final List<Map<String, Object>> medians = new ArrayList<>();
     for (final AnalogyEstimate.Candidate c : r.analogy().candidates()) {
       final Map<String, Object> one = new LinkedHashMap<>();
-      one.put("candidate", c.name());
+      one.put("median", c.name());
       one.put("mae_business_days", c.mae());
       one.put("fallbacks", c.fallbacks());
-      candidates.add(one);
+      medians.add(one);
     }
-    out.put("candidates", candidates);
+    out.put("similarity_medians", medians);
     return out;
   }
 

@@ -66,10 +66,10 @@ import java.util.function.Function;
  * rule must be the one {@code SPLIT_RULE} declares, which the report describes ({@link
  * IssuesSimilarityTestCommand#otherDesign}). Under the temporal rule the analogy estimate is the
  * fifteenth model, read in the inner column the file froze, its fallback the global median of the
- * cut inner fitting rows, and the forests are refitted with the file's tree count; every model
- * gets its MMRE and Pred(25); and when the inner validation holds a new project, both readings
- * are given again without its issues, the prediction intervals apart. Under the random rule the
- * files are as before it.
+ * inner fitting rows at or below the chosen k's fence, and the forests are refitted with the file's
+ * tree count; every model gets its MMRE and Pred(25); and when the inner validation holds a new
+ * project, both readings are given again without its issues, the prediction intervals apart. Under
+ * the random rule the files are as before it.
  *
  * <p><b>Optimistic.</b> The settings were chosen on this same inner validation, so every figure
  * of the report is optimistic; the report says so on top. It is a reading of the development
@@ -278,12 +278,12 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     files.put(REPORT, report(readings, withoutNew, intervals, relevance, population, chosen,
         matrix, elasticNet, study, rule));
     final Side side = Side.of(study);
-    final List<SimilarityScoring.Report> read = every(readings, withoutNew);
+    final List<SimilarityScoring.Report> scored = readingsOf(readings, withoutNew);
     files.put(PREDICTIONS, predictions(readings, side));
-    files.put(MODELS, models(read, temporal));
-    files.put(BANDS, bands(read));
-    files.put(COMPARISONS, comparisons(read, side));
-    files.put(ORDERING, ordering(read));
+    files.put(MODELS, models(scored, temporal));
+    files.put(BANDS, bands(scored));
+    files.put(COMPARISONS, comparisons(scored, side));
+    files.put(ORDERING, ordering(scored));
     files.put(DIAGNOSTICS, IssuesSimilarityTestCommand.diagnostics(main));
     files.put(IMPORTANCE, IssuesSimilarityTestCommand.importance(main));
     files.put(INTERVALS, intervals(intervals, main.bandTops()));
@@ -324,7 +324,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
    * Both readings, the main one first, then, when given, both again without the issues of new
    * projects.
    */
-  private static List<SimilarityScoring.Report> every(final SimilarityScoring.Readings r,
+  private static List<SimilarityScoring.Report> readingsOf(final SimilarityScoring.Readings r,
       final SimilarityScoring.Readings withoutNew) {
     return withoutNew == null ? List.of(r.main(), r.complementary())
         : List.of(r.main(), r.complementary(), withoutNew.main(), withoutNew.complementary());
@@ -472,9 +472,8 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
    * The report in words and tables: the optimism stated first, then the tail cut, then every
    * table of the main reading, the usual flow, then the same of the complementary one, every
    * validation issue.
-   */
-  /**
-   * Under the temporal split it also states the forests' tree count, the analogy estimate's
+   *
+   * <p>Under the temporal split it also states the forests' tree count, the analogy estimate's
    * frozen column and fallback, and the new projects of the inner validation, gives every model's
    * MMRE and Pred(25), and, with {@code withoutNew}, every table again without the issues of new
    * projects, the prediction intervals apart.
@@ -580,12 +579,10 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     section(md, readings.main(), intervals, "Main reading: the usual flow", side, temporal);
     section(md, r, intervals, "Complementary reading: all issues", side, temporal);
     if (withoutNew != null) {
-      final String without = f(" without the issues of new projects (%d issues of %s)",
-          r.newProjectRows(), r.newProjects());
-      section(md, withoutNew.main(), intervals, "Main reading: the usual flow" + without, side,
-          temporal);
+      section(md, withoutNew.main(), intervals, "Main reading: the usual flow"
+          + without(withoutNew.main()), side, temporal);
       section(md, withoutNew.complementary(), intervals, "Complementary reading: all issues"
-          + without, side, temporal);
+          + without(withoutNew.complementary()), side, temporal);
     }
     relevance(md, relevance, readings.main());
     md.add("Files beside this one: " + String.join(", ", OUTPUTS.subList(1, OUTPUTS.size()))
@@ -593,7 +590,16 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     return md;
   }
 
-  /** The global median a report's references learned, the analogy estimate's fallback. */
+  /** A heading's note on a reading without the issues of new projects: how many, of which. */
+  private static String without(final SimilarityScoring.Report r) {
+    return f(" without the issues of new projects (%d issues of %s)", r.newProjectRows(),
+        r.newProjects());
+  }
+
+  /**
+   * The global median a report's references learned (the global median's estimate is that one
+   * value for every issue): the analogy estimate's fallback.
+   */
   private static double global(final SimilarityScoring.Report r) {
     return r.models().stream().filter(m -> m.name().equals(SimilarityScoring.GLOBAL)).findFirst()
         .orElseThrow().predicted()[0];

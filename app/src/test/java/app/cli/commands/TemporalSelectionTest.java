@@ -116,7 +116,8 @@ class TemporalSelectionTest {
     assertEquals(500, ((Map<?, ?>) run.get("forest_grid")).get("trees"));
     final Map<?, ?> analogy = (Map<?, ?>) run.get("analogy_estimate");
     assertEquals(expected.chosen(), analogy.get("column"));
-    assertEquals(AnalogyEstimate.CANDIDATES.size(), ((List<?>) analogy.get("candidates")).size());
+    assertEquals(AnalogyEstimate.CANDIDATES.size(),
+        ((List<?>) analogy.get("similarity_medians")).size());
   }
 
   @Test
@@ -140,8 +141,8 @@ class TemporalSelectionTest {
     }
     // the analogy estimate's MAE is the one its choice was made on
     final Map<?, ?> analogy = (Map<?, ?>) runs.getFirst().get("analogy_estimate");
-    final double chosenMae = ((List<?>) analogy.get("candidates")).stream()
-        .map(c -> (Map<?, ?>) c).filter(c -> c.get("candidate").equals(analogy.get("column")))
+    final double chosenMae = ((List<?>) analogy.get("similarity_medians")).stream()
+        .map(c -> (Map<?, ?>) c).filter(c -> c.get("median").equals(analogy.get("column")))
         .mapToDouble(c -> (Double) c.get("mae_business_days")).findFirst().orElseThrow();
     final List<String> header = List.of(models.getFirst().split("\t"));
     final String[] a = row(models, "usual_flow", SimilarityScoring.ANALOGY);
