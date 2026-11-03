@@ -114,6 +114,11 @@ public final class PredictionIntervals {
     public double[] interval(final int level, final double prediction) {
       return PredictionIntervals.interval(prediction, factors[level], floor);
     }
+
+    /** Whether {@code observed} lies in the interval at the level of index {@code level}. */
+    public boolean covers(final int level, final double prediction, final double observed) {
+      return PredictionIntervals.covers(prediction, factors[level], floor, observed);
+    }
   }
 
   /**
@@ -217,6 +222,24 @@ public final class PredictionIntervals {
     final double low = Math.max(floor, Math.expm1(centre - factor));
     final double high = Math.max(floor, Math.expm1(centre + factor));
     return new double[] {low, high};
+  }
+
+  /**
+   * Whether {@code observed} lies in {@link #interval}{@code (prediction, factor, floor)}, decided
+   * on the log1p scale where the factor was chosen: the signed residual {@code log1p(observed) -
+   * log1p(prediction)}, the same expression the factor was taken from, within {@code +- factor},
+   * plus the floor's two rules (nothing below it is covered; an upper end raised to it covers it).
+   * Comparing with the limits instead misses observations whose residual equals the factor, since
+   * {@code expm1(log1p(5) - ln 3)} is 1.0000000000000002, not 1: with whole business days and a
+   * constant estimate, that left out every issue of 1 or 17 days around the global median of 5.
+   */
+  public static boolean covers(final double prediction, final double factor, final double floor,
+      final double observed) {
+    if (observed < floor) {
+      return false;
+    }
+    final double signed = Math.log1p(observed) - Math.log1p(prediction);
+    return -signed <= factor && (signed <= factor || observed == floor);
   }
 
   /**
@@ -326,7 +349,7 @@ public final class PredictionIntervals {
         final double[] globalWidth = new double[predicted.length];
         for (final int i : rows) {
           final double[] in = c.interval(l, predicted[i]);
-          covered[i] = in[0] <= s.observed()[i] && s.observed()[i] <= in[1] ? 1 : 0;
+          covered[i] = c.covers(l, predicted[i], s.observed()[i]) ? 1 : 0;
           width[i] = in[1] - in[0];
           final double[] g = calibrations.get(global).interval(l, s.predicted().get(global)[i]);
           globalWidth[i] = g[1] - g[0];

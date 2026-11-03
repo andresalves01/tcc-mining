@@ -1,6 +1,7 @@
 package app.issues;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -90,6 +91,33 @@ class PredictionIntervalsTest {
     assertEquals(1, tiny[1]);
     assertEquals(Double.POSITIVE_INFINITY, PredictionIntervals.interval(3, Double
         .POSITIVE_INFINITY, PredictionIntervals.FLOOR)[1]);
+  }
+
+  @Test
+  @DisplayName("an observation whose residual equals the factor is covered, even where the "
+      + "limits, taken back through expm1, miss it by rounding")
+  void residualAtTheFactorIsCovered() {
+    // the temporal test's global median: 5 business days; durations of 1 and 17 both sit at ln 3
+    final double factor = PredictionIntervals.factor(new double[] {
+        Math.abs(Math.log1p(1) - Math.log1p(5))}, 0.5);
+    final double[] in = PredictionIntervals.interval(5, factor, PredictionIntervals.FLOOR);
+    // the limits are 1 and 17 only up to rounding: compared as numbers they would leave both out
+    assertTrue(in[0] > 1 && in[1] < 17, "the rounding this test guards against no longer occurs");
+    for (final double observed : new double[] {1, 2, 5, 16, 17}) {
+      assertTrue(PredictionIntervals.covers(5, factor, PredictionIntervals.FLOOR, observed),
+          "covers " + observed);
+    }
+    assertFalse(PredictionIntervals.covers(5, factor, PredictionIntervals.FLOOR, 18));
+    // the floor: nothing below it is covered; at it, an interval raised to it covers
+    assertFalse(PredictionIntervals.covers(0.2, 0.1, PredictionIntervals.FLOOR, 0.5));
+    assertTrue(PredictionIntervals.covers(0.2, 0.1, PredictionIntervals.FLOOR, 1));
+    assertFalse(PredictionIntervals.covers(9, Math.log(2), PredictionIntervals.FLOOR, 1));
+    assertTrue(PredictionIntervals.covers(9, Math.log(2), PredictionIntervals.FLOOR, 5));
+    assertTrue(PredictionIntervals.covers(9, Math.log(2), PredictionIntervals.FLOOR, 15));
+    assertTrue(PredictionIntervals.covers(3, Double.POSITIVE_INFINITY, PredictionIntervals.FLOOR,
+        1e9));
+    // the legacy floor of zero
+    assertTrue(PredictionIntervals.covers(0, 0, 0, 0));
   }
 
   @Test
