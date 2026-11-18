@@ -141,7 +141,18 @@ final class SelectionFixture {
    * sides are the same.
    */
   static Path temporal(final Path path, final int newIssues) throws IOException {
-    return drawn(path, newIssues, SplitRule.TEMPORAL);
+    return temporal(path, newIssues, 0);
+  }
+
+  /**
+   * {@link #temporal(Path, int)} with the first {@code testIssues} outer test issues, in the
+   * order of their start, moved to {@code p4} too: with its inner validation issues on the outer
+   * training side, {@code p4} is no new project to the outer model, but it has no inner fitting
+   * row, so it is new to the inner model, which predicts those outer test issues.
+   */
+  static Path temporal(final Path path, final int newIssues, final int testIssues)
+      throws IOException {
+    return drawn(path, newIssues, testIssues, SplitRule.TEMPORAL);
   }
 
   /**
@@ -151,11 +162,18 @@ final class SelectionFixture {
    * business days longer, crosses; so do the issues started shortly before each cut.
    */
   static Path revised(final Path path) throws IOException {
-    return drawn(path, 0, SplitRule.REVISED);
+    return revised(path, 0, 0);
   }
 
-  /** The rows of {@link #temporal(Path, int)} at the verdicts {@code rule} draws. */
-  private static Path drawn(final Path path, final int newIssues, final SplitRule rule)
+  /** {@link #temporal(Path, int, int)} at the revised design's verdicts, as {@link #revised(Path)}. */
+  static Path revised(final Path path, final int newIssues, final int testIssues)
+      throws IOException {
+    return drawn(path, newIssues, testIssues, SplitRule.REVISED);
+  }
+
+  /** The rows of {@link #temporal(Path, int, int)} at the verdicts {@code rule} draws. */
+  private static Path drawn(final Path path, final int newIssues, final int testIssues,
+      final SplitRule rule)
       throws IOException {
     final Population population = Population.FIRST_COMMIT;
     final List<RowCache.Entry> moved = new ArrayList<>();
@@ -176,7 +194,11 @@ final class SelectionFixture {
     final List<String> renamed = moved.stream()
         .filter(e -> parts.inner().get(e.unit().issueId()) == Part.TEST)
         .sorted(java.util.Comparator.comparing((RowCache.Entry e) -> e.unit().startedAt()))
-        .limit(newIssues).map(e -> e.unit().issueId()).toList();
+        .limit(newIssues).map(e -> e.unit().issueId()).collect(
+            java.util.stream.Collectors.toCollection(ArrayList::new));
+    moved.stream().filter(e -> parts.outer().get(e.unit().issueId()) == Part.TEST)
+        .sorted(java.util.Comparator.comparing((RowCache.Entry e) -> e.unit().startedAt()))
+        .limit(testIssues).map(e -> e.unit().issueId()).forEach(renamed::add);
     final List<RowCache.Entry> out = new ArrayList<>();
     for (final RowCache.Entry e : moved) {
       final String id = e.unit().issueId();

@@ -63,7 +63,9 @@ public final class Help {
           PILOT             (unset)             ledger and funnel: restrict to matching projects
           REPORT_DIR        (unset)             issues-in-progress-similarity,
                                                 issues-in-progress-similarity-test and
-                                                -inner-report: where their files go
+                                                -inner-report: where their files go;
+                                                issues-first-commit-same-model-calibration:
+                                                a new folder, never the test step's
           MATRIX            (unset)             issues-in-progress-similarity: the augmented matrix
                                                 written; issues-in-progress-retrospective,
                                                 issues-in-progress-similarity-elastic-net, -test
@@ -101,6 +103,9 @@ public final class Help {
                                                 fences and each k's error;
                                                 issues-in-progress-similarity-test and
                                                 -inner-report read it
+          TEST_PREDICTIONS  (unset)             issues-first-commit-analogy and
+                                                -same-model-calibration: the test step's
+                                                similarity-test-predictions.tsv, read only
           AUDIT_DIR         (unset)             issues-first-commit-audit: where audit.md and
                                                 per-issue.tsv go
           SUPPORTING_DIR    (unset)             issues-first-commit-supporting-numbers: where

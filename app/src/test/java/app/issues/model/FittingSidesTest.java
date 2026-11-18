@@ -59,6 +59,26 @@ class FittingSidesTest {
   }
 
   @Test
+  @DisplayName("INNER_MODEL_ON_TEST fits exactly what INNER fits, case 1, never a crossing issue, "
+      + "and scores the whole inner validation, then the outer test, whatever the rows' order")
+  void innerModelOnTest() {
+    final List<RowCache.Entry> shuffled = List.of(entry("t1", "TEST", ""), FIVE.get(3),
+        FIVE.get(1), entry("t2", "TEST", ""), FIVE.get(0), FIVE.get(4), FIVE.get(2));
+    final Fitting.Sides s = Fitting.sides(shuffled, Fitting.Mode.INNER_MODEL_ON_TEST, P);
+    assertEquals(List.of("c1"), ids(s.fitUnits()));
+    assertEquals(ids(Fitting.sides(shuffled, Fitting.Mode.INNER, P).fitUnits()),
+        ids(s.fitUnits()));
+    assertEquals(List.of("c4", "c5", "t1", "t2"), ids(s.scoreUnits()));
+    assertEquals(s.scoreUnits().size(), s.scoreRows().size());
+    assertEquals(List.of("c4", "c5", "t1", "t2"),
+        s.scoreRows().stream().map(Row::unitId).toList());
+    assertEquals(s.scoreUnits().size(), s.observed().length);
+    // INNER still refuses the outer test: it is in neither of its sides
+    final Fitting.Sides inner = Fitting.sides(shuffled, Fitting.Mode.INNER, P);
+    assertEquals(List.of("c4", "c5"), ids(inner.scoreUnits()));
+  }
+
+  @Test
   @DisplayName("without crossing verdicts, the sides of before: the inner fitting and validation, "
       + "the outer training and test")
   void oldRules() {
