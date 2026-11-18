@@ -315,8 +315,9 @@ public final class IssuesSimilarityCommand implements CommandRunner {
           f.fitted() ? String.format("distortion %.6f", f.distortion()) : "not fitted");
     }
     System.out.printf("%n  HISTORIES: %s%n", rule.pointInTime()
-        ? "point-in-time, only the training side's issues resolved before each row's first "
-            + "commit; the outer test also answers at the inner level"
+        ? "point-in-time, only the training side's issues that teach there, first resolved "
+            + "strictly before each row's first commit; the outer test also answers at the "
+            + "inner level"
         : "each split's whole training side, whatever the dates");
     for (final Augmentation.History h : r.result().histories()) {
       System.out.printf("    %-6s %,6d rows read it  history %,6d%n", name(h.variant()),

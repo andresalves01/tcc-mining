@@ -133,7 +133,15 @@ public final class Augmentation {
 
     /** Whether {@code member}, a member that teaches, may enter {@code query}'s history. */
     boolean admits(final Issue query, final Issue member) {
-      return this == WHOLE_SIDE || member.resolved() < query.start();
+      return this == WHOLE_SIDE || admits(member.resolved(), query.start());
+    }
+
+    /**
+     * The point-in-time rule itself: a member resolved strictly before the query's start. The one
+     * place it is written, read by {@link #admits(Issue, Issue)} and by the embedding search.
+     */
+    static boolean admits(final long resolved, final long start) {
+      return resolved < start;
     }
   }
 
@@ -184,10 +192,6 @@ public final class Augmentation {
       return Verdict.scored(this, outer, inner);
     }
 
-    public String split(final Issue i) {
-      return split(i, Histories.WHOLE_SIDE);
-    }
-
     /**
      * The rows that read this level under {@code design}: its training side that teaches, its
      * scored rows, and under a point-in-time history the outer test at the inner level too.
@@ -217,7 +221,8 @@ public final class Augmentation {
    * One extracted issue.
    *
    * @param reporter the canonical person who opened it
-   * @param start the first In Progress, epoch milliseconds
+   * @param start the start, epoch milliseconds: the first In Progress, or the first commit in the
+   *     first-commit study
    * @param resolved the first resolution, epoch milliseconds
    * @param innerDays its status-adjusted business days at its own day boundary; what the inner
    *     history reads, with 0 excluded
@@ -933,7 +938,7 @@ public final class Augmentation {
                 continue;
               }
               // a point-in-time history: only the members resolved before the query's start
-              if (pointInTime && resolved[j] >= start[q]) {
+              if (pointInTime && !Histories.admits(resolved[j], start[q])) {
                 continue;
               }
               final double s = Math.max(-1.0, Math.min(1.0, vectors.dot(row[q], rows[j])));

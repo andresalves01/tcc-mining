@@ -117,7 +117,16 @@ public final class IssuesSimilarityTask {
       final Embedder embedder, final Clusterer clusterer, final Population population,
       final SplitRule rule) {
     this(source, progress, e -> rule.differences(e, population), embedder,
-        EmbeddingModel.DIMENSION, clusterer, population, rule);
+        EmbeddingModel.DIMENSION, clusterer, population, declared(population, rule));
+  }
+
+  /** The rule, refused for the In Progress study, whose split is the random one alone. */
+  private static SplitRule declared(final Population population, final SplitRule rule) {
+    if (population == Population.IN_PROGRESS && rule != SplitRule.RANDOM) {
+      throw new IllegalArgumentException("the rule " + rule.setting() + " was declared for the "
+          + "In Progress study, whose split is the random one alone");
+    }
+    return rule;
   }
 
   /**

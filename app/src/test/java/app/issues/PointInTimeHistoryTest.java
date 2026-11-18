@@ -424,6 +424,30 @@ class PointInTimeHistoryTest {
   }
 
   @Test
+  @DisplayName("moving only the outer test rows moves no outer column, of any row")
+  void outerTestMovesNoOuterColumn() {
+    final List<Augmentation.Issue> rows = temporal(17);
+    final Map<String, Map<String, Double>> before = run(rows, Histories.POINT_IN_TIME).columns();
+    final List<Augmentation.Issue> moved = rows.stream()
+        .map(i -> "TEST".equals(i.outer())
+            ? new Augmentation.Issue(i.id(), i.project(), i.reporter(), i.start(),
+                i.resolved() + 5_000 * H, i.innerDays() + 5_000, i.outerDays() + 5_000,
+                i.outer(), i.inner(), i.description())
+            : i).toList();
+    final Map<String, Map<String, Double>> after = run(moved, Histories.POINT_IN_TIME).columns();
+    int compared = 0;
+    for (final String id : before.keySet()) {
+      for (final String column : Augmentation.columns()) {
+        if (column.endsWith(Variant.OUTER.suffix())) {
+          assertEquals(before.get(id).get(column), after.get(id).get(column), id + " " + column);
+          compared += before.get(id).containsKey(column) ? 1 : 0;
+        }
+      }
+    }
+    assertTrue(compared > 1_000, "outer values compared: " + compared);
+  }
+
+  @Test
   @DisplayName("the whole side, as every rule but the revised one reads: the outer test has no "
       + "inner column, and the four-argument run is the whole side's")
   void wholeSideUnchanged() {
