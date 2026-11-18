@@ -1,6 +1,7 @@
 package app.issues;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import app.issues.Universe.Population;
@@ -116,5 +117,62 @@ class RowCacheTest {
     RowCache.write(none, List.of(), List.of("A01_desc_length"), List.of());
     assertEquals(List.of(), RowCache.splitPopulations(none));
     assertThrows(IOException.class, () -> RowCache.splitPopulation(none));
+  }
+
+  /**
+   * A cache of the five cases of an outer training issue (a and y inner fitting, y crossing the
+   * outer cut; v and z inner validation, z crossing it; w crossing the inner cut alone) and one
+   * outer test row, t, corrupted after its split fields: a value, its dates and its field count.
+   */
+  private Path revised() throws IOException {
+    final Path path = dir.resolve("revised.tsv");
+    RowCache.write(path, List.of(entry("a", "TRAIN", "TRAIN"), entry("w", "TRAIN", "CROSSING"),
+        entry("y", "CROSSING", "CROSSING"), entry("t", "TEST", ""), entry("v", "TRAIN", "TEST"),
+        entry("z", "CROSSING", "TEST")), List.of("A01_desc_length"),
+        List.of(Population.IN_PROGRESS));
+    final List<String> lines = new ArrayList<>(Files.readAllLines(path));
+    for (int k = 1; k < lines.size(); k++) {
+      if (lines.get(k).contains("\tTEST\t\t")) {
+        // the creation and the first resolution corrupted, the start (11:00) kept
+        lines.set(k, lines.get(k).replace("2016-03-01T10", "not-a-date")
+            .replace("2016-03-04T10", "not-a-date").replace("\t12.0", "\tnot a number\textra"));
+      }
+    }
+    return Files.write(path, lines);
+  }
+
+  @Test
+  @DisplayName("the outer training side, crossing issues included, read whole; the outer test "
+      + "never parsed beyond its split field; a read by a set of outer verdicts reads those alone")
+  void readsTheTrainingSide() throws IOException {
+    final Path path = revised();
+    final List<RowCache.Entry> training = RowCache.training(path, Population.IN_PROGRESS);
+    assertEquals(List.of("a", "w", "y", "v", "z"),
+        training.stream().map(e -> e.unit().issueId()).toList());
+    assertEquals(12.0, training.get(2).row().values().get("A01_desc_length"));
+    assertEquals("CROSSING", training.get(2).inner(Population.IN_PROGRESS));
+    assertEquals(List.of("a", "w", "v"), RowCache.read(path, Population.IN_PROGRESS,
+        Set.of("TRAIN")).stream().map(e -> e.unit().issueId()).toList());
+    assertEquals(List.of("y", "z"), RowCache.read(path, Population.IN_PROGRESS,
+        Set.of("CROSSING")).stream().map(e -> e.unit().issueId()).toList());
+    assertEquals(RowCache.read(path, Population.IN_PROGRESS, Set.of("TRAIN")).stream()
+        .map(e -> e.unit().issueId()).toList(), RowCache.read(path, Population.IN_PROGRESS,
+        "TRAIN").stream().map(e -> e.unit().issueId()).toList());
+  }
+
+  @Test
+  @DisplayName("the split alone reads the first resolution of the training side's rows only, "
+      + "crossing ones included, which the revised check needs; never an outer test row's")
+  void splitsReadTheTrainingResolution() throws IOException {
+    final List<RowCache.Entry> splits = RowCache.splits(revised());
+    final Instant resolved = Instant.parse("2016-03-04T10:00:00Z");
+    for (final RowCache.Entry e : splits) {
+      if (e.unit().issueId().equals("t")) {
+        assertNull(e.unit().resolvedAt());
+      } else {
+        assertEquals(resolved, e.unit().resolvedAt(), e.unit().issueId());
+      }
+      assertNull(e.unit().createdAt());
+    }
   }
 }

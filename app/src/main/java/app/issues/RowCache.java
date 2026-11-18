@@ -29,6 +29,8 @@ public final class RowCache {
   private static final List<String> BASE = List.of("id", "chave", "projeto", "relator",
       "executor", "criada_em", "resolvida_em", "motivo", "movida");
   private static final String STARTED = "iniciada_em";
+  /** The position of the first resolution, {@code resolvida_em}, in {@link #BASE}. */
+  private static final int RESOLVED = 6;
 
   /** An issue, its columns, and per population its {@code [outer, inner]} verdicts. */
   public record Entry(IssueUnit unit, Row row, Map<Population, String[]> parts) {
@@ -128,7 +130,7 @@ public final class RowCache {
 
   /** Reads a cache: the partitions and the start are found by column name. */
   public static List<Entry> read(final Path path) throws IOException {
-    return read(path, null, null);
+    return read(path, null, Set.of());
   }
 
   /**
@@ -165,11 +167,15 @@ public final class RowCache {
 
   /**
    * Every row of a cache with its id, key, project, start and split verdicts only, in the cache's
-   * order: no value, outcome or other date of any row is parsed, the outer test's included. Each
-   * unit has no date but its start (in a first-commit matrix, its first commit that counts), null
-   * when the cache writes none, and each row no values; what reads them is the split's rule
-   * ({@link SplitRule#differences}: the temporal one reads the start, the instant it orders the
-   * issues by) and the split's sizes, never a model.
+   * order: no value or outcome of any row is parsed, and of the dates only the start and, on the
+   * training side, the first resolution. Each unit's start is its first commit that counts in a
+   * first-commit matrix, null when the cache writes none; its first resolution is read only when
+   * the row is on the outer training side of every population whose split it carries, crossing
+   * issues included ({@link Verdict#outerTraining}), and is null on the outer test, whose dates
+   * are never parsed. Each row has no values. What reads them is the split's rule ({@link
+   * SplitRule#differences}: the temporal ones read the start, the instant they order the issues
+   * by, and the revised one the training side's first resolution, which decides who crosses a
+   * cut) and the split's sizes, never a model.
    */
   public static List<Entry> splits(final Path path) throws IOException {
     final List<String> lines = Files.readAllLines(path, StandardCharsets.UTF_8);
@@ -203,21 +209,43 @@ public final class RowCache {
       final Map<Population, String[]> parts = new EnumMap<>(Population.class);
       partAt.forEach((p, k) -> put(parts, p, field(line, k), field(line, k + 1)));
       final Instant started = startedAt < 0 ? null : Instant.parse(field(line, startedAt));
+      final boolean training = !parts.isEmpty()
+          && parts.values().stream().allMatch(p -> Verdict.outerTraining(p[0]));
+      final Instant resolved = training ? Instant.parse(field(line, RESOLVED)) : null;
       out.add(new Entry(new IssueUnit(id, field(line, 1), field(line, 2), null, null, null,
-          null, null, false, started), new Row(id, Map.of(), Set.of()), parts));
+          resolved, null, false, started), new Row(id, Map.of(), Set.of()), parts));
     }
     return out;
   }
 
   /**
    * Only the rows whose outer verdict under {@code population} is {@code outer}, in the cache's
-   * order. Of every other row nothing but that one field is read: it is cut out by its position
-   * before the line is split or any value, date or verdict of it parsed, so the rows on the other
-   * side of the outer split are never read. Refuses a cache without the population's split
-   * columns.
+   * order ({@link #read(Path, Population, Set)}).
    */
   public static List<Entry> read(final Path path, final Population population,
       final String outer) throws IOException {
+    return read(path, population, Set.of(outer));
+  }
+
+  /**
+   * The rows of the outer training side under {@code population}, crossing issues included
+   * ({@link Verdict#OUTER_TRAINING}), in the cache's order; the outer test is never read beyond
+   * its split field.
+   */
+  public static List<Entry> training(final Path path, final Population population)
+      throws IOException {
+    return read(path, population, Verdict.OUTER_TRAINING);
+  }
+
+  /**
+   * Only the rows whose outer verdict under {@code population} is one of {@code outer}, in the
+   * cache's order. Of every other row nothing but that one field is read: it is cut out by its
+   * position before the line is split or any value, date or verdict of it parsed, so the rows on
+   * the other side of the outer split are never read. Refuses a cache without the population's
+   * split columns.
+   */
+  public static List<Entry> read(final Path path, final Population population,
+      final Set<String> outer) throws IOException {
     final List<String> lines = Files.readAllLines(path, StandardCharsets.UTF_8);
     if (lines.isEmpty()) {
       throw new IOException(path + " is empty");
@@ -251,7 +279,7 @@ public final class RowCache {
     }
     final List<Entry> entries = new ArrayList<>(lines.size());
     for (final String line : lines.subList(1, lines.size())) {
-      if (line.isBlank() || outerAt >= 0 && !outer.equals(field(line, outerAt))) {
+      if (line.isBlank() || outerAt >= 0 && !outer.contains(field(line, outerAt))) {
         continue;
       }
       final String[] f = line.split(SEP, -1);
