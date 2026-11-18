@@ -1,6 +1,7 @@
 package app.issues;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -27,7 +28,50 @@ class SplitRuleTest {
     assertEquals(SplitRule.RANDOM, SplitRule.of("random"));
     assertEquals(SplitRule.TEMPORAL, SplitRule.of("temporal"));
     assertEquals(SplitRule.TEMPORAL, SplitRule.of("TEMPORAL"));
-    assertThrows(IllegalArgumentException.class, () -> SplitRule.of("weekly"));
+    assertEquals(SplitRule.REVISED, SplitRule.of("revised"));
+    final IllegalArgumentException e =
+        assertThrows(IllegalArgumentException.class, () -> SplitRule.of("weekly"));
+    assertEquals("SPLIT_RULE is random, temporal or revised, not 'weekly'", e.getMessage());
+  }
+
+  @Test
+  @DisplayName("the revised rule draws, until its crossing issues are marked, exactly as the "
+      + "temporal one, and names a rule of its own, never the temporal rule's words")
+  void revised() {
+    final List<Candidate> in = new ArrayList<>();
+    final Instant t = Instant.parse("2016-01-01T00:00:00Z");
+    for (int k = 0; k < 17; k++) {
+      in.add(new Candidate("i" + k, k % 3 == 0 ? "a" : "b", t.plusSeconds(1000L * (17 - k))));
+    }
+    final ProjectSplit.Parts parts = SplitRule.REVISED.draw(in);
+    assertEquals(SplitRule.TEMPORAL.draw(in), parts);
+    assertTrue(parts.outerCrossing().isEmpty());
+    assertTrue(parts.innerCrossing().isEmpty());
+    assertTrue(SplitRule.REVISED.rule().startsWith("temporal, revised: "),
+        SplitRule.REVISED.rule());
+    assertTrue(SplitRule.REVISED.rule() != null
+        && !SplitRule.REVISED.rule().equals(TemporalSplit.RULE)
+        && !SplitRule.REVISED.rule().equals(ProjectSplit.RULE));
+  }
+
+  @Test
+  @DisplayName("what each rule is: the temporal and the revised draw by the first commit, and "
+      + "only the revised reads point-in-time histories and leaves crossing issues out")
+  void predicates() {
+    assertEquals(List.of(false, true, true),
+        List.of(SplitRule.values()).stream().map(SplitRule::temporal).toList());
+    assertEquals(List.of(false, false, true),
+        List.of(SplitRule.values()).stream().map(SplitRule::pointInTime).toList());
+    assertEquals(List.of(false, false, true),
+        List.of(SplitRule.values()).stream().map(SplitRule::crossingOut).toList());
+  }
+
+  @Test
+  @DisplayName("a candidate carries its first resolution; given three fields it has none")
+  void candidate() {
+    final Instant t = Instant.parse("2016-01-01T00:00:00Z");
+    assertNull(new Candidate("i", "p", t).firstResolution());
+    assertEquals(t.plusSeconds(5), new Candidate("i", "p", t, t.plusSeconds(5)).firstResolution());
   }
 
   @Test
@@ -39,6 +83,9 @@ class SplitRuleTest {
     final IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
         () -> SplitRule.declared("temporal", Population.IN_PROGRESS));
     assertTrue(e.getMessage().contains("SPLIT_RULE"), e.getMessage());
+    assertEquals(SplitRule.REVISED, SplitRule.declared("revised", Population.FIRST_COMMIT));
+    assertThrows(IllegalArgumentException.class,
+        () -> SplitRule.declared("revised", Population.IN_PROGRESS));
   }
 
   @Test
@@ -64,6 +111,7 @@ class SplitRuleTest {
   void collections() {
     assertEquals("", SplitRule.RANDOM.collectionSuffix());
     assertEquals("_temporal", SplitRule.TEMPORAL.collectionSuffix());
+    assertEquals("_revised", SplitRule.REVISED.collectionSuffix());
   }
 
   @Test
@@ -78,6 +126,9 @@ class SplitRuleTest {
     assertEquals(SplitRule.TEMPORAL, SplitRule.recordedBy(Map.of("split_design", "temporal")));
     assertEquals(SplitRule.RANDOM, SplitRule.recordedBy(Map.of("split_design", "random",
         "split_rule", ProjectSplit.RULE)));
+    assertEquals(SplitRule.REVISED, SplitRule.recordedBy(Map.of("split_design", "revised")));
+    assertEquals(SplitRule.REVISED,
+        SplitRule.recordedBy(Map.of("split_rule", SplitRule.REVISED.rule())));
     assertThrows(IllegalArgumentException.class,
         () -> SplitRule.recordedBy(Map.of("split_design", "weekly")));
   }

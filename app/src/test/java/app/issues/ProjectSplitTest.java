@@ -2,6 +2,8 @@ package app.issues;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import app.issues.Universe.Part;
@@ -163,5 +165,83 @@ class ProjectSplitTest {
     missing.removeIf(e -> e.unit().project().equals("zeta")
         && e.unit().issueId().endsWith("-001"));
     assertFalse(ProjectSplit.differences(missing).isEmpty(), "a draw over other issues");
+  }
+
+  /**
+   * The sides of the five cases of an outer training issue and of one outer test issue, each id
+   * named by its case: c1 to c3 inner fitting, c4 and c5 inner validation, t the outer test; c2,
+   * c3 and c5 cross a cut.
+   */
+  private static ProjectSplit.Parts five(final boolean crossing) {
+    final Map<String, Part> outer = Map.of("c1", Part.TRAIN, "c2", Part.TRAIN, "c3", Part.TRAIN,
+        "c4", Part.TRAIN, "c5", Part.TRAIN, "t", Part.TEST);
+    final Map<String, Part> inner = Map.of("c1", Part.TRAIN, "c2", Part.TRAIN, "c3", Part.TRAIN,
+        "c4", Part.TEST, "c5", Part.TEST);
+    return crossing ? new ProjectSplit.Parts(outer, inner, Set.of("c3", "c5"), Set.of("c2", "c3"))
+        : new ProjectSplit.Parts(outer, inner);
+  }
+
+  @Test
+  @DisplayName("the verdicts of the sides: without crossing sets, the sides' names, as every split "
+      + "before the revised design; with them, CROSSING where an issue on a training side crosses "
+      + "that level's cut, the validation and the test kept whole")
+  void verdicts() {
+    final ProjectSplit.Parts plain = five(false);
+    assertTrue(plain.outerCrossing().isEmpty() && plain.innerCrossing().isEmpty());
+    for (final String id : plain.outer().keySet()) {
+      assertEquals(plain.outer().get(id).name(), plain.outerVerdict(id).name(), id);
+      final Part inner = plain.inner().get(id);
+      assertEquals(inner == null ? null : Verdict.valueOf(inner.name()), plain.innerVerdict(id),
+          id);
+    }
+    final ProjectSplit.Parts revised = five(true);
+    final Map<String, List<Verdict>> expected = new TreeMap<>(Map.of(
+        "c1", List.of(Verdict.TRAIN, Verdict.TRAIN),
+        "c2", List.of(Verdict.TRAIN, Verdict.CROSSING),
+        "c3", List.of(Verdict.CROSSING, Verdict.CROSSING),
+        "c4", List.of(Verdict.TRAIN, Verdict.TEST),
+        "c5", List.of(Verdict.CROSSING, Verdict.TEST)));
+    expected.forEach((id, v) -> {
+      assertEquals(v.get(0), revised.outerVerdict(id), id);
+      assertEquals(v.get(1), revised.innerVerdict(id), id);
+    });
+    assertEquals(Verdict.TEST, revised.outerVerdict("t"));
+    assertNull(revised.innerVerdict("t"));
+  }
+
+  @Test
+  @DisplayName("crossing sets are refused unless each holds issues of its own training side, and "
+      + "an inner fitting issue crossing the outer cut crosses the inner one too")
+  void crossingSets() {
+    final ProjectSplit.Parts p = five(false);
+    assertThrows(IllegalArgumentException.class,
+        () -> new ProjectSplit.Parts(p.outer(), p.inner(), Set.of("t"), Set.of()));
+    assertThrows(IllegalArgumentException.class,
+        () -> new ProjectSplit.Parts(p.outer(), p.inner(), Set.of(), Set.of("c4")));
+    assertThrows(IllegalArgumentException.class,
+        () -> new ProjectSplit.Parts(p.outer(), p.inner(), Set.of("c3"), Set.of()));
+  }
+
+  /** The rows of {@code parts}, each at the verdicts it gives. */
+  private static List<RowCache.Entry> at(final ProjectSplit.Parts parts) {
+    final List<RowCache.Entry> out = new ArrayList<>();
+    new TreeMap<>(parts.outer()).forEach((id, x) -> out.add(entry(id, "p",
+        parts.outerVerdict(id).name(), Verdict.text(parts.innerVerdict(id)))));
+    return out;
+  }
+
+  @Test
+  @DisplayName("the check compares the verdicts, so a matrix with crossing verdicts passes the "
+      + "sides that cross and fails the sides that do not, and the other way round")
+  void differencesByVerdict() {
+    final Population p = Population.IN_PROGRESS;
+    final List<RowCache.Entry> revised = at(five(true));
+    final List<RowCache.Entry> plain = at(five(false));
+    assertEquals(List.of(), ProjectSplit.differences(revised, p, five(true), "r"));
+    assertEquals(List.of(), ProjectSplit.differences(plain, p, five(false), "r"));
+    final List<String> wrong = ProjectSplit.differences(revised, p, five(false), "r");
+    assertEquals(1, wrong.size());
+    assertTrue(wrong.getFirst().startsWith("3 of 6 rows"), wrong.getFirst());
+    assertFalse(ProjectSplit.differences(plain, p, five(true), "r").isEmpty());
   }
 }

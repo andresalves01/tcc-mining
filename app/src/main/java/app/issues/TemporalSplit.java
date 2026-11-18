@@ -42,6 +42,20 @@ public final class TemporalSplit {
       + "no stratification by project; no issue is set aside";
 
   /**
+   * The revised design's rule in words, for the help text and the run records: the same sides,
+   * its crossing issues out of what the training side teaches, every history point-in-time. Never
+   * the words of {@link #RULE}, so a run of either design is told apart by them alone.
+   */
+  public static final String REVISED_RULE = "temporal, revised: the candidates ordered by their "
+      + "first commit, the issue id breaking ties; the cut is the instant at position "
+      + "ceil(0.7 n), from 1; training is every first commit at or before the cut, ties included, "
+      + "and test the rest; the same rule on the training side gives the inner fitting and the "
+      + "inner validation; no stratification by project; a training issue whose first resolution "
+      + "comes after its level's cut crosses it and teaches nothing at that level, while "
+      + "validation and test keep every issue; every history reads only the training issues "
+      + "resolved strictly before the first commit of the issue it describes";
+
+  /**
    * The instants of the two cuts.
    *
    * @param outer the cut of the candidates; null when there are none
