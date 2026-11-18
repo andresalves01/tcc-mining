@@ -41,6 +41,19 @@ import java.util.stream.IntStream;
  * history of that level and reads no column there unless the level scores it; the cluster centres,
  * which read no label, are still fitted on the whole training side, crossing issues included.
  *
+ * <p><b>Point-in-time history</b> (the revised temporal design, {@link Histories#POINT_IN_TIME}).
+ * For each query, a member counts only when it teaches at the level, its first resolution comes
+ * strictly before the query's start -- the first commit -- and it is not the query: only labels
+ * already known when its work began. The filter applies before anything is chosen: the closest n
+ * Jaccard and embedding neighbours are the closest of the admitted members, the reporter median
+ * reads the admitted issues, and a cluster's median its admitted members. The cluster centres and
+ * every row's nearest centre stay those of the whole side, since they read no label. A query with
+ * no admitted member has a missing value. Under this design the inner level also answers the
+ * outer test (ticket 06): each outer test row reads the inner fitting history, point in time, and
+ * is assigned to the inner centres already fitted; its inner split is outer_test, and it never
+ * enters a history or a fit, so the fitting and validation rows read the same with or without it.
+ * Every other design reads {@link Histories#WHOLE_SIDE}, as above.
+ *
  * <p><b>Neighbours.</b> The candidates are the history issues sharing at least one token with the
  * query; the closest n by Jaccard distance give the unweighted median of their business days,
  * all of them when fewer than n exist. Ties in distance go by issue id, never by duration: the
@@ -101,6 +114,29 @@ public final class Augmentation {
    */
   public static final double UNIT_TOLERANCE = 1e-4;
 
+  /** Which members a history admits for a query, and which rows answer each level. */
+  public enum Histories {
+    /**
+     * Every member of the training side that teaches, whatever the dates; each level answers its
+     * training side and its scored rows. The In Progress study, the first-commit random split and
+     * the temporal design opened on 02/11/2026.
+     */
+    WHOLE_SIDE,
+    /**
+     * A point-in-time history: for a query, only the members that teach whose first resolution
+     * comes strictly before the query's start (its first commit), never the query. The inner level
+     * also answers the outer test (ticket 06), from the inner fitting history and the inner
+     * centres alone; no outer test row ever enters a history or a fit. The revised temporal
+     * design ({@link SplitRule#pointInTime}).
+     */
+    POINT_IN_TIME;
+
+    /** Whether {@code member}, a member that teaches, may enter {@code query}'s history. */
+    boolean admits(final Issue query, final Issue member) {
+      return this == WHOLE_SIDE || member.resolved() < query.start();
+    }
+  }
+
   /** Which split a column is computed against; its name ends in the suffix. */
   public enum Variant {
     INNER("_inner"), OUTER("_outer");
@@ -149,8 +185,31 @@ public final class Augmentation {
     }
 
     public String split(final Issue i) {
+      return split(i, Histories.WHOLE_SIDE);
+    }
+
+    /**
+     * The rows that read this level under {@code design}: its training side that teaches, its
+     * scored rows, and under a point-in-time history the outer test at the inner level too.
+     */
+    public boolean answers(final Issue i, final Histories design) {
+      return fitting(i) || scored(i) || outerTestAtInner(i, design);
+    }
+
+    /**
+     * The row's split at this level under {@code design}: inner_fitting, inner_validation,
+     * outer_training or outer_test, null when it does not read this level; an outer test row read
+     * at the inner level is outer_test there too.
+     */
+    public String split(final Issue i, final Histories design) {
       return fitting(i) ? (this == INNER ? "inner_fitting" : "outer_training")
-          : scored(i) ? (this == INNER ? "inner_validation" : "outer_test") : null;
+          : scored(i) ? (this == INNER ? "inner_validation" : "outer_test")
+          : outerTestAtInner(i, design) ? "outer_test" : null;
+    }
+
+    private boolean outerTestAtInner(final Issue i, final Histories design) {
+      return this == INNER && design == Histories.POINT_IN_TIME
+          && OUTER.scored(i.outer(), i.inner());
     }
   }
 
@@ -195,7 +254,8 @@ public final class Augmentation {
    *
    * @param split inner_fitting, inner_validation, outer_training or outer_test
    * @param tokens the query's distinct tokens
-   * @param candidates the history issues sharing at least one token, the query left out
+   * @param candidates the history issues admitted for the query sharing at least one token, the
+   *     query left out
    * @param nearest the closest candidates, up to the largest n, closest first
    */
   public record Query(String id, Variant variant, String split, int tokens, int candidates,
@@ -210,7 +270,8 @@ public final class Augmentation {
   /**
    * One variant's history.
    *
-   * @param rows the rows that read it: its training side and its scored rows
+   * @param rows the rows that read it: its training side and its scored rows, and under a
+   *     point-in-time history the outer test at the inner level
    * @param history the training side's issues of at least one business day
    */
   public record History(Variant variant, int rows, int history) {}
@@ -221,7 +282,8 @@ public final class Augmentation {
   /**
    * One row's embedding search against one variant's history, as {@link Query} is for Jaccard.
    *
-   * @param candidates the history issues with a valid vector at positive similarity to the query
+   * @param candidates the history issues admitted for the query with a valid vector at positive
+   *     similarity to the query
    * @param nearest the closest candidates, up to the largest n, closest first
    */
   public record EmbeddingQuery(String id, Variant variant, String split, int candidates,
@@ -326,10 +388,17 @@ public final class Augmentation {
 
   /**
    * Every column and diagnostic, each described issue embedded once by {@code embedder} into
-   * vectors of {@code dimension} components, the clusters fitted by {@code clusterer}.
+   * vectors of {@code dimension} components, the clusters fitted by {@code clusterer}; every
+   * history the whole side ({@link Histories#WHOLE_SIDE}).
    */
   public static Result run(final List<Issue> issues, final Embedder embedder,
       final int dimension, final Clusterer clusterer) {
+    return run(issues, embedder, dimension, clusterer, Histories.WHOLE_SIDE);
+  }
+
+  /** The same, every history admitting its members as {@code design} says. */
+  public static Result run(final List<Issue> issues, final Embedder embedder,
+      final int dimension, final Clusterer clusterer, final Histories design) {
     final Tokens tokens = new Tokens(issues);
     final Vectors vectors = new Vectors(issues, embedder, dimension);
     final List<EmbeddingQuery> embeddingQueries = new ArrayList<>();
@@ -347,6 +416,9 @@ public final class Augmentation {
           .sorted(Comparator.comparingLong(Issue::start).thenComparing(Issue::id)).toList();
       final List<Issue> rows = new ArrayList<>(fitting);
       issues.stream().filter(v::scored).forEach(rows::add);
+      // the outer test at the inner level under a point-in-time history, after every other row
+      issues.stream().filter(i -> !v.fitting(i) && !v.scored(i) && v.answers(i, design))
+          .forEach(rows::add);
       final List<Issue> history = fitting.stream().filter(i -> i.counted(v)).toList();
       // the cluster centres read no label: fitted on the whole training side, crossing issues
       // included, in the same order; without crossing issues the history itself
@@ -357,24 +429,24 @@ public final class Augmentation {
       final Space space = new Space(history, vectors);
       histories.add(new History(v, rows.size(), history.size()));
       frozen.add(new Frozen(v, history, centres, rows));
-      final List<Space.Found> found = space.search(rows, mostVectors);
+      final List<Space.Found> found = space.search(rows, mostVectors, design);
       for (int k = 0; k < rows.size(); k++) {
         final Issue q = rows.get(k);
-        queries.add(answer(q, v, index, tokens, most, columns));
-        embeddingQueries.add(nearest(q, v, found.get(k), columns));
+        queries.add(answer(q, v, design, index, tokens, most, columns));
+        embeddingQueries.add(nearest(q, v, design, found.get(k), columns));
       }
-      reporters(issues, history, v, columns);
+      reporters(issues, history, v, design, columns);
     }
     final List<ClusterFit> clusterFits = new ArrayList<>();
     final List<ClusterQuery> clusterQueries = new ArrayList<>();
-    clusters(frozen, vectors, clusterer, columns, clusterFits, clusterQueries);
-    return new Result(columns, queries, List.copyOf(histories), coverage(issues, columns),
+    clusters(frozen, vectors, clusterer, design, columns, clusterFits, clusterQueries);
+    return new Result(columns, queries, List.copyOf(histories), coverage(issues, design, columns),
         embeddingQueries, List.copyOf(vectors.embedded.values()), clusterFits, clusterQueries);
   }
 
   /**
    * One variant's history, the issues its cluster centres are fitted on, and the rows that read
-   * it: its training side that teaches, then its scored rows.
+   * it: its training side that teaches, then its scored rows, then the outer test it answers.
    */
   private record Frozen(Variant variant, List<Issue> history, List<Issue> centres,
       List<Issue> rows) {}
@@ -384,8 +456,9 @@ public final class Augmentation {
    * history's members and each row to the nearest centre.
    */
   private static void clusters(final List<Frozen> frozen, final Vectors vectors,
-      final Clusterer clusterer, final Map<String, Map<String, Double>> columns,
-      final List<ClusterFit> fits, final List<ClusterQuery> queries) {
+      final Clusterer clusterer, final Histories design,
+      final Map<String, Map<String, Double>> columns, final List<ClusterFit> fits,
+      final List<ClusterQuery> queries) {
     final List<List<Issue>> members = new ArrayList<>();
     final List<double[][]> data = new ArrayList<>();
     final List<Callable<Clusterer.Fit>> jobs = new ArrayList<>();
@@ -429,7 +502,7 @@ public final class Augmentation {
             fit.distortion(), groups.stream().map(g -> g.stream().map(Issue::id).toList())
                 .toList()));
         for (final Issue q : f.rows()) {
-          queries.add(assign(q, f, k, fit, groups, vectors, columns));
+          queries.add(assign(q, f, k, fit, groups, vectors, design, columns));
         }
       }
     }
@@ -468,25 +541,29 @@ public final class Augmentation {
 
   private static ClusterQuery assign(final Issue q, final Frozen f, final int k,
       final Clusterer.Fit fit, final List<List<Issue>> groups, final Vectors vectors,
-      final Map<String, Map<String, Double>> columns) {
+      final Histories design, final Map<String, Map<String, Double>> columns) {
     final Variant v = f.variant();
+    final String split = v.split(q, design);
     final int row = vectors.row(q.id());
     if (row < 0 || !fit.fitted()) {
-      return new ClusterQuery(q.id(), v, v.split(q), k, -1, Double.NaN, 0);
+      return new ClusterQuery(q.id(), v, split, k, -1, Double.NaN, 0);
     }
     final Clusterer.Assignment a = fit.assign(vectors.vector(row));
+    // the centre picks the group; its median reads the members the query's history admits
     final List<Double> days = groups.get(a.cluster()).stream()
-        .filter(m -> !m.id().equals(q.id())).map(m -> m.days(v)).toList();
+        .filter(m -> !m.id().equals(q.id()) && design.admits(q, m)).map(m -> m.days(v)).toList();
     if (!days.isEmpty()) {
       columns.get(q.id()).put(cluster(k, v), median(days));
     }
-    return new ClusterQuery(q.id(), v, v.split(q), k, a.cluster(), a.distance(), days.size());
+    return new ClusterQuery(q.id(), v, split, k, a.cluster(), a.distance(), days.size());
   }
 
-  private static Query answer(final Issue q, final Variant v, final Index index,
-      final Tokens tokens, final int most, final Map<String, Map<String, Double>> columns) {
+  private static Query answer(final Issue q, final Variant v, final Histories design,
+      final Index index, final Tokens tokens, final int most,
+      final Map<String, Map<String, Double>> columns) {
     final int[] mine = tokens.of(q.id());
-    final List<Index.Hit> hits = index.search(q.id(), mine);
+    // the members the query's history admits, before the closest are chosen
+    final List<Index.Hit> hits = index.search(q, mine, design);
     final List<Neighbour> nearest = new ArrayList<>();
     final List<Double> days = new ArrayList<>();
     for (final Index.Hit h : hits.subList(0, Math.min(most, hits.size()))) {
@@ -498,11 +575,11 @@ public final class Augmentation {
         columns.get(q.id()).put(jaccard(n, v), median(days.subList(0, Math.min(n, days.size()))));
       }
     }
-    return new Query(q.id(), v, v.split(q), mine.length, hits.size(), nearest);
+    return new Query(q.id(), v, v.split(q, design), mine.length, hits.size(), nearest);
   }
 
-  private static EmbeddingQuery nearest(final Issue q, final Variant v, final Space.Found found,
-      final Map<String, Map<String, Double>> columns) {
+  private static EmbeddingQuery nearest(final Issue q, final Variant v, final Histories design,
+      final Space.Found found, final Map<String, Map<String, Double>> columns) {
     final List<Neighbour> nearest = new ArrayList<>();
     final List<Double> days = new ArrayList<>();
     for (final Space.Hit h : found.nearest()) {
@@ -515,14 +592,15 @@ public final class Augmentation {
             median(days.subList(0, Math.min(n, days.size()))));
       }
     }
-    return new EmbeddingQuery(q.id(), v, v.split(q), found.candidates(), nearest);
+    return new EmbeddingQuery(q.id(), v, v.split(q, design), found.candidates(), nearest);
   }
 
   /**
-   * Each row's reporter median against the history, whatever the dates, the row itself left out.
+   * Each row's reporter median against the members of the history {@code design} admits for it,
+   * the row itself left out.
    */
   private static void reporters(final List<Issue> issues, final List<Issue> history,
-      final Variant v, final Map<String, Map<String, Double>> columns) {
+      final Variant v, final Histories design, final Map<String, Map<String, Double>> columns) {
     final Map<Who, List<Issue>> by = new HashMap<>();
     for (final Issue h : history) {
       if (h.reporter() != null) {
@@ -530,11 +608,12 @@ public final class Augmentation {
       }
     }
     for (final Issue q : issues) {
-      if (q.reporter() == null || !(v.fitting(q) || v.scored(q))) {
+      if (q.reporter() == null || !v.answers(q, design)) {
         continue;
       }
       final List<Double> days = by.getOrDefault(new Who(q.project(), q.reporter()), List.of())
-          .stream().filter(h -> !h.id().equals(q.id())).map(h -> h.days(v)).toList();
+          .stream().filter(h -> !h.id().equals(q.id()) && design.admits(q, h))
+          .map(h -> h.days(v)).toList();
       if (!days.isEmpty()) {
         columns.get(q.id()).put(reporter(v), median(days));
       }
@@ -549,7 +628,7 @@ public final class Augmentation {
     return n % 2 == 1 ? s[n / 2] : (s[n / 2 - 1] + s[n / 2]) / 2.0;
   }
 
-  private static List<Coverage> coverage(final List<Issue> issues,
+  private static List<Coverage> coverage(final List<Issue> issues, final Histories design,
       final Map<String, Map<String, Double>> columns) {
     final List<Coverage> out = new ArrayList<>();
     for (final String column : columns()) {
@@ -557,7 +636,7 @@ public final class Augmentation {
       final Map<String, int[]> split = new TreeMap<>();
       final Map<String, int[]> project = new TreeMap<>();
       for (final Issue i : issues) {
-        final String part = v.split(i);
+        final String part = v.split(i, design);
         if (part == null) {
           continue;
         }
@@ -632,8 +711,12 @@ public final class Augmentation {
       }
     }
 
-    /** The members sharing a token with the query, closest first, ties by id; never the query. */
-    List<Hit> search(final String self, final int[] query) {
+    /**
+     * The members sharing a token with query {@code q} that {@code design} admits for it, closest
+     * first, ties by id; never the query.
+     */
+    List<Hit> search(final Issue q, final int[] query, final Histories design) {
+      final String self = q.id();
       final int[] shared = new int[members.size()];
       final int[] touched = new int[members.size()];
       int count = 0;
@@ -647,7 +730,7 @@ public final class Augmentation {
       final List<Hit> out = new ArrayList<>(count);
       for (int k = 0; k < count; k++) {
         final int j = touched[k];
-        if (!members.get(j).id().equals(self)) {
+        if (!members.get(j).id().equals(self) && design.admits(q, members.get(j))) {
           out.add(new Hit(members.get(j), shared[j], query.length + sizes[j] - shared[j]));
         }
       }
@@ -798,6 +881,7 @@ public final class Augmentation {
 
     private final List<Issue> members = new ArrayList<>();
     private final int[] rows;
+    private final long[] resolved;
     private final Vectors vectors;
 
     Space(final List<Issue> history, final Vectors vectors) {
@@ -811,6 +895,7 @@ public final class Augmentation {
         }
       }
       rows = kept.stream().mapToInt(Integer::intValue).toArray();
+      resolved = members.stream().mapToLong(Issue::resolved).toArray();
     }
 
     /**
@@ -820,18 +905,21 @@ public final class Augmentation {
      * groups in parallel; every query still visits the members in their order, so the answer is
      * the one a plain scan gives.
      */
-    List<Found> search(final List<Issue> queries, final int most) {
+    List<Found> search(final List<Issue> queries, final int most, final Histories design) {
+      final boolean pointInTime = design == Histories.POINT_IN_TIME;
       final Found[] out = new Found[queries.size()];
       final int groups = (queries.size() + GROUP - 1) / GROUP;
       IntStream.range(0, groups).parallel().forEach(g -> {
         final int from = g * GROUP;
         final int to = Math.min(queries.size(), from + GROUP);
         final int[] row = new int[to - from];
+        final long[] start = new long[to - from];
         final Hit[][] best = new Hit[to - from][most];
         final int[] size = new int[to - from];
         final int[] candidates = new int[to - from];
         for (int q = from; q < to; q++) {
           row[q - from] = vectors.row(queries.get(q).id());
+          start[q - from] = queries.get(q).start();
         }
         for (int tile = 0; tile < rows.length; tile += TILE) {
           final int last = Math.min(rows.length, tile + TILE);
@@ -842,6 +930,10 @@ public final class Augmentation {
             for (int j = tile; j < last; j++) {
               // one row per id, so the query's own row is the issue itself
               if (rows[j] == row[q]) {
+                continue;
+              }
+              // a point-in-time history: only the members resolved before the query's start
+              if (pointInTime && resolved[j] >= start[q]) {
                 continue;
               }
               final double s = Math.max(-1.0, Math.min(1.0, vectors.dot(row[q], rows[j])));
