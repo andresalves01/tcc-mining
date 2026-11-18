@@ -86,7 +86,13 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
       throw new CommandFailedException(List.of("  " + e.getMessage()));
     }
     if (population == Population.FIRST_COMMIT) {
-      firstCommit(context, cache, rule);
+      final double waitK;
+      try {
+        waitK = FirstCommit.waitFenceK(settings.apply(FirstCommit.WAIT_FENCE_SETTING));
+      } catch (final IllegalArgumentException e) {
+        throw new CommandFailedException(List.of("  " + e.getMessage()));
+      }
+      firstCommit(context, cache, rule, waitK);
       return;
     }
     final IssuesInProgressExtractTask.Report r =
@@ -211,13 +217,13 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
    * holding another design's runs, before reading anything; records the run in ISSUES_DB, in the
    * collection of {@code rule}'s design; writes the cache only when the gate passed.
    */
-  private void firstCommit(final Context context, final String cache, final SplitRule rule)
-      throws CommandFailedException {
+  private void firstCommit(final Context context, final String cache, final SplitRule rule,
+      final double waitK) throws CommandFailedException {
     final PipelineConfig config = context.config();
     requireOwnDatabases(config);
     final ResultStore store = requireOwnDesign(context.issuesResults(), rule);
     final IssuesFirstCommitExtractTask.Report fc =
-        new IssuesFirstCommitExtractTask(context.study(), context.progress(), rule).run();
+        new IssuesFirstCommitExtractTask(context.study(), context.progress(), rule, waitK).run();
     final IssuesInProgressExtractTask.Report r = fc.extraction();
     final var s = r.split();
 
@@ -243,8 +249,11 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
     }
     final FirstCommit.Threshold t = fc.threshold();
     System.out.printf("%n  WAIT CAP, LEARNED ON THE INNER FITTING%n");
-    System.out.printf(EN, "    Q1 %.2f  median %.2f  Q3 %.2f  fence %.2f  cap %d business days"
-        + "  (%,d waits)%n", t.q1(), t.median(), t.q3(), t.fence(), t.cap(), t.gaps());
+    System.out.printf("    wait fence: %s%n", FirstCommit.fenceText(waitK));
+    System.out.printf(EN, "    Q1 %.2f  median %.2f  Q3 %.2f  fence %s  cap %d business days"
+        + "  (%,d waits)%n", t.q1(), t.median(), t.q3(),
+        Double.isInfinite(t.fence()) ? "none" : String.format(EN, "%.2f", t.fence()), t.cap(),
+        t.gaps());
     final FirstCommit.Summary a = fc.training();
     System.out.printf("%n  TARGET ON THE OUTER TRAINING, BUSINESS DAYS (the outer test's is not "
         + "read here)%n");
@@ -269,7 +278,11 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
     run.put("rows", r.entries().size());
     run.put("population", FirstCommit.POPULATION);
     run.put("first_commit_share", FirstCommit.SHARE);
-    run.put("target_rule", FirstCommit.RULE);
+    run.put("target_rule", FirstCommit.rule(waitK));
+    if (waitK != FirstCommit.DEFAULT_WAIT_K) {
+      // only a sensitivity run names its k: the official record stays as it was
+      run.put("wait_fence_k", FirstCommit.waitFenceLabel(waitK));
+    }
     run.put("prepared_db", config.preparedDb());
     final List<Map<String, Object>> funnel = new java.util.ArrayList<>();
     for (final IssuesFirstCommitAuditTask.Step step : fc.funnel()) {
@@ -284,7 +297,7 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
     cap.put("q1", t.q1());
     cap.put("median", t.median());
     cap.put("q3", t.q3());
-    cap.put("fence", t.fence());
+    cap.put("fence", Double.isInfinite(t.fence()) ? "none" : (Object) t.fence());
     cap.put("cap", t.cap());
     cap.put("waits", t.gaps());
     run.put("wait_cap", cap);

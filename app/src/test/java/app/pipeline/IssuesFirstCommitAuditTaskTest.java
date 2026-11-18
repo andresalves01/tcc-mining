@@ -142,6 +142,10 @@ class IssuesFirstCommitAuditTaskTest {
   }
 
   private Report run() {
+    return run(SplitRule.RANDOM, FirstCommit.DEFAULT_WAIT_K);
+  }
+
+  private Report run(final SplitRule rule, final double waitK) {
     final Corpus corpus = new Corpus(issues, events, comments, List.of(), commits,
         Map.of("p", Set.of("P"), "q", Set.of("Q")), Map.of(), people, Map.of(), Map.of(), Map.of(), Map.of(),
         List.of());
@@ -183,7 +187,9 @@ class IssuesFirstCommitAuditTaskTest {
         return "in memory";
       }
     };
-    return new IssuesFirstCommitAuditTask(source, SilentProgress.INSTANCE).run();
+    return waitK == FirstCommit.DEFAULT_WAIT_K && rule == SplitRule.RANDOM
+        ? new IssuesFirstCommitAuditTask(source, SilentProgress.INSTANCE).run()
+        : new IssuesFirstCommitAuditTask(source, SilentProgress.INSTANCE, rule, waitK).run();
   }
 
   private static Map<String, IssueRow> byKey(final Report r) {
@@ -371,5 +377,64 @@ class IssuesFirstCommitAuditTaskTest {
     final FirstCommit.Count validation = d.training().get(id(6));
     assertEquals(1, validation.total(), "Monday to Thursday, the wait capped at one day");
     assertEquals(2, validation.capped());
+  }
+
+  // ------------------------------------------------------------------ the wait fence's k
+
+  /** Ten weekly issues: the inner fitting's waits are {@code fit}, the validation's are 4 days. */
+  private static Map<String, FirstCommit.Issue> weekly(final int... fit) {
+    final Map<String, FirstCommit.Issue> from = new LinkedHashMap<>();
+    for (int week = 0; week < 10; week++) {
+      final FirstCommit.Issue i = started(week + 1, "p", week, week < 5 ? fit[week] : 4);
+      from.put(i.id(), i);
+    }
+    return from;
+  }
+
+  @Test
+  @DisplayName("the default k is 1.5: draw without a k is the draw at 1.5")
+  void drawDefaultsToTheOfficialFence() {
+    final Map<String, FirstCommit.Issue> from = weekly(1, 1, 1, 2, 4);
+    final IssuesFirstCommitAuditTask.Drawn usual = IssuesFirstCommitAuditTask.draw(from,
+        FirstCommit.SHARE, MIDNIGHT, SplitRule.TEMPORAL);
+    final IssuesFirstCommitAuditTask.Drawn explicit = IssuesFirstCommitAuditTask.draw(from,
+        FirstCommit.SHARE, MIDNIGHT, SplitRule.TEMPORAL, 1.5);
+    assertEquals(usual.threshold(), explicit.threshold());
+    assertEquals(usual.training(), explicit.training());
+  }
+
+  @Test
+  @DisplayName("k = 3 and no cap raise the cap and change the targets of the outer training")
+  void largerFenceChangesCapAndTarget() {
+    final Map<String, FirstCommit.Issue> from = weekly(1, 1, 1, 2, 10);
+    final IssuesFirstCommitAuditTask.Drawn usual = IssuesFirstCommitAuditTask.draw(from,
+        FirstCommit.SHARE, MIDNIGHT, SplitRule.TEMPORAL, 1.5);
+    final IssuesFirstCommitAuditTask.Drawn none = IssuesFirstCommitAuditTask.draw(from,
+        FirstCommit.SHARE, MIDNIGHT, SplitRule.TEMPORAL, FirstCommit.NO_WAIT_CAP);
+    assertEquals(2, usual.threshold().cap());
+    assertEquals(8, none.threshold().cap(), "the largest wait of the inner fitting");
+    // the validation's waits (4 business days) are cut at 2, kept whole with no cap
+    assertEquals(2, usual.training().get(id(6)).total());
+    assertEquals(4, none.training().get(id(6)).total());
+    assertEquals(0, none.training().values().stream().mapToInt(FirstCommit.Count::capped).sum());
+    assertEquals(usual.parts(), none.parts(), "the sides do not depend on the k");
+
+    final Map<String, FirstCommit.Issue> mild = weekly(1, 1, 1, 2, 4);
+    assertEquals(2, IssuesFirstCommitAuditTask.draw(mild, FirstCommit.SHARE, MIDNIGHT,
+        SplitRule.TEMPORAL, 1.5).threshold().cap());
+    assertEquals(4, IssuesFirstCommitAuditTask.draw(mild, FirstCommit.SHARE, MIDNIGHT,
+        SplitRule.TEMPORAL, 3.0).threshold().cap(), "the wait of 4 is between the fences");
+  }
+
+  @Test
+  @DisplayName("the audit's report carries the k, and its sensitivity and random comparison use it")
+  void auditReportsItsFence() {
+    assertEquals(FirstCommit.DEFAULT_WAIT_K, run().waitFenceK());
+    final Report none = run(SplitRule.TEMPORAL, FirstCommit.NO_WAIT_CAP);
+    assertEquals(FirstCommit.NO_WAIT_CAP, none.waitFenceK());
+    for (final var s : none.sensitivity()) {
+      assertEquals(Double.POSITIVE_INFINITY, s.threshold().fence(), "limit " + s.limit());
+    }
+    assertEquals(Double.POSITIVE_INFINITY, none.temporal().random().fence());
   }
 }

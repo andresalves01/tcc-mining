@@ -287,4 +287,157 @@ class FirstCommitTest {
         () -> FirstCommit.threshold(List.of(0, 0, 0, 5)).requirePositive());
     assertTrue(FirstCommit.threshold(List.of(0, 1, 1)).requirePositive().cap() >= 1);
   }
+
+  // ------------------------------------------------------------------ explaining one target
+
+  /** Tuesday 2 to Tuesday 16 with a wait of ten days, and a short tail after the last commit. */
+  private FirstCommit.Issue tailed() {
+    return worked(List.of(code("a", "x", day(2), 10L), code("b", "x", day(3), 30L),
+        code("c", "x", day(16), 30L)), List.of(), List.of(day(10), day(18), day(19), day(20)),
+        day(22));
+  }
+
+  @Test
+  @DisplayName("explain gives the same total, parts and cap as count, on every fixture")
+  void explainAgreesWithCount() {
+    final List<FirstCommit.Issue> fixtures = List.of(tailed(),
+        worked(List.of(code("a", "x", day(2), 10L), code("b", "x", day(16), 30L)), List.of(),
+            List.of(day(3), day(4), day(5), day(8), day(9)), day(16) + H),
+        worked(List.of(code("a", "x", day(1), 10L), code("b", "x", day(2), 30L)), List.of(day(4)),
+            List.of(day(3), day(4), day(5)), day(12)));
+    for (final FirstCommit.Issue i : fixtures) {
+      for (final int cap : new int[] {1, 3, 5, 20}) {
+        final FirstCommit.Verdict v = select(i);
+        final FirstCommit.Explanation e = FirstCommit.explain(i, v, cap);
+        assertEquals(FirstCommit.count(i, v, cap), e.count(), "cap " + cap);
+        assertEquals(FirstCommit.count(i, v, cap).total(), e.total());
+        assertEquals(FirstCommit.marks(i, v), e.marks());
+      }
+    }
+  }
+
+  @Test
+  @DisplayName("with marks on days 2, 3 and 16 and a cap of 3, the wait of 9 days is cut to 3")
+  void explainShowsTheCutOfEachWait() {
+    final FirstCommit.Issue i = tailed();
+    final FirstCommit.Explanation e = FirstCommit.explain(i, select(i), 3);
+    assertEquals(2, e.waits().size());
+    final FirstCommit.Wait first = e.waits().get(0);
+    assertEquals(1, first.businessDays());
+    assertEquals(0, first.cut());
+    final FirstCommit.Wait second = e.waits().get(1);
+    assertEquals(9, second.businessDays(), "Thursday 4 to Tuesday 16, the 3rd is the start");
+    assertEquals(3, second.counted(), "the comment on the 10th is one date, under the cap");
+    assertEquals(6, second.cut());
+    assertEquals(e.count().capped(), e.waits().stream().mapToInt(FirstCommit.Wait::cut).sum());
+    assertEquals(e.count().implementation(),
+        e.waits().stream().mapToInt(FirstCommit.Wait::counted).sum());
+  }
+
+  @Test
+  @DisplayName("a wait never counts fewer days than its dates with explicit activity")
+  void explainKeepsTheActiveFloor() {
+    final FirstCommit.Issue i = worked(List.of(code("a", "x", day(2), 10L),
+        code("b", "x", day(16), 30L)), List.of(),
+        List.of(day(3), day(4), day(5), day(8), day(9)), day(16) + H);
+    final FirstCommit.Wait w = FirstCommit.explain(i, select(i), 3).waits().getFirst();
+    assertEquals(10, w.businessDays());
+    assertEquals(6, w.counted(), "five comment dates plus the second commit's own date");
+    assertEquals(4, w.cut());
+    assertTrue(w.counted() >= w.active());
+  }
+
+  @Test
+  @DisplayName("the tail lists only the dates with human activity after the last mark, up to the "
+      + "resolution, weekends and later dates left out")
+  void explainTail() {
+    // last mark on Tuesday 16; comments on Thursday 18, Friday 19 and Saturday 20; resolved on 22
+    final FirstCommit.Issue i = tailed();
+    final FirstCommit.Explanation e = FirstCommit.explain(i, select(i), 3);
+    assertEquals(List.of(java.time.LocalDate.of(2024, 1, 18), java.time.LocalDate.of(2024, 1, 19)),
+        e.tail());
+    assertEquals(e.count().tail(), e.tail().size());
+    assertEquals(0, e.hour());
+  }
+
+  @Test
+  @DisplayName("the calendar business days run from the first commit to the resolution")
+  void explainCalendar() {
+    final FirstCommit.Issue i = tailed();
+    final FirstCommit.Explanation e = FirstCommit.explain(i, select(i), 3);
+    // the weekdays after Tuesday 2 up to Monday 22: 3-5, 8-12, 15-19 and 22
+    assertEquals(14, e.calendar());
+    assertTrue(e.calendar() >= e.total());
+  }
+
+  // ------------------------------------------------------------------ the wait fence's k
+
+  private static final List<Integer> GAPS = List.of(0, 1, 1, 2, 2, 3, 4, 50);
+
+  @Test
+  @DisplayName("the default k of the wait fence is 1.5, and the one-argument threshold is that k's")
+  void defaultWaitFence() {
+    assertEquals(1.5, FirstCommit.DEFAULT_WAIT_K, 0);
+    assertEquals(FirstCommit.threshold(GAPS), FirstCommit.threshold(GAPS, 1.5));
+    assertEquals("Q3 + 1.5 IQR", FirstCommit.fenceText(1.5));
+    assertEquals(FirstCommit.rule(1.5), FirstCommit.RULE, "the official text is k = 1.5");
+  }
+
+  @Test
+  @DisplayName("a larger k moves a wait between the two fences to the counted side")
+  void largerWaitFence() {
+    final List<Integer> gaps = new ArrayList<>(GAPS);
+    gaps.add(9);
+    final FirstCommit.Threshold usual = FirstCommit.threshold(gaps, 1.5);
+    final FirstCommit.Threshold wide = FirstCommit.threshold(gaps, 3.0);
+    assertTrue(usual.fence() < 9 && 9 <= wide.fence(), "9 is between the two fences");
+    assertTrue(usual.cap() < 9);
+    assertEquals(9, wide.cap(), "the wait of 9 days is under the wide fence, over the usual one");
+    assertEquals(wide.q3() + 3.0 * (wide.q3() - wide.q1()), wide.fence(), 1e-9);
+  }
+
+  @Test
+  @DisplayName("with no cap the fence is infinite and the cap is the largest wait, so none is cut")
+  void noWaitCap() {
+    final FirstCommit.Threshold t = FirstCommit.threshold(GAPS, FirstCommit.NO_WAIT_CAP);
+    assertEquals(Double.POSITIVE_INFINITY, t.fence());
+    assertEquals(50, t.cap());
+    final FirstCommit.Issue i = worked(List.of(code("a", "x", day(2), 10L),
+        code("b", "x", day(16), 30L)), List.of(), List.of(day(10)), day(16) + H);
+    assertEquals(0, FirstCommit.count(i, select(i), t.cap()).capped());
+    assertEquals("no cap on the waits", FirstCommit.fenceText(FirstCommit.NO_WAIT_CAP));
+  }
+
+  @Test
+  @DisplayName("with no cap and an IQR of zero the fence is not NaN")
+  void noWaitCapZeroIqr() {
+    final FirstCommit.Threshold t =
+        FirstCommit.threshold(List.of(1, 1, 1, 1, 7), FirstCommit.NO_WAIT_CAP);
+    assertEquals(Double.POSITIVE_INFINITY, t.fence());
+    assertEquals(7, t.cap());
+    assertEquals(1, FirstCommit.threshold(List.of(1, 1, 1, 1, 7), 1.5).cap(),
+        "with a cap the same gaps cut the wait of 7");
+  }
+
+  @Test
+  @DisplayName("a k of zero, a negative one or NaN is refused")
+  void invalidWaitFence() {
+    for (final double k : new double[] {0, -1.5, Double.NaN, Double.NEGATIVE_INFINITY}) {
+      assertThrows(IllegalArgumentException.class, () -> FirstCommit.threshold(GAPS, k));
+    }
+  }
+
+  @Test
+  @DisplayName("WAIT_FENCE_K: empty is 1.5, none is no cap, a positive number is itself")
+  void waitFenceSetting() {
+    assertEquals(1.5, FirstCommit.waitFenceK(null));
+    assertEquals(1.5, FirstCommit.waitFenceK("  "));
+    assertEquals(3.0, FirstCommit.waitFenceK("3"));
+    assertEquals(FirstCommit.NO_WAIT_CAP, FirstCommit.waitFenceK("none"));
+    for (final String bad : new String[] {"0", "-1", "NaN", "abc", "Infinity"}) {
+      assertThrows(IllegalArgumentException.class, () -> FirstCommit.waitFenceK(bad), bad);
+    }
+    assertEquals("none", FirstCommit.waitFenceLabel(FirstCommit.NO_WAIT_CAP));
+    assertEquals("3.0", FirstCommit.waitFenceLabel(3.0));
+  }
 }

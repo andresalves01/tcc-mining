@@ -12,6 +12,7 @@ import app.config.PipelineConfig;
 import app.identity.Strictness;
 import app.issues.Corpus;
 import app.issues.DurationEvidence;
+import app.issues.FirstCommit;
 import app.issues.FirstCommitFacts;
 import app.issues.RowCache;
 import app.issues.SplitRule;
@@ -232,6 +233,45 @@ class IssuesInProgressExtractCommandTest {
         Integer::sum));
     assertEquals(sizes.get("outer_training"), sides.get("TRAIN"));
     assertEquals(sizes.get("outer_test"), sides.get("TEST"));
+  }
+
+  @Test
+  @DisplayName("WAIT_FENCE_K is recorded in the run when it is not the official 1.5, which leaves "
+      + "the record as it was; with none the fence is a word and the target rule says no wait is "
+      + "capped")
+  void firstCommitRecordsWaitFence() throws Exception {
+    new IssuesInProgressExtractCommand(Map.of("CACHE", dir.resolve("a.tsv").toString(),
+        "POPULATION", "FIRST_COMMIT")::get).run(context(firstCommit()));
+    assertFalse(records.getFirst().containsKey("wait_fence_k"));
+    assertEquals(FirstCommit.RULE, records.getFirst().get("target_rule"));
+    records.clear();
+    collections.values().forEach(List::clear);
+    new IssuesInProgressExtractCommand(Map.of("CACHE", dir.resolve("b.tsv").toString(),
+        "POPULATION", "FIRST_COMMIT", "WAIT_FENCE_K", "none")::get)
+        .run(context(firstCommit()));
+    final Map<String, Object> run = records.getFirst();
+    assertEquals("none", run.get("wait_fence_k"));
+    assertEquals(FirstCommit.rule(FirstCommit.NO_WAIT_CAP), run.get("target_rule"));
+    assertEquals("none", ((Map<?, ?>) run.get("wait_cap")).get("fence"));
+  }
+
+  @Test
+  @DisplayName("an invalid WAIT_FENCE_K is refused before anything is read")
+  void firstCommitRefusesInvalidWaitFence() {
+    for (final String bad : List.of("0", "-2", "NaN", "many")) {
+      assertThrows(CommandFailedException.class, () -> new IssuesInProgressExtractCommand(
+          Map.of("CACHE", dir.resolve("c.tsv").toString(), "POPULATION", "FIRST_COMMIT",
+              "WAIT_FENCE_K", bad)::get).run(context(firstCommit())), bad);
+    }
+    assertEquals(0, loads, "the corpus was not read");
+  }
+
+  @Test
+  @DisplayName("the In Progress population ignores WAIT_FENCE_K: its study does not change")
+  void inProgressIgnoresWaitFence() throws Exception {
+    new IssuesInProgressExtractCommand(Map.of("CACHE", dir.resolve("d.tsv").toString(),
+        "WAIT_FENCE_K", "none")::get).run(context(defaults()));
+    assertFalse(records.getFirst().containsKey("wait_fence_k"));
   }
 
   @Test

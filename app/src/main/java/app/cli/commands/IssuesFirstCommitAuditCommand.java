@@ -57,10 +57,16 @@ public final class IssuesFirstCommitAuditCommand implements CommandRunner {
     } catch (final IllegalArgumentException e) {
       throw new CommandFailedException(List.of("  " + e.getMessage()));
     }
+    final double waitK;
+    try {
+      waitK = FirstCommit.waitFenceK(settings.apply(FirstCommit.WAIT_FENCE_SETTING));
+    } catch (final IllegalArgumentException e) {
+      throw new CommandFailedException(List.of("  " + e.getMessage()));
+    }
     final Path root = Path.of(dir);
     Files.createDirectories(root);
     final Report r =
-        new IssuesFirstCommitAuditTask(context.study(), context.progress(), rule).run();
+        new IssuesFirstCommitAuditTask(context.study(), context.progress(), rule, waitK).run();
     write(root, r);
     System.out.printf("%n  First-commit audit: %,d issues drawn (training %,d, test %,d); cap %d "
         + "business days%n", r.sizes().rows(), r.sizes().train(), r.sizes().test(),
@@ -85,12 +91,33 @@ public final class IssuesFirstCommitAuditCommand implements CommandRunner {
     return String.format(PT, "%,.2f", v);
   }
 
+  /** The fence's k as the summary writes it: 1,5 or 3. */
+  private static String fenceNumber(final double k) {
+    return k == Math.rint(k) ? n((long) k) : String.format(PT, "%s", k).replace('.', ',');
+  }
+
+  /** The fence in words: {@code Q3 + 1,5 IQR}, or that no wait is capped. */
+  private static String fenceName(final double k) {
+    return k == FirstCommit.NO_WAIT_CAP ? "sem teto" : "Q3 + " + fenceNumber(k) + " IQR";
+  }
+
+  /** The fence's value, a word when it is infinite. */
+  private static String fence(final FirstCommit.Threshold t) {
+    return Double.isInfinite(t.fence()) ? "sem cerca" : d(t.fence());
+  }
+
   static List<String> summary(final Report r) {
     final List<String> md = new ArrayList<>();
     md.add("# Estudo do primeiro commit: auditoria da população e do alvo");
     md.add("");
     md.add("Só leitura: nada foi gravado em banco. Do teste externo, só o tamanho aparece aqui.");
     md.add("");
+    if (r.waitFenceK() != FirstCommit.DEFAULT_WAIT_K) {
+      md.add("Cerca das esperas: " + fenceName(r.waitFenceK()) + " (sensibilidade; a oficial é "
+          + fenceNumber(FirstCommit.DEFAULT_WAIT_K) + "). A sensibilidade ao limite do primeiro "
+          + "commit e a comparação com a divisão aleatória usam a mesma cerca.");
+      md.add("");
+    }
     md.add("## Funil");
     md.add("");
     md.add("| Etapa | Restam | Saem |");
@@ -139,16 +166,16 @@ public final class IssuesFirstCommitAuditCommand implements CommandRunner {
     md.add("## Teto das pausas, aprendido no ajuste interno");
     md.add("");
     final FirstCommit.Threshold t = r.threshold();
-    md.add("| Q1 | Mediana | Q3 | Cerca (Q3 + 1,5 IQR) | Teto | Intervalos |");
+    md.add("| Q1 | Mediana | Q3 | Cerca (" + fenceName(r.waitFenceK()) + ") | Teto | Intervalos |");
     md.add("|---:|---:|---:|---:|---:|---:|");
-    md.add("| " + d(t.q1()) + " | " + d(t.median()) + " | " + d(t.q3()) + " | " + d(t.fence())
+    md.add("| " + d(t.q1()) + " | " + d(t.median()) + " | " + d(t.q3()) + " | " + fence(t)
         + " | " + n(t.cap()) + " | " + n(t.gaps()) + " |");
     md.add("");
     if (r.temporal() != null) {
       final FirstCommit.Threshold old = r.temporal().random();
       md.add("O teto acima é aprendido só nas esperas do ajuste interno temporal e aplicado "
           + "congelado a todas as issues. Na divisão aleatória, sobre as mesmas issues e nesta "
-          + "mesma rodada, o teto é " + n(old.cap()) + " dias úteis (cerca " + d(old.fence())
+          + "mesma rodada, o teto é " + n(old.cap()) + " dias úteis (cerca " + fence(old)
           + ", " + n(old.gaps()) + " intervalos); a auditoria de 25/10/2026, com a divisão "
           + "aleatória, aprendeu 2.");
       md.add("");
@@ -167,7 +194,7 @@ public final class IssuesFirstCommitAuditCommand implements CommandRunner {
     md.add("- Dias que o teto tirou das pausas: " + n(r.training().capped()) + ".");
     md.add("- Issues com algum patch entre os marcos: " + n(r.training().withPatches()) + ".");
     md.add("");
-    md.add("Regra: " + FirstCommit.RULE + ".");
+    md.add("Regra: " + FirstCommit.rule(r.waitFenceK()) + ".");
     md.add("");
     md.add("## Sensibilidade do limite do primeiro commit");
     md.add("");
