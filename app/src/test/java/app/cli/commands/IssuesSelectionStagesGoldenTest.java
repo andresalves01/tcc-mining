@@ -56,13 +56,13 @@ class IssuesSelectionStagesGoldenTest {
         SilentProgress.INSTANCE, null, store, null);
   }
 
-  private static String sha(final String text) throws Exception {
+  static String sha(final String text) throws Exception {
     return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
         .digest(text.getBytes(StandardCharsets.UTF_8)));
   }
 
   /** A record without the machine's fields, and the SHA-256 of its rows, as text. */
-  private static String record(final String stage, final Map<String, Object> run,
+  static String record(final String stage, final Map<String, Object> run,
       final List<Map<String, Object>> rows) throws Exception {
     final Map<String, Object> kept = new TreeMap<>(run);
     MACHINE.forEach(kept::remove);
@@ -71,7 +71,7 @@ class IssuesSelectionStagesGoldenTest {
   }
 
   /** Every file of a report folder by name and SHA-256, the folder's path written as {@code <dir>}. */
-  private static String files(final Path folder, final Path dir) throws Exception {
+  static String files(final Path folder, final Path dir) throws Exception {
     final StringBuilder out = new StringBuilder();
     try (var list = Files.list(folder)) {
       for (final Path f : list.sorted().toList()) {
@@ -138,7 +138,7 @@ class IssuesSelectionStagesGoldenTest {
    */
   static final String FIRST_COMMIT_GOLDEN = "first-commit-random-selection-golden.txt";
 
-  private static PipelineConfig own() {
+  static PipelineConfig own() {
     return new PipelineConfig("mongodb://127.0.0.1:27017", "smartshark_2_2",
         "smartshark_first_commit", "smartshark_first_commit_issues", "smartshark_tcc",
         Path.of("build/work"), Path.of("build/cache"), Duration.ofMillis(250),

@@ -1,0 +1,80 @@
+== parameters
+# the tail cut's k and fences, the k chosen on the own start model, Elastic Net alpha and lambda, the similarity medians' n, n and k, and each random forest's column share and leaf, chosen on the usual flow of the inner validation only, the target in whole business days from the first commit to the first resolution, its waits between marks capped, on the issues of at least one, for six attribute sets: the own, Al-Zubaidi's and Kikas's at the start, the own retrospective one without and with the comments and participants, both excluding release lag, the own ones with the first commit's size and the retrospective ones with its share, and Kikas's retrospective one; the outer test was not read; the split rule: temporal
+# step	name	parameter	value
+elastic-net	inputs	matrix_sha256	c3d4078048400899391ec1cf2343a97ec5e320998dd82ebbaa7b07ff2f2da33e
+tail-cut	chosen	k	none
+tail-cut	chosen	fence_business_days	Infinity
+tail-cut	usual_flow	k	3.0
+tail-cut	usual_flow	fence_business_days	34.5
+tail-cut	k_1.5	fence_business_days	22.5
+tail-cut	k_1.5	fit_rows	67
+tail-cut	k_1.5	mae_business_days	0.7485576379122347
+tail-cut	k_3.0	fence_business_days	34.5
+tail-cut	k_3.0	fit_rows	67
+tail-cut	k_3.0	mae_business_days	0.7485576379122347
+tail-cut	k_5.0	fence_business_days	50.5
+tail-cut	k_5.0	fit_rows	67
+tail-cut	k_5.0	mae_business_days	0.7485576379122347
+tail-cut	k_10.0	fence_business_days	90.5
+tail-cut	k_10.0	fit_rows	75
+tail-cut	k_10.0	mae_business_days	0.641248932444839
+tail-cut	k_none	fence_business_days	Infinity
+tail-cut	k_none	fit_rows	75
+tail-cut	k_none	mae_business_days	0.641248932444839
+elastic-net	own_with_similarity_before_pressure	alpha	0.95
+elastic-net	own_with_similarity_before_pressure	lambda	0.9601145757499934
+elastic-net	own_with_similarity_before_pressure	jaccard_n	5
+elastic-net	own_with_similarity_before_pressure	embedding_n	5
+elastic-net	own_with_similarity_before_pressure	cluster_k	16
+elastic-net	alzubaidi_start	alpha	0.1
+elastic-net	alzubaidi_start	lambda	117.5398657919748
+elastic-net	kikas_start	alpha	0.1
+elastic-net	kikas_start	lambda	274.57068283833723
+elastic-net	own_retrospective	alpha	0.95
+elastic-net	own_retrospective	lambda	0.9601145757499934
+elastic-net	own_retrospective	jaccard_n	5
+elastic-net	own_retrospective	embedding_n	5
+elastic-net	own_retrospective	cluster_k	16
+elastic-net	own_retrospective_with_discussion	alpha	0.5
+elastic-net	own_retrospective_with_discussion	lambda	0.7896602921729109
+elastic-net	own_retrospective_with_discussion	jaccard_n	5
+elastic-net	own_retrospective_with_discussion	embedding_n	5
+elastic-net	own_retrospective_with_discussion	cluster_k	16
+elastic-net	kikas_retrospective	alpha	0.1
+elastic-net	kikas_retrospective	lambda	127.85497804579805
+forest	own_with_similarity_before_pressure	mtry_share	0.3333333333333333
+forest	own_with_similarity_before_pressure	mtry	5
+forest	own_with_similarity_before_pressure	node_size	5
+forest	alzubaidi_start	mtry_share	0.6666666666666666
+forest	alzubaidi_start	mtry	8
+forest	alzubaidi_start	node_size	25
+forest	kikas_start	mtry_share	0.16666666666666666
+forest	kikas_start	mtry	2
+forest	kikas_start	node_size	5
+forest	own_retrospective	mtry_share	0.3333333333333333
+forest	own_retrospective	mtry	9
+forest	own_retrospective	node_size	5
+forest	own_retrospective_with_discussion	mtry_share	0.3333333333333333
+forest	own_retrospective_with_discussion	mtry	9
+forest	own_retrospective_with_discussion	node_size	5
+forest	kikas_retrospective	mtry_share	0.3333333333333333
+forest	kikas_retrospective	mtry	9
+forest	kikas_retrospective	node_size	5
+forest	every_model	trees	500
+analogy	chosen	column	cluster_median_16
+== elastic-net record {analogy_estimate={rule=analogy estimate, the fifteenth model of the temporal split: of the 9 similarity medians, each read in its inner column as the estimate with no model around it, the one with the lowest MAE on the usual-flow inner validation, the first in order on a tie; an issue without it takes the global median of the inner fitting rows at or below the chosen k's fence; only the chosen column is frozen, column=cluster_median_16, fallback_business_days=6.0, similarity_medians=[{median=jaccard_median_5, mae_business_days=2.0217249972848372, fallbacks=0}, {median=jaccard_median_10, mae_business_days=2.069456296395287, fallbacks=0}, {median=jaccard_median_20, mae_business_days=2.1263164041188705, fallbacks=0}, {median=embedding_median_5, mae_business_days=1.7945607120561888, fallbacks=0}, {median=embedding_median_10, mae_business_days=1.9935310737499723, fallbacks=0}, {median=embedding_median_20, mae_business_days=1.8244405346205028, fallbacks=0}, {median=cluster_median_8, mae_business_days=1.9148086392126253, fallbacks=0}, {median=cluster_median_16, mae_business_days=1.6414936517169103, fallbacks=0}, {median=cluster_median_32, mae_business_days=2.3487814987696596, fallbacks=0}]}, cluster_k=[8, 16, 32], constant_mae_business_days=4.857142857142857, embedding_n=[5, 10, 20], first_commit_attributes=decision 16a: the first commit's lines added plus removed in every file (FC_first_commit_lines, log1p) closes the own start model, so both readings of the own retrospective model read it too; its share of the issue's changed lines (FC_first_commit_share, raw) closes their retrospective columns; the literature sets are unchanged, fit_rows=75, forest_grid={trees=500, max_depth=20, mtry_shares=[0.16666666666666666, 0.3333333333333333, 0.6666666666666666], node_sizes=[5, 25, 100], seed=20260927}, forest_role=the random forest beside each Elastic Net is a robustness check, not a new contribution: it answers whether the small gains come from relations the linear model cannot capture; added after an inner-validation prototype and before the outer test was opened, forest_ties=the first point of the grid in its order: the smaller column share, then the smaller leaf, forest_trees=500, forest_trees_rule=the temporal split's forests have the Smile library's default of 500 trees, decided by the author on 02/11/2026 before any temporal result, in place of the 300 inherited from the pull-request study's gradient-boosting control, which were never evaluated; the random split keeps 300, holidays=holidays ignored: the data hold no country per person, jaccard_n=[5, 10, 20], kikas_retrospective=Kikas at the start followed by Kikas's retrospective set as adapted, the twelve counts observed up to the resolution and their missing indicator (KIKAS / C2), the literature counterpart of the retrospective model; it counts comments, which the main reading of the own retrospective model does not, matrix_sha256=c3d4078048400899391ec1cf2343a97ec5e320998dd82ebbaa7b07ff2f2da33e, mode=inner, models=[own_with_similarity_before_pressure, alzubaidi_start, kikas_start, own_retrospective, own_retrospective_with_discussion, kikas_retrospective], outer_test=not read, own_retrospective=the main reading of the retrospective model: the own start model followed by the five content attributes (Java lines, files, mean complexity, mean nesting, familiarity) and assignee changes, with their missing indicators; no comments, participants or release lag, preserving the declared attribute specification, own_retrospective_with_discussion=a CEILING, not a competitor: the main reading of the retrospective model followed by the comments and the participants, which accumulate during the work and are unavailable at the start; it compares fairly with Kikas's retrospective set, which counts comments too, parameters_sha256=9d22ecf5c144a096cacae32949f298845ea282337bc21261a5c10fa640780055, population=issues resolved as Fixed at their first resolution, created before their first commit that counts, with at least two commits once duplicates are gone, the first commit below 50% of the changed lines of every file, code on at least two dates, no commit linked to another issue, and a target of at least one business day; the split is drawn over them alone, population_rows={inner_fitting=[75, 75], inner_validation=[32, 32], outer_training=[107, 107]}, project_mae_business_days=5.0, retrospective_scenario=retrospective: nine attributes observed between the first commit that counts and the first resolution (implementation content, discussion and coordination, and urgency, the days from the first resolution to the release of its fix version, measured after the fact); the counts grow with the duration itself, so a gain is association with the duration observed up to the resolution, not a prediction available during the work, nor causation. The main reading leaves the comments and the participants and release lag out of the models; the reading with them is a ceiling, not a competitor, split_design=temporal, split_rule=temporal: the candidates ordered by their first commit, the issue id breaking ties; the cut is the instant at position ceil(0.7 n), from 1; training is every first commit at or before the cut, ties included, and test the rest; the same rule on the training side gives the inner fitting and the inner validation; no stratification by project; no issue is set aside, stage=issues-in-progress-similarity-elastic-net, study=FIRST_COMMIT, tail_cut={rule=fence Q3 + k IQR of the business days of the fitting side of the split (inner: the inner fitting set; outer: the outer training set), never of validation or test labels; the fitting rows above the chosen k's fence leave every model's, forest's and reference's fitting rows, the histories keep them; k chosen once on the own start model (own_with_similarity_before_pressure) among 1.5, 3, 5, 10 and no cut by its error on the usual-flow validation issues, ties to the larger k; usual flow: the issues at or below the k = 3 fence; every choice of the selection (alpha, lambda, the medians' n and k, each forest's point, k) is scored on the usual-flow validation issues, quantiles=quartiles by linear interpolation between order statistics at position (n - 1) p of the sorted business days (Hyndman and Fan's type 7, the default of R and numpy), chosen_on=own_with_similarity_before_pressure, chosen_on_rule=the k is chosen on the own start model (own_with_similarity_before_pressure) alone, the start model the SPSP would use, and then reaches every model, forest and reference, k=none, fence_business_days=Infinity, usual_flow_k=3.0, usual_flow_fence_business_days=34.5, grid=[{k=1.5, fence_business_days=22.5, fit_rows=67, usual_flow_mae_business_days=0.7485576379122347}, {k=3.0, fence_business_days=34.5, fit_rows=67, usual_flow_mae_business_days=0.7485576379122347}, {k=5.0, fence_business_days=50.5, fit_rows=67, usual_flow_mae_business_days=0.7485576379122347}, {k=10.0, fence_business_days=90.5, fit_rows=75, usual_flow_mae_business_days=0.641248932444839}, {k=none, fence_business_days=Infinity, fit_rows=75, usual_flow_mae_business_days=0.641248932444839}]}, target=first commit to first resolution; marks are the commits and the human patches after the first commit; business days between marks capped at the largest gap not above Q3 + 1.5 IQR of the inner fitting's gaps, never below the dates with explicit human activity; after the last mark only dates with human comments, attachments or reviews; status not read, ties=within a sweep the earlier point; across combinations the smaller Jaccard n, then embedding n, then cluster k, validation_rows=28, validation_rows_all=32, validation_scored=usual flow (main reading): the scored issues at or below the k = 3 fence}
+== elastic-net rows 6 b13096914aecb06af2351d4fecfbd2715140116a1fbd1e20e978d4e85cf2b1d9
+== inner/similarity-inner-bands.tsv 5c00db37e5fbd0146999a1017f5febdfd4a8ae3c4ff5bf99891e3889f61cfa40
+== inner/similarity-inner-calibration.tsv e3c2602574e0da3a42e8bac8617d7251949ba4e8d2c25d6c1978dd58491f58c4
+== inner/similarity-inner-comparisons.tsv f5416e6fbc8d79e6f3e0863766685936bb2770d99292c25284959b83d6364958
+== inner/similarity-inner-diagnostics.tsv bb60ff8f7212bb2c01b155783e0f1fe4f84b7f55deb1b7f3c3b3d2c2c8188f1c
+== inner/similarity-inner-forest-importance.tsv 4a5419d3f31c2bac5be8d59e0878f6f485c6f58ee374ebbc0ff609d45eccf2c2
+== inner/similarity-inner-intervals.tsv be45e36d50a288ec6446f1b14838e7023cb1f96e7a23b0e0b65d031bd7d8741b
+== inner/similarity-inner-largest-errors.tsv e85a9ba1ef75e7f489c1d5a219d96e045d3aa1cacefc876f983c08209389a881
+== inner/similarity-inner-models.tsv 3a75dc707a5e7f924104095446aac97e4b9ef61667aea851b8337cb4edacd9c1
+== inner/similarity-inner-ordering.tsv fd65dbcbbd07111fdb458e303f63f8560dc400ebd30e03dd3da56cc99eaf5de7
+== inner/similarity-inner-prediction-percentiles.tsv 8c3dea1a9a19a401d5a356bfad6cf2104a644c1d92b60be4349d875dd896a018
+== inner/similarity-inner-predictions.tsv 2bf188d7b73840ad0f9615143e85ad68f4c7472693947a673cce4224914b74c0
+== inner/similarity-inner-relevance.tsv 969cdfce9eca5f234b599ef4c26e9a42b69a47083cb083bfeb4699f9d8140fad
+== inner/similarity-inner-report.md c8b31719e5a153d291b0a60a75e1258c866321660f6c61e7f2e277a1593575aa
+== inner/similarity-inner-uncertainty.tsv a5abf1cc9254c43305c1f750ca30d2cae690438173e6b5a492ac2ef3300c768d
