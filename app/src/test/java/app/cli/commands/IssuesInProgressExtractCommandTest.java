@@ -355,4 +355,26 @@ class IssuesInProgressExtractCommandTest {
     assertEquals(0, loads);
     assertTrue(records.isEmpty());
   }
+  @Test
+  @DisplayName("POPULATION=FIRST_COMMIT SPLIT_RULE=revised records in the revised design's own "
+      + "collection, under its own rule's words and design, the cuts and the issues crossing "
+      + "them, and writes a cache whose sides the revised check accepts")
+  void firstCommitRevised() throws Exception {
+    final Path cache = dir.resolve("revised.tsv");
+    new IssuesInProgressExtractCommand(Map.of("CACHE", cache.toString(),
+        "POPULATION", "FIRST_COMMIT", "SPLIT_RULE", "revised")::get).run(context(firstCommit()));
+    assertTrue(records.isEmpty(), "nothing in the random design's collection");
+    assertTrue(runs("runs_temporal").isEmpty(), "nothing in the temporal design's collection");
+    assertEquals(1, runs("runs_revised").size());
+    final Map<String, Object> run = runs("runs_revised").getFirst();
+    assertEquals("revised", run.get("split_design"));
+    assertEquals(SplitRule.REVISED.rule(), run.get("split_rule"));
+    assertTrue(run.containsKey("split_cuts"));
+    assertTrue(run.containsKey("crossing_the_cut"));
+    assertTrue(run.containsKey("new_projects"));
+    assertFalse(run.containsKey("split_seed"));
+    assertEquals(SplitRule.REVISED, SplitRule.recordedBy(run));
+    assertEquals(List.of(), SplitRule.REVISED.differences(RowCache.read(cache),
+        Population.FIRST_COMMIT));
+  }
 }

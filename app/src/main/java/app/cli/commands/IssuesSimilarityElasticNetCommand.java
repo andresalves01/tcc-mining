@@ -285,7 +285,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
       System.out.println(grid);
       rows.add(row(m));
     }
-    final boolean temporal = rule == SplitRule.TEMPORAL;
+    final boolean temporal = rule.temporal();
     if (temporal) {
       System.out.printf("%n  random forests: %d trees each (%s)%n", r.trees(), TEMPORAL_TREES);
       System.out.printf(java.util.Locale.ROOT, "  %s; fallback %.3f bd (similarity median: MAE bd, "
@@ -315,7 +315,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     run.put("mode", "inner");
     run.put("outer_test", "not read");
     run.put("split_rule", rule.rule());
-    if (firstCommit && rule == SplitRule.TEMPORAL) {
+    if (firstCommit && rule.temporal()) {
       run.put(SplitRule.DESIGN_FIELD, rule.setting());
     }
     run.putAll(statements(study));

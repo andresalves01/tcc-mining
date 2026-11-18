@@ -413,7 +413,7 @@ public final class ElasticNetSelection {
    * outer test was opened with them.
    */
   public static int trees(final SplitRule rule) {
-    return rule == SplitRule.TEMPORAL ? Forest.LIBRARY_TREES : Forest.TREES;
+    return rule.temporal() ? Forest.LIBRARY_TREES : Forest.TREES;
   }
 
   /** The line giving every forest's count of trees, as the parameters file writes it. */
@@ -579,7 +579,7 @@ public final class ElasticNetSelection {
       final Population population, final SplitRule rule) {
     // the temporal split freezes the analogy estimate's choice and the forests' trees; the random
     // split's file stays as every one written before it, with neither
-    if (rule == SplitRule.TEMPORAL ? r.analogy() == null : r.analogy() != null) {
+    if (rule.temporal() ? r.analogy() == null : r.analogy() != null) {
       throw new IllegalArgumentException("the analogy estimate is chosen under the temporal "
           + "split alone, not under the " + rule.setting() + " one");
     }
@@ -620,7 +620,7 @@ public final class ElasticNetSelection {
       out.add(String.join("\t", FOREST_STEP, name, MTRY, Integer.toString(f.mtry())));
       out.add(String.join("\t", FOREST_STEP, name, NODE_SIZE, Integer.toString(f.nodeSize())));
     }
-    if (rule == SplitRule.TEMPORAL) {
+    if (rule.temporal()) {
       out.add(treesLine(r.trees()));
       out.addAll(analogyLines(new AnalogyEstimate.Frozen(r.analogy().chosen())));
     }
@@ -910,8 +910,8 @@ public final class ElasticNetSelection {
           forests.get(m)));
     }
     // the temporal split's fifteenth model, its fallback the global median learned just above
-    final double fallback = rule == SplitRule.TEMPORAL ? refs.constant(1)[0] : Double.NaN;
-    final AnalogyEstimate.Choice analogy = rule == SplitRule.TEMPORAL
+    final double fallback = rule.temporal() ? refs.constant(1)[0] : Double.NaN;
+    final AnalogyEstimate.Choice analogy = rule.temporal()
         ? AnalogyEstimate.choose(cut.scoreRows(), Augmentation.Variant.INNER, fallback, observed)
         : null;
     return new Result(cut.fitUnits().size(), observed.length, projectMae, constantMae,

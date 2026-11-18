@@ -238,7 +238,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     if (unwritten != null) {
       throw refused(matrix + ": " + unwritten);
     }
-    final boolean temporal = rule == SplitRule.TEMPORAL;
+    final boolean temporal = rule.temporal();
     final BusinessDays.Population population;
     final SimilarityScoring.Readings readings;
     final SimilarityScoring.Readings withoutNew;
@@ -491,7 +491,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
       final List<SimilarityScoring.Relevance> relevance, final BusinessDays.Population population,
       final IssuesSimilarityTestCommand.Chosen chosen, final Path matrix,
       final Path elasticNet, final Population study, final SplitRule rule) {
-    final boolean temporal = rule == SplitRule.TEMPORAL;
+    final boolean temporal = rule.temporal();
     final SimilarityScoring.Report r = readings.complementary();
     final SimilarityScoring.Fences fences = r.fences();
     final Side side = Side.of(study);

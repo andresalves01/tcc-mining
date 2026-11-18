@@ -220,4 +220,16 @@ class IssuesFirstCommitAuditTemporalTest {
     assertNull(r.temporal());
     assertNotNull(r.threshold());
   }
+  @Test
+  @DisplayName("the revised rule's audit is a temporal one: the same sides and cuts, the temporal "
+      + "report beside them")
+  void revisedIsTemporal() {
+    final Report r = run(SplitRule.REVISED);
+    final Report t = run(SplitRule.TEMPORAL);
+    assertEquals(SplitRule.REVISED, r.rule());
+    assertNotNull(r.temporal());
+    assertEquals(t.sizes(), r.sizes());
+    assertEquals(t.temporal().cuts(), r.temporal().cuts());
+    assertEquals(t.temporal().projects(), r.temporal().projects());
+  }
 }

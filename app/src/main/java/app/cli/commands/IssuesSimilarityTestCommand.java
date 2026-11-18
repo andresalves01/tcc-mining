@@ -86,7 +86,10 @@ import java.util.function.Function;
  * projects, those with issues on the outer test side and none on the outer training side, with
  * their count; with none, the readings without them are the readings themselves and are not
  * repeated. The temporal opening is recorded under {@link #FIRST_COMMIT_TEMPORAL_STAGE} and, as
- * the random one, runs once.
+ * the random one, runs once. The revised design ({@code SPLIT_RULE=revised}) is read as a
+ * temporal one, recorded under {@link #FIRST_COMMIT_REVISED_STAGE}, once, and its record never
+ * says the outer test is read for the first time: it had been read once under the design of
+ * 02/11/2026.
  *
  * <p>Reads MATRIX and ELASTIC_NET_PARAMETERS, which gives per model its alpha and lambda, for
  * the three with the similarity medians the Jaccard n, embedding n and cluster k they read, and
@@ -120,6 +123,25 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
    * #FIRST_COMMIT_STAGE}, and each is opened once.
    */
   public static final String FIRST_COMMIT_TEMPORAL_STAGE = "issues-first-commit-test-temporal";
+
+  /**
+   * The step that reads the outer test of the temporal split's revised design, recorded under a
+   * name of its own: ISSUES_DB already holds the opening of the design of 02/11/2026, under {@link
+   * #FIRST_COMMIT_TEMPORAL_STAGE}, and this one runs once too.
+   */
+  public static final String FIRST_COMMIT_REVISED_STAGE = "issues-first-commit-test-revised";
+
+  /**
+   * What the revised design's run says of its reading of the outer test, factual: the same outer
+   * test had been read once under the design of 02/11/2026, so it is not read for the first time.
+   */
+  static final String REVISED_READING = "read under the revised design; the outer test had been "
+      + "read once under the design of 02/11/2026";
+
+  /** The outer test of the temporal split's revised design, a sentence of its own. */
+  static final String FIRST_COMMIT_REVISED_EXAMINED = "the outer test is the first-commit "
+      + "population's temporal split: every issue whose first commit came after the cut, "
+      + REVISED_READING + ".";
 
   /** The first-commit study's outer test, a sentence of its own. */
   static final String FIRST_COMMIT_EXAMINED = "the outer test is the first-commit population's "
@@ -238,12 +260,27 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
 
   private String stage(final SplitRule rule) {
     return !firstCommitStudy() ? STAGE
-        : rule == SplitRule.TEMPORAL ? FIRST_COMMIT_TEMPORAL_STAGE : FIRST_COMMIT_STAGE;
+        : switch (rule) {
+          case RANDOM -> FIRST_COMMIT_STAGE;
+          case TEMPORAL -> FIRST_COMMIT_TEMPORAL_STAGE;
+          case REVISED -> FIRST_COMMIT_REVISED_STAGE;
+        };
   }
 
   private String examined(final SplitRule rule) {
     return !firstCommitStudy() ? EXAMINED
-        : rule == SplitRule.TEMPORAL ? FIRST_COMMIT_TEMPORAL_EXAMINED : FIRST_COMMIT_EXAMINED;
+        : switch (rule) {
+          case RANDOM -> FIRST_COMMIT_EXAMINED;
+          case TEMPORAL -> FIRST_COMMIT_TEMPORAL_EXAMINED;
+          case REVISED -> FIRST_COMMIT_REVISED_EXAMINED;
+        };
+  }
+
+  /** What the run records of the outer test: under the revised design, never a first reading. */
+  private String outerTest(final SplitRule rule) {
+    return !firstCommitStudy() ? "scored"
+        : rule == SplitRule.REVISED ? "scored, " + REVISED_READING
+        : "scored, opened for the first time";
   }
 
   @Override
@@ -294,7 +331,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
               + "written or recorded: " + matrix + " is not a matrix of the first-commit "
               + "population's split"));
         }
-        if (rule == SplitRule.TEMPORAL) {
+        if (rule.temporal()) {
           store = IssuesInProgressExtractCommand.runStore(context, study, rule);
         }
         if (Files.exists(predictionsFile)) {
@@ -560,12 +597,12 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     run.put("stage", stage(rule));
     if (firstCommitStudy()) {
       run.put("split_rule", rule.rule());
-      if (rule == SplitRule.TEMPORAL) {
+      if (rule.temporal()) {
         run.put(SplitRule.DESIGN_FIELD, rule.setting());
       }
     }
     run.put("mode", "outer");
-    run.put("outer_test", firstCommitStudy() ? "scored, opened for the first time" : "scored");
+    run.put("outer_test", outerTest(rule));
     if (firstCommitStudy()) {
       run.put("outer_test_opened_at", java.time.Instant.now().toString());
     }
@@ -734,18 +771,18 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       return elasticNet + " was written under the split rule " + chosen.rule().setting()
           + "; this run declares " + rule.setting() + " (" + SplitRule.SETTING + ")";
     }
-    if (rule == SplitRule.TEMPORAL && chosen.analogy() == null) {
+    if (rule.temporal() && chosen.analogy() == null) {
       return elasticNet + " freezes no choice of the analogy estimate, the fifteenth "
           + "model of the temporal split; the selection of the temporal split must write it "
           + "first";
     }
-    if (rule == SplitRule.TEMPORAL && chosen.givenTrees().isEmpty()) {
+    if (rule.temporal() && chosen.givenTrees().isEmpty()) {
       return elasticNet + " gives no tree count for the forests (the line "
           + ElasticNetSelection.FOREST_STEP + " " + ElasticNetSelection.EVERY_MODEL
           + " trees <n>); a file of the temporal split must give it, and only a file of the "
           + "random split is read at " + Forest.TREES + " trees without it";
     }
-    if (rule != SplitRule.TEMPORAL && chosen.analogy() != null) {
+    if (!rule.temporal() && chosen.analogy() != null) {
       return elasticNet + " freezes a choice of the analogy estimate, a declared model of "
           + "the first-commit study's temporal split alone; under the " + rule.setting()
           + " split it is exploratory and never scored here";

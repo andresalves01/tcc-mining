@@ -173,7 +173,7 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
 
     final Map<String, Object> run = new LinkedHashMap<>();
     run.put("stage", STAGE);
-    if (firstCommit && rule == SplitRule.TEMPORAL) {
+    if (firstCommit && rule.temporal()) {
       run.put(SplitRule.DESIGN_FIELD, rule.setting());
       run.put(SplitRule.RULE_FIELD, rule.rule());
     }

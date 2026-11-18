@@ -171,7 +171,7 @@ public final class IssuesFirstCommitExtractTask {
     return new Report(withoutPause(extraction), b.units().size(),
         IssuesFirstCommitAuditTask.funnel(b.units().size(), drawn.verdicts()), drawn.threshold(),
         FirstCommit.summary(training),
-        rule == SplitRule.TEMPORAL ? temporal(b.issues(), drawn, projects) : null);
+        rule.temporal() ? temporal(b.issues(), drawn, projects) : null);
   }
 
   /** The cuts, the issues crossing them and the new projects of a temporal draw. */

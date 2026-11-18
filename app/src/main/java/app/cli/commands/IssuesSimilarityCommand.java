@@ -341,7 +341,7 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     run.put("augmentation_seconds", augmentationSeconds);
     run.put("history", HISTORY);
     run.put("split_rule", rule.rule());
-    if (firstCommit && rule == SplitRule.TEMPORAL) {
+    if (firstCommit && rule.temporal()) {
       run.put(SplitRule.DESIGN_FIELD, rule.setting());
     }
     if (rule == SplitRule.RANDOM) {

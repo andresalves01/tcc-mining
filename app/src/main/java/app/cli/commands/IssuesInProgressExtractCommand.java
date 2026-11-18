@@ -202,7 +202,7 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
       return context.issuesResults();
     }
     requireOwnDatabases(context.config());
-    return rule == SplitRule.TEMPORAL
+    return rule.temporal()
         ? requireOwnDesign(context.issuesResults(), rule) : context.issuesResults();
   }
 

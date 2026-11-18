@@ -42,6 +42,9 @@ class DeclaredSplitRuleTest {
   private final List<Map<String, Object>> runs = new ArrayList<>();
   private final List<Map<String, Object>> randomRuns = new ArrayList<>();
   private final List<Map<String, Object>> temporalRuns = new ArrayList<>();
+  private final List<Map<String, Object>> revisedRuns = new ArrayList<>();
+  /** Every design whose store a stage asked for, in order. */
+  private final List<SplitRule> asked = new ArrayList<>();
 
   private static PipelineConfig own() {
     return new PipelineConfig("mongodb://127.0.0.1:27017", "smartshark_2_2",
@@ -72,27 +75,30 @@ class DeclaredSplitRuleTest {
 
       @Override
       public ResultStore design(final SplitRule rule) {
+        asked.add(rule);
         if (rule == SplitRule.RANDOM) {
           return this;
         }
+        // each design's collection of its own: the temporal one's, or the revised one's
+        final List<Map<String, Object>> own = rule == SplitRule.TEMPORAL ? temporalRuns
+            : revisedRuns;
         return new ResultStore() {
           @Override
           public String record(final Map<String, Object> run,
               final List<Map<String, Object>> rows) {
             runs.add(run);
-            temporalRuns.add(run);
-            return "temporal-run";
+            own.add(run);
+            return rule.setting() + "-run";
           }
 
           @Override
           public Optional<Boolean> recorded(final String stage) {
-            return Optional.of(temporalRuns.stream()
-                .anyMatch(r -> stage.equals(r.get("stage"))));
+            return Optional.of(own.stream().anyMatch(r -> stage.equals(r.get("stage"))));
           }
 
           @Override
           public Optional<java.util.Set<SplitRule>> designs() {
-            return Optional.of(temporalRuns.stream().map(SplitRule::recordedBy)
+            return Optional.of(own.stream().map(SplitRule::recordedBy)
                 .collect(java.util.stream.Collectors.toSet()));
           }
         };
@@ -280,10 +286,79 @@ class DeclaredSplitRuleTest {
     }
     settings.put(SplitRule.SETTING, "weekly");
     assertTrue(refused(new IssuesSimilarityElasticNetCommand(get), context(defaults()))
-        .contains("random or temporal"));
+        .contains("random, temporal or revised"));
     assertTrue(runs.isEmpty());
     assertFalse(Files.exists(dir.resolve("elastic-net.tsv")));
     assertFalse(Files.exists(dir.resolve("retrospective.tsv")));
     assertFalse(Files.exists(dir.resolve("reports")));
+  }
+  @Test
+  @DisplayName("the revised design, stage by stage on a matrix of the temporal sides: the "
+      + "selection, the inner report and the test step read it as a temporal design, with the "
+      + "analogy estimate and 500 trees, record split_design in the revised design's own "
+      + "collection, and the test step its own stage name, never saying the test is read for the "
+      + "first time")
+  void revisedDesign() throws Exception {
+    final Map<String, String> settings = new HashMap<>();
+    settings.put("MATRIX", SelectionFixture.temporal(dir.resolve("temporal.tsv")).toString());
+    final Path parameters = dir.resolve("elastic-net.tsv");
+    settings.put("ELASTIC_NET_PARAMETERS", parameters.toString());
+    settings.put(SplitRule.SETTING, "revised");
+    new IssuesSimilarityElasticNetCommand(settings::get).run(context(own()));
+    final List<String> lines = Files.readAllLines(parameters);
+    assertEquals(SplitRule.REVISED, ElasticNetSelection.headerRule(lines.getFirst()));
+    final List<ElasticNetSelection.Parameter> frozen = ElasticNetSelection.read(lines);
+    assertTrue(ElasticNetSelection.analogy(frozen) != null);
+    assertEquals(500, ElasticNetSelection.trees(frozen).getAsInt());
+    final Map<String, Object> selection = runs.getLast();
+    assertEquals("revised", selection.get(SplitRule.DESIGN_FIELD));
+    assertEquals(SplitRule.REVISED.rule(), selection.get(SplitRule.RULE_FIELD));
+    assertEquals(500, selection.get("forest_trees"));
+    assertTrue(selection.containsKey("analogy_estimate"));
+
+    settings.put("REPORT_DIR", dir.resolve("inner").toString());
+    new IssuesSimilarityInnerReportCommand(settings::get).run(context(own()));
+    assertTrue(Files.readString(dir.resolve("inner").resolve("similarity-inner-report.md"))
+        .contains(app.issues.SimilarityScoring.ANALOGY));
+
+    // the temporal design's parameters file is not the revised design's
+    settings.put(SplitRule.SETTING, "temporal");
+    settings.put("ELASTIC_NET_PARAMETERS", dir.resolve("temporal-parameters.tsv").toString());
+    new IssuesSimilarityElasticNetCommand(settings::get).run(context(own()));
+    settings.put(SplitRule.SETTING, "revised");
+    settings.put("REPORT_DIR", dir.resolve("test").toString());
+    final IssuesSimilarityTestCommand step =
+        new IssuesSimilarityTestCommand(settings::get, Population.FIRST_COMMIT);
+    runs.clear();
+    assertTrue(refused(step, context(own())).contains("written under the split rule temporal"));
+
+    settings.put("ELASTIC_NET_PARAMETERS", parameters.toString());
+    step.run(context(own()));
+    final Map<String, Object> test = runs.getLast();
+    assertEquals(IssuesSimilarityTestCommand.FIRST_COMMIT_REVISED_STAGE, test.get("stage"));
+    assertEquals("issues-first-commit-test-revised", test.get("stage"));
+    assertEquals("revised", test.get(SplitRule.DESIGN_FIELD));
+    assertEquals(SplitRule.REVISED.rule(), test.get(SplitRule.RULE_FIELD));
+    assertEquals(IssuesSimilarityTestCommand.FIRST_COMMIT_REVISED_EXAMINED,
+        test.get("outer_test_draw"));
+    for (final String field : List.of("outer_test", "outer_test_draw")) {
+      final String said = (String) test.get(field);
+      assertFalse(said.contains("first time"), field + ": " + said);
+      assertTrue(said.contains("read under the revised design; the outer test had been read "
+          + "once under the design of 02/11/2026"), field + ": " + said);
+    }
+    assertEquals(15, ((List<?>) test.get("models")).size());
+    assertEquals(500, test.get("forest_trees"));
+    assertTrue(randomRuns.isEmpty(), "nothing in the random design's collection");
+    assertEquals(2, revisedRuns.size(), "the revised selection and test in their own collection");
+    assertEquals(1, temporalRuns.size());
+    assertTrue(asked.stream().filter(r -> r != SplitRule.RANDOM)
+        .allMatch(r -> r == SplitRule.REVISED || r == SplitRule.TEMPORAL));
+    assertTrue(asked.contains(SplitRule.REVISED));
+
+    // opened once: a second run under the revised stage name is refused
+    Files.delete(dir.resolve("test").resolve(IssuesSimilarityTestCommand.PREDICTIONS));
+    assertTrue(refused(step, context(own())).contains("already holds a run of "
+        + IssuesSimilarityTestCommand.FIRST_COMMIT_REVISED_STAGE));
   }
 }

@@ -64,6 +64,8 @@ class FirstCommitStagesTest {
 
   private final List<Map<String, Object>> records = new ArrayList<>();
   private final List<Map<String, Object>> temporalRecords = new ArrayList<>();
+  /** Every design whose store a stage asked for, in order. */
+  private final List<SplitRule> asked = new ArrayList<>();
   private int loads;
 
   private static PipelineConfig config(final String target, final String issues) {
@@ -123,6 +125,7 @@ class FirstCommitStagesTest {
 
       @Override
       public ResultStore design(final SplitRule rule) {
+        asked.add(rule);
         if (rule == SplitRule.RANDOM) {
           return this;
         }
@@ -491,6 +494,59 @@ class FirstCommitStagesTest {
         () -> new IssuesSimilarityCommand(settings::get).run(context(firstCommit(), fixture)));
     assertTrue(String.join("\n", model.lines()).contains("MODEL_DIR"));
     assertTrue(records.isEmpty());
+  }
+
+  @Test
+  @DisplayName("the revised design's team, similarity and retrospective runs are routed as the "
+      + "temporal design's: to the revised design's own collection, with split_design and its "
+      + "rule's words, a mixed collection refused before the corpus or the model is read")
+  void revisedRuns() throws Exception {
+    final ExtractionFixture fixture = new ExtractionFixture();
+    new IssuesInProgressTeamCommand(Map.of("TEAM_COLUMNS", dir.resolve("revised-team.tsv")
+        .toString(), "POPULATION", "FIRST_COMMIT", "SPLIT_RULE", "revised")::get)
+        .run(context(firstCommit(), fixture));
+    assertTrue(records.isEmpty());
+    assertEquals(1, temporalRecords.size());
+    assertEquals("revised", temporalRecords.getFirst().get(SplitRule.DESIGN_FIELD));
+    assertEquals(SplitRule.REVISED.rule(), temporalRecords.getFirst().get(SplitRule.RULE_FIELD));
+    assertEquals(List.of(SplitRule.REVISED), asked);
+
+    final IssuesInProgressExtractTask.Report r = extraction(fixture);
+    final Path cache = dir.resolve("revised-cache.tsv");
+    final Path team = dir.resolve("revised-team.tsv");
+    RowCache.write(cache, temporal(r.entries()), r.columns(), List.of(Population.FIRST_COMMIT));
+    final Path matrix = dir.resolve("revised-augmented.tsv");
+    final Map<String, String> similarity = Map.of("CACHE", cache.toString(), "TEAM_COLUMNS",
+        team.toString(), "MATRIX", matrix.toString(), "REPORT_DIR", dir.resolve("r").toString(),
+        "MODEL_DIR", dir.resolve("no-model").toString(), "EMBEDDING_CACHE",
+        dir.resolve("e").toString(), "SPLIT_RULE", "revised");
+    temporalRecords.add(Map.of("stage", "earlier", "split_rule", ProjectSplit.RULE));
+    loads = 0;
+    final CommandFailedException refused = assertThrows(CommandFailedException.class,
+        () -> new IssuesSimilarityCommand(similarity::get).run(context(firstCommit(), fixture)));
+    assertTrue(String.join("\n", refused.lines()).contains("already holds runs"));
+    assertEquals(0, loads);
+    assertFalse(Files.exists(matrix));
+
+    temporalRecords.clear();
+    final IssuesSimilarityTask.Report s = new IssuesSimilarityTask(fixture.source(),
+        SilentProgress.INSTANCE, StagesFixture.WORDS, new SmileKMeans(),
+        Population.FIRST_COMMIT, SplitRule.REVISED)
+        .run(TeamColumns.join(temporal(r.entries()), r.team()));
+    assertEquals(List.of(), s.refused());
+    final List<String> columns = new ArrayList<>(r.columns());
+    columns.addAll(Extractor.TEAM_REVISED);
+    IssuesSimilarityCommand.writeMatrix(matrix, s, columns, Population.FIRST_COMMIT);
+    final Path out = dir.resolve("revised-retrospective.tsv");
+    new IssuesRetrospectiveCommand(Map.of("MATRIX", matrix.toString(), "RETROSPECTIVE_MATRIX",
+        out.toString(), "SPLIT_RULE", "revised")::get).run(context(firstCommit(), fixture));
+    assertTrue(records.isEmpty());
+    assertEquals(1, temporalRecords.size());
+    assertEquals("revised", temporalRecords.getFirst().get(SplitRule.DESIGN_FIELD));
+    assertEquals(SplitRule.REVISED, SplitRule.recordedBy(temporalRecords.getFirst()));
+    assertEquals(List.of(), SplitRule.REVISED.differences(RowCache.read(out),
+        Population.FIRST_COMMIT));
+    assertTrue(asked.stream().allMatch(a -> a == SplitRule.REVISED), asked.toString());
   }
 
   @Test

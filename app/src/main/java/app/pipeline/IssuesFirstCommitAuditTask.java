@@ -269,7 +269,7 @@ public final class IssuesFirstCommitAuditTask {
     drawn.forEach((limit, d) -> sensitivity.add(new Sensitivity(limit, d.sizes(), d.threshold(),
         FirstCommit.summary(d.training().values().stream().map(FirstCommit.Count::total)
             .toList()))));
-    final Temporal temporal = rule == SplitRule.TEMPORAL
+    final Temporal temporal = rule.temporal()
         ? temporal(b, main, draw(issues, FirstCommit.SHARE, boundary, SplitRule.RANDOM).threshold())
         : null;
     return new Report(bots.size(),

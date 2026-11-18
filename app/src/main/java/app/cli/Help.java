@@ -103,12 +103,14 @@ public final class Help {
                                                 -inner-report read it
           AUDIT_DIR         (unset)             issues-first-commit-audit: where audit.md and
                                                 per-issue.tsv go
-          SPLIT_RULE        random              random | temporal: the rule the first-commit
-                                                audit and extraction draw, and the similarity,
-                                                retrospective, selection and test stages check
-                                                the matrix's sides against; temporal for the
-                                                first-commit study only, whose writing stages
-                                                record their runs in runs_temporal
+          SPLIT_RULE        random              random | temporal | revised: the rule the
+                                                first-commit audit and extraction draw, and the
+                                                similarity, retrospective, selection and test
+                                                stages check the matrix's sides against;
+                                                temporal (the design opened on 02/11/2026) and
+                                                revised (its revised design) for the first-commit
+                                                study only, whose writing stages record their
+                                                runs in runs_temporal and runs_revised
         """);
   }
 

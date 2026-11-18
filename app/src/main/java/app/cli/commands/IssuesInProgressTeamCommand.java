@@ -98,7 +98,7 @@ public final class IssuesInProgressTeamCommand implements CommandRunner {
     if (firstCommit) {
       run.put("study_population", population.name());
       run.put("read_at", "the first commit that counts");
-      if (rule == SplitRule.TEMPORAL) {
+      if (rule.temporal()) {
         run.put(SplitRule.DESIGN_FIELD, rule.setting());
         run.put(SplitRule.RULE_FIELD, rule.rule());
       }
