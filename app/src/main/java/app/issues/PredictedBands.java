@@ -1,11 +1,13 @@
 package app.issues;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.IntStream;
 
 /**
  * The error by band of the predicted business days, a description of frozen predictions (ticket
@@ -64,10 +66,10 @@ public final class PredictedBands {
    */
   public static Reading usualFlow(final double[] predicted, final double[] observed,
       final double[] tops, final double fence) {
-    final int[] kept = java.util.stream.IntStream.range(0, observed.length)
+    final int[] kept = IntStream.range(0, observed.length)
         .filter(i -> observed[i] <= fence).toArray();
-    return of(java.util.Arrays.stream(kept).mapToDouble(i -> predicted[i]).toArray(),
-        java.util.Arrays.stream(kept).mapToDouble(i -> observed[i]).toArray(), tops);
+    return of(Arrays.stream(kept).mapToDouble(i -> predicted[i]).toArray(),
+        Arrays.stream(kept).mapToDouble(i -> observed[i]).toArray(), tops);
   }
 
   /** The bands of the rows grouped by {@code by}, half-open: above the previous top, up to this. */
@@ -175,36 +177,101 @@ public final class PredictedBands {
     return new Predictions(values.get(OBSERVED), predicted);
   }
 
-  private static final Pattern TOPS = Pattern.compile(
-      "here ([0-9.]+), ([0-9.]+) and ([0-9.]+) business days");
+  /**
+   * The test stage's line of the error bands' limits, as it prints it (two decimals, {@link
+   * BusinessDays#bandLimits}); the reader below is built from this very format, so producer and
+   * reader cannot drift. The inner report prints a line of the same shape that ends otherwise.
+   */
+  public static final String BANDS_LINE = "  error bands: %s; here %s business days, of the "
+      + "outer training rows fitted%n";
 
-  private static final Pattern FENCE = Pattern.compile(
-      "usual flow \\(main reading\\).*?\\(fence ([0-9.]+) bd on the outer training set\\)");
+  /** The test stage's line of the readings, with the usual-flow fence to three decimals. */
+  public static final String READINGS_LINE = "  readings: %s, %,d issues (fence %.3f bd on the "
+      + "outer training set); %s, %,d issues%n";
+
+  // a decimal in either separator: the producer's printf does not fix the locale
+  private static final String NUMBER = "[0-9]+(?:[.,][0-9]+)?";
+
+  private static final Pattern TOPS = pattern(BANDS_LINE, ".*?",
+      "(" + NUMBER + "), (" + NUMBER + ") and (" + NUMBER + ")");
+
+  private static final Pattern FENCE = pattern(READINGS_LINE,
+      Pattern.quote("usual flow (main reading)") + ".*?", "[0-9][0-9.,\\s\u00a0\u202f']*",
+      "(" + NUMBER + ")", ".*?", "[0-9][0-9.,\\s\u00a0\u202f']*");
 
   /**
-   * The error bands' limits as the test's log writes them ({@link BusinessDays#days}: whole, or
-   * rounded to two decimals), so they are exact only where the quartiles are.
+   * The regex of a printf format: its literals quoted, each specifier (but {@code %n}) replaced
+   * by the next of {@code groups}.
    */
-  public static double[] bandTops(final List<String> log) {
-    for (final String line : log) {
-      final Matcher m = TOPS.matcher(line);
-      if (line.contains("error bands") && m.find()) {
-        return new double[] {Double.parseDouble(m.group(1)), Double.parseDouble(m.group(2)),
-            Double.parseDouble(m.group(3))};
-      }
+  private static Pattern pattern(final String format, final String... groups) {
+    final Matcher m = Pattern.compile("%[^a-zA-Z%]*[a-zA-Z]").matcher(format);
+    final StringBuilder regex = new StringBuilder();
+    int from = 0;
+    int next = 0;
+    while (m.find()) {
+      regex.append(Pattern.quote(format.substring(from, m.start())));
+      regex.append(m.group().endsWith("n") ? "" : groups[next++]);
+      from = m.end();
     }
-    throw new IllegalArgumentException("no 'error bands ... here a, b and c business days' line");
+    regex.append(Pattern.quote(format.substring(from)));
+    return Pattern.compile(regex.toString());
   }
 
-  /** The usual-flow fence, in business days, as the test's log writes it. */
-  public static double usualFence(final List<String> log) {
+  /** The one match of {@code pattern} in the log; none or several are refused. */
+  private static Matcher only(final List<String> log, final Pattern pattern, final String what) {
+    Matcher found = null;
     for (final String line : log) {
-      final Matcher m = FENCE.matcher(line);
+      final Matcher m = pattern.matcher(line);
       if (m.find()) {
-        return Double.parseDouble(m.group(1));
+        if (found != null) {
+          throw new IllegalArgumentException("more than one " + what + " line in the log");
+        }
+        found = m;
       }
     }
-    throw new IllegalArgumentException("no 'usual flow (main reading) ... (fence X bd on the "
-        + "outer training set)' line");
+    if (found == null) {
+      throw new IllegalArgumentException("no " + what + " line in the log");
+    }
+    return found;
+  }
+
+  /** A number written with a point or a comma as the decimal separator. */
+  public static double number(final String text) {
+    return Double.parseDouble(text.trim().replace(',', '.'));
+  }
+
+  /**
+   * The error bands' limits as the test stage's log writes them ({@link BusinessDays#days}:
+   * whole, or rounded to two decimals), so they are exact only where the quartiles are. Only the
+   * test's own line counts (the inner report's has another ending); two such lines are refused.
+   */
+  public static double[] bandTops(final List<String> log) {
+    final Matcher m = only(log, TOPS, "test stage 'error bands ... business days, of the outer "
+        + "training rows fitted'");
+    return new double[] {number(m.group(1)), number(m.group(2)), number(m.group(3))};
+  }
+
+  /** The usual-flow fence, in business days, as the test stage's log writes it (three decimals). */
+  public static double usualFence(final List<String> log) {
+    return number(only(log, FENCE, "test stage 'readings: usual flow (main reading) ... (fence X "
+        + "bd on the outer training set)'").group(1));
+  }
+
+  /** Three finite, non-decreasing band tops and a finite, positive fence; else refused. */
+  public static void validate(final double[] tops, final double fence) {
+    if (tops.length != 3) {
+      throw new IllegalArgumentException("the band tops are " + tops.length + " numbers, not "
+          + "three");
+    }
+    for (int i = 0; i < 3; i++) {
+      if (!Double.isFinite(tops[i]) || i > 0 && tops[i] < tops[i - 1]) {
+        throw new IllegalArgumentException("the band tops must be finite and non-decreasing: "
+            + Arrays.toString(tops));
+      }
+    }
+    if (!Double.isFinite(fence) || fence <= 0) {
+      throw new IllegalArgumentException("the usual-flow fence must be finite and positive: "
+          + fence);
+    }
   }
 }

@@ -243,7 +243,8 @@ projects, and the similarity medians only inside the models.
   report records them), beside the same bands by observed duration, with n, MAE, median error and
   bias per band and, for the band above Q3, the predicted-long against observed-long counts,
   precision and recall. It reads `REPORT_DIR` and the run's log (`RUN_LOG`; `BAND_TOPS` and
-  `USUAL_FENCE` override the log's two-decimal figures), writes `predicted-band.md` and
+  `USUAL_FENCE` override the log's figures, the band limits printed with two decimals and the
+  fence with three), writes `predicted-band.md` and
   `predicted-band.tsv` to `OUT_DIR`, and writes nothing to MongoDB.
 - **Analogy estimate (exploratory).** `issues-first-commit-analogy` was added after the outer
   test of the random split was opened and confirms nothing. It uses one similarity median directly

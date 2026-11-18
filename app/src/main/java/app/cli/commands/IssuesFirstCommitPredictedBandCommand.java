@@ -4,11 +4,13 @@ import app.cli.CommandFailedException;
 import app.cli.CommandRunner;
 import app.cli.Context;
 import app.issues.BusinessDays;
+import app.issues.ElasticNetSelection;
 import app.issues.PredictedBands;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.function.Function;
@@ -18,7 +20,7 @@ import java.util.function.Function;
  * description of the test's frozen predictions, nothing refitted, rescored or chosen. Reads
  * {@code similarity-test-predictions.tsv} from REPORT_DIR, and the error bands' limits and the
  * usual-flow fence from the run's log (RUN_LOG, by default {@code run.log} beside REPORT_DIR),
- * which writes them rounded to two decimals; BAND_TOPS ("a,b,c") and USUAL_FENCE override that
+ * which writes the band limits to two decimals and the fence to three; BAND_TOPS ("a,b,c") and USUAL_FENCE override that
  * where the quartiles are not whole. Writes {@link #REPORT} and {@link #TABLE} to OUT_DIR;
  * nothing to the database, no run recorded.
  */
@@ -31,10 +33,9 @@ public final class IssuesFirstCommitPredictedBandCommand implements CommandRunne
   public static final String TABLE = "predicted-band.tsv";
 
   /** The Elastic Net models of the start: no forests, references or retrospective ones. */
-  public static final List<String> MODELS = List.of("own_with_similarity_before_pressure",
-      "alzubaidi_start", "kikas_start");
-
-  private static final String PREDICTIONS = "similarity-test-predictions.tsv";
+  public static final List<String> MODELS = List.of(
+      ElasticNetSelection.BEFORE_PRESSURE, ElasticNetSelection.ALZUBAIDI_START,
+      ElasticNetSelection.KIKAS_START);
 
   private final Function<String, String> settings;
 
@@ -61,7 +62,7 @@ public final class IssuesFirstCommitPredictedBandCommand implements CommandRunne
     final double[] tops;
     final double fence;
     try {
-      predictions = PredictedBands.parse(Files.readAllLines(reports.resolve(PREDICTIONS)),
+      predictions = PredictedBands.parse(Files.readAllLines(reports.resolve(IssuesSimilarityTestCommand.PREDICTIONS)),
           MODELS);
       final String topsSetting = optional("BAND_TOPS");
       final String fenceSetting = optional("USUAL_FENCE");
@@ -69,7 +70,8 @@ public final class IssuesFirstCommitPredictedBandCommand implements CommandRunne
           : Files.readAllLines(log);
       tops = topsSetting == null ? PredictedBands.bandTops(logLines) : numbers(topsSetting);
       fence = fenceSetting == null ? PredictedBands.usualFence(logLines)
-          : Double.parseDouble(fenceSetting.trim());
+          : parseFence(fenceSetting);
+      PredictedBands.validate(tops, fence);
       BusinessDays.bandLabels(tops);
     } catch (final IOException e) {
       throw new CommandFailedException(List.of("  could not read the inputs: " + e));
@@ -116,9 +118,17 @@ public final class IssuesFirstCommitPredictedBandCommand implements CommandRunne
     return value == null || value.isBlank() ? null : value;
   }
 
+  private static double parseFence(final String text) {
+    try {
+      return PredictedBands.number(text);
+    } catch (final NumberFormatException e) {
+      throw new IllegalArgumentException("USUAL_FENCE is not a number: " + text);
+    }
+  }
+
   private static double[] numbers(final String csv) {
     try {
-      return java.util.Arrays.stream(csv.split(",")).mapToDouble(s -> Double.parseDouble(s.trim()))
+      return Arrays.stream(csv.split(",")).mapToDouble(s -> Double.parseDouble(s.trim()))
           .toArray();
     } catch (final NumberFormatException e) {
       throw new IllegalArgumentException("BAND_TOPS is not three numbers: " + csv);

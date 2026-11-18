@@ -98,4 +98,41 @@ class IssuesFirstCommitPredictedBandCommandTest {
         .resolve(IssuesFirstCommitPredictedBandCommand.TABLE));
     assertTrue(tsv.contains("all\tkikas_start\tby_prediction\t<=2.5\tn\t1"), tsv.toString());
   }
+
+  @Test
+  @DisplayName("the bands follow BAND_TOPS, not the test TSV's own quartiles")
+  void bandsFollowBandTops(@TempDir final Path dir) throws Exception {
+    // observed 1, 3, 30: quartiles of these would not be 10,20,25
+    final Path report = report(dir, List.of(
+        "a\tK-1\tp\t1.0\t5\t12.0\t12.0\t12.0\t1",
+        "b\tK-2\tp\t3.0\t5\t3.0\t3.0\t3.0\t1",
+        "c\tK-3\tp\t30.0\t5\t26.0\t26.0\t26.0\t1"));
+    final Map<String, String> settings = new HashMap<>();
+    settings.put("REPORT_DIR", report.toString());
+    settings.put("OUT_DIR", dir.resolve("out").toString());
+    settings.put("BAND_TOPS", "10,20,25");
+    new IssuesFirstCommitPredictedBandCommand(settings::get).run(null);
+    final List<String> tsv = Files.readAllLines(dir.resolve("out")
+        .resolve(IssuesFirstCommitPredictedBandCommand.TABLE));
+    assertTrue(tsv.contains("all\tkikas_start\tby_prediction\t<=10\tn\t1"), tsv.toString());
+    assertTrue(tsv.contains("all\tkikas_start\tby_prediction\t(10, 20]\tn\t1"), tsv.toString());
+    assertTrue(tsv.contains("all\tkikas_start\tby_prediction\t>25\tn\t1"), tsv.toString());
+  }
+
+  @Test
+  @DisplayName("invalid BAND_TOPS or USUAL_FENCE refuse the run and write nothing")
+  void invalidOverridesRefuse(@TempDir final Path dir) throws Exception {
+    final Path report = report(dir, List.of("a\tK-1\tp\t1.0\t5\t2.5\t2.5\t2.5\t1"));
+    for (final String[] bad : new String[][] {{"5,2,8", "30"}, {"2,5", "30"},
+        {"2,5,NaN", "30"}, {"2,5,8", "0"}, {"2,5,8", "Infinity"}}) {
+      final Map<String, String> settings = new HashMap<>();
+      settings.put("REPORT_DIR", report.toString());
+      settings.put("OUT_DIR", dir.resolve("out").toString());
+      settings.put("BAND_TOPS", bad[0]);
+      settings.put("USUAL_FENCE", bad[1]);
+      assertThrows(CommandFailedException.class,
+          () -> new IssuesFirstCommitPredictedBandCommand(settings::get).run(null));
+    }
+    assertFalse(Files.exists(dir.resolve("out")));
+  }
 }

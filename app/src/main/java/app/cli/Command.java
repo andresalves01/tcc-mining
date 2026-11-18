@@ -497,9 +497,10 @@ public enum Command {
       The three Elastic Net start models, on the full population (main) and
       on the usual flow (observed at or under the report's fence). Reads
       REPORT_DIR (similarity-test-predictions.tsv) and the run's log, RUN_LOG
-      (default run.log beside REPORT_DIR), for the band limits and the
-      fence, which it writes to two decimals; BAND_TOPS ("a,b,c") and
-      USUAL_FENCE override them. Writes predicted-band.md and
+      (default run.log beside REPORT_DIR), for the band limits (printed with
+      two decimals) and the fence (three decimals); BAND_TOPS ("a,b,c",
+      finite, non-decreasing) and USUAL_FENCE (finite, positive) override
+      them; the log must hold exactly one test-stage line of each. Writes predicted-band.md and
       predicted-band.tsv to OUT_DIR; nothing to any database."""),
 
   ISSUES_FIRST_COMMIT_TEST("issues-first-commit-test",

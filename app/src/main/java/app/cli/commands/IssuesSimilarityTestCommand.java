@@ -9,6 +9,7 @@ import app.issues.BusinessDays;
 import app.issues.DescriptionCleaner;
 import app.issues.ElasticNetSelection;
 import app.issues.EstimationUncertainty;
+import app.issues.PredictedBands;
 import app.issues.PredictionIntervals;
 import app.issues.ProjectSplit;
 import app.issues.Retrospective;
@@ -471,8 +472,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         + "outer test%n", r.fitRows(), r.fences().uncutFitRows(), TailCut.label(cut.k()),
         r.fences().fence(), r.scoredRows());
     System.out.printf("  tail cut: %s; %s%n", TailCut.RULE, TailCut.QUANTILES);
-    System.out.printf("  readings: %s, %,d issues (fence %.3f bd on the outer training set); %s, "
-        + "%,d issues%n", TailCut.Reading.USUAL_FLOW.description(),
+    System.out.printf(PredictedBands.READINGS_LINE, TailCut.Reading.USUAL_FLOW.description(),
         main.scoredRows(), main.fences().usualFence(),
         TailCut.Reading.ALL.description(), r.scoredRows());
     System.out.printf("  final lambda = chosen lambda x %,d / %,d, alpha as chosen; no "
@@ -495,8 +495,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
           analogy.column(), Augmentation.Variant.OUTER.suffix(), globalMedian(r),
           r.analogyFallbacks(), r.scoredRows(), main.analogyFallbacks(), main.scoredRows());
     }
-    System.out.printf("  error bands: %s; here %s business days, of the outer training rows "
-        + "fitted%n", BusinessDays.BANDS, BusinessDays.bandLimits(r.bandTops()));
+    System.out.printf(PredictedBands.BANDS_LINE, BusinessDays.BANDS, BusinessDays.bandLimits(r.bandTops()));
     System.out.printf("  prediction intervals: %s; %s; %s%n", PredictionIntervals.rule(app.issues.AdjustedDuration.marked(entries) ? 0 : 1),
         PredictionIntervals.FACTOR, PredictionIntervals.OUTER);
 

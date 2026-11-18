@@ -3,6 +3,7 @@ package app.issues;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import app.study.model.Breakdown;
 import java.util.List;
@@ -44,7 +45,7 @@ class PredictedBandsTest {
     final PredictedBands.Reading r = PredictedBands.of(new double[] {1}, new double[] {1}, TOPS);
     final PredictedBands.Band empty = r.byPrediction().get(2);
     assertEquals(0, empty.n());
-    assertEquals(true, Double.isNaN(empty.mae()) && Double.isNaN(empty.medianError())
+    assertTrue(Double.isNaN(empty.mae()) && Double.isNaN(empty.medianError())
         && Double.isNaN(empty.bias()));
   }
 
@@ -96,12 +97,12 @@ class PredictedBandsTest {
   void longBandDivisionByZero() {
     final PredictedBands.LongBand noPrediction = PredictedBands.of(new double[] {1, 2},
         new double[] {20, 1}, TOPS).longBand();
-    assertEquals(true, Double.isNaN(noPrediction.precision()));
+    assertTrue(Double.isNaN(noPrediction.precision()));
     assertEquals(0.0, noPrediction.recall());
     final PredictedBands.LongBand noObserved = PredictedBands.of(new double[] {20, 2},
         new double[] {1, 1}, TOPS).longBand();
     assertEquals(0.0, noObserved.precision());
-    assertEquals(true, Double.isNaN(noObserved.recall()));
+    assertTrue(Double.isNaN(noObserved.recall()));
   }
 
   @Test
@@ -137,7 +138,7 @@ class PredictedBandsTest {
   void missingColumnIsRefused() {
     final IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
         () -> PredictedBands.parse(TABLE, List.of("model_a", "kikas_start")));
-    assertEquals(true, e.getMessage().contains("kikas_start"));
+    assertTrue(e.getMessage().contains("kikas_start"));
   }
 
   @Test
@@ -153,5 +154,46 @@ class PredictedBandsTest {
     assertEquals(30.0, PredictedBands.usualFence(log));
     assertThrows(IllegalArgumentException.class, () -> PredictedBands.bandTops(List.of("x")));
     assertThrows(IllegalArgumentException.class, () -> PredictedBands.usualFence(List.of("x")));
+  }
+
+  private static final String TEST_BANDS = "  error bands: bands of the observed business days; "
+      + "here 2, 5,5 and 8 business days, of the outer training rows fitted";
+
+  private static final String INNER_BANDS = "- error bands: bands of the observed business days; "
+      + "here 1, 3 and 4 business days, of the 700 cut inner fitting issues; quartiles";
+
+  @Test
+  @DisplayName("the inner report's line of the same shape is ignored; a comma decimal is read")
+  void readsOnlyTheTestStageLine() {
+    assertArrayEquals(new double[] {2, 5.5, 8},
+        PredictedBands.bandTops(List.of(INNER_BANDS, TEST_BANDS)));
+    assertEquals(30.5, PredictedBands.usualFence(List.of(
+        "  readings: usual flow (main reading): x, 1.985 issues (fence 30,500 bd on the outer "
+            + "training set); all issues (c): y, 996 issues")));
+  }
+
+  @Test
+  @DisplayName("two test-stage lines are refused, for the tops and for the fence")
+  void twoTestLinesAreRefused() {
+    assertThrows(IllegalArgumentException.class,
+        () -> PredictedBands.bandTops(List.of(TEST_BANDS, TEST_BANDS)));
+    final String readings = "  readings: usual flow (main reading): x, 9 issues (fence 30.000 bd "
+        + "on the outer training set); all issues (c): y, 10 issues";
+    assertThrows(IllegalArgumentException.class,
+        () -> PredictedBands.usualFence(List.of(readings, readings)));
+  }
+
+  @Test
+  @DisplayName("the tops and the fence are validated")
+  void validates() {
+    PredictedBands.validate(new double[] {2, 2, 8}, 30);
+    for (final double[] bad : new double[][] {{2, 5}, {2, 5, 8, 9}, {5, 2, 8},
+        {2, Double.NaN, 8}, {2, 5, Double.POSITIVE_INFINITY}}) {
+      assertThrows(IllegalArgumentException.class, () -> PredictedBands.validate(bad, 30));
+    }
+    for (final double bad : new double[] {0, -1, Double.NaN, Double.POSITIVE_INFINITY}) {
+      assertThrows(IllegalArgumentException.class,
+          () -> PredictedBands.validate(new double[] {2, 5, 8}, bad));
+    }
   }
 }
