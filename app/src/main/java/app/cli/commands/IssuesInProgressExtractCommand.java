@@ -40,7 +40,10 @@ import java.util.function.Function;
  * split is the rule SPLIT_RULE declares ({@link SplitRule}), random by default; the run is recorded
  * in that design's own run collection ({@link ResultStore#design}), and the stage refuses one that
  * already holds another design's runs. Under the temporal rule the record adds the cuts, the
- * issues crossing them and the new projects. The In Progress population refuses a temporal rule.
+ * issues crossing them and the new projects. Under the revised one it also gives how many issues
+ * each level leaves out of what it teaches, that validation and test keep every issue, the outer
+ * training's target with and without its crossing issues, and the new projects by both
+ * definitions, each labelled. The In Progress population refuses a temporal rule.
  */
 public final class IssuesInProgressExtractCommand implements CommandRunner {
 
@@ -147,6 +150,47 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
     }
     System.out.printf("%n  cache written: %s (%,d rows, %d columns)%n", cache,
         r.entries().size(), r.columns().size());
+  }
+
+  /** What the revised design keeps of every issue crossing a cut, in its record and its print. */
+  static final String SCORED_SIDES = "validation and test keep every issue";
+
+  /** The label of the whole outer training's target under the revised design. */
+  static final String WHOLE_SIDE = "the whole outer training, crossing issues included";
+
+  /** The label of the target of the outer training issues that teach. */
+  static final String TEACHING_SIDE = "the outer training issues that teach, crossing issues "
+      + "left out";
+
+  /** One line of a target's distribution. */
+  private static void print(final FirstCommit.Summary a) {
+    System.out.printf(EN, "    n %,d  min %.2f  Q1 %.2f  median %.2f  Q3 %.2f  P90 %.2f  max %.2f"
+        + "  mean %.2f  sum %,d%n", a.n(), a.min(), a.q1(), a.median(), a.q3(), a.p90(), a.max(),
+        a.mean(), a.sum());
+  }
+
+  /** A target's distribution as the record keeps it, in this order. */
+  private static Map<String, Object> summary(final FirstCommit.Summary a) {
+    final Map<String, Object> target = new LinkedHashMap<>();
+    target.put("n", a.n());
+    target.put("min", a.min());
+    target.put("q1", a.q1());
+    target.put("median", a.median());
+    target.put("q3", a.q3());
+    target.put("p90", a.p90());
+    target.put("max", a.max());
+    target.put("mean", a.mean());
+    target.put("sum", a.sum());
+    return target;
+  }
+
+  /** New projects as the record keeps them: how many, their issues, and those per project. */
+  private static Map<String, Object> newProjects(final Map<String, Integer> perProject) {
+    final Map<String, Object> out = new LinkedHashMap<>();
+    out.put("projects", perProject.size());
+    out.put("issues", issues(perProject));
+    out.put("issues_per_project", new LinkedHashMap<>(perProject));
+    return out;
   }
 
   /** The issues of every project in {@code perProject}. */
@@ -260,8 +304,19 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
       System.out.printf("    outer cut %s  inner cut %s%n", tc.cuts().outer(), tc.cuts().inner());
       System.out.printf("    crossing the cut: %,d outer training issues, %,d inner fitting "
           + "issues (first resolution after the cut)%n", tc.crossing(), tc.innerCrossing());
-      System.out.printf("    new projects (outer test alone): %,d, with %,d issues %s%n",
-          tc.newProjects().size(), issues(tc.newProjects()), tc.newProjects());
+      if (tc.revised() == null) {
+        System.out.printf("    new projects (outer test alone): %,d, with %,d issues %s%n",
+            tc.newProjects().size(), issues(tc.newProjects()), tc.newProjects());
+      } else {
+        System.out.printf("    left out of what the training side teaches: %,d at the outer "
+            + "level, %,d at the inner; %s%n", tc.crossing(), tc.innerCrossing(), SCORED_SIDES);
+        final Map<String, Integer> side = tc.revised().newProjectsTrainingSide();
+        System.out.printf("    new projects (no issue that teaches, as the scoring reads them): "
+            + "%,d, with %,d issues %s%n", tc.newProjects().size(), issues(tc.newProjects()),
+            tc.newProjects());
+        System.out.printf("    new projects (no issue on the training side, crossing issues "
+            + "included): %,d, with %,d issues %s%n", side.size(), issues(side), side);
+      }
     }
     final FirstCommit.Threshold t = fc.threshold();
     System.out.printf("%n  WAIT CAP, LEARNED ON THE INNER FITTING%n");
@@ -275,9 +330,15 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
     final FirstCommit.Summary a = fc.training();
     System.out.printf("%n  TARGET ON THE OUTER TRAINING, BUSINESS DAYS (the outer test's is not "
         + "read here)%n");
-    System.out.printf(EN, "    n %,d  min %.2f  Q1 %.2f  median %.2f  Q3 %.2f  P90 %.2f  max %.2f"
-        + "  mean %.2f  sum %,d%n", a.n(), a.min(), a.q1(), a.median(), a.q3(), a.p90(), a.max(),
-        a.mean(), a.sum());
+    final IssuesFirstCommitExtractTask.Revised revised = tc == null ? null : tc.revised();
+    if (revised != null) {
+      System.out.printf("    %s%n", WHOLE_SIDE);
+    }
+    print(a);
+    if (revised != null) {
+      System.out.printf("    %s%n", TEACHING_SIDE);
+      print(revised.teaching());
+    }
     System.out.printf("%n  EXECUTOR AT THE FIRST COMMIT%n");
     r.executors().forEach((k, v) -> System.out.printf("    %-40s %,8d%n", k, v));
 
@@ -334,11 +395,27 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
       crossing.put("outer_training", tc.crossing());
       crossing.put("inner_fitting", tc.innerCrossing());
       run.put("crossing_the_cut", crossing);
-      final Map<String, Object> newProjects = new LinkedHashMap<>();
-      newProjects.put("projects", tc.newProjects().size());
-      newProjects.put("issues", issues(tc.newProjects()));
-      newProjects.put("issues_per_project", new LinkedHashMap<>(tc.newProjects()));
+      if (revised != null) {
+        final Map<String, Object> left = new LinkedHashMap<>();
+        left.put("outer_level", tc.crossing());
+        left.put("inner_level", tc.innerCrossing());
+        left.put("left_out_of", "everything the training side teaches at that level: the "
+            + "fitting rows, the reference medians, the fences, the wait cap and the histories");
+        left.put("scored_sides", SCORED_SIDES);
+        run.put("crossing_left_out", left);
+      }
+      final Map<String, Object> newProjects = newProjects(tc.newProjects());
+      if (revised != null) {
+        newProjects.put("definition", "projects with issues on the outer test and no issue that "
+            + "teaches at the outer level, as the scoring reads them");
+      }
       run.put("new_projects", newProjects);
+      if (revised != null) {
+        final Map<String, Object> side = newProjects(revised.newProjectsTrainingSide());
+        side.put("definition", "projects with issues on the outer test and none on the outer "
+            + "training side, crossing issues included");
+        run.put("new_projects_by_training_side", side);
+      }
     }
     final Map<String, Object> sizes = new LinkedHashMap<>();
     sizes.put("fixed_base", fc.base());
@@ -351,17 +428,16 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
     sizes.put("inner_fitting", s.fit());
     sizes.put("inner_validation", s.validation());
     run.put("split_sizes", sizes);
-    final Map<String, Object> target = new LinkedHashMap<>();
-    target.put("n", a.n());
-    target.put("min", a.min());
-    target.put("q1", a.q1());
-    target.put("median", a.median());
-    target.put("q3", a.q3());
-    target.put("p90", a.p90());
-    target.put("max", a.max());
-    target.put("mean", a.mean());
-    target.put("sum", a.sum());
+    final Map<String, Object> target = summary(a);
+    if (revised != null) {
+      target.put("issues", WHOLE_SIDE);
+    }
     run.put("outer_training_target", target);
+    if (revised != null) {
+      final Map<String, Object> teaching = summary(revised.teaching());
+      teaching.put("issues", TEACHING_SIDE);
+      run.put("outer_training_target_without_crossing", teaching);
+    }
     run.put("target_columns", IssuesFirstCommitExtractTask.TARGET_COLUMNS);
     run.put("attribute_columns", FirstCommit.ATTRIBUTE_COLUMNS);
     run.put("not_written", IssuesInProgressExtractTask.PAUSED + ": it reads the status, which "

@@ -141,6 +141,22 @@ final class SelectionFixture {
    * sides are the same.
    */
   static Path temporal(final Path path, final int newIssues) throws IOException {
+    return drawn(path, newIssues, SplitRule.TEMPORAL);
+  }
+
+  /**
+   * The first-commit matrix at the revised design's verdicts: the rows of {@link #temporal(Path)},
+   * at the same sides, with the training issues whose first resolution comes after their level's
+   * cut marked as crossing it ({@link app.issues.TemporalSplit#drawRevised}). Every tail, sixty
+   * business days longer, crosses; so do the issues started shortly before each cut.
+   */
+  static Path revised(final Path path) throws IOException {
+    return drawn(path, 0, SplitRule.REVISED);
+  }
+
+  /** The rows of {@link #temporal(Path, int)} at the verdicts {@code rule} draws. */
+  private static Path drawn(final Path path, final int newIssues, final SplitRule rule)
+      throws IOException {
     final Population population = Population.FIRST_COMMIT;
     final List<RowCache.Entry> moved = new ArrayList<>();
     final List<SplitRule.Candidate> candidates = new ArrayList<>();
@@ -152,10 +168,11 @@ final class SelectionFixture {
       moved.add(new RowCache.Entry(new IssueUnit(u.issueId(), u.key(), u.project(), u.reporter(),
           u.executor(), u.createdAt(), after(start, days), u.reason(), u.moved(), start),
           e.row(), e.parts()));
-      candidates.add(new SplitRule.Candidate(u.issueId(), u.project(), start));
+      candidates.add(new SplitRule.Candidate(u.issueId(), u.project(), start,
+          after(start, days)));
       n++;
     }
-    final ProjectSplit.Parts parts = SplitRule.TEMPORAL.draw(candidates);
+    final ProjectSplit.Parts parts = rule.draw(candidates);
     final List<String> renamed = moved.stream()
         .filter(e -> parts.inner().get(e.unit().issueId()) == Part.TEST)
         .sorted(java.util.Comparator.comparing((RowCache.Entry e) -> e.unit().startedAt()))
@@ -163,10 +180,9 @@ final class SelectionFixture {
     final List<RowCache.Entry> out = new ArrayList<>();
     for (final RowCache.Entry e : moved) {
       final String id = e.unit().issueId();
-      final Part inner = parts.inner().get(id);
       final Map<Population, String[]> verdicts = new EnumMap<>(Population.class);
-      verdicts.put(population, new String[] {parts.outer().get(id).name(),
-          inner == null ? "" : inner.name()});
+      verdicts.put(population, new String[] {parts.outerVerdict(id).name(),
+          app.issues.Verdict.text(parts.innerVerdict(id))});
       final IssueUnit u = e.unit();
       final IssueUnit unit = !renamed.contains(id) ? u : new IssueUnit(u.issueId(), u.key(),
           "p4", u.reporter(), u.executor(), u.createdAt(), u.resolvedAt(), u.reason(), u.moved(),

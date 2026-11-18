@@ -226,4 +226,160 @@ class TemporalSplitTest {
     assertEquals(1, d.size());
     assertTrue(d.get(0).contains("first-commit instant"), d.get(0));
   }
+
+  // ------------------------------------------------------------------ the revised design
+
+  /** A candidate of project p started on day {@code d} and first resolved at {@code resolved}. */
+  private static Candidate r(final String id, final int d, final Instant resolved) {
+    return new Candidate(id, "p", day(d), resolved);
+  }
+
+  /**
+   * Ten candidates a day apart, from day 1: training i01..i07 (outer cut day 7), inner fitting
+   * i01..i05 (inner cut day 5), inner validation i06 and i07, test i08..i10. Each training one
+   * resolved at {@code at}, or else an hour after its start; the test ones carry no resolution.
+   */
+  private static List<Candidate> resolved(final Map<String, Instant> at) {
+    final List<Candidate> out = new ArrayList<>();
+    for (int k = 1; k <= 10; k++) {
+      final String id = String.format("i%02d", k);
+      out.add(r(id, k, k > 7 ? null : at.getOrDefault(id, day(k).plusSeconds(3600))));
+    }
+    return out;
+  }
+
+  @Test
+  @DisplayName("revised: the temporal rule's sides, and a training issue crosses its level's cut "
+      + "when its first resolution comes after it; a resolution exactly at the cut does not "
+      + "cross, a millisecond later does")
+  void revisedCrossing() {
+    final Map<String, Instant> at = new HashMap<>();
+    at.put("i02", day(5));                    // at the inner cut: does not cross
+    at.put("i03", day(5).plusMillis(1));      // after the inner cut, before the outer: case 2
+    at.put("i04", day(7));                    // at the outer cut: crosses the inner cut alone
+    at.put("i05", day(7).plusMillis(1));      // after the outer cut: case 3
+    at.put("i06", day(7));                    // inner validation at the outer cut: case 4
+    at.put("i07", day(7).plusMillis(1));      // inner validation after the outer cut: case 5
+    final List<Candidate> in = resolved(at);
+    final ProjectSplit.Parts parts = TemporalSplit.drawRevised(in);
+    final ProjectSplit.Parts temporal = TemporalSplit.draw(in);
+    assertEquals(temporal.outer(), parts.outer(), "the sides are the temporal rule's");
+    assertEquals(temporal.inner(), parts.inner());
+    assertEquals(Set.of("i05", "i07"), parts.outerCrossing());
+    assertEquals(Set.of("i03", "i04", "i05"), parts.innerCrossing(),
+        "case 3, crossing the outer cut, crosses the inner one too");
+    assertEquals(Verdict.TRAIN, parts.innerVerdict("i02"));
+    assertEquals(Verdict.TRAIN, parts.outerVerdict("i04"));
+    assertEquals(Verdict.TRAIN, parts.outerVerdict("i06"));
+    assertEquals(Verdict.TEST, parts.innerVerdict("i07"));
+    assertEquals(Verdict.CROSSING, parts.outerVerdict("i07"));
+    assertEquals(SplitRule.REVISED.draw(in), parts);
+  }
+
+  @Test
+  @DisplayName("revised: the first resolution is required on the training side alone; a test "
+      + "candidate's is never read, and a training one without it is refused")
+  void revisedResolutionOnTheTrainingSideAlone() {
+    final List<Candidate> in = resolved(Map.of());
+    // the issues at each cut, resolved an hour after it, cross it; the test ones are drawn all
+    // the same, without a resolution
+    assertEquals(Set.of("i07"), TemporalSplit.drawRevised(in).outerCrossing());
+    assertEquals(Set.of("i05"), TemporalSplit.drawRevised(in).innerCrossing());
+    // a test candidate's resolution, however late, crosses nothing
+    final List<Candidate> late = new ArrayList<>(in);
+    late.set(9, r("i10", 10, day(400)));
+    assertEquals(TemporalSplit.drawRevised(in), TemporalSplit.drawRevised(late));
+    final List<Candidate> missing = new ArrayList<>(in);
+    missing.set(6, r("i07", 7, null));
+    final IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+        () -> TemporalSplit.drawRevised(missing));
+    assertTrue(e.getMessage().contains("i07"), e.getMessage());
+    assertEquals(new ProjectSplit.Parts(Map.of(), Map.of()), TemporalSplit.drawRevised(List.of()));
+  }
+
+  /** A row of {@code x} at {@code p}'s verdicts, with its first resolution or without. */
+  private static RowCache.Entry revisedEntry(final Candidate x, final ProjectSplit.Parts p,
+      final boolean withResolution) {
+    final Map<Population, String[]> parts = new EnumMap<>(Population.class);
+    parts.put(Population.FIRST_COMMIT, new String[] {p.outerVerdict(x.id()).name(),
+        Verdict.text(p.innerVerdict(x.id()))});
+    final Instant created = x.firstCommit().minusSeconds(3600);
+    return new RowCache.Entry(new IssueUnit(x.id(), "K-" + x.id(), x.project(), "r", "d",
+        created, withResolution ? x.firstResolution() : null, "Fixed", false, x.firstCommit()),
+        new Row(x.id(), Map.of(), Set.of()), parts);
+  }
+
+  /** {@link #corpus()} with resolutions: every third issue a fortnight after its start. */
+  private static List<Candidate> resolvedCorpus() {
+    final List<Candidate> out = new ArrayList<>();
+    int n = 0;
+    for (final Candidate x : corpus()) {
+      out.add(new Candidate(x.id(), x.project(), x.firstCommit(),
+          x.firstCommit().plusSeconds(86_400L * (n++ % 3 == 0 ? 14 : 1))));
+    }
+    return out;
+  }
+
+  /** The rows of {@code in} at {@code p}'s verdicts, the outer test's without a resolution. */
+  private static List<RowCache.Entry> revisedRows(final List<Candidate> in,
+      final ProjectSplit.Parts p) {
+    final List<RowCache.Entry> out = new ArrayList<>();
+    for (final Candidate x : in) {
+      out.add(revisedEntry(x, p, p.outer().get(x.id()) == Part.TRAIN));
+    }
+    return out;
+  }
+
+  @Test
+  @DisplayName("revised check: passes a matrix at the revised verdicts, reading the first "
+      + "resolution of the training side alone, and refuses one at the temporal rule's verdicts, "
+      + "as the temporal check refuses the revised one")
+  void revisedCheck() {
+    final List<Candidate> in = resolvedCorpus();
+    final ProjectSplit.Parts revised = TemporalSplit.drawRevised(in);
+    assertFalse(revised.outerCrossing().isEmpty(), "the corpus has issues crossing the cut");
+    final Population fc = Population.FIRST_COMMIT;
+    final List<RowCache.Entry> rows = revisedRows(in, revised);
+    assertEquals(List.of(), TemporalSplit.differencesRevised(rows, fc));
+    assertEquals(List.of(), SplitRule.REVISED.differences(rows, fc));
+    assertFalse(SplitRule.TEMPORAL.differences(rows, fc).isEmpty());
+    final List<RowCache.Entry> temporal = revisedRows(in, TemporalSplit.draw(in));
+    assertEquals(List.of(), SplitRule.TEMPORAL.differences(temporal, fc));
+    assertFalse(SplitRule.REVISED.differences(temporal, fc).isEmpty());
+  }
+
+  @Test
+  @DisplayName("revised check: refuses a training row without its first resolution, and one "
+      + "without its first-commit instant")
+  void revisedCheckRefuses() {
+    final List<Candidate> in = resolvedCorpus();
+    final ProjectSplit.Parts revised = TemporalSplit.drawRevised(in);
+    final Population fc = Population.FIRST_COMMIT;
+    final List<RowCache.Entry> rows = revisedRows(in, revised);
+    assertEquals(Part.TRAIN, revised.outer().get(in.get(0).id()), "a0, the earliest start");
+    final List<RowCache.Entry> unresolved = new ArrayList<>(rows);
+    unresolved.set(0, revisedEntry(in.get(0), revised, false));
+    final List<String> d = TemporalSplit.differencesRevised(unresolved, fc);
+    assertEquals(1, d.size());
+    assertTrue(d.get(0).contains("first resolution"), d.get(0));
+    assertTrue(d.get(0).contains("verdict for it is " + rows.get(0).outer(fc)), d.get(0));
+
+    final List<RowCache.Entry> marked = new ArrayList<>(rows);
+    final Map<Population, String[]> test = new EnumMap<>(Population.class);
+    test.put(fc, new String[] {"TEST", ""});
+    final RowCache.Entry bare = revisedEntry(in.get(0), revised, false);
+    marked.set(0, new RowCache.Entry(bare.unit(), bare.row(), test));
+    final List<String> m = TemporalSplit.differencesRevised(marked, fc);
+    assertEquals(1, m.size());
+    assertTrue(m.get(0).contains("verdict for it is TEST"), m.get(0));
+
+    final List<RowCache.Entry> undated = new ArrayList<>(rows);
+    final RowCache.Entry e = undated.get(0);
+    undated.set(0, new RowCache.Entry(new IssueUnit(e.unit().issueId(), e.unit().key(),
+        e.unit().project(), "r", "d", e.unit().createdAt(), e.unit().resolvedAt(), "Fixed",
+        false, null), e.row(), e.parts()));
+    final List<String> u = TemporalSplit.differencesRevised(undated, fc);
+    assertEquals(1, u.size());
+    assertTrue(u.get(0).contains("first-commit instant"), u.get(0));
+  }
 }

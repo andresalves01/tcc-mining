@@ -85,10 +85,28 @@ public final class IssuesFirstCommitExtractTask {
    * @param cuts the instants of the outer and the inner cut
    * @param crossing the outer training issues whose first resolution comes after the outer cut
    * @param innerCrossing the inner fitting issues whose first resolution comes after the inner cut
-   * @param newProjects the projects with issues on the outer test alone, and how many there
+   * @param newProjects the projects with issues on the outer test and none that teaches at the
+   *     outer level, and how many issues each has on the test; under the temporal design no issue
+   *     crosses, so these are the projects with issues on the outer test alone
+   * @param revised what the revised design adds; null under the temporal design
    */
   public record Temporal(TemporalSplit.Cuts cuts, int crossing, int innerCrossing,
-      Map<String, Integer> newProjects) {}
+      Map<String, Integer> newProjects, Revised revised) {}
+
+  /**
+   * What the revised design adds to the extraction: its crossing issues stay on the training side
+   * and teach nothing there, so the outer training's target and the new projects are given both
+   * ways.
+   *
+   * @param teaching the target of the outer training issues that teach at the outer level, the
+   *     issues crossing the outer cut left out; the whole side's is {@link Report#training}
+   * @param newProjectsTrainingSide the projects with issues on the outer test and none on the
+   *     outer training side, crossing issues included, and how many issues each has on the test:
+   *     the other definition of a new project, beside the one the scoring reads ({@link
+   *     Temporal#newProjects})
+   */
+  public record Revised(FirstCommit.Summary teaching,
+      Map<String, Integer> newProjectsTrainingSide) {}
 
   private static final int PHASES = 6;
 
@@ -130,6 +148,7 @@ public final class IssuesFirstCommitExtractTask {
     final Map<String, String> authors = new HashMap<>(drawn.parts().outer().size() * 2);
     final Map<String, Map<String, Double>> target = new HashMap<>(drawn.parts().outer().size() * 2);
     final List<Integer> training = new ArrayList<>();
+    final List<Integer> teaching = new ArrayList<>();
     int zero = 0;
     for (final Universe.Unit u : b.units()) {
       final FirstCommit.Verdict v = drawn.verdicts().get(u.id());
@@ -151,6 +170,9 @@ public final class IssuesFirstCommitExtractTask {
       }
       if (outer == Part.TRAIN) {
         training.add(c.total());
+        if (!drawn.parts().outerCrossing().contains(u.id())) {
+          teaching.add(c.total());
+        }
         if (c.total() != drawn.training().get(u.id()).total()) {
           throw new IllegalStateException(u.id() + ": the target differs from the audit's");
         }
@@ -181,18 +203,30 @@ public final class IssuesFirstCommitExtractTask {
     return new Report(withoutPause(extraction), b.units().size(),
         IssuesFirstCommitAuditTask.funnel(b.units().size(), drawn.verdicts()), drawn.threshold(),
         FirstCommit.summary(training),
-        rule.temporal() ? temporal(b.issues(), drawn, projects) : null, waitK);
+        rule.temporal() ? temporal(b.issues(), drawn, projects, teaching) : null, waitK);
   }
 
-  /** The cuts, the issues crossing them and the new projects of a temporal draw. */
+  /**
+   * The cuts, the issues crossing them and the new projects of a temporal draw; under the revised
+   * design also the target of the outer training issues that teach, {@code teaching}, and the new
+   * projects by the other definition. A new project is one with no issue that teaches at the outer
+   * level, as the scoring reads it: an issue crossing the outer cut is left out of the training
+   * side's projects.
+   */
   private static Temporal temporal(final Map<String, FirstCommit.Issue> issues,
-      final IssuesFirstCommitAuditTask.Drawn drawn, final Map<String, String> projects) {
+      final IssuesFirstCommitAuditTask.Drawn drawn, final Map<String, String> projects,
+      final List<Integer> teaching) {
     final TemporalSplit.Cuts cuts = TemporalSplit.cuts(drawn.candidates());
     final ProjectSplit.Parts parts = drawn.parts();
-    return new Temporal(cuts,
-        IssuesFirstCommitAuditTask.crossing(issues, parts.outer(), cuts.outer()),
-        IssuesFirstCommitAuditTask.crossing(issues, parts.inner(), cuts.inner()),
-        IssuesFirstCommitAuditTask.newProjects(projects, parts.outer()));
+    final IssuesFirstCommitAuditTask.Crossing crossing = drawn.crossing(issues);
+    final Map<String, Part> outerTeaching = new HashMap<>(parts.outer());
+    outerTeaching.keySet().removeAll(parts.outerCrossing());
+    final Map<String, Integer> newByTeaching =
+        IssuesFirstCommitAuditTask.newProjects(projects, outerTeaching);
+    final Revised revised = !drawn.rule().crossingOut() ? null
+        : new Revised(FirstCommit.summary(teaching),
+            IssuesFirstCommitAuditTask.newProjects(projects, parts.outer()));
+    return new Temporal(cuts, crossing.outer(), crossing.inner(), newByTeaching, revised);
   }
 
   /**

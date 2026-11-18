@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import app.issues.Augmentation.Variant;
 import java.util.List;
+import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -100,6 +101,6 @@ class VerdictTest {
     assertThrows(IllegalArgumentException.class, () -> Verdict.of("train"));
     assertTrue(Verdict.TRAIN.is("TRAIN"));
     assertFalse(Verdict.TRAIN.is(null));
-    assertEquals(java.util.Set.of("TRAIN", "CROSSING"), Verdict.OUTER_TRAINING);
+    assertEquals(Set.of("TRAIN", "CROSSING"), Verdict.OUTER_TRAINING);
   }
 }

@@ -326,10 +326,19 @@ run refuses a collection holding another design before it reads the corpus or wr
 recorded with a `split_design` field is of that design; one without it is of the temporal or the
 revised design when its `split_rule` is that rule's words, and of the random design otherwise.
 Before it reads anything, the extraction refuses a run collection that already holds a run of
-another design. Under `temporal` or `revised` its run record adds `split_design`, the instants of both cuts (`split_cuts`), the
-training issues whose first resolution comes after each cut (`crossing_the_cut`) and the new
-projects with their issues (`new_projects`); under `random` the record and the matrix are those of
-before, byte for byte. The extraction writes nothing to `TARGET_DB`.
+another design. Under `temporal` or `revised` its run record adds `split_design`, the instants of
+both cuts (`split_cuts`), the training issues whose first resolution comes after each cut
+(`crossing_the_cut`) and the new
+projects with their issues (`new_projects`). Under `revised`, the revised design, the record also
+gives the issues left out of what the training side teaches (`crossing_left_out`, at the outer and
+at the inner level) and the outer training target without them: `outer_training_target` is the
+target of the whole outer training side, crossing issues included, and
+`outer_training_target_without_crossing` the target of the issues that teach, the one the
+reference reads. There `new_projects` follows the scoring's
+definition (no issue that teaches at the outer level) and `new_projects_by_training_side` gives the
+other one (no issue on the outer training side, crossing issues included), each labelled with its
+definition; the audit lists both readings as well. Under `random` the record and the matrix are
+those of before, byte for byte. The extraction writes nothing to `TARGET_DB`.
 
 The parameters file's header names the split rule its choices were made under. A header that
 names none, as every file written before the temporal split, is the random rule's. The inner report

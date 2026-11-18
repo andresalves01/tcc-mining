@@ -52,6 +52,8 @@ class IssuesInProgressExtractCommandTest {
   private final Map<String, List<Map<String, Object>>> collections = new HashMap<>();
   private final List<Map<String, Object>> records = runs("runs");
   private int loads;
+  /** The corpus the source reads: the fixture of always, unless a test spreads it out. */
+  private ExtractionFixture fixture = new ExtractionFixture();
 
   private static PipelineConfig config(final String target, final String issues,
       final String prepared) {
@@ -72,7 +74,7 @@ class IssuesInProgressExtractCommandTest {
 
   /** The fixture's source, counting how often the corpus is loaded. */
   private StudySource source() {
-    final StudySource inner = new ExtractionFixture().source();
+    final StudySource inner = fixture.source();
     return new StudySource() {
       @Override
       public Corpus load() {
@@ -400,6 +402,7 @@ class IssuesInProgressExtractCommandTest {
       + "collection, under its own rule's words and design, the cuts and the issues crossing "
       + "them, and writes a cache whose sides the revised check accepts")
   void firstCommitRevised() throws Exception {
+    fixture = new ExtractionFixture(1);
     final Path cache = dir.resolve("revised.tsv");
     new IssuesInProgressExtractCommand(Map.of("CACHE", cache.toString(),
         "POPULATION", "FIRST_COMMIT", "SPLIT_RULE", "revised")::get).run(context(firstCommit()));
@@ -416,5 +419,65 @@ class IssuesInProgressExtractCommandTest {
     assertEquals(SplitRule.REVISED, SplitRule.recordedBy(run));
     assertEquals(List.of(), SplitRule.REVISED.differences(RowCache.read(cache),
         Population.FIRST_COMMIT));
+  }
+
+  @Test
+  @DisplayName("POPULATION=FIRST_COMMIT SPLIT_RULE=revised records how many issues each level "
+      + "leaves out of what it teaches, that validation and test keep every issue, the outer "
+      + "training's target with and without its crossing issues, and the new projects by both "
+      + "definitions, each labelled")
+  void firstCommitRevisedRecord() throws Exception {
+    fixture = new ExtractionFixture(1);
+    final Path cache = dir.resolve("revised.tsv");
+    new IssuesInProgressExtractCommand(Map.of("CACHE", cache.toString(),
+        "POPULATION", "FIRST_COMMIT", "SPLIT_RULE", "revised")::get).run(context(firstCommit()));
+    final Map<String, Object> run = runs("runs_revised").getFirst();
+    final Map<String, Integer> verdicts = new HashMap<>();
+    final Map<String, Integer> inner = new HashMap<>();
+    RowCache.read(cache).forEach(e -> {
+      verdicts.merge(e.outer(Population.FIRST_COMMIT), 1, Integer::sum);
+      inner.merge(e.inner(Population.FIRST_COMMIT), 1, Integer::sum);
+    });
+    final Map<?, ?> left = (Map<?, ?>) run.get("crossing_left_out");
+    assertEquals(verdicts.get("CROSSING"), left.get("outer_level"));
+    assertEquals(inner.get("CROSSING"), left.get("inner_level"));
+    assertEquals("validation and test keep every issue", left.get("scored_sides"));
+    final Map<?, ?> crossing = (Map<?, ?>) run.get("crossing_the_cut");
+    assertEquals(left.get("outer_level"), crossing.get("outer_training"));
+    assertEquals(left.get("inner_level"), crossing.get("inner_fitting"));
+
+    final Map<?, ?> sizes = (Map<?, ?>) run.get("split_sizes");
+    final Map<?, ?> whole = (Map<?, ?>) run.get("outer_training_target");
+    final Map<?, ?> teaching = (Map<?, ?>) run.get("outer_training_target_without_crossing");
+    assertEquals(sizes.get("outer_training"), whole.get("n"));
+    assertEquals(verdicts.get("TRAIN"), teaching.get("n"));
+    assertTrue(((String) whole.get("issues")).contains("crossing issues included"),
+        whole.toString());
+    assertTrue(((String) teaching.get("issues")).contains("crossing issues left out"),
+        teaching.toString());
+
+    final Map<?, ?> fresh = (Map<?, ?>) run.get("new_projects");
+    final Map<?, ?> side = (Map<?, ?>) run.get("new_projects_by_training_side");
+    assertTrue(((String) fresh.get("definition")).contains("no issue that teaches"),
+        fresh.toString());
+    assertTrue(((String) side.get("definition")).contains("crossing issues included"),
+        side.toString());
+    for (final Map<?, ?> m : List.of(fresh, side)) {
+      final Map<?, ?> perProject = (Map<?, ?>) m.get("issues_per_project");
+      assertEquals(perProject.size(), m.get("projects"));
+    }
+  }
+
+  @Test
+  @DisplayName("the temporal design's record has none of the revised design's fields")
+  void temporalRecordHasNothingRevised() throws Exception {
+    new IssuesInProgressExtractCommand(Map.of("CACHE", dir.resolve("t.tsv").toString(),
+        "POPULATION", "FIRST_COMMIT", "SPLIT_RULE", "temporal")::get).run(context(firstCommit()));
+    final Map<String, Object> run = runs("runs_temporal").getFirst();
+    for (final String key : List.of("crossing_left_out", "outer_training_target_without_crossing",
+        "new_projects_by_training_side")) {
+      assertFalse(run.containsKey(key), key);
+    }
+    assertFalse(((Map<?, ?>) run.get("outer_training_target")).containsKey("issues"));
   }
 }

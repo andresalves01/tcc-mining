@@ -44,8 +44,27 @@ public final class ExtractionFixture {
   final Map<String, List<DurationEvidence.Activity>> activity = new HashMap<>();
   final Map<String, String> attachments = new HashMap<>();
   private int ext = 1;
+  private final int weeksApart;
+
+  /** Noon of day {@code d} of the studied issue {@code n}: {@link #day}, its weeks apart added. */
+  private long at(final int n, final int d) {
+    return day(d) + (long) n * weeksApart * 7 * World.DAY;
+  }
 
   public ExtractionFixture() {
+    this(0);
+  }
+
+  /**
+   * The fixture with each studied issue's whole history -- creation, events, commits, comments,
+   * activity and resolution -- moved {@code weeksApart} weeks later per issue number, so issue
+   * {@code n} starts {@code n * weeksApart} weeks after the first: whole weeks, so each issue's
+   * business days and day boundaries stay its own. With 0, the fixture of always; with 1, the
+   * first commits spread over thirty weeks, each issue resolved about two weeks after its start,
+   * so only the issues started just before a temporal cut cross it.
+   */
+  public ExtractionFixture(final int weeksApart) {
+    this.weeksApart = weeksApart;
     people.put("dev0", new Corpus.Person("Dev Zero", false));
     people.put("dev1", new Corpus.Person("Dev One", false));
     people.put("dev0-alt", new Corpus.Person("Dev Zero", false));
@@ -61,44 +80,44 @@ public final class ExtractionFixture {
     for (int n = 1; n <= 30; n++) {
       final String project = n <= 22 ? "p" : "q";
       final String dev = "dev" + (n % 2);
-      issue(project, n, day(1) + n * 60_000L, "rep" + (n % 3), n % 4 == 0 ? "dev1" : null);
+      issue(project, n, at(n, 1) + n * 60_000L, "rep" + (n % 3), n % 4 == 0 ? "dev1" : null);
       if (n % 4 == 0) {
-        events.add(new Corpus.Event(id(n), day(2) - 2 * H, "assignee_id", "rep0", null, "dev1",
+        events.add(new Corpus.Event(id(n), at(n, 2) - 2 * H, "assignee_id", "rep0", null, "dev1",
             (ext++) + "%%0"));
       }
       // In Progress the day after its creation, by its developer
-      events.add(new Corpus.Event(id(n), day(2) + n * 60_000L, "status", dev, "Open",
+      events.add(new Corpus.Event(id(n), at(n, 2) + n * 60_000L, "status", dev, "Open",
           "In Progress", (ext++) + "%%0"));
       if (n % 7 == 0) {
-        events.add(new Corpus.Event(id(n), day(4), "status", dev, "In Progress", "Open",
+        events.add(new Corpus.Event(id(n), at(n, 4), "status", dev, "In Progress", "Open",
             (ext++) + "%%0"));
-        events.add(new Corpus.Event(id(n), day(5), "status", dev, "Open", "In Progress",
+        events.add(new Corpus.Event(id(n), at(n, 5), "status", dev, "Open", "In Progress",
             (ext++) + "%%0"));
       }
       // Minor at the In Progress instant, Major from before the first commit on
       if (n % 4 == 2) {
-        events.add(new Corpus.Event(id(n), day(2) + 2 * H, "priority", "rep0", "Minor", "Major",
+        events.add(new Corpus.Event(id(n), at(n, 2) + 2 * H, "priority", "rep0", "Minor", "Major",
             (ext++) + "%%0"));
       }
       // the first commit carries a small share; the rest comes over the next days
-      commit("a" + n, project, n % 5 == 0 ? "dev0-alt" : dev, day(2) + 3 * H + n, 10L + n, n);
-      commit("b" + n, project, dev, day(3 + n % 6) + H, 40L + n, n);
+      commit("a" + n, project, n % 5 == 0 ? "dev0-alt" : dev, at(n, 2) + 3 * H + n, 10L + n, n);
+      commit("b" + n, project, dev, at(n, 3 + n % 6) + H, 40L + n, n);
       if (n % 3 == 0) {
-        commit("c" + n, project, "dev1", day(11) + 2 * H, 30L, n);
+        commit("c" + n, project, "dev1", at(n, 11) + 2 * H, 30L, n);
       }
-      comments.add(new Corpus.Comment(id(n), "rev", day(2) + 5 * H + n, 12, false));
-      comments.add(new Corpus.Comment(id(n), "rep" + (n % 3), day(1) + 2 * H + n, 8, false));
+      comments.add(new Corpus.Comment(id(n), "rev", at(n, 2) + 5 * H + n, 12, false));
+      comments.add(new Corpus.Comment(id(n), "rep" + (n % 3), at(n, 1) + 2 * H + n, 8, false));
       final List<DurationEvidence.Activity> acts = new ArrayList<>();
-      acts.add(new DurationEvidence.Activity(day(2) + 5 * H + n, "comment", "cm" + n));
-      acts.add(new DurationEvidence.Activity(day(14) + 2 * H, "comment", "late" + n));
+      acts.add(new DurationEvidence.Activity(at(n, 2) + 5 * H + n, "comment", "cm" + n));
+      acts.add(new DurationEvidence.Activity(at(n, 14) + 2 * H, "comment", "late" + n));
       if (n % 5 == 0) {
-        acts.add(new DurationEvidence.Activity(day(12), "attachment", "att" + n));
+        acts.add(new DurationEvidence.Activity(at(n, 12), "attachment", "att" + n));
         attachments.put("att" + n, "fix-" + n + ".patch");
       }
       activity.put(id(n), acts);
       texts.put(id(n), new Corpus.Text("Issue " + n, "the parser fails on input " + n
           + " when the cache is cold and the reader retries", List.of()));
-      resolve(n, n % 9 == 0 ? day(2) + 6 * H : day(15) + n * 60_000L, n == 13 ? "Won't Fix"
+      resolve(n, n % 9 == 0 ? at(n, 2) + 6 * H : at(n, 15) + n * 60_000L, n == 13 ? "Won't Fix"
           : "Fixed");
     }
   }

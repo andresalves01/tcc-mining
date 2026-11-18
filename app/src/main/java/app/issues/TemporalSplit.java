@@ -78,6 +78,37 @@ public final class TemporalSplit {
     return new ProjectSplit.Parts(Map.copyOf(outer), Map.copyOf(inner));
   }
 
+  /**
+   * The revised design's sides of {@code candidates}: the sides of {@link #draw}, and on each
+   * training side the issues crossing its cut, those whose first resolution comes strictly after
+   * it; a resolution at the cut itself was known there and does not cross. The outer training's
+   * issues cross the outer cut, the inner fitting's the inner one, and an inner fitting issue
+   * crossing the outer cut crosses the inner one too, which comes no later. The first resolution
+   * is read of the training side alone and required there: a test candidate's is never read.
+   */
+  public static ProjectSplit.Parts drawRevised(final Collection<Candidate> candidates) {
+    final ProjectSplit.Parts parts = draw(candidates);
+    final Cuts cuts = cuts(candidates);
+    final Set<String> outer = new HashSet<>();
+    final Set<String> inner = new HashSet<>();
+    for (final Candidate c : candidates) {
+      if (parts.outer().get(c.id()) != Part.TRAIN) {
+        continue;
+      }
+      if (c.firstResolution() == null) {
+        throw new IllegalArgumentException(c.id() + " is on the training side without its first "
+            + "resolution");
+      }
+      if (c.firstResolution().isAfter(cuts.outer())) {
+        outer.add(c.id());
+      }
+      if (parts.inner().get(c.id()) == Part.TRAIN && c.firstResolution().isAfter(cuts.inner())) {
+        inner.add(c.id());
+      }
+    }
+    return new ProjectSplit.Parts(parts.outer(), parts.inner(), outer, inner);
+  }
+
   /** The outer cut, over {@code candidates}, and the inner one, over its training side. */
   public static Cuts cuts(final Collection<Candidate> candidates) {
     final List<Candidate> order = ordered(candidates);
@@ -128,6 +159,56 @@ public final class TemporalSplit {
     }
     return ProjectSplit.differences(entries, population, parts,
         "temporal, cuts " + cuts.outer() + " and " + cuts.inner());
+  }
+
+  /**
+   * Where the matrix's verdicts under {@code population} are not the revised design's ({@link
+   * #drawRevised}), drawn again over the matrix's own issues; empty when every one is. Reads each
+   * row's id, project, start and verdicts and, of the issues the rule puts on the outer training
+   * side alone, the first resolution ({@link IssueUnit#resolvedAt}), which decides who crosses a
+   * cut: no value, and nothing of the outer test but its start. A row without a start, and a
+   * training row without its first resolution, is a difference of its own. A matrix of the
+   * temporal design fails here on its crossing rows, as this design's fails the temporal check.
+   */
+  public static List<String> differencesRevised(final List<RowCache.Entry> entries,
+      final Population population) {
+    final List<Candidate> started = new ArrayList<>(entries.size());
+    for (final RowCache.Entry e : entries) {
+      if (e.unit().startedAt() == null) {
+        return List.of(e.unit().issueId() + " has no first-commit instant; the revised split "
+            + "cannot be checked on this matrix");
+      }
+      started.add(new Candidate(e.unit().issueId(), e.unit().project(), e.unit().startedAt()));
+    }
+    final ProjectSplit.Parts parts;
+    final Cuts cuts;
+    try {
+      final Map<String, Part> sides = draw(started).outer();
+      final List<Candidate> candidates = new ArrayList<>(entries.size());
+      for (final RowCache.Entry e : entries) {
+        final IssueUnit u = e.unit();
+        if (sides.get(u.issueId()) != Part.TRAIN) {
+          candidates.add(new Candidate(u.issueId(), u.project(), u.startedAt()));
+        } else if (u.resolvedAt() == null) {
+          return List.of(u.issueId() + " is on the training side by the rule but has no first "
+              + "resolution, and the matrix's verdict for it is "
+              + verdictText(e.outer(population)) + " (a row the matrix marks TEST has its dates "
+              + "unread); the revised split cannot be checked on this matrix");
+        } else {
+          candidates.add(new Candidate(u.issueId(), u.project(), u.startedAt(), u.resolvedAt()));
+        }
+      }
+      parts = drawRevised(candidates);
+      cuts = cuts(candidates);
+    } catch (final IllegalArgumentException e) {
+      return List.of(e.getMessage() + "; the revised split cannot be checked on this matrix");
+    }
+    return ProjectSplit.differences(entries, population, parts,
+        "temporal, revised, cuts " + cuts.outer() + " and " + cuts.inner());
+  }
+
+  private static String verdictText(final String verdict) {
+    return verdict.isEmpty() ? "none" : verdict;
   }
 
   /** The candidates in the rule's order; refuses one without an instant and a repeated id. */

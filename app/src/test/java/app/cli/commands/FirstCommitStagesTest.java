@@ -10,6 +10,7 @@ import app.cli.Context;
 import app.config.PipelineConfig;
 import app.identity.Strictness;
 import app.issues.Augmentation;
+import app.issues.Augmentation.Variant;
 import app.issues.BusinessDays;
 import app.issues.Corpus;
 import app.issues.DescriptionCleaner;
@@ -24,6 +25,7 @@ import app.issues.SplitRule;
 import app.issues.TeamColumns;
 import app.issues.Universe;
 import app.issues.Universe.Population;
+import app.issues.Verdict;
 import app.issues.port.ResultStore;
 import app.issues.port.StudySource;
 import app.pipeline.ExtractionFixture;
@@ -43,8 +45,10 @@ import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -208,7 +212,7 @@ class FirstCommitStagesTest {
     new IssuesInProgressTeamCommand(settings::get).run(context(firstCommit(), fixture));
     final Map<String, Map<String, Double>> team = TeamColumns.read(file);
     final IssuesInProgressExtractTask.Report r = extraction(new ExtractionFixture());
-    assertEquals(new java.util.TreeMap<>(r.team()), new java.util.TreeMap<>(team));
+    assertEquals(new TreeMap<>(r.team()), new TreeMap<>(team));
     assertEquals(r.entries().stream().map(e -> e.unit().issueId()).collect(Collectors.toSet()),
         team.keySet());
     assertEquals("FIRST_COMMIT", records.getFirst().get("study_population"));
@@ -570,7 +574,7 @@ class FirstCommitStagesTest {
       + "temporal design's: to the revised design's own collection, with split_design and its "
       + "rule's words, a mixed collection refused before the corpus or the model is read")
   void revisedRuns() throws Exception {
-    final ExtractionFixture fixture = new ExtractionFixture();
+    final ExtractionFixture fixture = new ExtractionFixture(1);
     new IssuesInProgressTeamCommand(Map.of("TEAM_COLUMNS", dir.resolve("revised-team.tsv")
         .toString(), "POPULATION", "FIRST_COMMIT", "SPLIT_RULE", "revised")::get)
         .run(context(firstCommit(), fixture));
@@ -580,10 +584,11 @@ class FirstCommitStagesTest {
     assertEquals(SplitRule.REVISED.rule(), temporalRecords.getFirst().get(SplitRule.RULE_FIELD));
     assertEquals(List.of(SplitRule.REVISED), asked);
 
-    final IssuesInProgressExtractTask.Report r = extraction(fixture);
+    final IssuesInProgressExtractTask.Report r = new IssuesFirstCommitExtractTask(fixture.source(),
+        SilentProgress.INSTANCE, SplitRule.REVISED).run().extraction();
     final Path cache = dir.resolve("revised-cache.tsv");
     final Path team = dir.resolve("revised-team.tsv");
-    RowCache.write(cache, temporal(r.entries()), r.columns(), List.of(Population.FIRST_COMMIT));
+    RowCache.write(cache, r.entries(), r.columns(), List.of(Population.FIRST_COMMIT));
     final Path matrix = dir.resolve("revised-augmented.tsv");
     final Map<String, String> similarity = Map.of("CACHE", cache.toString(), "TEAM_COLUMNS",
         team.toString(), "MATRIX", matrix.toString(), "REPORT_DIR", dir.resolve("r").toString(),
@@ -601,7 +606,7 @@ class FirstCommitStagesTest {
     final IssuesSimilarityTask.Report s = new IssuesSimilarityTask(fixture.source(),
         SilentProgress.INSTANCE, StagesFixture.WORDS, new SmileKMeans(),
         Population.FIRST_COMMIT, SplitRule.REVISED)
-        .run(TeamColumns.join(temporal(r.entries()), r.team()));
+        .run(TeamColumns.join(r.entries(), r.team()));
     assertEquals(List.of(), s.refused());
     final List<String> columns = new ArrayList<>(r.columns());
     columns.addAll(Extractor.TEAM_REVISED);
@@ -616,6 +621,67 @@ class FirstCommitStagesTest {
     assertEquals(List.of(), SplitRule.REVISED.differences(RowCache.read(out),
         Population.FIRST_COMMIT));
     assertTrue(asked.stream().allMatch(a -> a == SplitRule.REVISED), asked.toString());
+  }
+
+  @Test
+  @DisplayName("the similarity stage on the revised extraction: no neighbour, reporter issue or "
+      + "cluster member of a level is an issue crossing that level's cut, and the inner "
+      + "validation keeps the issues crossing the outer cut")
+  void revisedHistoriesLeaveCrossingOut() {
+    final ExtractionFixture fixture = new ExtractionFixture(1);
+    final IssuesInProgressExtractTask.Report r = new IssuesFirstCommitExtractTask(fixture.source(),
+        SilentProgress.INSTANCE, SplitRule.REVISED).run().extraction();
+    final Map<String, RowCache.Entry> byId = new HashMap<>();
+    r.entries().forEach(e -> byId.put(e.unit().issueId(), e));
+    final Population fc = Population.FIRST_COMMIT;
+    assertTrue(r.entries().stream().anyMatch(e -> Verdict.CROSSING.is(e.inner(fc))),
+        "the extraction has issues crossing the inner cut");
+    final IssuesSimilarityTask.Report s = new IssuesSimilarityTask(fixture.source(),
+        SilentProgress.INSTANCE, StagesFixture.WORDS, new SmileKMeans(), fc, SplitRule.REVISED)
+        .run(TeamColumns.join(r.entries(), r.team()));
+    assertEquals(List.of(), s.refused());
+    int read = 0;
+    for (final Augmentation.Query q : s.result().queries()) {
+      for (final Augmentation.Neighbour n : q.nearest()) {
+        assertTrue(Verdict.teaches(q.variant(), byId.get(n.id()), fc), q + " " + n);
+        read++;
+      }
+    }
+    for (final Augmentation.EmbeddingQuery q : s.result().embeddingQueries()) {
+      for (final Augmentation.Neighbour n : q.nearest()) {
+        assertTrue(Verdict.teaches(q.variant(), byId.get(n.id()), fc), q + " " + n);
+        read++;
+      }
+    }
+    for (final Augmentation.ClusterFit f : s.result().clusterFits()) {
+      for (final String m : f.members().stream().flatMap(List::stream).toList()) {
+        assertTrue(Verdict.teaches(f.variant(), byId.get(m), fc), f.variant() + " " + m);
+        read++;
+      }
+    }
+    assertTrue(read > 0, "the histories were read");
+    // a reporter median needs a reporter peer that teaches: crossing issues alone give none
+    int medians = 0;
+    for (final Variant v : Variant.values()) {
+      for (final RowCache.Entry e : r.entries()) {
+        final Double median = s.result().columns().get(e.unit().issueId())
+            .get(Augmentation.reporter(v));
+        if (median == null) {
+          continue;
+        }
+        medians++;
+        assertTrue(r.entries().stream().anyMatch(p -> p != e && Verdict.teaches(v, p, fc)
+            && p.unit().project().equals(e.unit().project())
+            && Objects.equals(p.unit().reporter(), e.unit().reporter())),
+            v + " " + e.unit().issueId());
+      }
+    }
+    assertTrue(medians > 0, "the reporter medians were read");
+    // case 5, crossing the outer cut from the inner validation, is still scored there
+    r.entries().stream().filter(e -> Verdict.CROSSING.is(e.outer(fc)) && Verdict.TEST.is(e.inner(fc)))
+        .forEach(e -> assertTrue(s.result().queries().stream().anyMatch(q -> q.id()
+            .equals(e.unit().issueId()) && q.variant() == Augmentation.Variant.INNER),
+            e.unit().issueId()));
   }
 
   @Test
