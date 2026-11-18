@@ -108,8 +108,8 @@ public final class Help {
                                                 worked-example.tsv go
           WAIT_FENCE_K      1.5                 the k of the first-commit target's wait fence,
                                                 Q3 + k IQR (empty is 1.5, none is no cap; zero,
-                                                negative or NaN is refused): read by
-                                                issues-first-commit-audit, the first-commit
+                                                negative, NaN, infinity or text is refused):
+                                                read by issues-first-commit-audit, the first-commit
                                                 issues-in-progress-extract and
                                                 issues-first-commit-supporting-numbers; the
                                                 In Progress study never reads it

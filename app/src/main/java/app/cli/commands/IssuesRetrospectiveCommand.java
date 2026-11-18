@@ -179,7 +179,7 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
     }
     run.putAll(statements(population));
     if (firstCommit) {
-      run.putAll(firstCommitStatements());
+      run.putAll(firstCommitStatements(store.waitFenceK()));
     }
     run.put("columns", Retrospective.COLUMNS);
     run.put("matrix_sha256", matrixSha);
@@ -238,14 +238,14 @@ public final class IssuesRetrospectiveCommand implements CommandRunner {
    * What the run record of the first-commit population states besides {@link #statements()},
    * replacing the ones whose start differs: the window starts at the first commit that counts.
    */
-  static Map<String, Object> firstCommitStatements() {
+  static Map<String, Object> firstCommitStatements(final double waitK) {
     final Map<String, Object> out = new LinkedHashMap<>();
     out.put("study_population", Population.FIRST_COMMIT.name());
     out.put("window", "[first commit that counts, first resolution): the first commit replaces "
         + "the first In Progress wherever the statements name it; the implementation commits "
         + "are the same, those before the first commit included, and the familiarity reads the "
         + "files touched before the first commit");
-    out.put("target", FirstCommit.RULE);
+    out.put("target", FirstCommit.rule(waitK));
     out.put("attributes_of_decision_16a", "written by the extraction and copied as they are: "
         + FirstCommit.FIRST_LINES + ", the first commit's lines added and removed in every file, "
         + "a start attribute; " + FirstCommit.FIRST_SHARE + ", its share of the issue's lines, a "

@@ -117,7 +117,8 @@ public class IssuesFirstCommitSupportingNumbersTaskTest {
     final SupportingNumbers.Counts c = run(SplitRule.TEMPORAL, 1.5).counts();
     assertEquals(10, c.base());
     assertEquals(10, c.withCode());
-    assertEquals(0, c.createdAtOrAfterFirstCommit());
+    assertEquals(0, c.createdAfterFirstCommit());
+    assertEquals(0, c.createdAtFirstCommit());
     assertEquals(6, c.withInProgress(), "only the first six went through In Progress");
     assertEquals(6, c.firstBeforeInProgress(), "the first commit a day before each In Progress");
     assertEquals(0, c.single());

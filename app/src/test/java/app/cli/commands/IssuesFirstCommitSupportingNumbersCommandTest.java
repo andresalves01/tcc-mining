@@ -54,7 +54,7 @@ class IssuesFirstCommitSupportingNumbersCommandTest {
           Set.copyOf(files.map(p -> p.getFileName().toString()).toList()));
     }
     final String counts = Files.readString(out.resolve("filter-counts.md"));
-    assertTrue(counts.contains("Criada no instante do primeiro commit ou depois"), counts);
+    assertTrue(counts.contains("Criada depois do primeiro commit (commit antes da criação)"), counts);
     assertTrue(counts.contains("| Fixed na primeira resolução, com algum commit que conta | 10 |"),
         counts);
     assertTrue(counts.contains("| Primeiro commit antes do In Progress | 6 | 6 |"), counts);
@@ -100,7 +100,21 @@ class IssuesFirstCommitSupportingNumbersCommandTest {
   }
 
   @Test
-  @DisplayName("is a registered command, listed in the help")
+  @DisplayName("WAIT_FENCE_K=3 is written as in the audit: Q3 + 3 IQR, never 3,0; the counts split "
+      + "the creation in after and at the first commit")
+  void fenceThreeAndSplitCreation() throws Exception {
+    final Path out = dir.resolve("k3");
+    new IssuesFirstCommitSupportingNumbersCommand(settings(out, "WAIT_FENCE_K", "3")::get)
+        .run(context());
+    final String md = Files.readString(out.resolve("worked-example.md"));
+    assertTrue(md.contains("Cerca das esperas: Q3 + 3 IQR."), md);
+    assertFalse(md.contains("3,0"), md);
+    final String counts = Files.readString(out.resolve("filter-counts.md"));
+    assertTrue(counts.contains("| Criada no mesmo instante do primeiro commit |"), counts);
+  }
+
+  @Test
+  @DisplayName("is a registered command")
   void registered() {
     assertEquals(Command.ISSUES_FIRST_COMMIT_SUPPORTING_NUMBERS,
         Command.parse("issues-first-commit-supporting-numbers").orElseThrow());

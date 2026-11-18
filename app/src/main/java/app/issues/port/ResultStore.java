@@ -48,6 +48,15 @@ public interface ResultStore {
   }
 
   /**
+   * The k of the wait fence the first-commit matrix was extracted with: the latest extraction run
+   * of this store's collection names it in {@code wait_fence_k}, and a run without one, or a store
+   * that records no such run, is the official {@link app.issues.FirstCommit#DEFAULT_WAIT_K}.
+   */
+  default double waitFenceK() {
+    return app.issues.FirstCommit.DEFAULT_WAIT_K;
+  }
+
+  /**
    * The designs of the runs this store already holds ({@link SplitRule#recordedBy}); empty when
    * this store cannot tell, which a stage that must not mix designs reads as a refusal.
    */

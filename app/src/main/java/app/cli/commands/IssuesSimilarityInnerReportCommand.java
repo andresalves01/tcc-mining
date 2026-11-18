@@ -83,8 +83,8 @@ import java.util.function.Function;
  * choices were made on this very matrix (by SHA-256) -- where the selection step checked the
  * split's rule over every row --, every outer training row is inner fitting or inner validation,
  * and the matrix has the day boundary and every column the models read. Writes files to
- * REPORT_DIR only and nothing to the database: no run is recorded, the context's ports are never
- * reached.
+ * REPORT_DIR only and nothing to the database: no run is recorded; the only port reached is the run store, read
+ * once for the first-commit study's wait fence k.
  *
  * <p><b>Files.</b> The report in words and tables ({@link #REPORT}); per inner validation issue its
  * prediction by every model and whether it has an implementation commit ({@link #PREDICTIONS});
@@ -152,7 +152,21 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     this.settings = settings;
   }
 
-  /** Never reaches {@code context}: nothing is read from or written to the database. */
+  /**
+   * The k the first-commit matrix was extracted with, read from the extraction's run in the
+   * design's run collection; the only thing this step reads from the database, and the official
+   * k when the context has no result store.
+   */
+  private static double waitFenceK(final Context context, final Population study,
+      final SplitRule rule) {
+    final app.issues.port.ResultStore results = context.issuesResults();
+    if (study != Population.FIRST_COMMIT || results == null) {
+      return app.issues.FirstCommit.DEFAULT_WAIT_K;
+    }
+    return results.design(rule).waitFenceK();
+  }
+
+  /** Writes nothing to the database; reads only the wait fence's k of the extraction's run. */
   @Override
   public void run(final Context context) throws CommandFailedException {
     final Path matrix = IssuesSimilarityTestCommand.path(settings, "MATRIX");
@@ -203,6 +217,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
       throw new CommandFailedException(List.of("  could not read the inputs: " + e));
     }
     final boolean firstCommit = study == Population.FIRST_COMMIT;
+    final double waitK = waitFenceK(context, study, rule);
 
     System.out.printf("%n  DURATION FROM %s -- DESCRIPTION SIMILARITY -- INNER REPORT%n",
         firstCommit ? "THE FIRST COMMIT" : "IN PROGRESS");
@@ -276,7 +291,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
         Parallel.threads(Parallel.BOOTSTRAP_THREADS));
     final Map<String, List<String>> files = new LinkedHashMap<>();
     files.put(REPORT, report(readings, withoutNew, intervals, relevance, population, chosen,
-        matrix, elasticNet, study, rule));
+        matrix, elasticNet, study, rule, waitK));
     final Side side = Side.of(study);
     final List<SimilarityScoring.Report> scored = readingsOf(readings, withoutNew);
     files.put(PREDICTIONS, predictions(readings, side));
@@ -482,12 +497,13 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
    *     or the split is the random one
    * @param study the study, whose title the report names
    * @param rule the split rule the run declares, which the report describes
+   * @param waitK the k of the wait fence the first-commit matrix was extracted with
    */
   static List<String> report(final SimilarityScoring.Readings readings,
       final SimilarityScoring.Readings withoutNew, final PredictionIntervals.Inner intervals,
       final List<SimilarityScoring.Relevance> relevance, final BusinessDays.Population population,
       final IssuesSimilarityTestCommand.Chosen chosen, final Path matrix,
-      final Path elasticNet, final Population study, final SplitRule rule) {
+      final Path elasticNet, final Population study, final SplitRule rule, final double waitK) {
     final boolean temporal = rule == SplitRule.TEMPORAL;
     final SimilarityScoring.Report r = readings.complementary();
     final SimilarityScoring.Fences fences = r.fences();
@@ -502,7 +518,8 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     md.add("- matrix: " + matrix + " (sha256 " + chosen.matrixSha() + "); outer training rows "
         + "only, the others left behind on their split field");
     md.add("- choices: " + elasticNet + " (sha256 " + chosen.elasticNetSha() + ")");
-    md.add("- target: " + BusinessDays.target(population.entries()) + "; " + BusinessDays.HOLIDAYS);
+    md.add("- target: " + BusinessDays.target(population.entries(), waitK) + "; "
+        + BusinessDays.HOLIDAYS);
     md.add("- split: " + rule.rule());
     md.add("- population: " + BusinessDays.populationRule(population.entries()) + "; inner fitting "
         + population.kept().innerFit() + " of " + population.all().innerFit()

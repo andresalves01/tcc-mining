@@ -417,7 +417,9 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     }
 
     System.out.printf("%n  NOTE: %s%n  NOTE: %s.%n", examined(rule), EFFORT);
-    System.out.printf("  target: %s; %s%n", BusinessDays.target(entries), BusinessDays.HOLIDAYS);
+    final double waitK = IssuesInProgressExtractCommand.matrixWaitFenceK(store, study);
+    System.out.printf("  target: %s; %s%n", BusinessDays.target(entries, waitK),
+        BusinessDays.HOLIDAYS);
     System.out.printf("  population: %s%n", BusinessDays.populationRule(entries));
     System.out.printf("  issues of at least one business day: outer training %,d of %,d, outer "
         + "test %,d of %,d%n", population.kept().train(), population.all().train(),
@@ -580,7 +582,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
           : analogyRecord(analogy, r, main));
       run.put("new_projects", newProjects(r, main, withoutNew));
     }
-    run.put("target", BusinessDays.target(entries));
+    run.put("target", BusinessDays.target(entries, waitK));
     run.put("population", BusinessDays.populationRule(entries));
     run.put("prediction_intervals", PredictionIntervals.rule(app.issues.AdjustedDuration.marked(entries) ? 0 : 1));
     run.put("population_rows", populationRows(population));

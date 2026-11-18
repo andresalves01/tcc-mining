@@ -152,6 +152,22 @@ and 70% and the overlap with the In Progress split. Of the outer test it writes 
 It needs `AUDIT_DIR`, where it writes `audit.md` and `per-issue.tsv`, and writes nothing to
 MongoDB. Give it `APP_OPTS=-Xmx6g`.
 
+`WAIT_FENCE_K` sets the k of the cap's fence, Q3 + k IQR of the inner fitting's waits. Empty is 1.5,
+the official value; a positive number is that k; `none` is no cap, an infinite fence. Zero, a
+negative number, NaN, infinity or text is refused before anything is read. It is a sensitivity of
+the first-commit study only (the In Progress study never reads it): with any value but 1.5 the
+`audit.md` names the k in its header, its table and its rule.
+
+### 4b. Issue duration from the first commit: supporting numbers
+
+`issues-first-commit-supporting-numbers` writes, read only, the numbers behind the text of the
+first-commit study. It reads the audit's base, with `SPLIT_RULE` and `WAIT_FENCE_K` as the audit
+reads them, and writes to `SUPPORTING_DIR`: `filter-counts.md` (how many issues with a commit that
+counts were created after their first commit, at its very instant, had it before their first In
+Progress, or have a single commit), `worked-example.md` and `worked-example.tsv` (three issues of
+the outer training, chosen by fixed criteria, with their marks, waits and tail). The outer test is
+never explained. It needs `SUPPORTING_DIR` and writes nothing to MongoDB. Give it `APP_OPTS=-Xmx6g`.
+
 ### 5. Issue duration from the first commit: extraction
 
 `issues-in-progress-extract` with `POPULATION=FIRST_COMMIT` extracts the first-commit population
@@ -164,6 +180,11 @@ instant, and writes the target and its parts after them (`FC_target_days`,
 (`FC_first_commit_lines`) and its share of the issue's changed lines (`FC_first_commit_share`).
 The In Progress column `PAUSA_volta_open` is left out, since this study does not read the status. The cache's split columns are `primeiro_commit_externa` and
 `primeiro_commit_interna`. Of the target it prints and records only the outer training's.
+
+`WAIT_FENCE_K` (empty is 1.5, `none` is no cap; a sensitivity only) is read here as in the audit and
+is recorded in the run as `wait_fence_k` only when it is not 1.5. The stages after the extraction
+state the k of the matrix they read, taken from that run record (the latest extraction run of the
+design's run collection; absent means 1.5).
 
 The first-commit study writes to databases of its own, and the command refuses the In Progress
 study's `TARGET_DB` and `ISSUES_DB` before it reads anything. The prepared collections stay in
@@ -326,8 +347,9 @@ with their count.
 
 ### Commands that only read
 
-`check`, `help`, `issues-first-commit-audit`, `issues-first-commit-share-ablation` and
-`issues-first-commit-analogy` write nothing to MongoDB and can be run at any time.
+`check`, `help`, `issues-first-commit-audit`, `issues-first-commit-supporting-numbers`,
+`issues-first-commit-share-ablation` and `issues-first-commit-analogy` write nothing to MongoDB and
+can be run at any time.
 
 ## Tests
 

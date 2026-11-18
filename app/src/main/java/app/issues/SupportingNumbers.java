@@ -22,13 +22,15 @@ public final class SupportingNumbers {
    *
    * @param base the issues read, Fixed at their first resolution
    * @param withCode of them, those with at least one commit that counts: the denominator
-   * @param createdAtOrAfterFirstCommit of those, created at the instant of their first commit or
-   *     after it
+   * @param createdAfterFirstCommit of those, created strictly after their first commit: the
+   *     issues with a commit before their creation
+   * @param createdAtFirstCommit of those, created at the very instant of their first commit
    * @param withInProgress of those, the ones that had an In Progress: the denominator of the next
    * @param firstBeforeInProgress of those, the first commit strictly before the first In Progress
    * @param single of those, exactly one commit that counts, before the duplicates are removed
    */
-  public record Counts(int base, int withCode, int createdAtOrAfterFirstCommit,
+  public record Counts(int base, int withCode, int createdAfterFirstCommit,
+      int createdAtFirstCommit,
       int withInProgress, int firstBeforeInProgress, int single) {}
 
   private SupportingNumbers() {}
@@ -41,7 +43,8 @@ public final class SupportingNumbers {
   public static Counts count(final Collection<FirstCommit.Issue> issues,
       final Function<String, Long> inProgress) {
     int withCode = 0;
-    int createdAtOrAfter = 0;
+    int createdAfter = 0;
+    int createdAt = 0;
     int withInProgress = 0;
     int before = 0;
     int single = 0;
@@ -51,8 +54,10 @@ public final class SupportingNumbers {
       }
       withCode++;
       final long first = i.code().stream().mapToLong(FirstCommit.Code::at).min().orElseThrow();
-      if (i.created() >= first) {
-        createdAtOrAfter++;
+      if (i.created() > first) {
+        createdAfter++;
+      } else if (i.created() == first) {
+        createdAt++;
       }
       final Long started = inProgress.apply(i.id());
       if (started != null) {
@@ -65,7 +70,8 @@ public final class SupportingNumbers {
         single++;
       }
     }
-    return new Counts(issues.size(), withCode, createdAtOrAfter, withInProgress, before, single);
+    return new Counts(issues.size(), withCode, createdAfter, createdAt,
+        withInProgress, before, single);
   }
 
   /** An issue of the outer training with how its target is made. */

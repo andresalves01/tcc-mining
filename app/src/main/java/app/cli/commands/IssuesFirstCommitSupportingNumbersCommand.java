@@ -17,7 +17,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -51,13 +50,12 @@ public final class IssuesFirstCommitSupportingNumbersCommand implements CommandR
       throw new CommandFailedException(List.of("  SUPPORTING_DIR=<output directory> is required"));
     }
     final SplitRule rule;
-    final double waitK;
     try {
       rule = SplitRule.declared(settings.apply(SplitRule.SETTING), Population.FIRST_COMMIT);
-      waitK = FirstCommit.waitFenceK(settings.apply(FirstCommit.WAIT_FENCE_SETTING));
     } catch (final IllegalArgumentException e) {
       throw new CommandFailedException(List.of("  " + e.getMessage()));
     }
+    final double waitK = IssuesInProgressExtractCommand.waitFenceK(settings);
     final Path root = Path.of(dir);
     Files.createDirectories(root);
     final Report r = new IssuesFirstCommitSupportingNumbersTask(context.study(),
@@ -83,11 +81,6 @@ public final class IssuesFirstCommitSupportingNumbersCommand implements CommandR
     return whole == 0 ? "—" : String.format(PT, "%.2f%%", 100.0 * part / whole);
   }
 
-  private static String fenceName(final double k) {
-    return k == FirstCommit.NO_WAIT_CAP ? "sem teto"
-        : "Q3 + " + String.format(PT, "%s", k).replace(".", ",") + " IQR";
-  }
-
   static List<String> counts(final Report r) {
     final SupportingNumbers.Counts c = r.counts();
     final List<String> md = new ArrayList<>();
@@ -104,9 +97,11 @@ public final class IssuesFirstCommitSupportingNumbersCommand implements CommandR
     md.add("|---|---:|---:|---:|");
     md.add("| Fixed na primeira resolução, com algum commit que conta | " + n(c.withCode())
         + " | " + n(c.base()) + " | " + pct(c.withCode(), c.base()) + " |");
-    md.add("| Criada no instante do primeiro commit ou depois | "
-        + n(c.createdAtOrAfterFirstCommit()) + " | " + n(c.withCode()) + " | "
-        + pct(c.createdAtOrAfterFirstCommit(), c.withCode()) + " |");
+    md.add("| Criada depois do primeiro commit (commit antes da criação) | "
+        + n(c.createdAfterFirstCommit()) + " | " + n(c.withCode()) + " | "
+        + pct(c.createdAfterFirstCommit(), c.withCode()) + " |");
+    md.add("| Criada no mesmo instante do primeiro commit | " + n(c.createdAtFirstCommit())
+        + " | " + n(c.withCode()) + " | " + pct(c.createdAtFirstCommit(), c.withCode()) + " |");
     md.add("| Primeiro commit antes do In Progress | " + n(c.firstBeforeInProgress()) + " | "
         + n(c.withInProgress()) + " | " + pct(c.firstBeforeInProgress(), c.withInProgress())
         + " |");
@@ -114,12 +109,15 @@ public final class IssuesFirstCommitSupportingNumbersCommand implements CommandR
         + pct(c.single(), c.withCode()) + " |");
     md.add("");
     md.add("- O primeiro commit é o mais antigo que conta, antes de remover as duplicatas, como "
-        + "a regra do filtro o lê. \"Criada no instante do primeiro commit ou depois\" é a regra "
-        + "do funil, contada aqui sobre todas as issues com commit.");
+        + "a regra do filtro o lê. As duas linhas de criação são disjuntas: \"depois\" é o primeiro "
+        + "commit estritamente antes da criação; \"no mesmo instante\" é a igualdade. A regra "
+        + "do funil, criada no instante do primeiro commit ou depois, é a soma das duas, "
+        + "contada aqui sobre todas as issues com commit.");
     md.add("- \"Antes do In Progress\" é contado só entre as issues que tiveram In Progress ("
         + n(c.withInProgress()) + " de " + n(c.withCode()) + "), com o primeiro In Progress "
         + "antes da primeira resolução como início; a criação nunca entra no lugar dele. A "
-        + "comparação é estrita: um commit no mesmo instante não é antes.");
+        + "comparação é estrita: um commit no mesmo instante não é antes. Issue sem relator "
+        + "nunca recebe início In Progress no universo, e conta como sem In Progress.");
     md.add("- \"Um único commit\" é contado direto, antes da remoção das duplicatas: duas cópias "
         + "do mesmo commit são dois commits aqui. A linha do funil \"menos de 2 commits depois "
         + "das duplicatas\" mistura esse caso com o das issues que as duplicatas reduziram.");
@@ -131,10 +129,6 @@ public final class IssuesFirstCommitSupportingNumbersCommand implements CommandR
     return FirstCommit.dateOf(at, e.verdict().hour()).toString();
   }
 
-  private static Set<Long> commitInstants(final Example e) {
-    return e.verdict().kept().stream().map(FirstCommit.Code::at).collect(Collectors.toSet());
-  }
-
   static List<String> prose(final Report r) {
     final List<String> md = new ArrayList<>();
     md.add("# Estudo do primeiro commit: exemplo trabalhado");
@@ -143,7 +137,7 @@ public final class IssuesFirstCommitSupportingNumbersCommand implements CommandR
         + n(r.training()) + " issues); nenhuma do teste externo é explicada aqui.");
     md.add("");
     md.add("- Divisão: " + r.rule().rule() + ".");
-    md.add("- Cerca das esperas: " + fenceName(r.waitFenceK()) + ".");
+    md.add("- Cerca das esperas: " + FirstCommit.fenceTextPt(r.waitFenceK()) + ".");
     md.add("- Teto das esperas, aprendido no ajuste interno: " + n(r.threshold().cap())
         + " dias úteis (" + n(r.threshold().gaps()) + " esperas).");
     md.add("- Escolha: a maior diferença entre os dias úteis de calendário e os do estudo "
@@ -172,11 +166,10 @@ public final class IssuesFirstCommitSupportingNumbersCommand implements CommandR
       md.add("");
       md.add("| # | Instante | Data | Tipo |");
       md.add("|---:|---|---|---|");
-      final Set<Long> commits = commitInstants(e);
       for (int i = 0; i < x.marks().size(); i++) {
         final long at = x.marks().get(i);
         md.add("| " + (i + 1) + " | " + Instant.ofEpochMilli(at) + " | " + date(e, at) + " | "
-            + (commits.contains(at) ? "commit" : "patch") + " |");
+            + (x.kinds().get(i) == FirstCommit.Kind.COMMIT ? "commit" : "patch") + " |");
       }
       md.add("");
       md.add("Esperas entre marcas consecutivas:");

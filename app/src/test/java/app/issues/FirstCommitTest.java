@@ -357,7 +357,26 @@ class FirstCommitTest {
     assertEquals(List.of(java.time.LocalDate.of(2024, 1, 18), java.time.LocalDate.of(2024, 1, 19)),
         e.tail());
     assertEquals(e.count().tail(), e.tail().size());
-    assertEquals(0, e.hour());
+  }
+
+  @Test
+  @DisplayName("explain records each mark's kind, commit or patch, even at one instant")
+  void explainKinds() {
+    final FirstCommit.Issue i = worked(
+        List.of(code("a", "x", day(1), 10L), code("b", "x", day(2), 30L)), List.of(day(2), day(4)),
+        List.of(day(3)), day(12));
+    final FirstCommit.Explanation e = FirstCommit.explain(i, select(i), 3);
+    assertEquals(List.of(FirstCommit.Kind.COMMIT, FirstCommit.Kind.COMMIT,
+        FirstCommit.Kind.PATCH, FirstCommit.Kind.PATCH), e.kinds());
+    assertEquals(e.marks().size(), e.kinds().size());
+  }
+
+  @Test
+  @DisplayName("the Portuguese fence text writes a whole k without decimals and none as sem teto")
+  void fenceTextPt() {
+    assertEquals("Q3 + 1,5 IQR", FirstCommit.fenceTextPt(1.5));
+    assertEquals("Q3 + 3 IQR", FirstCommit.fenceTextPt(3.0));
+    assertEquals("sem teto", FirstCommit.fenceTextPt(FirstCommit.NO_WAIT_CAP));
   }
 
   @Test

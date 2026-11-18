@@ -63,11 +63,22 @@ public final class FirstCommit {
   /** The run setting naming the wait fence's k: empty is {@link #DEFAULT_WAIT_K}, {@code none}. */
   public static final String WAIT_FENCE_SETTING = "WAIT_FENCE_K";
 
-  private static final String NONE = "none";
+  /** How a run record and the stage output write an infinite fence: no cap on the waits. */
+  public static final String NONE = "none";
 
   /** The fence in words for a k: {@code Q3 + 1.5 IQR}, or that no wait is capped. */
   public static String fenceText(final double k) {
     return k == NO_WAIT_CAP ? "no cap on the waits" : "Q3 + " + number(k) + " IQR";
+  }
+
+  /** The fence in Portuguese, as the reports write it: {@code Q3 + 1,5 IQR}, or {@code sem teto}. */
+  public static String fenceTextPt(final double k) {
+    return k == NO_WAIT_CAP ? "sem teto" : "Q3 + " + numberPt(k) + " IQR";
+  }
+
+  /** A k in Portuguese: a whole number without decimals, otherwise with a comma. */
+  public static String numberPt(final double k) {
+    return number(k).replace('.', ',');
   }
 
   private static String number(final double k) {
@@ -102,14 +113,17 @@ public final class FirstCommit {
     try {
       k = Double.parseDouble(s);
     } catch (final NumberFormatException e) {
-      throw new IllegalArgumentException(WAIT_FENCE_SETTING + " must be a positive number or '"
-          + NONE + "', got '" + setting + "'");
+      throw refusedFence(setting);
     }
     if (!(k > 0) || Double.isInfinite(k)) {
-      throw new IllegalArgumentException(WAIT_FENCE_SETTING + " must be a positive number or '"
-          + NONE + "', got '" + setting + "'");
+      throw refusedFence(setting);
     }
     return k;
+  }
+
+  private static IllegalArgumentException refusedFence(final String setting) {
+    return new IllegalArgumentException(WAIT_FENCE_SETTING + " must be a positive number or '"
+        + NONE + "', got '" + setting + "'");
   }
 
   /** A k as the run record and the audit write it: {@code none} or the number. */
@@ -375,18 +389,29 @@ public final class FirstCommit {
     return v;
   }
 
+  /** What a mark is: a commit that counts, or a human patch after the first commit. */
+  public enum Kind { COMMIT, PATCH }
+
+  /** One mark: its instant and what it is. */
+  public record Mark(long at, Kind kind) {}
+
   /** The commits and the patches after the first commit and before the resolution, in order. */
   public static List<Long> marks(final Issue issue, final Verdict v) {
+    return typedMarks(issue, v).stream().map(Mark::at).toList();
+  }
+
+  private static List<Mark> typedMarks(final Issue issue, final Verdict v) {
     requireCounted(v);
     final long start = v.kept().getFirst().at();
-    final List<Long> out = new ArrayList<>();
-    v.kept().forEach(c -> out.add(c.at()));
+    final List<Mark> out = new ArrayList<>();
+    v.kept().forEach(c -> out.add(new Mark(c.at(), Kind.COMMIT)));
     for (final long p : issue.patches()) {
       if (p > start && p < issue.resolved()) {
-        out.add(p);
+        out.add(new Mark(p, Kind.PATCH));
       }
     }
-    out.sort(Long::compare);
+    // stable: at one instant the commit stays before the patch
+    out.sort(java.util.Comparator.comparingLong(Mark::at));
     return out;
   }
 
@@ -416,13 +441,13 @@ public final class FirstCommit {
    *
    * @param count the target and its parts
    * @param marks the commits and patches, in order
+   * @param kinds what each mark is, in the same order as {@code marks}
    * @param waits the waits between consecutive marks
    * @param tail the dates with human activity after the last mark, in order
    * @param calendar the business days from the first commit's date, excluded, to the resolution's
-   * @param hour the day boundary the dates are cut at, as in {@link Verdict}
    */
-  public record Explanation(Count count, List<Long> marks, List<Wait> waits,
-      List<LocalDate> tail, int calendar, int hour) {
+  public record Explanation(Count count, List<Long> marks, List<Kind> kinds, List<Wait> waits,
+      List<LocalDate> tail, int calendar) {
 
     /** The business days the target counts. */
     public int total() {
@@ -445,7 +470,8 @@ public final class FirstCommit {
    * {@link #count} is its {@code count()}.
    */
   public static Explanation explain(final Issue issue, final Verdict v, final int cap) {
-    final List<Long> m = marks(issue, v);
+    final List<Mark> typed = typedMarks(issue, v);
+    final List<Long> m = typed.stream().map(Mark::at).toList();
     final int hour = v.hour();
     final long start = m.getFirst();
     final long end = issue.resolved();
@@ -482,7 +508,8 @@ public final class FirstCommit {
     final int patches = m.size() - v.kept().size();
     return new Explanation(
         new Count(total, implementation, tail.size(), capped, m.size(), patches), m,
-        List.copyOf(waits), tail.stream().sorted().toList(), whole.size(), hour);
+        typed.stream().map(Mark::kind).toList(), List.copyOf(waits),
+        tail.stream().sorted().toList(), whole.size());
   }
 
   // ------------------------------------------------------------------ cap and summaries

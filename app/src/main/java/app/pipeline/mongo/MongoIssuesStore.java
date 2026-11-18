@@ -1,5 +1,6 @@
 package app.pipeline.mongo;
 
+import app.issues.FirstCommit;
 import app.issues.SplitRule;
 import app.issues.port.ResultStore;
 import com.mongodb.client.MongoClient;
@@ -63,6 +64,18 @@ public final class MongoIssuesStore implements ResultStore {
       out.add(SplitRule.recordedBy(d));
     }
     return java.util.Optional.of(out);
+  }
+
+  /** The k of the latest first-commit extraction run in this store's run collection. */
+  @Override
+  public double waitFenceK() {
+    final Document latest = database.getCollection(runs)
+        .find(new Document("stage", "issues-in-progress-extract")
+            .append("study_population", app.issues.Universe.Population.FIRST_COMMIT.name()))
+        .projection(new Document("wait_fence_k", 1))
+        .sort(new Document("recorded_at", -1)).first();
+    final Object k = latest == null ? null : latest.get("wait_fence_k");
+    return FirstCommit.waitFenceK(k == null ? null : k.toString());
   }
 
   @Override

@@ -58,10 +58,22 @@ class SupportingNumbersTest {
     final SupportingNumbers.Counts c = SupportingNumbers.count(issues, inProgress::get);
     assertEquals(7, c.base());
     assertEquals(6, c.withCode(), "b has no commit that counts");
-    assertEquals(2, c.createdAtOrAfterFirstCommit(), "c at the instant, d after");
+    assertEquals(1, c.createdAfterFirstCommit(), "d alone: created after its first commit");
+    assertEquals(1, c.createdAtFirstCommit(), "c alone: created at the instant of its first");
     assertEquals(4, c.withInProgress(), "a, c, e and f, which have code and an In Progress");
     assertEquals(1, c.firstBeforeInProgress(), "f alone: the first commit is before the 4th");
     assertEquals(1, c.single());
+  }
+
+  @Test
+  @DisplayName("created strictly after the first commit and created at its instant are two counts")
+  void creationSplit() {
+    final SupportingNumbers.Counts c = SupportingNumbers.count(List.of(
+        issue("a", day(8), day(5), day(9)), issue("b", day(5), day(5), day(9)),
+        issue("c", day(1), day(5), day(9))), id -> null);
+    assertEquals(1, c.createdAfterFirstCommit());
+    assertEquals(1, c.createdAtFirstCommit());
+    assertEquals(3, c.withCode());
   }
 
   @Test
@@ -89,8 +101,8 @@ class SupportingNumbersTest {
   private static Entry entry(final String id, final int calendar, final int total,
       final int capped, final int tail) {
     final FirstCommit.Count count = new FirstCommit.Count(total, total - tail, tail, capped, 3, 0);
-    return new Entry(id, "P-" + id, new FirstCommit.Explanation(count, List.of(), List.of(),
-        Collections.nCopies(tail, LocalDate.of(2024, 1, 1)), calendar, 0));
+    return new Entry(id, "P-" + id, new FirstCommit.Explanation(count, List.of(),
+        List.of(), List.of(), Collections.nCopies(tail, LocalDate.of(2024, 1, 1)), calendar));
   }
 
   @Test
