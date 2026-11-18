@@ -161,6 +161,22 @@ class IssuesSimilarityCommandTest {
   }
 
   @Test
+  @DisplayName("the run record says what the histories read: point in time under the revised "
+      + "design, the outer test answering at the inner level; the whole side, whatever the dates, "
+      + "under every other rule, as before")
+  void historyRecord() {
+    assertEquals(IssuesSimilarityCommand.HISTORY,
+        IssuesSimilarityCommand.history(app.issues.SplitRule.RANDOM));
+    assertEquals(IssuesSimilarityCommand.HISTORY,
+        IssuesSimilarityCommand.history(app.issues.SplitRule.TEMPORAL));
+    final String revised = IssuesSimilarityCommand.history(app.issues.SplitRule.REVISED);
+    assertTrue(revised.startsWith("point-in-time"), revised);
+    assertTrue(revised.contains("strictly before"), revised);
+    assertTrue(revised.contains("outer test"), revised);
+    assertTrue(!revised.contains("whatever the dates"), revised);
+  }
+
+  @Test
   @DisplayName("a model that does not reproduce the sentence-transformers reference is refused "
       + "before anything is embedded; one that does reports its largest difference")
   void selfCheck() throws CommandFailedException {

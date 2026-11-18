@@ -70,6 +70,26 @@ public final class IssuesSimilarityCommand implements CommandRunner {
       + "neighbour index and one cluster fit per k per variant, read by its training rows and its "
       + "scored rows alike; no label of the other side, and never the row's own";
 
+  /**
+   * What every split-dependent column reads under the revised temporal design, in words for the
+   * run record (ticket 01): point-in-time histories, the outer test answering at the inner level
+   * (ticket 06).
+   */
+  static final String POINT_IN_TIME_HISTORY = "point-in-time: for each row, the issues of its "
+      + "split's training side that teach there (the inner fitting set for the _inner columns, "
+      + "the outer training for the _outer ones, never an issue crossing the level's cut) whose "
+      + "first resolution comes strictly before the row's first commit, never the row itself; "
+      + "the closest n neighbours chosen among those; the cluster centres fitted once per k per "
+      + "variant on the whole training side, only the median of the members point-in-time; an "
+      + "empty history leaves the value missing; the outer test also answers in the _inner "
+      + "columns, from the inner fitting history and the inner centres alone, and never enters a "
+      + "history or a fit";
+
+  /** What the histories read under {@code rule}, for the run record. */
+  static String history(final SplitRule rule) {
+    return rule.pointInTime() ? POINT_IN_TIME_HISTORY : HISTORY;
+  }
+
   private static final Population P = Population.IN_PROGRESS;
 
   /** Where each setting is read from: the environment, then the system properties. */
@@ -294,7 +314,10 @@ public final class IssuesSimilarityCommand implements CommandRunner {
           name(f.variant()), f.k(), f.vectors(), f.distinct(),
           f.fitted() ? String.format("distortion %.6f", f.distortion()) : "not fitted");
     }
-    System.out.printf("%n  HISTORIES: each split's whole training side, whatever the dates%n");
+    System.out.printf("%n  HISTORIES: %s%n", rule.pointInTime()
+        ? "point-in-time, only the training side's issues resolved before each row's first "
+            + "commit; the outer test also answers at the inner level"
+        : "each split's whole training side, whatever the dates");
     for (final Augmentation.History h : r.result().histories()) {
       System.out.printf("    %-6s %,6d rows read it  history %,6d%n", name(h.variant()),
           h.rows(), h.history());
@@ -339,7 +362,7 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     run.put("model_seconds", embeddings.modelSeconds());
     run.put("embedding_threads", embeddingThreads);
     run.put("augmentation_seconds", augmentationSeconds);
-    run.put("history", HISTORY);
+    run.put("history", history(rule));
     run.put("split_rule", rule.rule());
     if (firstCommit && rule.temporal()) {
       run.put(SplitRule.DESIGN_FIELD, rule.setting());
