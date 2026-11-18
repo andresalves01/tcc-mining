@@ -44,7 +44,14 @@ public final class Fitting {
     /** Development: the inner split of the outer training side. The reserved rows are refused. */
     INNER,
     /** The one reserved run: the whole training side fits, the reserved side is scored. */
-    RESERVED
+    RESERVED,
+    /**
+     * The same-model calibration (the revised design's ticket 06), after the outer test was
+     * opened: the inner fitting rows that teach fit, exactly as under {@link #INNER}, and the
+     * whole inner validation is scored, then the outer test. A mode of its own, so {@link #INNER}
+     * keeps refusing the reserved side.
+     */
+    INNER_MODEL_ON_TEST
   }
 
   public record Sides(List<IssueUnit> fitUnits, List<Row> fitRows, List<IssueUnit> scoreUnits,
@@ -95,7 +102,10 @@ public final class Fitting {
     // side of the outer split has any business in the fit or the score. A row fits only where it
     // teaches, so an issue crossing the level's cut never does; the scored side keeps every issue.
     final Augmentation.Variant level =
-        mode == Mode.INNER ? Augmentation.Variant.INNER : Augmentation.Variant.OUTER;
+        mode == Mode.RESERVED ? Augmentation.Variant.OUTER : Augmentation.Variant.INNER;
+    // the inner model on the outer test scores the outer test after the whole inner validation
+    final List<IssueUnit> testUnits = new ArrayList<>();
+    final List<Row> testRows = new ArrayList<>();
     for (final RowCache.Entry entry : entries) {
       final boolean fit = Verdict.teaches(level, entry, population);
       final boolean score = Verdict.scored(level, entry, population);
@@ -105,8 +115,14 @@ public final class Fitting {
       } else if (score) {
         scoreUnits.add(entry.unit());
         scoreRows.add(entry.row());
+      } else if (mode == Mode.INNER_MODEL_ON_TEST
+          && Verdict.scored(Augmentation.Variant.OUTER, entry, population)) {
+        testUnits.add(entry.unit());
+        testRows.add(entry.row());
       }
     }
+    scoreUnits.addAll(testUnits);
+    scoreRows.addAll(testRows);
     if (fitUnits.isEmpty() || scoreUnits.isEmpty()) {
       throw new IllegalStateException(fitUnits.size() + " rows to fit and " + scoreUnits.size()
           + " to score under " + mode + " in " + population);
