@@ -157,6 +157,14 @@ class IssuesSimilarityTest {
   }
 
   @Test
+  @DisplayName("the In Progress study refuses a rule other than the random one")
+  void inProgressRefusesAnotherRule() {
+    assertThrows(IllegalArgumentException.class, () -> new IssuesSimilarityTask(source(false),
+        SilentProgress.INSTANCE, null, KMEANS, Population.IN_PROGRESS,
+        app.issues.SplitRule.REVISED));
+  }
+
+  @Test
   @DisplayName("the description read is the one at the first In Progress; the new columns join the "
       + "old ones, and an issue without a description stays with them missing")
   void augments() {

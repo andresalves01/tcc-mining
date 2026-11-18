@@ -170,14 +170,19 @@ public enum Command {
       split whatever the dates (the inner fitting set; the outer
       training), one index and one cluster fit per k read by training and
       scored rows alike, no label of the other side and never the row's
-      own. A business day is a Monday-to-Friday date reached after
-      the start's date, holidays ignored. An issue's business days leave
-      out the time it was back in Open or Reopened between its first In
-      Progress and its first resolution (from a status change to either
-      until the next status change; Patch Available kept). Days without
-      recorded activity are retained. This same duration goes to the
-      matrix beside the day boundary and is read by every duration median
-      and every later model. A past issue of 0 enters no history.
+      own. Under SPLIT_RULE=revised every history is point-in-time: only
+      the training-side issues that teach, first resolved strictly before
+      the row's first commit; the centres stay fitted on the whole side,
+      and the outer test also answers in the _inner columns from the
+      inner fitting history alone. A business day is a Monday-to-Friday
+      date reached after the start's date, holidays ignored. An issue's
+      business days leave out the time it was back in Open or Reopened
+      between its first In Progress and its first resolution (from a
+      status change to either until the next status change; Patch
+      Available kept). Days without recorded activity are retained. This
+      same duration goes to the matrix beside the day boundary and is
+      read by every duration median and every later model. A past issue
+      of 0 enters no history.
       Refuses unless every row's split is the one its rule
       draws and TEAM_COLUMNS holds exactly the matrix's issues, and unless
       the model in MODEL_DIR
