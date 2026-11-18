@@ -180,6 +180,77 @@ class IssuesFirstCommitExtractTaskTest {
   }
 
   @Test
+  @DisplayName("under the revised rule: the temporal rule's sides, so the same validation and test "
+      + "issues, the crossing issues marked in the split columns and counted from the crossing "
+      + "sets, the audit's cap learned without them, the training target with and without them, "
+      + "the new projects by both definitions, and a matrix the revised check accepts and the "
+      + "temporal one does not")
+  void revised() {
+    final ExtractionFixture spread = new ExtractionFixture(1);
+    final IssuesFirstCommitExtractTask.Report r = new IssuesFirstCommitExtractTask(
+        spread.source(), SilentProgress.INSTANCE, SplitRule.REVISED).run();
+    final IssuesFirstCommitExtractTask.Report t = new IssuesFirstCommitExtractTask(
+        spread.source(), SilentProgress.INSTANCE, SplitRule.TEMPORAL).run();
+    final IssuesFirstCommitAuditTask.Report a = new IssuesFirstCommitAuditTask(spread.source(),
+        SilentProgress.INSTANCE, SplitRule.REVISED).run();
+    final Population fc = Population.FIRST_COMMIT;
+    final Map<String, String[]> rv = new HashMap<>();
+    r.extraction().entries().forEach(e -> rv.put(e.unit().issueId(),
+        new String[] {e.outer(fc), e.inner(fc)}));
+    final Map<String, String[]> tv = new HashMap<>();
+    t.extraction().entries().forEach(e -> tv.put(e.unit().issueId(),
+        new String[] {e.outer(fc), e.inner(fc)}));
+    assertEquals(tv.keySet(), rv.keySet(), "the same population");
+    int outerCrossing = 0;
+    int innerCrossing = 0;
+    for (final String id : rv.keySet()) {
+      final String[] x = rv.get(id);
+      final String[] y = tv.get(id);
+      assertEquals("TEST".equals(y[0]), "TEST".equals(x[0]), "the same outer test: " + id);
+      assertEquals("TEST".equals(y[1]), "TEST".equals(x[1]), "the same inner validation: " + id);
+      outerCrossing += "CROSSING".equals(x[0]) ? 1 : 0;
+      innerCrossing += "CROSSING".equals(x[1]) ? 1 : 0;
+    }
+    assertTrue(outerCrossing > 0 && innerCrossing > 0, outerCrossing + " " + innerCrossing);
+    assertTrue(outerCrossing < r.extraction().split().train(), "not every issue crosses");
+    assertEquals(outerCrossing, r.temporal().crossing());
+    assertEquals(innerCrossing, r.temporal().innerCrossing());
+    assertEquals(t.temporal().crossing(), r.temporal().crossing(),
+        "the issues the temporal design counts as crossing");
+    assertEquals(t.temporal().innerCrossing(), r.temporal().innerCrossing());
+    assertEquals(a.threshold(), r.threshold(), "the audit's cap");
+    assertEquals(a.temporal().crossing(), r.temporal().crossing());
+
+    // the training target: the whole side, and the issues that teach at the outer level
+    assertEquals(r.extraction().split().train(), r.training().n());
+    final IssuesFirstCommitExtractTask.Revised revised = r.temporal().revised();
+    assertNull(t.temporal().revised(), "the temporal design adds nothing of the revised one");
+    final List<Integer> teaching = new java.util.ArrayList<>();
+    r.extraction().entries().stream().filter(e -> "TRAIN".equals(e.outer(fc)))
+        .forEach(e -> teaching.add(e.row().values().get(IssuesFirstCommitExtractTask.TARGET)
+            .intValue()));
+    assertEquals(app.issues.FirstCommit.summary(teaching), revised.teaching());
+    assertEquals(r.training().n() - outerCrossing, revised.teaching().n());
+
+    // new projects: none that teaches, as the scoring reads them; and none on the training side
+    final Map<String, Set<String>> by = new HashMap<>();
+    r.extraction().entries().forEach(e -> by.computeIfAbsent(e.outer(fc), k -> new java.util
+        .TreeSet<>()).add(e.unit().project()));
+    final Set<String> taught = by.getOrDefault("TRAIN", Set.of());
+    final Set<String> side = new java.util.TreeSet<>(taught);
+    side.addAll(by.getOrDefault("CROSSING", Set.of()));
+    final Set<String> tested = by.getOrDefault("TEST", Set.of());
+    assertEquals(tested.stream().filter(p -> !taught.contains(p)).collect(Collectors.toSet()),
+        r.temporal().newProjects().keySet());
+    assertEquals(tested.stream().filter(p -> !side.contains(p)).collect(Collectors.toSet()),
+        revised.newProjectsTrainingSide().keySet());
+
+    assertEquals(List.of(), SplitRule.REVISED.differences(r.extraction().entries(), fc));
+    assertNotEquals(List.of(), SplitRule.TEMPORAL.differences(r.extraction().entries(), fc));
+    assertNotEquals(List.of(), SplitRule.REVISED.differences(t.extraction().entries(), fc));
+  }
+
+  @Test
   @DisplayName("the columns are read at the first commit, the gate passes there, and without an "
       + "assignee the executor is the first commit's author")
   void columnsAtFirstCommit() {
