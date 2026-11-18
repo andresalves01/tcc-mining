@@ -10,6 +10,7 @@ import app.issues.RowCache;
 import app.issues.SplitRule;
 import app.issues.Universe;
 import app.issues.Universe.Population;
+import app.issues.Verdict;
 import app.issues.World;
 import app.issues.port.ChangedMethodSource;
 import app.issues.port.StudySource;
@@ -221,18 +222,20 @@ public final class IssuesRetrospectiveTask {
   /** The same under the split of {@code split}. */
   static List<Coverage> coverage(final List<RowCache.Entry> entries, final Population split) {
     final BusinessDays.Population population = BusinessDays.population(entries.stream()
-        .filter(e -> "TRAIN".equals(e.outer(split))).toList(), Augmentation.Variant.INNER);
+        .filter(e -> Verdict.outerTraining(e.outer(split))).toList(), Augmentation.Variant.INNER);
     final List<Coverage> out = new ArrayList<>(2);
-    for (final String[] side : new String[][] {{"TRAIN", "inner fitting"},
-        {"TEST", "inner validation"}}) {
+    for (final boolean fitting : new boolean[] {true, false}) {
+      // the inner fitting issues that teach, then the whole inner validation
       final List<RowCache.Entry> rows = population.entries().stream()
-          .filter(e -> side[0].equals(e.inner(split))).toList();
+          .filter(e -> fitting ? Verdict.teaches(Augmentation.Variant.INNER, e, split)
+              : Verdict.scored(Augmentation.Variant.INNER, e, split)).toList();
       final Map<String, Integer> observed = new LinkedHashMap<>();
       for (final String column : Retrospective.COLUMNS) {
         observed.put(column,
             (int) rows.stream().filter(e -> e.row().values().containsKey(column)).count());
       }
-      out.add(new Coverage(side[1], rows.size(), observed));
+      out.add(new Coverage(fitting ? "inner fitting" : "inner validation", rows.size(),
+          observed));
     }
     return List.copyOf(out);
   }

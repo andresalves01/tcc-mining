@@ -17,6 +17,7 @@ import app.issues.RowCache;
 import app.issues.SplitRule;
 import app.issues.Universe;
 import app.issues.Universe.Population;
+import app.issues.Verdict;
 import app.issues.port.StudySource;
 import app.pipeline.embedding.EmbeddingModel;
 import app.pipeline.port.Progress;
@@ -225,7 +226,7 @@ public final class IssuesSimilarityTask {
     }
     // the outer test is left out of the gate, as of every report this stage prints
     final List<String> training = entries.stream()
-        .filter(e -> "TRAIN".equals(e.outer(population)))
+        .filter(e -> Verdict.outerTraining(e.outer(population)))
         .map(e -> e.unit().issueId()).toList();
     return new Report(refused, found, out, result, descriptions.size(), boundaries,
         counted.bots(), FixVersions.fidelity(universe, training));
@@ -312,7 +313,7 @@ public final class IssuesSimilarityTask {
       out.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values, absent), e.parts()));
     }
     final List<String> training = entries.stream()
-        .filter(e -> "TRAIN".equals(e.outer(population)))
+        .filter(e -> Verdict.outerTraining(e.outer(population)))
         .map(e -> e.unit().issueId()).toList();
     return new Report(List.of(), found, out, result, descriptions.size(), Map.of(), Set.of(),
         FixVersions.fidelity(universe, training));

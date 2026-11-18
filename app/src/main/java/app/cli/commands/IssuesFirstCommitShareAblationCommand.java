@@ -80,8 +80,9 @@ public final class IssuesFirstCommitShareAblationCommand implements CommandRunne
       if (chosen.population() != Population.FIRST_COMMIT) {
         throw refused(elasticNet + " was written for " + chosen.population());
       }
-      // the outer training rows only: every other row is left behind on its split field
-      training = RowCache.read(matrix, Population.FIRST_COMMIT, "TRAIN");
+      // the outer training rows only, crossing ones included: every other row is left behind
+      // on its split field
+      training = RowCache.training(matrix, Population.FIRST_COMMIT);
     } catch (final IOException e) {
       throw new CommandFailedException(List.of("  could not read the inputs: " + e));
     }

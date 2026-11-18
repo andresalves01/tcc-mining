@@ -163,7 +163,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
       matrixSha = Sha256.of(matrix);
       // every row by its id, project and split verdicts alone; the outer training rows whole
       entries = RowCache.splits(matrix);
-      training = RowCache.read(matrix, study, "TRAIN");
+      training = RowCache.training(matrix, study);
       columns = RowCache.columns(matrix);
     } catch (final IOException e) {
       throw new CommandFailedException(List.of("  could not read " + matrix + " or "

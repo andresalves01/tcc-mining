@@ -12,6 +12,7 @@ import app.issues.RowCache;
 import app.issues.SimilarityScoring;
 import app.issues.TailCut;
 import app.issues.Universe.Population;
+import app.issues.Verdict;
 import app.issues.model.Fitting;
 import app.issues.model.ProjectBootstrap;
 import app.issues.model.References;
@@ -150,7 +151,7 @@ public final class IssuesFirstCommitAnalogyCommand implements CommandRunner {
   /** The choice, on the usual-flow inner validation issues; the outer test is not read here. */
   static Inner inner(final List<RowCache.Entry> entries, final double k) {
     final List<RowCache.Entry> training = entries.stream()
-        .filter(e -> "TRAIN".equals(e.outer(Population.FIRST_COMMIT))).toList();
+        .filter(e -> Verdict.outerTraining(e.outer(Population.FIRST_COMMIT))).toList();
     final Fitting.Sides whole = Fitting.sides(
         BusinessDays.population(training, Augmentation.Variant.INNER).entries(),
         Fitting.Mode.INNER, Population.FIRST_COMMIT);

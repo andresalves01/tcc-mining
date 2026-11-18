@@ -16,6 +16,7 @@ import app.issues.SimilarityScoring;
 import app.issues.SplitRule;
 import app.issues.TailCut;
 import app.issues.Universe.Population;
+import app.issues.Verdict;
 import app.issues.model.Forest;
 import app.issues.model.ProjectBootstrap;
 import app.model.Parallel;
@@ -196,8 +197,9 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
       if (design != null) {
         throw refused(design);
       }
-      // the outer training rows only: every other row is left behind on its split field
-      training = RowCache.read(matrix, study, "TRAIN");
+      // the outer training rows only, crossing ones included: every other row is left behind
+      // on its split field
+      training = RowCache.training(matrix, study);
       columns = RowCache.columns(matrix);
     } catch (final IOException e) {
       throw new CommandFailedException(List.of("  could not read the inputs: " + e));
@@ -246,7 +248,8 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
       // the same inner fitting set as the selection's, by the matrix's hash: the same fences,
       // checked before any model is fitted
       final List<IssueUnit> fitting = population.entries().stream()
-          .filter(e -> "TRAIN".equals(e.inner(study))).map(RowCache.Entry::unit).toList();
+          .filter(e -> Verdict.teaches(Augmentation.Variant.INNER, e, study))
+          .map(RowCache.Entry::unit).toList();
       final double fence = TailCut.fence(fitting, chosen.cut().k());
       final double usualFence = TailCut.fence(fitting, TailCut.USUAL_FLOW_K);
       if (Double.compare(fence, chosen.cut().fence()) != 0
