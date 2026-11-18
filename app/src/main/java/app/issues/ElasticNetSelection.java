@@ -182,8 +182,6 @@ public final class ElasticNetSelection {
 
   private static final Population P = Population.IN_PROGRESS;
 
-  private static final String TRAIN = "TRAIN";
-  private static final String TEST = "TEST";
 
   /** The suffix of a missing indicator, as the extracted matrix names its own. */
   private static final String ABSENT = "_ausente";
@@ -525,8 +523,10 @@ public final class ElasticNetSelection {
 
   /**
    * Outer training, outer test, inner fitting and inner validation rows, counted from the split
-   * labels: nothing else of an outer test row is read. The split read is the first-commit
-   * population's when the rows carry it, the In Progress one's otherwise.
+   * labels: nothing else of an outer test row is read. Each training side is counted whole,
+   * crossing issues included ({@link Verdict#trainingSide}), so the sizes are those of the sides
+   * drawn, as on 02/11/2026. The split read is the first-commit population's when the rows carry
+   * it, the In Progress one's otherwise.
    */
   public static ProjectSplit.Sizes sizes(final List<RowCache.Entry> entries) {
     final Population split = entries.stream()
@@ -537,11 +537,11 @@ public final class ElasticNetSelection {
     int fit = 0;
     int validation = 0;
     for (final RowCache.Entry e : entries) {
-      if (TRAIN.equals(e.outer(split))) {
+      if (Verdict.trainingSide(Augmentation.Variant.OUTER, e, split)) {
         train++;
-        fit += TRAIN.equals(e.inner(split)) ? 1 : 0;
-        validation += TEST.equals(e.inner(split)) ? 1 : 0;
-      } else if (TEST.equals(e.outer(split))) {
+        fit += Verdict.trainingSide(Augmentation.Variant.INNER, e, split) ? 1 : 0;
+        validation += Verdict.scored(Augmentation.Variant.INNER, e, split) ? 1 : 0;
+      } else if (Verdict.scored(Augmentation.Variant.OUTER, e, split)) {
         test++;
       }
     }
@@ -863,7 +863,7 @@ public final class ElasticNetSelection {
       final SplitRule rule) {
     final List<Cell> every = everyCell(Augmentation.Variant.INNER, population);
     final List<RowCache.Entry> training = BusinessDays.counted(
-        entries.stream().filter(e -> TRAIN.equals(e.outer(population))).toList());
+        entries.stream().filter(e -> Verdict.outerTraining(e.outer(population))).toList());
     final Fitting.Sides whole =
         flagged(Fitting.sides(training, Fitting.Mode.INNER, population), every);
     // both fences on the inner fitting set as it is, before any cut

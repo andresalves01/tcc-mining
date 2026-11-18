@@ -1505,4 +1505,42 @@ class ElasticNetSelectionTest {
     assertThrows(IllegalArgumentException.class,
         () -> ElasticNetSelection.trees(ElasticNetSelection.read(odd)));
   }
+  @Test
+  @DisplayName("the four split sizes count each level's whole training side, crossing issues "
+      + "included, as the sides of 02/11/2026 are counted")
+  void sizesWithCrossing() {
+    row("a", 10, "TRAIN", "TRAIN", Map.of());
+    row("w", 20, "TRAIN", "CROSSING", Map.of());
+    row("y", 30, "CROSSING", "CROSSING", Map.of());
+    row("v", 100, "TRAIN", "TEST", Map.of());
+    row("z", 100, "CROSSING", "TEST", Map.of());
+    row("t", 1, "TEST", "", Map.of());
+    assertEquals(new ProjectSplit.Sizes(5, 1, 3, 2), ElasticNetSelection.sizes(entries));
+  }
+
+  @Test
+  @DisplayName("the selection fits on the inner fitting issues that teach and scores the whole "
+      + "inner validation: an issue crossing a cut leaves the fitting rows, and one crossing the "
+      + "outer cut in the validation is still scored")
+  void selectionWithCrossing() {
+    full();
+    final ElasticNetSelection.Result before = uncut(counted(entries));
+    final List<RowCache.Entry> marked = new ArrayList<>();
+    for (final RowCache.Entry e : entries) {
+      final String id = e.unit().issueId();
+      final String[] verdicts = id.equals("f0") ? new String[] {"CROSSING", "CROSSING"}
+          : id.equals("f1") ? new String[] {"TRAIN", "CROSSING"}
+          : id.equals("f50") ? new String[] {"CROSSING", "TEST"} : null;
+      if (verdicts == null) {
+        marked.add(e);
+      } else {
+        final Map<Population, String[]> parts = new EnumMap<>(Population.class);
+        parts.put(Population.IN_PROGRESS, verdicts);
+        marked.add(new RowCache.Entry(e.unit(), e.row(), parts));
+      }
+    }
+    final ElasticNetSelection.Result after = uncut(counted(marked));
+    assertEquals(before.fitRows() - 2, after.fitRows());
+    assertEquals(before.validationRows(), after.validationRows());
+  }
 }
