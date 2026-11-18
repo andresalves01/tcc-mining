@@ -237,6 +237,15 @@ projects, and the similarity medians only inside the models.
   two on the usual flow and on every issue. It reads the same `MATRIX` and
   `ELASTIC_NET_PARAMETERS`, writes `share-ablation.md` and `share-ablation.tsv` to `REPORT_DIR`,
   and writes nothing to MongoDB.
+- **Error by band of the predicted duration.** `issues-first-commit-predicted-band` describes the
+  test's frozen predictions of the three Elastic Net start models: each issue goes to the band of
+  its prediction (the quartiles of the observed duration of the cut fitting rows, as the test's
+  report records them), beside the same bands by observed duration, with n, MAE, median error and
+  bias per band and, for the band above Q3, the predicted-long against observed-long counts,
+  precision and recall. It reads `REPORT_DIR` and the run's log (`RUN_LOG`; `BAND_TOPS` and
+  `USUAL_FENCE` override the log's figures, the band limits printed with two decimals and the
+  fence with three), writes `predicted-band.md` and
+  `predicted-band.tsv` to `OUT_DIR`, and writes nothing to MongoDB.
 - **Analogy estimate (exploratory).** `issues-first-commit-analogy` was added after the outer
   test of the random split was opened and confirms nothing. It uses one similarity median directly
   as the estimate, in the manner of Shepperd and Schofield (1997), choosing the candidate with the
@@ -326,7 +335,8 @@ with their count.
 
 ### Commands that only read
 
-`check`, `help`, `issues-first-commit-audit`, `issues-first-commit-share-ablation` and
+`check`, `help`, `issues-first-commit-audit`, `issues-first-commit-share-ablation`,
+`issues-first-commit-predicted-band` and
 `issues-first-commit-analogy` write nothing to MongoDB and can be run at any time.
 
 ## Tests

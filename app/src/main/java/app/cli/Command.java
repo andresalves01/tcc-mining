@@ -489,6 +489,25 @@ public enum Command {
       analogy-comparison.md and analogy-predictions.tsv to ANALOGY_DIR;
       nothing to any database."""),
 
+  ISSUES_FIRST_COMMIT_PREDICTED_BAND("issues-first-commit-predicted-band",
+      new app.cli.commands.IssuesFirstCommitPredictedBandCommand(), """
+      Issue duration from the first commit, ERROR BY BAND OF THE PREDICTED
+      DURATION, read-only: a description of the outer test's frozen
+      predictions, nothing refitted or chosen. Each issue goes to the band of
+      its prediction, at the quartiles of the observed duration of the cut
+      fitting rows as the test's report records them (half-open, as the
+      error bands are), beside the same bands by observed duration: n, MAE,
+      median error and bias per band; for the long band (above Q3) the four
+      counts of predicted long against observed long, precision and recall.
+      The three Elastic Net start models, on the full population (main) and
+      on the usual flow (observed at or under the report's fence). Reads
+      REPORT_DIR (similarity-test-predictions.tsv) and the run's log, RUN_LOG
+      (default run.log beside REPORT_DIR), for the band limits (printed with
+      two decimals) and the fence (three decimals); BAND_TOPS ("a,b,c",
+      finite, non-decreasing) and USUAL_FENCE (finite, positive) override
+      them; the log must hold exactly one test-stage line of each. Writes predicted-band.md and
+      predicted-band.tsv to OUT_DIR; nothing to any database."""),
+
   ISSUES_FIRST_COMMIT_TEST("issues-first-commit-test",
       app.cli.commands.IssuesSimilarityTestCommand.firstCommit(), """
       Issue duration from the first commit, outer mode only: OPENS AND SCORES
