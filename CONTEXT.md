@@ -94,7 +94,18 @@ An issue's duration, whether a model learns from it or a history reads it.
 
 **History**:
 The labels of other issues that an attribute summarises; it reads only the training side of its
-split, any date, and never the issue's own label.
+split and never the issue's own label. In the In Progress study, the first-commit random
+split and the temporal design opened on 02/11/2026 it reads that side at any date; in the revised
+temporal design it is a **point-in-time history**.
+
+**Point-in-time history**:
+For one issue, the training-side issues whose first resolution comes strictly before that
+issue's first commit, the issue itself never among them: only labels already known when its
+work began. It may be empty, and its summary is then missing. In the revised design of the
+first-commit temporal split every history is one: the reporter median, the similarity medians and the analogy estimate. The
+embedding clusters are drawn from the training side's descriptions and do not read labels.
+Only the median of the members is point-in-time.
+_Avoid_: dated history, causal history
 
 ### Attributes
 
@@ -226,7 +237,6 @@ labels.
 **Prediction interval**:
 The range around an estimate that holds a stated share of such issues (80% or 95%), calibrated on
 the inner validation.
-
 **Prediction quartile**:
 One of the four ranges of a model's own estimates. It does not choose a calibration factor:
 each model and interval level uses one pooled inner-validation factor.
@@ -283,8 +293,11 @@ duration; the temporal split's cuts are taken on the candidates, so no learned v
 **Temporal split**:
 The first-commit study's split, its main design: the candidates ordered by their first commit;
 training holds those whose first commit is at or before the **cut**, test holds every other one.
-No issue is set aside. The inner split is the same rule inside the training side. Every value the
-study learns, the wait cap included, is learned on its training side.
+No issue leaves the population. The inner split is the same rule inside the training side. Every
+value the study learns, the wait cap included, is learned on its training side. Its **revised
+design** (since the review of November 2026, the article's result) also leaves crossing issues
+out of what the training side teaches and makes every history a point-in-time history; the
+design opened on 02/11/2026 did neither.
 _Avoid_: chronological split, time-based holdout
 
 **Cut**:
@@ -293,12 +306,18 @@ candidates' first-commit instants (for the inner split, of the training side's).
 _Avoid_: fence (the fence is on the duration), cut-off date
 
 **Crossing issue**:
-A training issue whose first resolution comes after the cut. It stays in training, so its label
-was not yet known at the cut; a declared threat, not a reason to set it aside.
+A training issue whose first resolution comes after the cut, so its label was not yet known at
+the cut. It is left out of everything the training side teaches: the fitting rows, the reference
+medians, the fences, the wait cap and the histories. It is still an issue of the population, and
+validation and test keep every issue. This holds in the revised design; in the design opened on
+02/11/2026 it stayed in training as a declared threat.
 
 **New project**:
 A project with issues on the test side and none on the training side; there the project median
-is the global one, and every reading is also given without its issues.
+is the global one, and every reading is also given without its issues. In the revised design of
+the temporal split, it is a project with test issues and no issue that teaches, so a project
+whose training issues all cross the cut is new; the design opened on 02/11/2026 counts the
+training side.
 
 **Random split (first-commit study)**:
 The first-commit study's original split, random and stratified by project, whose outer test was
@@ -315,6 +334,7 @@ The business days between two consecutive marks.
 **Wait fence**:
 Q3 + 1.5·IQR of the waits of the inner fitting; the **wait cap** is the largest wait not above it,
 learned once and frozen. A wait counts up to the cap, never below its dates with human activity.
+The study's k is 1.5. Another k, or no cap at all, is only read as a sensitivity of the target.
 _Avoid_: fence (the fence is on the duration)
 
 **Tail**:
