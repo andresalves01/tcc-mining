@@ -78,6 +78,17 @@ public final class MongoIssuesStore implements ResultStore {
     return FirstCommit.waitFenceK(k == null ? null : k.toString());
   }
 
+  /** The runs of {@code stage} in this store's run collection, newest first. */
+  @Override
+  public java.util.Optional<List<Map<String, Object>>> recordedRuns(final String stage) {
+    final List<Map<String, Object>> out = new ArrayList<>();
+    for (final Document d : database.getCollection(runs).find(new Document("stage", stage))
+        .sort(new Document("recorded_at", -1))) {
+      out.add(d);
+    }
+    return java.util.Optional.of(List.copyOf(out));
+  }
+
   @Override
   public java.util.Optional<Boolean> recorded(final String stage) {
     return java.util.Optional.of(database.getCollection(runs)

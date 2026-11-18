@@ -44,6 +44,9 @@ import java.util.function.Function;
  */
 public final class IssuesInProgressExtractCommand implements CommandRunner {
 
+  /** The stage this command records its runs under, of either study. */
+  static final String STAGE = "issues-in-progress-extract";
+
   private static final Locale EN = Locale.ROOT;
 
   private final Function<String, String> settings;
@@ -113,7 +116,7 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
     }
 
     final Map<String, Object> run = new LinkedHashMap<>();
-    run.put("stage", "issues-in-progress-extract");
+    run.put("stage", STAGE);
     run.put("gate_time_travel", r.travelPassed());
     run.put("rows", r.entries().size());
     run.put("population", BusinessDays.POPULATION);
@@ -287,7 +290,7 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
     }
 
     final Map<String, Object> run = new LinkedHashMap<>();
-    run.put("stage", "issues-in-progress-extract");
+    run.put("stage", STAGE);
     run.put("study_population", Population.FIRST_COMMIT.name());
     run.put("gate_time_travel", r.travelPassed());
     run.put("rows", r.entries().size());

@@ -277,6 +277,65 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         };
   }
 
+  /**
+   * Why the revised design's outer test may not be opened on the matrix of {@code matrixSha}, or
+   * null when it may. It is opened once, so it waits for the whole revised design: the newest
+   * first-commit extraction run of the design's collection must declare the crossing issues left
+   * out of what the training side teaches ({@code crossing_left_out}), and the similarity run that
+   * wrote the matrix's similarity columns must declare point-in-time histories ({@link
+   * IssuesSimilarityCommand#POINT_IN_TIME_HISTORY}). That similarity run is found through the
+   * retrospective run that wrote the matrix: the retrospective run's input is the similarity run's
+   * output. Reads run records alone, never a row or a label.
+   *
+   * <p>Prepared, not yet called: it is enabled once the crossing issues are left out (ticket 02)
+   * and the same-model calibration (ticket 06) are integrated, since until then no extraction
+   * run declares {@code crossing_left_out}.
+   */
+  static String revisedUnready(final ResultStore store, final String matrixSha) {
+    final java.util.Optional<List<Map<String, Object>>> extractions =
+        store.recordedRuns(IssuesInProgressExtractCommand.STAGE);
+    final java.util.Optional<List<Map<String, Object>>> similarities =
+        store.recordedRuns(IssuesSimilarityCommand.STAGE);
+    final java.util.Optional<List<Map<String, Object>>> retrospectives =
+        store.recordedRuns(IssuesRetrospectiveCommand.STAGE);
+    if (extractions.isEmpty() || similarities.isEmpty() || retrospectives.isEmpty()) {
+      return "ISSUES_DB cannot tell which runs made this matrix; the revised design's outer test "
+          + "is opened once, on a matrix of the whole revised design";
+    }
+    final Map<String, Object> extraction = extractions.get().stream()
+        .filter(r -> app.issues.Universe.Population.FIRST_COMMIT.name()
+            .equals(r.get("study_population")))
+        .findFirst().orElse(null);
+    if (extraction == null) {
+      return "no first-commit extraction run is recorded in the revised design's collection";
+    }
+    if (extraction.get("crossing_left_out") == null) {
+      return "the newest extraction run does not declare the crossing issues left out of what "
+          + "the training side teaches (crossing_left_out); its matrix is not of the revised "
+          + "design";
+    }
+    final Map<String, Object> retrospective = retrospectives.get().stream()
+        .filter(r -> matrixSha.equals(r.get("retrospective_matrix_sha256")))
+        .findFirst().orElse(null);
+    if (retrospective == null) {
+      return "no retrospective run of the revised design's collection wrote this matrix";
+    }
+    final Object input = retrospective.get("matrix_sha256");
+    final Map<String, Object> similarity = similarities.get().stream()
+        .filter(r -> r.get("written_sha256") instanceof Map<?, ?> w && input != null
+            && input.equals(w.get("matrix")))
+        .findFirst().orElse(null);
+    if (similarity == null) {
+      return "no similarity run of the revised design's collection wrote the matrix this one was "
+          + "made from";
+    }
+    if (!IssuesSimilarityCommand.POINT_IN_TIME_HISTORY.equals(similarity.get("history"))) {
+      return "the similarity run that wrote this matrix's columns does not declare point-in-time "
+          + "histories";
+    }
+    return null;
+  }
+
   /** What the run records of the outer test: under the revised design, never a first reading. */
   private String outerTest(final SplitRule rule) {
     return !firstCommitStudy() ? "scored"

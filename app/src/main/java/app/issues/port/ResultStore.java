@@ -57,6 +57,15 @@ public interface ResultStore {
   }
 
   /**
+   * The recorded runs of {@code stage} in this store's collection, newest first, each as it was
+   * recorded; empty when this store cannot tell, which a step that must know what made its input
+   * reads as a refusal.
+   */
+  default java.util.Optional<List<Map<String, Object>>> recordedRuns(final String stage) {
+    return java.util.Optional.empty();
+  }
+
+  /**
    * The designs of the runs this store already holds ({@link SplitRule#recordedBy}); empty when
    * this store cannot tell, which a stage that must not mix designs reads as a refusal.
    */
