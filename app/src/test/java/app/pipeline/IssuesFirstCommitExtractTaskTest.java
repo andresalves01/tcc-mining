@@ -12,13 +12,17 @@ import app.issues.RowCache;
 import app.issues.SplitRule;
 import app.issues.Universe;
 import app.issues.Universe.Population;
+import app.issues.Verdict;
 import app.pipeline.IssuesFirstCommitAuditTask.IssueRow;
 import app.pipeline.port.SilentProgress;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -208,8 +212,8 @@ class IssuesFirstCommitExtractTaskTest {
       final String[] y = tv.get(id);
       assertEquals("TEST".equals(y[0]), "TEST".equals(x[0]), "the same outer test: " + id);
       assertEquals("TEST".equals(y[1]), "TEST".equals(x[1]), "the same inner validation: " + id);
-      outerCrossing += "CROSSING".equals(x[0]) ? 1 : 0;
-      innerCrossing += "CROSSING".equals(x[1]) ? 1 : 0;
+      outerCrossing += Verdict.CROSSING.is(x[0]) ? 1 : 0;
+      innerCrossing += Verdict.CROSSING.is(x[1]) ? 1 : 0;
     }
     assertTrue(outerCrossing > 0 && innerCrossing > 0, outerCrossing + " " + innerCrossing);
     assertTrue(outerCrossing < r.extraction().split().train(), "not every issue crosses");
@@ -225,7 +229,7 @@ class IssuesFirstCommitExtractTaskTest {
     assertEquals(r.extraction().split().train(), r.training().n());
     final IssuesFirstCommitExtractTask.Revised revised = r.temporal().revised();
     assertNull(t.temporal().revised(), "the temporal design adds nothing of the revised one");
-    final List<Integer> teaching = new java.util.ArrayList<>();
+    final List<Integer> teaching = new ArrayList<>();
     r.extraction().entries().stream().filter(e -> "TRAIN".equals(e.outer(fc)))
         .forEach(e -> teaching.add(e.row().values().get(IssuesFirstCommitExtractTask.TARGET)
             .intValue()));
@@ -237,7 +241,7 @@ class IssuesFirstCommitExtractTaskTest {
     r.extraction().entries().forEach(e -> by.computeIfAbsent(e.outer(fc), k -> new java.util
         .TreeSet<>()).add(e.unit().project()));
     final Set<String> taught = by.getOrDefault("TRAIN", Set.of());
-    final Set<String> side = new java.util.TreeSet<>(taught);
+    final Set<String> side = new TreeSet<>(taught);
     side.addAll(by.getOrDefault("CROSSING", Set.of()));
     final Set<String> tested = by.getOrDefault("TEST", Set.of());
     assertEquals(tested.stream().filter(p -> !taught.contains(p)).collect(Collectors.toSet()),
@@ -388,9 +392,9 @@ class IssuesFirstCommitExtractTaskTest {
     final IssuesFirstCommitExtractTask.Report other =
         new IssuesFirstCommitExtractTask(later.source(), SilentProgress.INSTANCE).run();
     assertEquals(fc.extraction().split(), other.extraction().split());
-    assertEquals(new java.util.TreeMap<>(fc.extraction().team()),
-        new java.util.TreeMap<>(other.extraction().team()));
-    final List<String> start = new java.util.ArrayList<>();
+    assertEquals(new TreeMap<>(fc.extraction().team()),
+        new TreeMap<>(other.extraction().team()));
+    final List<String> start = new ArrayList<>();
     for (final app.issues.Attribute a : app.issues.Attributes.all()) {
       if (a.atCreation() || app.issues.Attributes.EXECUTOR_AT_START.contains(a.name())) {
         start.add(a.name());

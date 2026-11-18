@@ -229,8 +229,15 @@ public final class IssuesFirstCommitAuditCommand implements CommandRunner {
     md.add("| " + Side.TEST.label() + " | " + n(r.sizes().test()) + " | "
         + n(t.projects().test()) + " | — | — | — | — |");
     md.add("");
-    md.add("- Projetos novos (com issues no teste externo e nenhuma no treino externo): "
-        + newProjects(t.newProjects()));
+    if (t.newProjectsTrainingSide() == null) {
+      md.add("- Projetos novos (com issues no teste externo e nenhuma no treino externo): "
+          + newProjects(t.newProjects()));
+    } else {
+      md.add("- Projetos novos (sem issue que ensine, como a pontuação os lê): "
+          + newProjects(t.newProjects()));
+      md.add("- Projetos novos (sem issue no lado de treino, issues que cruzam o corte "
+          + "incluídas): " + newProjects(t.newProjectsTrainingSide()));
+    }
     md.add("- Projetos com issues na validação interna e nenhuma no ajuste interno: "
         + newProjects(t.newInnerProjects()));
     md.add("- Issues de treino que cruzam o corte externo (primeiro commit até o corte, primeira "

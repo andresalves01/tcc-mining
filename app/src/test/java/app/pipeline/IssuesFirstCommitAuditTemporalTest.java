@@ -106,7 +106,7 @@ class IssuesFirstCommitAuditTemporalTest {
 
   private Report run(final SplitRule rule) {
     final Corpus corpus = new Corpus(issues, events, comments, List.of(), commits,
-        Map.of("p", Set.of("P"), "n", Set.of("N")), Map.of(), people, Map.of(), Map.of(),
+        Map.of("p", Set.of("P"), "n", Set.of("N"), "c", Set.of("C")), Map.of(), people, Map.of(), Map.of(),
         Map.of(), Map.of(), List.of());
     final StudySource source = new StudySource() {
       @Override
@@ -243,5 +243,19 @@ class IssuesFirstCommitAuditTemporalTest {
     final Temporal t = run(SplitRule.TEMPORAL).temporal();
     assertEquals(t.crossing(), r.crossing());
     assertEquals(t.innerCrossing(), r.innerCrossing());
+  }
+
+  @Test
+  @DisplayName("the revised audit gives the new projects by both readings, the temporal one by "
+      + "the training side alone")
+  void revisedNewProjectsBothReadings() {
+    eligible(11, "c", 4, 3, monday(9)); // training side, crosses the cut: teaches nothing
+    eligible(12, "c", 8, 3, null); // outer test
+    final Temporal t = run(SplitRule.TEMPORAL).temporal();
+    assertNull(t.newProjectsTrainingSide());
+    assertEquals(Map.of("n", 2), t.newProjects(), "c has an issue on the training side");
+    final Temporal r = run(SplitRule.REVISED).temporal();
+    assertEquals(Map.of("c", 1, "n", 2), r.newProjects(), "no issue that teaches");
+    assertEquals(Map.of("n", 2), r.newProjectsTrainingSide(), "no issue on the training side");
   }
 }

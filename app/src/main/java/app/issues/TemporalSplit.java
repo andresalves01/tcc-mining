@@ -190,8 +190,10 @@ public final class TemporalSplit {
         if (sides.get(u.issueId()) != Part.TRAIN) {
           candidates.add(new Candidate(u.issueId(), u.project(), u.startedAt()));
         } else if (u.resolvedAt() == null) {
-          return List.of(u.issueId() + " is on the training side without its first resolution; "
-              + "the revised split cannot be checked on this matrix");
+          return List.of(u.issueId() + " is on the training side by the rule but has no first "
+              + "resolution, and the matrix's verdict for it is "
+              + verdictText(e.outer(population)) + " (a row the matrix marks TEST has its dates "
+              + "unread); the revised split cannot be checked on this matrix");
         } else {
           candidates.add(new Candidate(u.issueId(), u.project(), u.startedAt(), u.resolvedAt()));
         }
@@ -203,6 +205,10 @@ public final class TemporalSplit {
     }
     return ProjectSplit.differences(entries, population, parts,
         "temporal, revised, cuts " + cuts.outer() + " and " + cuts.inner());
+  }
+
+  private static String verdictText(final String verdict) {
+    return verdict.isEmpty() ? "none" : verdict;
   }
 
   /** The candidates in the rule's order; refuses one without an instant and a repeated id. */

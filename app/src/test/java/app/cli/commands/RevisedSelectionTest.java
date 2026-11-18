@@ -180,7 +180,8 @@ class RevisedSelectionTest {
   @Test
   @DisplayName("the labels of the issues crossing the inner cut move nothing the inner level "
       + "learns: the selection's choices, the references, the fences and every inner score are "
-      + "the same with each of their targets set to one day; the runs go to the revised design's collection")
+      + "the same with each of their targets set to one day; the runs go to the revised "
+      + "design's collection")
   void crossingLabelsTeachNothing() throws Exception {
     final Path matrix = SelectionFixture.revised(dir.resolve("revised.tsv"));
     final Path same = relabelled(matrix, dir.resolve("same.tsv"), false);

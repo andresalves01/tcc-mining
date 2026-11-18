@@ -10,6 +10,7 @@ import app.cli.Context;
 import app.config.PipelineConfig;
 import app.identity.Strictness;
 import app.issues.Augmentation;
+import app.issues.Augmentation.Variant;
 import app.issues.BusinessDays;
 import app.issues.Corpus;
 import app.issues.DescriptionCleaner;
@@ -24,6 +25,7 @@ import app.issues.SplitRule;
 import app.issues.TeamColumns;
 import app.issues.Universe;
 import app.issues.Universe.Population;
+import app.issues.Verdict;
 import app.issues.port.ResultStore;
 import app.issues.port.StudySource;
 import app.pipeline.ExtractionFixture;
@@ -43,8 +45,10 @@ import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -208,7 +212,7 @@ class FirstCommitStagesTest {
     new IssuesInProgressTeamCommand(settings::get).run(context(firstCommit(), fixture));
     final Map<String, Map<String, Double>> team = TeamColumns.read(file);
     final IssuesInProgressExtractTask.Report r = extraction(new ExtractionFixture());
-    assertEquals(new java.util.TreeMap<>(r.team()), new java.util.TreeMap<>(team));
+    assertEquals(new TreeMap<>(r.team()), new TreeMap<>(team));
     assertEquals(r.entries().stream().map(e -> e.unit().issueId()).collect(Collectors.toSet()),
         team.keySet());
     assertEquals("FIRST_COMMIT", records.getFirst().get("study_population"));
@@ -561,7 +565,7 @@ class FirstCommitStagesTest {
     final Map<String, RowCache.Entry> byId = new HashMap<>();
     r.entries().forEach(e -> byId.put(e.unit().issueId(), e));
     final Population fc = Population.FIRST_COMMIT;
-    assertTrue(r.entries().stream().anyMatch(e -> "CROSSING".equals(e.inner(fc))),
+    assertTrue(r.entries().stream().anyMatch(e -> Verdict.CROSSING.is(e.inner(fc))),
         "the extraction has issues crossing the inner cut");
     final IssuesSimilarityTask.Report s = new IssuesSimilarityTask(fixture.source(),
         SilentProgress.INSTANCE, StagesFixture.WORDS, new SmileKMeans(), fc, SplitRule.REVISED)
@@ -570,25 +574,42 @@ class FirstCommitStagesTest {
     int read = 0;
     for (final Augmentation.Query q : s.result().queries()) {
       for (final Augmentation.Neighbour n : q.nearest()) {
-        assertTrue(app.issues.Verdict.teaches(q.variant(), byId.get(n.id()), fc), q + " " + n);
+        assertTrue(Verdict.teaches(q.variant(), byId.get(n.id()), fc), q + " " + n);
         read++;
       }
     }
     for (final Augmentation.EmbeddingQuery q : s.result().embeddingQueries()) {
       for (final Augmentation.Neighbour n : q.nearest()) {
-        assertTrue(app.issues.Verdict.teaches(q.variant(), byId.get(n.id()), fc), q + " " + n);
+        assertTrue(Verdict.teaches(q.variant(), byId.get(n.id()), fc), q + " " + n);
         read++;
       }
     }
     for (final Augmentation.ClusterFit f : s.result().clusterFits()) {
       for (final String m : f.members().stream().flatMap(List::stream).toList()) {
-        assertTrue(app.issues.Verdict.teaches(f.variant(), byId.get(m), fc), f.variant() + " " + m);
+        assertTrue(Verdict.teaches(f.variant(), byId.get(m), fc), f.variant() + " " + m);
         read++;
       }
     }
     assertTrue(read > 0, "the histories were read");
+    // a reporter median needs a reporter peer that teaches: crossing issues alone give none
+    int medians = 0;
+    for (final Variant v : Variant.values()) {
+      for (final RowCache.Entry e : r.entries()) {
+        final Double median = s.result().columns().get(e.unit().issueId())
+            .get(Augmentation.reporter(v));
+        if (median == null) {
+          continue;
+        }
+        medians++;
+        assertTrue(r.entries().stream().anyMatch(p -> p != e && Verdict.teaches(v, p, fc)
+            && p.unit().project().equals(e.unit().project())
+            && Objects.equals(p.unit().reporter(), e.unit().reporter())),
+            v + " " + e.unit().issueId());
+      }
+    }
+    assertTrue(medians > 0, "the reporter medians were read");
     // case 5, crossing the outer cut from the inner validation, is still scored there
-    r.entries().stream().filter(e -> "CROSSING".equals(e.outer(fc)) && "TEST".equals(e.inner(fc)))
+    r.entries().stream().filter(e -> Verdict.CROSSING.is(e.outer(fc)) && Verdict.TEST.is(e.inner(fc)))
         .forEach(e -> assertTrue(s.result().queries().stream().anyMatch(q -> q.id()
             .equals(e.unit().issueId()) && q.variant() == Augmentation.Variant.INNER),
             e.unit().issueId()));

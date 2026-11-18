@@ -362,6 +362,16 @@ class TemporalSplitTest {
     final List<String> d = TemporalSplit.differencesRevised(unresolved, fc);
     assertEquals(1, d.size());
     assertTrue(d.get(0).contains("first resolution"), d.get(0));
+    assertTrue(d.get(0).contains("verdict for it is " + rows.get(0).outer(fc)), d.get(0));
+
+    final List<RowCache.Entry> marked = new ArrayList<>(rows);
+    final Map<Population, String[]> test = new EnumMap<>(Population.class);
+    test.put(fc, new String[] {"TEST", ""});
+    final RowCache.Entry bare = revisedEntry(in.get(0), revised, false);
+    marked.set(0, new RowCache.Entry(bare.unit(), bare.row(), test));
+    final List<String> m = TemporalSplit.differencesRevised(marked, fc);
+    assertEquals(1, m.size());
+    assertTrue(m.get(0).contains("verdict for it is TEST"), m.get(0));
 
     final List<RowCache.Entry> undated = new ArrayList<>(rows);
     final RowCache.Entry e = undated.get(0);

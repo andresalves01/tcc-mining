@@ -209,13 +209,14 @@ public final class IssuesFirstCommitExtractTask {
     final TemporalSplit.Cuts cuts = TemporalSplit.cuts(drawn.candidates());
     final ProjectSplit.Parts parts = drawn.parts();
     final IssuesFirstCommitAuditTask.Crossing crossing = drawn.crossing(issues);
-    final Map<String, Part> taught = new HashMap<>(parts.outer());
-    taught.keySet().removeAll(parts.outerCrossing());
-    final Map<String, Integer> fresh = IssuesFirstCommitAuditTask.newProjects(projects, taught);
+    final Map<String, Part> outerTeaching = new HashMap<>(parts.outer());
+    outerTeaching.keySet().removeAll(parts.outerCrossing());
+    final Map<String, Integer> newByTeaching =
+        IssuesFirstCommitAuditTask.newProjects(projects, outerTeaching);
     final Revised revised = !drawn.rule().crossingOut() ? null
         : new Revised(FirstCommit.summary(teaching),
             IssuesFirstCommitAuditTask.newProjects(projects, parts.outer()));
-    return new Temporal(cuts, crossing.outer(), crossing.inner(), fresh, revised);
+    return new Temporal(cuts, crossing.outer(), crossing.inner(), newByTeaching, revised);
   }
 
   /**
