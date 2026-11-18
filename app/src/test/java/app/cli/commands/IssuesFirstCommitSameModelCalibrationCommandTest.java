@@ -38,7 +38,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * The same-model calibration step (the revised design's ticket 06), end to end on the synthetic
- * first-commit matrix at the temporal sides, read under the revised rule: its outer test rows
+ * first-commit matrix at the revised design's verdicts (the temporal sides, the issues crossing a
+ * cut marked), read under the revised rule: its outer test rows
  * carry the inner variant's columns, as the revised similarity stage writes them. A project,
  * {@code p4}, has inner validation and outer test issues and no inner fitting row: new to the
  * inner model alone, so the readings without new projects are drawn. The selection and the test
@@ -128,7 +129,7 @@ class IssuesFirstCommitSameModelCalibrationCommandTest {
   /** The selection, then the test step's opening, under the revised rule, once for the class. */
   @BeforeAll
   static void openTheTest() throws Exception {
-    matrix = SelectionFixture.temporal(shared.resolve("matrix.tsv"), 3, 3);
+    matrix = SelectionFixture.revised(shared.resolve("matrix.tsv"), 3, 3);
     parameters = shared.resolve("elastic-net.tsv");
     testDir = shared.resolve("test");
     final Map<String, String> settings = new HashMap<>();
