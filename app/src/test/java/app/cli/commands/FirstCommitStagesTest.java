@@ -375,6 +375,27 @@ class FirstCommitStagesTest {
     return out;
   }
 
+  /**
+   * The rows at the verdicts {@code rule} draws over their first commits and first resolutions:
+   * under the revised rule, the temporal sides with the issues crossing a cut marked.
+   */
+  private static List<RowCache.Entry> sides(final List<RowCache.Entry> entries,
+      final SplitRule rule) {
+    final List<SplitRule.Candidate> candidates = entries.stream().map(e -> new SplitRule
+        .Candidate(e.unit().issueId(), e.unit().project(), e.unit().startedAt(),
+            e.unit().resolvedAt())).toList();
+    final ProjectSplit.Parts parts = rule.draw(candidates);
+    final List<RowCache.Entry> out = new ArrayList<>();
+    for (final RowCache.Entry e : entries) {
+      final String id = e.unit().issueId();
+      final Map<Population, String[]> sides = new EnumMap<>(Population.class);
+      sides.put(Population.FIRST_COMMIT, new String[] {Verdict.text(parts.outerVerdict(id)),
+          Verdict.text(parts.innerVerdict(id))});
+      out.add(new RowCache.Entry(e.unit(), e.row(), sides));
+    }
+    return out;
+  }
+
   @Test
   @DisplayName("similarity and retrospective: a matrix at the temporal split's sides is refused "
       + "under the random rule, before the corpus is read, and read under the temporal one")
@@ -457,13 +478,16 @@ class FirstCommitStagesTest {
     final ExtractionFixture fixture = new ExtractionFixture();
     final IssuesInProgressExtractTask.Report r = extraction(fixture);
     final List<RowCache.Entry> sides = TeamColumns.join(temporal(r.entries()), r.team());
+    // the revised design's verdicts over the same sides: the issues crossing a cut marked
+    final List<RowCache.Entry> revisedSides =
+        TeamColumns.join(sides(r.entries(), SplitRule.REVISED), r.team());
     final Map<String, RowCache.Entry> byId = new HashMap<>();
     sides.forEach(e -> byId.put(e.unit().issueId(), e));
     final Map<SplitRule, IssuesSimilarityTask.Report> runs = new EnumMap<>(SplitRule.class);
     for (final SplitRule rule : List.of(SplitRule.TEMPORAL, SplitRule.REVISED)) {
       final IssuesSimilarityTask.Report s = new IssuesSimilarityTask(fixture.source(),
           SilentProgress.INSTANCE, StagesFixture.WORDS, new SmileKMeans(),
-          Population.FIRST_COMMIT, rule).run(sides);
+          Population.FIRST_COMMIT, rule).run(rule == SplitRule.REVISED ? revisedSides : sides);
       assertEquals(List.of(), s.refused(), rule.toString());
       runs.put(rule, s);
     }
