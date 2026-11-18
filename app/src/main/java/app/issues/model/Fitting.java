@@ -6,9 +6,11 @@ import app.model.Parallel;
 import app.study.Row;
 import app.study.model.DesignMatrix;
 import app.study.model.Score;
+import app.issues.Augmentation;
 import app.issues.IssueUnit;
 import app.issues.RowCache;
 import app.issues.Universe;
+import app.issues.Verdict;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -89,20 +91,14 @@ public final class Fitting {
     final List<Row> fitRows = new ArrayList<>();
     final List<IssueUnit> scoreUnits = new ArrayList<>();
     final List<Row> scoreRows = new ArrayList<>();
+    // The reserved side is refused here, not filtered by a caller: under INNER nothing on the far
+    // side of the outer split has any business in the fit or the score. A row fits only where it
+    // teaches, so an issue crossing the level's cut never does; the scored side keeps every issue.
+    final Augmentation.Variant level =
+        mode == Mode.INNER ? Augmentation.Variant.INNER : Augmentation.Variant.OUTER;
     for (final RowCache.Entry entry : entries) {
-      final String outer = entry.outer(population);
-      final String inner = entry.inner(population);
-      final boolean fit;
-      final boolean score;
-      if (mode == Mode.INNER) {
-        // The reserved side is refused here, not filtered by a caller: under INNER nothing on the
-        // far side of the outer split has any business in the fit or the score.
-        fit = "TRAIN".equals(outer) && "TRAIN".equals(inner);
-        score = "TRAIN".equals(outer) && "TEST".equals(inner);
-      } else {
-        fit = "TRAIN".equals(outer);
-        score = "TEST".equals(outer);
-      }
+      final boolean fit = Verdict.teaches(level, entry, population);
+      final boolean score = Verdict.scored(level, entry, population);
       if (fit) {
         fitUnits.add(entry.unit());
         fitRows.add(entry.row());
