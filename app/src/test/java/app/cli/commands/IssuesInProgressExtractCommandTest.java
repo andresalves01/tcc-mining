@@ -51,6 +51,8 @@ class IssuesInProgressExtractCommandTest {
   private final Map<String, List<Map<String, Object>>> collections = new HashMap<>();
   private final List<Map<String, Object>> records = runs("runs");
   private int loads;
+  /** The corpus the source reads: the fixture of always, unless a test spreads it out. */
+  private ExtractionFixture fixture = new ExtractionFixture();
 
   private static PipelineConfig config(final String target, final String issues,
       final String prepared) {
@@ -71,7 +73,7 @@ class IssuesInProgressExtractCommandTest {
 
   /** The fixture's source, counting how often the corpus is loaded. */
   private StudySource source() {
-    final StudySource inner = new ExtractionFixture().source();
+    final StudySource inner = fixture.source();
     return new StudySource() {
       @Override
       public Corpus load() {
@@ -360,6 +362,7 @@ class IssuesInProgressExtractCommandTest {
       + "collection, under its own rule's words and design, the cuts and the issues crossing "
       + "them, and writes a cache whose sides the revised check accepts")
   void firstCommitRevised() throws Exception {
+    fixture = new ExtractionFixture(1);
     final Path cache = dir.resolve("revised.tsv");
     new IssuesInProgressExtractCommand(Map.of("CACHE", cache.toString(),
         "POPULATION", "FIRST_COMMIT", "SPLIT_RULE", "revised")::get).run(context(firstCommit()));

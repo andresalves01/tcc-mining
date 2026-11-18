@@ -372,4 +372,38 @@ class IssuesFirstCommitAuditTaskTest {
     assertEquals(1, validation.total(), "Monday to Thursday, the wait capped at one day");
     assertEquals(2, validation.capped());
   }
+
+  @Test
+  @DisplayName("the revised rule learns the cap without the waits of the inner fitting issues "
+      + "crossing the inner cut, draws the temporal rule's sides with their crossing sets, and "
+      + "still counts a target for every outer training issue, crossing ones included")
+  void revisedCap() {
+    final Map<String, FirstCommit.Issue> from = new LinkedHashMap<>();
+    // inner fitting weeks 0..4 (inner cut week 4), inner validation 5 and 6 (outer cut week 6);
+    // each issue resolved an hour after its second commit, so the issue at each cut crosses it
+    final int[] gaps = {1, 1, 2, 2, 3, 1, 1, 1, 1, 1};
+    for (int week = 0; week < 10; week++) {
+      final FirstCommit.Issue i = started(week + 1, "p", week, gaps[week]);
+      from.put(i.id(), i);
+    }
+    final IssuesFirstCommitAuditTask.Drawn d = IssuesFirstCommitAuditTask.draw(from,
+        FirstCommit.SHARE, MIDNIGHT, SplitRule.REVISED);
+    final IssuesFirstCommitAuditTask.Drawn t = IssuesFirstCommitAuditTask.draw(from,
+        FirstCommit.SHARE, MIDNIGHT, SplitRule.TEMPORAL);
+    assertEquals(t.parts().outer(), d.parts().outer());
+    assertEquals(t.parts().inner(), d.parts().inner());
+    assertEquals(Set.of(id(5)), d.parts().innerCrossing(), "week 4, at the inner cut");
+    assertEquals(Set.of(id(7)), d.parts().outerCrossing(), "week 6, at the outer cut");
+    // the four waits of the inner fitting issues that teach; week 4's three-day wait is left out
+    assertEquals(FirstCommit.threshold(List.of(1, 1, 2, 2)), d.threshold());
+    assertEquals(2, d.threshold().cap());
+    assertEquals(FirstCommit.threshold(List.of(1, 1, 2, 2, 3)), t.threshold());
+    assertEquals(3, t.threshold().cap(), "with the crossing wait the cap would be three");
+    assertEquals(7, d.training().size(), "the outer training keeps every issue");
+    assertEquals(2, d.training().get(id(5)).total(), "week 4's wait capped at two days");
+    assertEquals(new IssuesFirstCommitAuditTask.Crossing(1, 1), d.crossing(Map.of()),
+        "counted from the crossing sets, no issue read");
+    assertEquals(t.crossing(from), d.crossing(Map.of()),
+        "the temporal design counts the same issues from their first resolutions");
+  }
 }

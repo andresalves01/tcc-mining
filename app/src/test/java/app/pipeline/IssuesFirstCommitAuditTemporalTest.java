@@ -232,4 +232,16 @@ class IssuesFirstCommitAuditTemporalTest {
     assertEquals(t.temporal().cuts(), r.temporal().cuts());
     assertEquals(t.temporal().projects(), r.temporal().projects());
   }
+
+  @Test
+  @DisplayName("the revised audit counts the issues crossing each cut from its crossing sets: the "
+      + "same issues the temporal audit counts from their first resolutions")
+  void revisedCrossing() {
+    final Temporal r = run(SplitRule.REVISED).temporal();
+    assertEquals(2, r.crossing(), "week 4, resolved in week 7, and week 6, at the cut");
+    assertEquals(1, r.innerCrossing(), "week 4, at the inner cut");
+    final Temporal t = run(SplitRule.TEMPORAL).temporal();
+    assertEquals(t.crossing(), r.crossing());
+    assertEquals(t.innerCrossing(), r.innerCrossing());
+  }
 }

@@ -293,14 +293,14 @@ class DeclaredSplitRuleTest {
     assertFalse(Files.exists(dir.resolve("reports")));
   }
   @Test
-  @DisplayName("the revised design, stage by stage on a matrix of the temporal sides: the "
+  @DisplayName("the revised design, stage by stage on a matrix of its own verdicts: the "
       + "selection, the inner report and the test step read it as a temporal design, with the "
       + "analogy estimate and 500 trees, record split_design in the revised design's own "
       + "collection, and the test step its own stage name, never saying the test is read for the "
       + "first time")
   void revisedDesign() throws Exception {
     final Map<String, String> settings = new HashMap<>();
-    settings.put("MATRIX", SelectionFixture.temporal(dir.resolve("temporal.tsv")).toString());
+    settings.put("MATRIX", SelectionFixture.revised(dir.resolve("revised.tsv")).toString());
     final Path parameters = dir.resolve("elastic-net.tsv");
     settings.put("ELASTIC_NET_PARAMETERS", parameters.toString());
     settings.put(SplitRule.SETTING, "revised");
@@ -321,16 +321,26 @@ class DeclaredSplitRuleTest {
     assertTrue(Files.readString(dir.resolve("inner").resolve("similarity-inner-report.md"))
         .contains(app.issues.SimilarityScoring.ANALOGY));
 
-    // the temporal design's parameters file is not the revised design's
+    // the temporal design refuses the revised matrix: its crossing verdicts are not its own
     settings.put(SplitRule.SETTING, "temporal");
-    settings.put("ELASTIC_NET_PARAMETERS", dir.resolve("temporal-parameters.tsv").toString());
-    new IssuesSimilarityElasticNetCommand(settings::get).run(context(own()));
+    final Path temporalParameters = dir.resolve("temporal-parameters.tsv");
+    settings.put("ELASTIC_NET_PARAMETERS", temporalParameters.toString());
+    assertTrue(refused(new IssuesSimilarityElasticNetCommand(settings::get), context(own()))
+        .contains("not at the verdicts of the split's rule"));
+    assertFalse(Files.exists(temporalParameters));
+    // and a parameters file of the temporal design is not the revised design's
+    Files.write(temporalParameters, lines.stream().map(l -> l.startsWith("# ") && l.endsWith(
+        "the split rule: revised") ? l.replace("the split rule: revised",
+        "the split rule: temporal") : l).toList());
+    assertEquals(SplitRule.TEMPORAL,
+        ElasticNetSelection.headerRule(Files.readAllLines(temporalParameters).getFirst()));
     settings.put(SplitRule.SETTING, "revised");
     settings.put("REPORT_DIR", dir.resolve("test").toString());
     final IssuesSimilarityTestCommand step =
         new IssuesSimilarityTestCommand(settings::get, Population.FIRST_COMMIT);
     runs.clear();
-    assertTrue(refused(step, context(own())).contains("written under the split rule temporal"));
+    final String other = refused(step, context(own()));
+    assertTrue(other.contains("written under the split rule temporal"), other);
 
     settings.put("ELASTIC_NET_PARAMETERS", parameters.toString());
     step.run(context(own()));
@@ -351,7 +361,7 @@ class DeclaredSplitRuleTest {
     assertEquals(500, test.get("forest_trees"));
     assertTrue(randomRuns.isEmpty(), "nothing in the random design's collection");
     assertEquals(2, revisedRuns.size(), "the revised selection and test in their own collection");
-    assertEquals(1, temporalRuns.size());
+    assertTrue(temporalRuns.isEmpty(), "the refused temporal selection recorded nothing");
     assertTrue(asked.stream().filter(r -> r != SplitRule.RANDOM)
         .allMatch(r -> r == SplitRule.REVISED || r == SplitRule.TEMPORAL));
     assertTrue(asked.contains(SplitRule.REVISED));

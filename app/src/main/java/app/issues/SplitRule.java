@@ -59,19 +59,19 @@ public enum SplitRule {
   /**
    * The temporal split's revised design (the review of November 2026): the same population, cuts
    * and sides as {@link #TEMPORAL}, its crossing issues marked {@link Verdict#CROSSING} so they
-   * teach nothing, and every history point-in-time. Until the crossing issues are marked it draws
-   * and checks exactly as the temporal rule, with no crossing set.
+   * teach nothing ({@link TemporalSplit#drawRevised}), and every history point-in-time. It reads
+   * the first resolution of the training side alone.
    */
   REVISED {
     @Override
     public ProjectSplit.Parts draw(final Collection<Candidate> candidates) {
-      return TemporalSplit.draw(candidates);
+      return TemporalSplit.drawRevised(candidates);
     }
 
     @Override
     public List<String> differences(final List<RowCache.Entry> entries,
         final Population population) {
-      return TemporalSplit.differences(entries, population);
+      return TemporalSplit.differencesRevised(entries, population);
     }
 
     @Override

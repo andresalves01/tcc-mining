@@ -1,6 +1,7 @@
 package app.issues;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -35,18 +36,25 @@ class SplitRuleTest {
   }
 
   @Test
-  @DisplayName("the revised rule draws, until its crossing issues are marked, exactly as the "
-      + "temporal one, and names a rule of its own, never the temporal rule's words")
+  @DisplayName("the revised rule draws the temporal one's sides and marks the issues crossing "
+      + "each cut, and names a rule of its own, never the "
+      + "temporal rule's words")
   void revised() {
     final List<Candidate> in = new ArrayList<>();
     final Instant t = Instant.parse("2016-01-01T00:00:00Z");
     for (int k = 0; k < 17; k++) {
-      in.add(new Candidate("i" + k, k % 3 == 0 ? "a" : "b", t.plusSeconds(1000L * (17 - k))));
+      final Instant start = t.plusSeconds(1000L * (17 - k));
+      in.add(new Candidate("i" + k, k % 3 == 0 ? "a" : "b", start,
+          start.plusSeconds(k % 2 == 0 ? 1 : 5000)));
     }
     final ProjectSplit.Parts parts = SplitRule.REVISED.draw(in);
-    assertEquals(SplitRule.TEMPORAL.draw(in), parts);
-    assertTrue(parts.outerCrossing().isEmpty());
-    assertTrue(parts.innerCrossing().isEmpty());
+    final ProjectSplit.Parts temporal = SplitRule.TEMPORAL.draw(in);
+    assertEquals(temporal.outer(), parts.outer());
+    assertEquals(temporal.inner(), parts.inner());
+    assertEquals(TemporalSplit.drawRevised(in), parts);
+    assertFalse(parts.outerCrossing().isEmpty());
+    assertFalse(parts.innerCrossing().isEmpty());
+    assertTrue(temporal.outerCrossing().isEmpty(), "the temporal rule marks no crossing issue");
     assertTrue(SplitRule.REVISED.rule().startsWith("temporal, revised: "),
         SplitRule.REVISED.rule());
     assertTrue(SplitRule.REVISED.rule() != null

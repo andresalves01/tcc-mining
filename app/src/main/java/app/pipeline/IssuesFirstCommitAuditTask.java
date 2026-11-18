@@ -190,7 +190,32 @@ public final class IssuesFirstCommitAuditTask {
    */
   record Drawn(Map<String, FirstCommit.Verdict> verdicts, List<SplitRule.Candidate> candidates,
       ProjectSplit.Parts parts, Sizes sizes, FirstCommit.Threshold threshold,
-      Map<String, FirstCommit.Count> training) {}
+      Map<String, FirstCommit.Count> training, SplitRule rule) {
+
+    /**
+     * How many outer training issues cross the outer cut and inner fitting issues the inner one.
+     * Under a rule that leaves them out ({@link SplitRule#crossingOut}), the sizes of its crossing
+     * sets, which are those issues by construction, and {@code issues} is not read; otherwise
+     * counted from the first resolutions of {@code issues}, as the design of 02/11/2026 counts
+     * them. Only for a temporal rule, which has cuts.
+     */
+    Crossing crossing(final Map<String, FirstCommit.Issue> issues) {
+      if (rule.crossingOut()) {
+        return new Crossing(parts.outerCrossing().size(), parts.innerCrossing().size());
+      }
+      final TemporalSplit.Cuts cuts = TemporalSplit.cuts(candidates);
+      return new Crossing(IssuesFirstCommitAuditTask.crossing(issues, parts.outer(), cuts.outer()),
+          IssuesFirstCommitAuditTask.crossing(issues, parts.inner(), cuts.inner()));
+    }
+  }
+
+  /**
+   * The issues crossing each cut, in counts.
+   *
+   * @param outer the outer training issues whose first resolution comes after the outer cut
+   * @param inner the inner fitting issues whose first resolution comes after the inner cut
+   */
+  public record Crossing(int outer, int inner) {}
 
   /**
    * The base and what the rules read of each of its issues.
@@ -459,7 +484,10 @@ public final class IssuesFirstCommitAuditTask {
   /**
    * The issues under one limit, the sides drawn by {@code rule} over those in the population, the
    * cap learned on the inner fitting's waits alone, and the outer training's targets at that cap.
-   * The temporal rule orders them by their first kept commit.
+   * The temporal rules order them by their first kept commit; the revised one also reads the
+   * training side's first resolutions, and the waits of the inner fitting issues crossing the
+   * inner cut are left out of the cap, while every outer training issue, crossing or not, is
+   * counted at it.
    */
   static Drawn draw(final Map<String, FirstCommit.Issue> issues, final double limit,
       final FirstCommit.Boundary boundary, final SplitRule rule) {
@@ -472,13 +500,13 @@ public final class IssuesFirstCommitAuditTask {
       if (v.eligible()) {
         projects.put(id, i.project());
         candidates.add(new SplitRule.Candidate(id, i.project(),
-            Instant.ofEpochMilli(v.kept().getFirst().at())));
+            Instant.ofEpochMilli(v.kept().getFirst().at()), Instant.ofEpochMilli(i.resolved())));
       }
     });
     final ProjectSplit.Parts parts = rule.draw(candidates);
     final List<Integer> gaps = new ArrayList<>();
     parts.inner().forEach((id, part) -> {
-      if (part == Part.TRAIN) {
+      if (part == Part.TRAIN && !parts.innerCrossing().contains(id)) {
         gaps.addAll(FirstCommit.gaps(issues.get(id), verdicts.get(id)));
       }
     });
@@ -495,7 +523,7 @@ public final class IssuesFirstCommitAuditTask {
       }
     });
     return new Drawn(verdicts, List.copyOf(candidates), parts, sizes(projects, parts), threshold,
-        training);
+        training, rule);
   }
 
   static Sizes sizes(final Map<String, String> projects, final ProjectSplit.Parts parts) {
@@ -555,6 +583,7 @@ public final class IssuesFirstCommitAuditTask {
   /** The temporal report of {@code main}, drawn by the temporal rule; {@code random} beside it. */
   static Temporal temporal(final Base b, final Drawn main, final FirstCommit.Threshold random) {
     final TemporalSplit.Cuts cuts = TemporalSplit.cuts(main.candidates());
+    final Crossing crossing = main.crossing(b.issues());
     final Map<String, String> projects = new HashMap<>(main.candidates().size() * 2);
     main.candidates().forEach(c -> projects.put(c.id(), c.project()));
     final Map<Side, Set<String>> sideProjects = new EnumMap<>(Side.class);
@@ -579,8 +608,7 @@ public final class IssuesFirstCommitAuditTask {
     return new Temporal(cuts, counts, summaryOrNull(targets.get(Side.FIT)),
         summaryOrNull(targets.get(Side.VALIDATION)),
         newProjects(projects, main.parts().outer()), newProjects(projects, main.parts().inner()),
-        crossing(b.issues(), main.parts().outer(), cuts.outer()),
-        crossing(b.issues(), main.parts().inner(), cuts.inner()), random,
+        crossing.outer(), crossing.inner(), random,
         censoring(b.corpus(), b.universe(), b.bots(), cuts.outer(), test));
   }
 
