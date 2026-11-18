@@ -285,11 +285,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
    * wrote the matrix's similarity columns must declare point-in-time histories ({@link
    * IssuesSimilarityCommand#POINT_IN_TIME_HISTORY}). That similarity run is found through the
    * retrospective run that wrote the matrix: the retrospective run's input is the similarity run's
-   * output. Reads run records alone, never a row or a label.
-   *
-   * <p>Prepared, not yet called: it is enabled once the crossing issues are left out (ticket 02)
-   * and the same-model calibration (ticket 06) are integrated, since until then no extraction
-   * run declares {@code crossing_left_out}.
+   * output. Reads run records alone, never a row or a label; the step calls it before it reads
+   * the parameters or any row of the matrix.
    */
   static String revisedUnready(final ResultStore store, final String matrixSha) {
     final java.util.Optional<List<Map<String, Object>>> extractions =
@@ -407,6 +404,15 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
                   ? "ISSUES_DB cannot tell whether a run of " + stage(rule) + " exists"
                   : "ISSUES_DB already holds a run of " + stage(rule))
               + "; the first-commit study's outer test is opened once"));
+        }
+        // the revised design's outer test waits for the whole design: its matrix's extraction
+        // leaves the crossing issues out and its similarity reads point-in-time histories
+        if (rule == SplitRule.REVISED) {
+          final String unready = revisedUnready(store, Sha256.of(matrix));
+          if (unready != null) {
+            throw new CommandFailedException(List.of("  REFUSED, nothing was read, scored, "
+                + "written or recorded: " + unready));
+          }
         }
       }
     } catch (final IOException | IllegalArgumentException e) {

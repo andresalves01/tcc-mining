@@ -43,6 +43,8 @@ class DeclaredSplitRuleTest {
   private final List<Map<String, Object>> randomRuns = new ArrayList<>();
   private final List<Map<String, Object>> temporalRuns = new ArrayList<>();
   private final List<Map<String, Object>> revisedRuns = new ArrayList<>();
+  /** The revised design's earlier stages, which the revised test step reads before it opens. */
+  private final List<Map<String, Object>> revisedUpstream = new ArrayList<>();
   /** Every design whose store a stage asked for, in order. */
   private final List<SplitRule> asked = new ArrayList<>();
 
@@ -100,6 +102,14 @@ class DeclaredSplitRuleTest {
           public Optional<java.util.Set<SplitRule>> designs() {
             return Optional.of(own.stream().map(SplitRule::recordedBy)
                 .collect(java.util.stream.Collectors.toSet()));
+          }
+
+          @Override
+          public Optional<List<Map<String, Object>>> recordedRuns(final String stage) {
+            final List<Map<String, Object>> all = new ArrayList<>(
+                rule == SplitRule.REVISED ? revisedUpstream : List.of());
+            all.addAll(own);
+            return RevisedUpstream.runs(all, stage);
           }
         };
       }
@@ -339,6 +349,27 @@ class DeclaredSplitRuleTest {
     final IssuesSimilarityTestCommand step =
         new IssuesSimilarityTestCommand(settings::get, Population.FIRST_COMMIT);
     runs.clear();
+    // the revised test opens only on a matrix whose extraction left the crossing issues out and
+    // whose similarity read point-in-time histories: with no such runs, refused before any read
+    final String early = refused(step, context(own()));
+    assertTrue(early.contains("no first-commit extraction run"), early);
+    assertFalse(Files.exists(dir.resolve("test").resolve(IssuesSimilarityTestCommand.PREDICTIONS)));
+    final List<Map<String, Object>> upstream =
+        RevisedUpstream.of(Path.of(settings.get("MATRIX")));
+    final Map<String, Object> keptIn = new HashMap<>(upstream.get(0));
+    keptIn.remove("crossing_left_out");
+    revisedUpstream.add(keptIn);
+    assertTrue(refused(step, context(own())).contains("crossing_left_out"));
+    revisedUpstream.clear();
+    revisedUpstream.add(upstream.get(0));
+    final Map<String, Object> wholeSide = new HashMap<>(upstream.get(1));
+    wholeSide.put("history", IssuesSimilarityCommand.HISTORY);
+    revisedUpstream.add(wholeSide);
+    revisedUpstream.add(upstream.get(2));
+    assertTrue(refused(step, context(own())).contains("point-in-time"));
+    revisedUpstream.clear();
+    revisedUpstream.addAll(upstream);
+    assertTrue(runs.isEmpty(), "every refusal recorded nothing");
     final String other = refused(step, context(own()));
     assertTrue(other.contains("written under the split rule temporal"), other);
 

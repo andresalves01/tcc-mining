@@ -58,6 +58,8 @@ class IssuesFirstCommitSameModelCalibrationCommandTest {
   private static final List<Map<String, Object>> OPENED = new ArrayList<>();
   /** The rows the test step recorded beside its run: its prediction intervals among them. */
   private static final List<Map<String, Object>> TEST_ROWS = new ArrayList<>();
+  /** The revised design's earlier stages for the matrix, which the test step reads to open. */
+  private static final List<Map<String, Object>> UPSTREAM = new ArrayList<>();
 
   /** A run store of the revised design's collection and the random one's, both in memory. */
   static final class Store implements ResultStore {
@@ -113,6 +115,13 @@ class IssuesFirstCommitSameModelCalibrationCommandTest {
           return Optional.of(revised.stream().map(SplitRule::recordedBy)
               .collect(Collectors.toSet()));
         }
+
+        @Override
+        public Optional<List<Map<String, Object>>> recordedRuns(final String stage) {
+          final List<Map<String, Object>> all = new ArrayList<>(UPSTREAM);
+          all.addAll(revised);
+          return RevisedUpstream.runs(all, stage);
+        }
       };
     }
   }
@@ -130,6 +139,7 @@ class IssuesFirstCommitSameModelCalibrationCommandTest {
   @BeforeAll
   static void openTheTest() throws Exception {
     matrix = SelectionFixture.revised(shared.resolve("matrix.tsv"), 3, 3);
+    UPSTREAM.addAll(RevisedUpstream.of(matrix));
     parameters = shared.resolve("elastic-net.tsv");
     testDir = shared.resolve("test");
     final Map<String, String> settings = new HashMap<>();
