@@ -79,6 +79,12 @@ class SimilarityScoringTest {
   private static final List<String> MODELS = concat(LINEAR, FORESTS);
 
   /**
+   * The inner report's scope and the test's; the same-model scope is read through {@link
+   * SimilarityScoring#sameModel} alone.
+   */
+  private static final List<SimilarityScoring.Scope> BOTH_SCOPES = List.of(INNER, RESERVED);
+
+  /**
    * Every model and comparison before ticket 13 that the fourteen keep, as the code scored them on
    * {@link #corpus} with {@code choices(0.2)} on one thread: per model the error and a hash of
    * every prediction, per comparison the gap and both ends of its interval, as bits. First
@@ -283,7 +289,7 @@ class SimilarityScoringTest {
     for (final String name : LEFT_OUT.subList(0, 5)) {
       final Map<String, ElasticNetSelection.Choice> old = new LinkedHashMap<>(choices(0.2));
       old.put(name, new ElasticNetSelection.Choice(0.5, 0.2, null));
-      for (final SimilarityScoring.Scope scope : SimilarityScoring.Scope.values()) {
+      for (final SimilarityScoring.Scope scope : BOTH_SCOPES) {
         assertThrows(IllegalArgumentException.class,
             () -> SimilarityScoring.run(corpus(), old, forests(), scope), name);
       }
@@ -390,7 +396,7 @@ class SimilarityScoringTest {
         .toList();
     assertEquals(14, MODELS.size());
     final List<SimilarityScoring.Report> reports = new ArrayList<>();
-    for (final SimilarityScoring.Scope scope : SimilarityScoring.Scope.values()) {
+    for (final SimilarityScoring.Scope scope : BOTH_SCOPES) {
       final List<RowCache.Entry> entries = scope == INNER ? training() : corpus();
       reports.add(SimilarityScoring.run(entries, choices(0.2), forests(), scope, 1, 1));
       final SimilarityScoring.Readings cut = SimilarityScoring.readings(withTail(entries),
@@ -583,7 +589,7 @@ class SimilarityScoringTest {
       + "interval from resampling the fitting side's whole projects; the same on any number of "
       + "threads, and nothing of it moves with the outer test's durations")
   void relevance() {
-    for (final SimilarityScoring.Scope scope : SimilarityScoring.Scope.values()) {
+    for (final SimilarityScoring.Scope scope : BOTH_SCOPES) {
       final List<RowCache.Entry> entries = withTail(scope == INNER ? training() : corpus());
       final SimilarityScoring.Report main = SimilarityScoring.readings(entries, choices(0.2),
           forests(), 1.5, scope, 1, 1).main();
@@ -911,7 +917,7 @@ class SimilarityScoringTest {
       + "pressure column, the ceiling the main reading's and the comments and the participants; "
       + "each forest its Elastic Net's")
   void retrospectiveModelsInBothScopes() {
-    for (final SimilarityScoring.Scope scope : SimilarityScoring.Scope.values()) {
+    for (final SimilarityScoring.Scope scope : BOTH_SCOPES) {
       final SimilarityScoring.Report r = SimilarityScoring.run(scope == INNER ? training()
           : corpus(), choices(0.2), forests(), scope, 1, 1);
       final List<String> kikas = model(r, KIKAS_RETRO).fitted().columns();
@@ -1488,5 +1494,191 @@ class SimilarityScoringTest {
       assertEquals(m.forest() != null, moved, m.name());
     }
     assertThrows(IllegalArgumentException.class, () -> new SimilarityScoring.Design(null, 0));
+  }
+
+  /** The ids of a report's scored issues, in their order. */
+  private static List<String> ids(final SimilarityScoring.Report r) {
+    return r.scoredUnits().stream().map(IssueUnit::issueId).toList();
+  }
+
+  /** Per scored issue id, per model, the prediction of a report. */
+  private static Map<String, Map<String, Double>> byId(final SimilarityScoring.Report r) {
+    final Map<String, Map<String, Double>> out = new HashMap<>();
+    for (int i = 0; i < r.scoredRows(); i++) {
+      final Map<String, Double> line = new HashMap<>();
+      for (final SimilarityScoring.Scored m : r.models()) {
+        line.put(m.name(), m.predicted()[i]);
+      }
+      out.put(r.scoredUnits().get(i).issueId(), line);
+    }
+    return out;
+  }
+
+  private static final AnalogyEstimate.Frozen CLUSTER_16 =
+      new AnalogyEstimate.Frozen("cluster_median_16");
+
+  private static SimilarityScoring.SameModel sameModel(final List<RowCache.Entry> entries,
+      final boolean withoutNew) {
+    return SimilarityScoring.sameModel(entries, choices(0.2), forests(), 1.5,
+        Population.IN_PROGRESS, SimilarityScoring.Design.of(CLUSTER_16), withoutNew, 1);
+  }
+
+  @Test
+  @DisplayName("same model: its calibration is, bit for bit, the calibration the outer test's "
+      + "intervals read, the analogy estimate included, from one fit that also predicts the outer "
+      + "test (the revised design's ticket 06)")
+  void sameModelCalibrationIsTheInnerCalibration() {
+    final List<RowCache.Entry> entries = withTail(corpus());
+    final SimilarityScoring.Report c = SimilarityScoring.calibration(entries, choices(0.2),
+        forests(), 1.5, Population.IN_PROGRESS, SimilarityScoring.Design.of(CLUSTER_16));
+    final SimilarityScoring.SameModel s = sameModel(entries, false);
+    final SimilarityScoring.Report sc = s.calibration();
+    assertEquals(SimilarityScoring.Scope.SAME_MODEL, sc.scope());
+    assertEquals(TailCut.Reading.USUAL_FLOW, sc.reading());
+    assertEquals(SimilarityScoring.predictions(c), SimilarityScoring.predictions(sc));
+    assertEquals(c.models().stream().map(SimilarityScoring.Scored::name).toList(),
+        sc.models().stream().map(SimilarityScoring.Scored::name).toList());
+    assertTrue(sc.models().stream().anyMatch(m -> m.name().equals(SimilarityScoring.ANALOGY)));
+    for (final SimilarityScoring.Scored m : c.models()) {
+      final SimilarityScoring.Scored o = model(sc, m.name());
+      assertEquals(hex(m.score().mae()), hex(o.score().mae()), m.name());
+      assertEquals(hex(m.score().spearman()), hex(o.score().spearman()), m.name());
+      assertEquals(m.kind(), o.kind(), m.name());
+    }
+    assertEquals(java.util.Arrays.toString(c.observed()), java.util.Arrays.toString(sc.observed()));
+    assertEquals(java.util.Arrays.toString(c.bandTops()),
+        java.util.Arrays.toString(sc.bandTops()));
+    assertEquals(c.fitRows(), sc.fitRows());
+    assertEquals(c.innerFitRows(), sc.innerFitRows());
+    assertEquals(c.analogyFallbacks(), sc.analogyFallbacks());
+    assertEquals(c.fences(), sc.fences());
+    assertEquals(c.unseenProjects(), sc.unseenProjects());
+    assertTrue(sc.comparisons().isEmpty() && sc.orderings().isEmpty()
+        && sc.withCommits().isEmpty() && sc.withoutCommits().isEmpty());
+    // the test parts are fitted on the same rows, at the lambda as chosen, never scaled
+    for (final SimilarityScoring.Report t : List.of(s.usualTest(), s.allTest())) {
+      assertEquals(SimilarityScoring.Scope.SAME_MODEL, t.scope());
+      assertEquals(sc.fitRows(), t.fitRows());
+      assertEquals(java.util.Arrays.toString(sc.bandTops()),
+          java.util.Arrays.toString(t.bandTops()));
+      for (final SimilarityScoring.Scored m : t.models()) {
+        if (m.fitted() != null) {
+          assertEquals(0.2, m.fitted().lambda(), 0.0, m.name());
+          assertTrue(m.fitted() == model(sc, m.name()).fitted(), "one fit: " + m.name());
+        }
+        if (m.forest() != null) {
+          assertTrue(m.forest() == model(sc, m.name()).forest(), "one fit: " + m.name());
+          assertTrue(m.forest().importance().isEmpty(), "no permutation importance");
+        }
+      }
+    }
+  }
+
+  @Test
+  @DisplayName("same model: the outer test's usual flow is the outer test's, at the outer "
+      + "training's fence, the same issues the test step reads; every outer test issue is read "
+      + "in the other; the calibration keeps the inner fence")
+  void sameModelReadings() {
+    // the validation, outer training but no inner fitting, lasting longer: the fences part
+    final List<RowCache.Entry> entries = longer(withTail(corpus()),
+        e -> "TEST".equals(e.inner(Population.IN_PROGRESS)));
+    final SimilarityScoring.SameModel s = sameModel(entries, false);
+    final SimilarityScoring.Readings outer = SimilarityScoring.readings(entries, choices(0.2),
+        forests(), 1.5, RESERVED, 1, 1);
+    assertEquals(TailCut.Reading.USUAL_FLOW, s.usualTest().reading());
+    assertEquals(TailCut.Reading.ALL, s.allTest().reading());
+    assertEquals(ids(outer.main()), ids(s.usualTest()));
+    assertEquals(ids(outer.complementary()), ids(s.allTest()));
+    assertEquals(entries.stream().filter(e -> "TEST".equals(e.outer(Population.IN_PROGRESS)))
+        .count(), s.allTest().scoredRows());
+    assertEquals(outer.main().fences().usualFence(), s.usualTest().fences().usualFence(), 0.0);
+    final SimilarityScoring.Readings inner = SimilarityScoring.readings(entries, choices(0.2),
+        forests(), 1.5, INNER, 1, 1);
+    assertEquals(inner.main().fences().usualFence(), s.calibration().fences().usualFence(), 0.0);
+    assertNotEquals(s.calibration().fences().usualFence(), s.usualTest().fences().usualFence());
+    // the inner model's predictions of the outer test are not the outer model's
+    for (final String m : ELASTIC_NET) {
+      assertFalse(java.util.Arrays.equals(model(outer.complementary(), m).predicted(),
+          model(s.allTest(), m).predicted()), m);
+    }
+    // the usual flow is the all reading's issues and predictions, a subset of them
+    final Map<String, Map<String, Double>> all = byId(s.allTest());
+    byId(s.usualTest()).forEach((id, line) -> assertEquals(all.get(id), line, id));
+    assertThrows(IllegalArgumentException.class, () -> SimilarityScoring.readings(entries,
+        choices(0.2), forests(), 1.5, SimilarityScoring.Scope.SAME_MODEL, 1, 1));
+  }
+
+  @Test
+  @DisplayName("same model: no label of the inner validation or the outer test moves its "
+      + "predictions of the outer test, while a validation label moves the outer model's")
+  void sameModelReadsNoScoredLabel() {
+    final List<RowCache.Entry> entries = corpus();
+    final SimilarityScoring.SameModel s = sameModel(entries, false);
+    final List<RowCache.Entry> moved = longer(entries,
+        e -> "TEST".equals(e.outer(Population.IN_PROGRESS))
+            || "TEST".equals(e.inner(Population.IN_PROGRESS)));
+    final SimilarityScoring.SameModel m = sameModel(moved, false);
+    final Map<String, Map<String, Double>> before = byId(s.allTest());
+    final Map<String, Map<String, Double>> after = byId(m.allTest());
+    assertEquals(before.keySet(), after.keySet());
+    before.forEach((id, line) -> assertEquals(line, after.get(id), id));
+    assertNotEquals(java.util.Arrays.toString(s.allTest().observed()),
+        java.util.Arrays.toString(m.allTest().observed()));
+    // the outer model fits the inner validation: a label there moves its predictions
+    final List<RowCache.Entry> validation = longer(entries,
+        e -> "TEST".equals(e.inner(Population.IN_PROGRESS)));
+    final SimilarityScoring.Report o = SimilarityScoring.readings(entries, choices(0.2),
+        forests(), TailCut.NO_CUT, RESERVED, 1, 1).complementary();
+    final SimilarityScoring.Report ov = SimilarityScoring.readings(validation, choices(0.2),
+        forests(), TailCut.NO_CUT, RESERVED, 1, 1).complementary();
+    assertNotEquals(SimilarityScoring.predictions(o), SimilarityScoring.predictions(ov));
+  }
+
+  /**
+   * {@link #corpus} with a project, "pval", whose issues are copies of p0's inner validation and
+   * outer test issues: on the outer training side, by its validation, but not on the inner
+   * fitting side, so it is new to the inner model alone.
+   */
+  private static List<RowCache.Entry> withValidationOnlyProject() {
+    final List<RowCache.Entry> out = new ArrayList<>(corpus());
+    for (final RowCache.Entry e : corpus()) {
+      final IssueUnit u = e.unit();
+      final boolean validation = "TEST".equals(e.inner(Population.IN_PROGRESS));
+      if (u.project().equals("p0") && (validation
+          || "TEST".equals(e.outer(Population.IN_PROGRESS)))) {
+        final String id = "val-" + u.issueId();
+        out.add(new RowCache.Entry(new IssueUnit(id, "K-" + id, "pval", u.reporter(),
+            u.executor(), u.createdAt(), u.resolvedAt(), u.reason(), u.moved(), u.startedAt(),
+            u.businessDays()), new Row(id, e.row().values(), e.row().absent()), e.parts()));
+      }
+    }
+    return out;
+  }
+
+  @Test
+  @DisplayName("same model: a new project is one the inner model never fitted on; without new "
+      + "projects the outer test is read on the other issues, the calibration kept whole, every "
+      + "prediction that of the same fit")
+  void sameModelWithoutNewProjects() {
+    final List<RowCache.Entry> entries = withValidationOnlyProject();
+    final SimilarityScoring.SameModel with = sameModel(entries, false);
+    final SimilarityScoring.SameModel without = sameModel(entries, true);
+    assertEquals(Set.of("pval"), with.allTest().newProjects());
+    assertEquals(10, with.allTest().newProjectRows());
+    assertFalse(with.allTest().withoutNewProjects());
+    // to the outer model it is no new project: it has outer training issues
+    assertEquals(Set.of(), SimilarityScoring.readings(entries, choices(0.2), forests(),
+        TailCut.NO_CUT, RESERVED, 1, 1).complementary().newProjects());
+    assertTrue(without.allTest().withoutNewProjects());
+    assertTrue(without.usualTest().withoutNewProjects());
+    assertEquals(with.allTest().scoredRows() - 10, without.allTest().scoredRows());
+    assertEquals(10, without.allTest().newProjectRows());
+    assertTrue(without.allTest().scoredUnits().stream()
+        .noneMatch(u -> u.project().equals("pval")));
+    assertEquals(SimilarityScoring.predictions(with.calibration()),
+        SimilarityScoring.predictions(without.calibration()));
+    assertFalse(without.calibration().withoutNewProjects());
+    final Map<String, Map<String, Double>> all = byId(with.allTest());
+    byId(without.allTest()).forEach((id, line) -> assertEquals(all.get(id), line, id));
   }
 }

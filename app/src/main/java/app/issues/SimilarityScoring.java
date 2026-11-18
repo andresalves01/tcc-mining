@@ -173,7 +173,17 @@ public final class SimilarityScoring {
      * The test: fitted on the outer training rows, the lambda times the ratio of rows ({@link
      * Fitting#finalLambda}), the outer variant read, the outer test scored once.
      */
-    RESERVED(Fitting.Mode.RESERVED, Augmentation.Variant.OUTER, "outer training");
+    RESERVED(Fitting.Mode.RESERVED, Augmentation.Variant.OUTER, "outer training"),
+    /**
+     * The same-model calibration (the revised design's ticket 06), a sensitivity after the
+     * outer test was opened that chooses nothing: the inner models, fitted as {@link #INNER}
+     * fits them, the lambda as chosen, the inner variant read, predict the whole inner
+     * validation and then the outer test, from one fit ({@link #sameModel}). The fences, the
+     * references and the analogy estimate's fallback are the inner fitting's; no forest's
+     * permutation importance, which would read the outer test's labels. Read through {@link
+     * #sameModel} alone.
+     */
+    SAME_MODEL(Fitting.Mode.INNER_MODEL_ON_TEST, Augmentation.Variant.INNER, "inner fitting");
 
     private final Fitting.Mode mode;
     private final Augmentation.Variant variant;
@@ -205,7 +215,31 @@ public final class SimilarityScoring {
     public boolean importance() {
       return this == INNER;
     }
+
+    /**
+     * Whether the lambda is fitted as the selection chose it: on the inner fitting rows, those
+     * it was chosen on. Only the outer training's refit scales it by the ratio of rows.
+     */
+    public boolean lambdaAsChosen() {
+      return this != RESERVED;
+    }
   }
+
+  /**
+   * The inner models' predictions of the inner validation and of the outer test, from one fit
+   * (the revised design's ticket 06): what the same-model intervals read, so the factors and the
+   * predictions they are applied to cannot come from two fits. Each part is a {@link Report} of
+   * {@link Scope#SAME_MODEL}, with no comparison drawn; every model's {@code fitted} and {@code
+   * forest} are the one fit, the same objects in the three, their own predictions of every
+   * issue scored, validation and test together.
+   *
+   * @param calibration the usual-flow inner validation, at the inner fitting's fence: what {@link
+   *     #calibration} reads, bit for bit
+   * @param usualTest the outer test issues at or below the outer training's usual-flow fence, the
+   *     issues of the test step's usual flow, so the two designs are read on the same issues
+   * @param allTest every outer test issue
+   */
+  public record SameModel(Report calibration, Report usualTest, Report allTest) {}
 
   /**
    * One model scored on the outer test.
@@ -528,7 +562,39 @@ public final class SimilarityScoring {
       final TailCut.Reading reading, final boolean compared, final int fitThreads,
       final int drawThreads, final Population population, final Design design,
       final boolean withoutNew) {
-    final AnalogyEstimate.Frozen analogy = design.analogy();
+    if (scope == Scope.SAME_MODEL) {
+      throw new IllegalArgumentException("the same-model scope scores the inner validation and "
+          + "the outer test from one fit, read through sameModel alone");
+    }
+    final Prepared p = prepared(entries, choices, forests, k, scope, population);
+    final Fitting.Sides read = reading == TailCut.Reading.ALL ? p.cut()
+        : TailCut.usualFlow(p.cut(), p.usualFence());
+    final int newProjectRows = (int) read.scoreUnits().stream()
+        .filter(u -> p.newProjects().contains(u.project())).count();
+    final Fitting.Sides sides = withoutNew ? seenOnly(read, p.trained()) : read;
+    final Fences fences = new Fences(k, p.fence(), p.usualFence(), p.whole().fitUnits().size(),
+        TailCut.usualFlow(p.cut(), p.usualFence()).scoreUnits().size(),
+        p.cut().scoreUnits().size());
+    final Fit fit = fit(p, sides, choices, forests, scope, design, fitThreads);
+    return report(scope, reading, fences, p.innerFitRows(), sides, fit, compared, drawThreads,
+        withoutNew, p.newProjects(), newProjectRows);
+  }
+
+  /**
+   * What every reading of one scope shares, before any model is fitted: the cells, the sides, the
+   * fences of the scope's fitting side, the cut sides, the projects of the fitting side before
+   * the cut, the new projects, and the rows the lambdas were chosen on.
+   *
+   * @param trained the projects with a fitting row before the tail cut
+   * @param newProjects the projects with scored issues and none in {@code trained}, by name
+   */
+  private record Prepared(List<Cell> cells, Fitting.Sides whole, double fence, double usualFence,
+      Fitting.Sides cut, Set<String> trained, Set<String> newProjects, int innerFitRows) {}
+
+  private static Prepared prepared(final List<RowCache.Entry> entries,
+      final Map<String, ElasticNetSelection.Choice> choices,
+      final Map<String, Forest.Choice> forests, final double k, final Scope scope,
+      final Population population) {
     if (!new LinkedHashSet<>(ElasticNetSelection.MODELS).equals(choices.keySet())) {
       throw new IllegalArgumentException("the parameters hold alpha and lambda for "
           + choices.keySet() + "; the models are " + ElasticNetSelection.MODELS);
@@ -545,25 +611,35 @@ public final class SimilarityScoring {
     final double fence = TailCut.fence(whole.fitUnits(), k);
     final double usualFence = TailCut.fence(whole.fitUnits(), TailCut.USUAL_FLOW_K);
     final Fitting.Sides cut = TailCut.cut(whole, fence);
-    final Fitting.Sides read = reading == TailCut.Reading.ALL ? cut
-        : TailCut.usualFlow(cut, usualFence);
     // the new projects: issues on the scored side, none on the fitting side before the cut
     final Set<String> trained = new HashSet<>();
     whole.fitUnits().forEach(u -> trained.add(u.project()));
     final Set<String> newProjects = new TreeSet<>();
     whole.scoreUnits().stream().map(IssueUnit::project).filter(p -> !trained.contains(p))
         .forEach(newProjects::add);
-    final int newProjectRows = (int) read.scoreUnits().stream()
-        .filter(u -> newProjects.contains(u.project())).count();
-    final Fitting.Sides sides = withoutNew ? seenOnly(read, trained) : read;
-    final Fences fences = new Fences(k, fence, usualFence, whole.fitUnits().size(),
-        TailCut.usualFlow(cut, usualFence).scoreUnits().size(), cut.scoreUnits().size());
     // the rows the lambdas were chosen on: the inner fitting set cut at its own fence of this k
-    final int innerFitRows = innerFitRows(entries, k, population);
+    return new Prepared(cells, whole, fence, usualFence, cut, trained,
+        java.util.Collections.unmodifiableSet(newProjects), innerFitRows(entries, k, population));
+  }
+
+  /**
+   * Every model fitted once on the cut fitting rows of {@code sides}, and its predictions of
+   * {@code sides}' scored issues.
+   *
+   * @param tops the error bands' limits, of the cut fitting rows only (ticket 24)
+   * @param fellBack per scored issue, whether the analogy estimate gave it its fallback; all
+   *     false without it
+   */
+  private record Fit(double[] tops, List<Scored> models, int analogyFallbacks,
+      boolean[] fellBack) {}
+
+  private static Fit fit(final Prepared p, final Fitting.Sides sides,
+      final Map<String, ElasticNetSelection.Choice> choices,
+      final Map<String, Forest.Choice> forests, final Scope scope, final Design design,
+      final int fitThreads) {
+    final AnalogyEstimate.Frozen analogy = design.analogy();
     final int fitRows = sides.fitUnits().size();
     final double[] observed = sides.observed();
-    final List<String> projects = sides.projects();
-    // the error bands' limits, of the cut fitting rows only (ticket 24)
     final double[] tops = TailCut.quartiles(
         sides.fitUnits().stream().mapToDouble(IssueUnit::duration).toArray());
 
@@ -577,25 +653,27 @@ public final class SimilarityScoring {
     models.add(given(GLOBAL, globalMedian, observed, projectMae, constantMae, tops));
     models.add(given(PROJECT, projectMedian, observed, projectMae, constantMae, tops));
     int analogyFallbacks = 0;
+    boolean[] fellBack = new boolean[observed.length];
     if (analogy != null) {
       // the fallback is the declared global median, learned on the same fitting rows
       final AnalogyEstimate.Estimate e = AnalogyEstimate.estimate(sides.scoreRows(),
           analogy.column() + scope.variant().suffix(), refs.constant(1)[0]);
       analogyFallbacks = e.fallbacks();
+      fellBack = e.fellBack();
       models.add(new Scored(ANALOGY, "analogy", e.values(),
           Score.of(ANALOGY, e.values(), observed, projectMae, constantMae),
           Breakdown.errors(e.values(), observed), BusinessDays.bands(e.values(), observed, tops),
           null, List.of(), null));
     }
 
-    final List<Callable<Scored>> refits = new ArrayList<>(cells.size());
-    for (final Cell cell : cells) {
+    final List<Callable<Scored>> refits = new ArrayList<>(p.cells().size());
+    for (final Cell cell : p.cells()) {
       refits.add(() -> {
         final ElasticNetSelection.Choice c = choices.get(cell.label());
         final ElasticNetSelection.Kept kept =
             ElasticNetSelection.kept(cell, sides.fitRows(), scope.fittingSet());
-        final double lambda = scope == Scope.INNER ? c.lambda()
-            : Fitting.finalLambda(c.lambda(), fitRows, innerFitRows);
+        final double lambda = scope.lambdaAsChosen() ? c.lambda()
+            : Fitting.finalLambda(c.lambda(), fitRows, p.innerFitRows());
         final Fitting.Fitted f = Fitting.frozen(kept.cell(), sides, c.alpha(), lambda, projectMae,
             constantMae);
         return new Scored(cell.label(), "elastic-net", f.predicted(), f.score(),
@@ -605,8 +683,8 @@ public final class SimilarityScoring {
     }
     models.addAll(Parallel.map(fitThreads, refits));
 
-    final List<Callable<Scored>> trees = new ArrayList<>(cells.size());
-    for (final Cell cell : cells) {
+    final List<Callable<Scored>> trees = new ArrayList<>(p.cells().size());
+    for (final Cell cell : p.cells()) {
       trees.add(() -> {
         final Forest.Choice c = forests.get(cell.label());
         final ElasticNetSelection.Kept kept =
@@ -621,7 +699,21 @@ public final class SimilarityScoring {
       });
     }
     models.addAll(Parallel.map(fitThreads, trees));
+    return new Fit(tops, List.copyOf(models), analogyFallbacks, fellBack);
+  }
 
+  /**
+   * The report of {@code fit}'s models on {@code sides}' scored issues, one prediction of each per
+   * issue: the comparisons, ordering intervals and side reading when {@code compared}, the
+   * projects with no fitting row.
+   */
+  private static Report report(final Scope scope, final TailCut.Reading reading,
+      final Fences fences, final int innerFitRows, final Fitting.Sides sides, final Fit fit,
+      final boolean compared, final int drawThreads, final boolean withoutNew,
+      final Set<String> newProjects, final int newProjectRows) {
+    final List<Scored> models = fit.models();
+    final double[] observed = sides.observed();
+    final List<String> projects = sides.projects();
     final Map<String, double[]> errors = new HashMap<>();
     for (final Scored m : models) {
       errors.put(m.name(), Bootstrap.errors(m.predicted(), observed));
@@ -661,11 +753,134 @@ public final class SimilarityScoring {
         unseenRows++;
       }
     }
-    return new Report(scope, reading, fences, tops, fitRows, observed.length, innerFitRows,
-        List.copyOf(sides.scoreUnits()), observed, List.copyOf(models), List.copyOf(comparisons),
-        unseen, unseenRows, withCommit.size(), side, commit, contrast, List.copyOf(orderings),
-        withoutNew, java.util.Collections.unmodifiableSet(newProjects), newProjectRows,
-        analogyFallbacks);
+    return new Report(scope, reading, fences, fit.tops(), sides.fitUnits().size(),
+        observed.length, innerFitRows, List.copyOf(sides.scoreUnits()), observed,
+        List.copyOf(models), List.copyOf(comparisons), unseen, unseenRows, withCommit.size(),
+        side, commit, contrast, List.copyOf(orderings), withoutNew, newProjects, newProjectRows,
+        fit.analogyFallbacks());
+  }
+
+  /**
+   * The same-model calibration (the revised design's ticket 06), on the threads {@link Parallel}
+   * asks for the draws: see {@link #sameModel(List, Map, Map, double, Population, Design,
+   * boolean, int)}.
+   */
+  public static SameModel sameModel(final List<RowCache.Entry> entries,
+      final Map<String, ElasticNetSelection.Choice> choices,
+      final Map<String, Forest.Choice> forests, final double k, final Population population,
+      final Design design, final boolean withoutNew) {
+    return sameModel(entries, choices, forests, k, population, design, withoutNew,
+        Parallel.threads(Parallel.ELASTIC_NET_THREADS));
+  }
+
+  /**
+   * The same-model calibration (the revised design's ticket 06), a sensitivity after the outer
+   * test was opened that chooses nothing: every model fitted once, as {@link #calibration} fits
+   * it (the inner fitting rows that teach, at or below the inner fitting's fence of {@code k},
+   * the lambda as chosen, the inner variant), predicting the whole inner validation and the
+   * outer test, {@link Scope#SAME_MODEL}. Three readings of that one fit: the usual-flow inner
+   * validation, at the inner fitting's usual-flow fence, the calibration; the outer test issues at
+   * or below the outer training's usual-flow fence, the test step's usual flow; every outer test
+   * issue. No label of the inner validation or of the outer test enters the fit.
+   *
+   * @param withoutNew whether the outer test is read without the issues of new projects, those
+   *     with no inner fitting row before the tail cut: the projects the inner model never saw;
+   *     the calibration is the whole usual-flow inner validation either way
+   */
+  public static SameModel sameModel(final List<RowCache.Entry> entries,
+      final Map<String, ElasticNetSelection.Choice> choices,
+      final Map<String, Forest.Choice> forests, final double k, final Population population,
+      final Design design, final boolean withoutNew, final int fitThreads) {
+    final Prepared p = prepared(entries, choices, forests, k, Scope.SAME_MODEL, population);
+    // the test step's usual flow: the outer training's fence, so both designs read the same issues
+    final double outerUsualFence = TailCut.fence(
+        Fitting.sides(entries, Fitting.Mode.RESERVED, population).fitUnits(),
+        TailCut.USUAL_FLOW_K);
+    final Set<String> test = new HashSet<>();
+    for (final RowCache.Entry e : entries) {
+      if (Verdict.scored(Augmentation.Variant.OUTER, e, population)) {
+        test.add(e.unit().issueId());
+      }
+    }
+    final Fit fit = fit(p, p.cut(), choices, forests, Scope.SAME_MODEL, design, fitThreads);
+    final List<IssueUnit> scored = p.cut().scoreUnits();
+    final double[] observed = p.cut().observed();
+    final List<Integer> validation = new ArrayList<>();
+    final List<Integer> usualValidation = new ArrayList<>();
+    final List<Integer> allTest = new ArrayList<>();
+    final List<Integer> usualTest = new ArrayList<>();
+    for (int i = 0; i < scored.size(); i++) {
+      if (!test.contains(scored.get(i).issueId())) {
+        validation.add(i);
+        if (observed[i] <= p.usualFence()) {
+          usualValidation.add(i);
+        }
+      } else {
+        allTest.add(i);
+        if (observed[i] <= outerUsualFence) {
+          usualTest.add(i);
+        }
+      }
+    }
+    final int fitted = p.whole().fitUnits().size();
+    final Report calibration = slice(p, fit, usualValidation, TailCut.Reading.USUAL_FLOW,
+        new Fences(k, p.fence(), p.usualFence(), fitted, usualValidation.size(),
+            validation.size()), validation, false);
+    final Fences testFences = new Fences(k, p.fence(), outerUsualFence, fitted, usualTest.size(),
+        allTest.size());
+    return new SameModel(calibration,
+        slice(p, fit, usualTest, TailCut.Reading.USUAL_FLOW, testFences, allTest, withoutNew),
+        slice(p, fit, allTest, TailCut.Reading.ALL, testFences, allTest, withoutNew));
+  }
+
+  /**
+   * One reading of the same-model fit: its scored issues {@code rows}, without those of new
+   * projects when {@code withoutNew}, every model's predictions of them as the fit gave them, every
+   * figure read on them alone; no comparison is drawn.
+   *
+   * @param part the scored issues of the part the reading is of, the inner validation or the
+   *     outer test, whose projects with no fitting row are its new projects
+   */
+  private static Report slice(final Prepared p, final Fit fit, final List<Integer> rows,
+      final TailCut.Reading reading, final Fences fences, final List<Integer> part,
+      final boolean withoutNew) {
+    final List<IssueUnit> scored = p.cut().scoreUnits();
+    final Set<String> newProjects = new TreeSet<>();
+    part.stream().map(i -> scored.get(i).project()).filter(x -> !p.trained().contains(x))
+        .forEach(newProjects::add);
+    final int newProjectRows = (int) rows.stream()
+        .filter(i -> newProjects.contains(scored.get(i).project())).count();
+    final List<Integer> kept = withoutNew
+        ? rows.stream().filter(i -> !newProjects.contains(scored.get(i).project())).toList()
+        : rows;
+    final List<IssueUnit> units = new ArrayList<>(kept.size());
+    final List<app.study.Row> scoreRows = new ArrayList<>(kept.size());
+    for (final int i : kept) {
+      units.add(scored.get(i));
+      scoreRows.add(p.cut().scoreRows().get(i));
+    }
+    final double[] observed = units.stream().mapToDouble(IssueUnit::duration).toArray();
+    final Fitting.Sides sides = new Fitting.Sides(p.cut().fitUnits(), p.cut().fitRows(),
+        List.copyOf(units), List.copyOf(scoreRows), observed);
+    // the references are the fit's first two models, the global median, then the project's
+    final double constantMae = Fitting.mae(rows(fit.models().get(0).predicted(), kept),
+        observed);
+    final double projectMae = Fitting.mae(rows(fit.models().get(1).predicted(), kept), observed);
+    final List<Scored> models = new ArrayList<>(fit.models().size());
+    for (final Scored m : fit.models()) {
+      final double[] predicted = rows(m.predicted(), kept);
+      models.add(new Scored(m.name(), m.kind(), predicted,
+          Score.of(m.name(), predicted, observed, projectMae, constantMae),
+          Breakdown.errors(predicted, observed), BusinessDays.bands(predicted, observed,
+              fit.tops()), m.fitted(), m.removed(), m.forest()));
+    }
+    int fallbacks = 0;
+    for (final int i : kept) {
+      fallbacks += fit.fellBack()[i] ? 1 : 0;
+    }
+    return report(Scope.SAME_MODEL, reading, fences, p.innerFitRows(), sides,
+        new Fit(fit.tops(), List.copyOf(models), fallbacks, null), false, 1, withoutNew,
+        java.util.Collections.unmodifiableSet(newProjects), newProjectRows);
   }
 
   /**
@@ -733,6 +948,10 @@ public final class SimilarityScoring {
   public static List<Relevance> relevance(final List<RowCache.Entry> entries,
       final Map<String, ElasticNetSelection.Choice> choices, final double k, final Scope scope,
       final int drawThreads, final Population population) {
+    if (scope == Scope.SAME_MODEL) {
+      throw new IllegalArgumentException("the same-model scope has no relevance of its own: its "
+          + "fit is the inner report's");
+    }
     if (!new LinkedHashSet<>(ElasticNetSelection.MODELS).equals(choices.keySet())) {
       throw new IllegalArgumentException("the parameters hold alpha and lambda for "
           + choices.keySet() + "; the models are " + ElasticNetSelection.MODELS);
@@ -752,7 +971,7 @@ public final class SimilarityScoring {
       final ElasticNetSelection.Choice c = choices.get(cell.label());
       final ElasticNetSelection.Kept kept =
           ElasticNetSelection.kept(cell, cut.fitRows(), scope.fittingSet());
-      final double lambda = scope == Scope.INNER ? c.lambda()
+      final double lambda = scope.lambdaAsChosen() ? c.lambda()
           : Fitting.finalLambda(c.lambda(), fitRows, innerFitRows);
       // the refit the scores read, on the fitting rows alone: the same coefficients bit for bit
       final Map<String, Double> point = Fitting.coefficients(kept.cell(), cut.fitRows(),
