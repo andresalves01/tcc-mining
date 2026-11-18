@@ -182,7 +182,6 @@ public final class ElasticNetSelection {
 
   private static final Population P = Population.IN_PROGRESS;
 
-
   /** The suffix of a missing indicator, as the extracted matrix names its own. */
   private static final String ABSENT = "_ausente";
 

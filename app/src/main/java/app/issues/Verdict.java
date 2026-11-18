@@ -24,9 +24,11 @@ import java.util.Set;
  *   5     inner validation  after the outer cut          CROSSING  TEST
  * </pre>
  *
- * <p>A reader of the columns asks what an issue is through the predicates here, never by
- * comparing the text: a reader that compared it and was forgotten would drop issues from the
- * validation or the counts, a visible failure, and never let a crossing label teach.
+ * <p>A reader of the first-commit study's split columns asks what an issue is through the
+ * predicates here, never by comparing the text: a reader that compared it and was forgotten would
+ * drop issues from the validation or the counts, a visible failure, and never let a crossing label
+ * teach. The In Progress study's readers still compare {@code "TRAIN"} and {@code "TEST"}; that
+ * study takes the random rule alone, whose columns never hold {@link #CROSSING}.
  */
 public enum Verdict {
   /** On the training side, and it teaches at this level. */

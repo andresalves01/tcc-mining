@@ -129,7 +129,8 @@ public final class IssuesInProgressExtractTask {
   /**
    * The columns of {@code units}, each read at its own start ({@link Universe.Unit#start}), the
    * time-travel gate at that instant, and the cache's entries under {@code population}'s split,
-   * at the verdicts of {@code split} ({@link ProjectSplit.Parts#outerVerdict}). Phases {@code phase - 1} and {@code phase} of {@code phases}.
+   * at the verdicts of {@code split} ({@link ProjectSplit.Parts#outerVerdict}). Phases {@code
+   * phase - 1} and {@code phase} of {@code phases}.
    *
    * @param studied the issues whose executors' first touches the extractor learns
    * @param extra per issue id, further values written after the pause flag, in the order of

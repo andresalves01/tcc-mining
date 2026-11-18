@@ -162,7 +162,9 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     try {
       refuseForeign(parameters);
       matrixSha = Sha256.of(matrix);
-      // every row by its id, project and split verdicts alone; the outer training rows whole
+      // every row by its id, project, start and split verdicts, and on the outer training side
+      // its first resolution, never a value or outcome; the outer training rows whole, crossing
+      // ones included
       entries = RowCache.splits(matrix);
       training = RowCache.training(matrix, study);
       columns = RowCache.columns(matrix);

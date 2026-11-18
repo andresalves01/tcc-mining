@@ -38,8 +38,10 @@ import java.util.stream.IntStream;
  * cluster's members and the reporter median leave the query out by id. The split is random and
  * stratified by project ({@link ProjectSplit}), so no instant separates the sides. Under the
  * revised temporal design an issue crossing a level's cut ({@link Verdict#CROSSING}) is in no
- * history of that level and reads no column there unless the level scores it; the cluster centres,
- * which read no label, are still fitted on the whole training side, crossing issues included.
+ * history of that level and reads no column there unless the level scores it; the cluster centres
+ * are still fitted on the whole training side, crossing issues included. Of a label the centres
+ * read one bit alone, whether the issue lasted at least one business day ({@link Issue#counted});
+ * in the first-commit population every issue does, so there the centres read no label.
  *
  * <p><b>Point-in-time history</b> (the revised temporal design, {@link Histories#POINT_IN_TIME}).
  * For each query, a member counts only when it teaches at the level, its first resolution comes
@@ -47,7 +49,8 @@ import java.util.stream.IntStream;
  * already known when its work began. The filter applies before anything is chosen: the closest n
  * Jaccard and embedding neighbours are the closest of the admitted members, the reporter median
  * reads the admitted issues, and a cluster's median its admitted members. The cluster centres and
- * every row's nearest centre stay those of the whole side, since they read no label. A query with
+ * every row's nearest centre stay those of the whole side, since they read no label beyond {@link
+ * Issue#counted}, always true in the first-commit population. A query with
  * no admitted member has a missing value. Under this design the inner level also answers the
  * outer test (ticket 06): each outer test row reads the inner fitting history, point in time, and
  * is assigned to the inner centres already fitted; its inner split is outer_test, and it never
@@ -176,7 +179,8 @@ public final class Augmentation {
 
     /**
      * The rows of the training side, whether they teach or cross this level's cut ({@link
-     * Verdict#trainingSide}): what the cluster centres are fitted on, since they read no label.
+     * Verdict#trainingSide}): what the cluster centres are fitted on, the rows of at least one
+     * business day ({@link Issue#counted}), which in the first-commit population is every row.
      */
     public boolean trainingSide(final Issue i) {
       return Verdict.trainingSide(this, i.outer(), i.inner());
@@ -425,8 +429,10 @@ public final class Augmentation {
       issues.stream().filter(i -> !v.fitting(i) && !v.scored(i) && v.answers(i, design))
           .forEach(rows::add);
       final List<Issue> history = fitting.stream().filter(i -> i.counted(v)).toList();
-      // the cluster centres read no label: fitted on the whole training side, crossing issues
-      // included, in the same order; without crossing issues the history itself
+      // the cluster centres: fitted on the whole training side, crossing issues included, in
+      // the same order; without crossing issues the history itself. Of a label they read only
+      // counted(), at least one business day, which every first-commit issue has, so in that
+      // population they read no label
       final List<Issue> centres = issues.stream().filter(v::trainingSide)
           .sorted(Comparator.comparingLong(Issue::start).thenComparing(Issue::id))
           .filter(i -> i.counted(v)).toList();

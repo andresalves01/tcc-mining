@@ -234,7 +234,8 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     // here, with the outer test left behind, only what the outer training shows of it
     if (s.train() == 0 || s.innerFit() + s.innerSelection() != s.train()) {
       throw refused(String.format("%,d of %,d outer training rows are neither inner fitting nor "
-          + "inner validation; neither split rule sets any aside",
+          + "inner validation; no split rule sets any aside, and a crossing issue stays on its "
+          + "side",
           s.train() - s.innerFit() - s.innerSelection(), s.train()));
     }
     final List<String> missing;

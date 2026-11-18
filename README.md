@@ -147,7 +147,8 @@ to another issue. It draws the split with the rule named in `SPLIT_RULE` (random
 rule of the In Progress study), learns the cap on the waits between commits and patches on the
 inner fitting only, and counts the target of the outer training. It also reports the limits of 30%
 and 70% and the overlap with the In Progress split. Of the outer test it writes only the size
-(under `temporal`, also its projects and the dates of its first commits; see "Split rule").
+(under `temporal` or `revised`, also its projects and the dates of its first commits; see "Split
+rule").
 
 It needs `AUDIT_DIR`, where it writes `audit.md` and `per-issue.tsv`, and writes nothing to
 MongoDB. Give it `APP_OPTS=-Xmx6g`.
@@ -298,9 +299,16 @@ are not that rule's:
 - `temporal`, for the first-commit study only: the candidates ordered by their first commit, the
   issue id breaking ties; the cut is the instant at position ⌈0.7·n⌉, and training is every first
   commit at or before it, the ties included; the inner split is the same rule on the training side.
+  This is the design opened on 02/11/2026.
+- `revised`, for the first-commit study only: the revised design of the temporal split, with the
+  same cuts. A training issue whose first resolution comes after its level's cut crosses it and
+  teaches nothing at that level (it is no fitting row, reference, fence, cap or history there),
+  while validation and test keep every issue; every history is point in time, reading only the
+  training issues resolved strictly before the first commit of the issue it describes. Every
+  stage that routes `temporal` routes `revised` alike, in collections of its own.
 
-An In Progress matrix under `SPLIT_RULE=temporal` is refused. The audit draws the rule named in
-`SPLIT_RULE`; under `temporal` its summary adds the two cuts, the target of the inner fitting, the
+An In Progress matrix under `SPLIT_RULE=temporal` or `revised` is refused. The audit draws the rule
+named in `SPLIT_RULE`; under `temporal` or `revised` its summary adds the two cuts, the target of the inner fitting, the
 inner validation and the outer training, the projects of each side and the new ones, the training
 issues that cross the cut, the cap the random rule learns on the same issues, and the censoring at
 the end of the data: the latest Jira record, and the issues whose first commit comes after the cut
@@ -309,15 +317,16 @@ with no first resolution as Fixed. Of the outer test it gives only counts and da
 The first-commit extraction draws the rule named in `SPLIT_RULE` too, so the matrix's sides, the cap
 (learned on that rule's inner fitting) and the target are the audit's under the same rule. Each
 design records its extraction run in collections of its own in `ISSUES_DB`: the random design in
-`runs` and `results`, as always, and the temporal design in `runs_temporal` and `results_temporal`.
-The team, similarity, retrospective, selection and test stages record in the collection of
-their declared design too. Under `temporal`, that is `runs_temporal` and, when a stage writes
-result rows, `results_temporal`. A temporal run refuses a collection holding another design before
-it reads the corpus or writes files. A run
-recorded with a `split_design` field is of that design; one without it is of the temporal design
-when its `split_rule` is the temporal rule's words, and of the random design otherwise. Before it
-reads anything, the extraction refuses a run collection that already holds a run of another design.
-Under `temporal` its run record adds `split_design`, the instants of both cuts (`split_cuts`), the
+`runs` and `results`, as always, the temporal design in `runs_temporal` and `results_temporal`,
+and the revised design in `runs_revised` and `results_revised`. The team, similarity,
+retrospective, selection and test stages record in the collection of their declared design too.
+Under `temporal`, that is `runs_temporal` and, when a stage writes result rows,
+`results_temporal`; under `revised`, `runs_revised` and `results_revised`. A temporal or revised
+run refuses a collection holding another design before it reads the corpus or writes files. A run
+recorded with a `split_design` field is of that design; one without it is of the temporal or the
+revised design when its `split_rule` is that rule's words, and of the random design otherwise.
+Before it reads anything, the extraction refuses a run collection that already holds a run of
+another design. Under `temporal` or `revised` its run record adds `split_design`, the instants of both cuts (`split_cuts`), the
 training issues whose first resolution comes after each cut (`crossing_the_cut`) and the new
 projects with their issues (`new_projects`); under `random` the record and the matrix are those of
 before, byte for byte. The extraction writes nothing to `TARGET_DB`.
@@ -325,7 +334,7 @@ before, byte for byte. The extraction writes nothing to `TARGET_DB`.
 The parameters file's header names the split rule its choices were made under. A header that
 names none, as every file written before the temporal split, is the random rule's. The inner report
 and the first-commit test (`issues-first-commit-test`) refuse a parameters file of another rule
-than the run's. Under `SPLIT_RULE=temporal`:
+than the run's. Under `SPLIT_RULE=temporal` or `revised`:
 
 - **Analogy estimate.** It is the fifteenth model. The selection chooses it on the usual-flow
   inner validation: of the nine similarity medians, each read in its inner column as the estimate,
@@ -343,15 +352,15 @@ than the run's. Under `SPLIT_RULE=temporal`:
 - **Inner report.** It gives every model's MMRE and Pred(25) and the analogy estimate's paired
   comparisons. When a project of the inner validation has no inner fitting issue, every table but
   the prediction intervals is given again without that project's issues.
-- **Opening.** It is recorded as `issues-first-commit-test-temporal`, and it runs once, as the
-  random one does.
+- **Opening.** It is recorded as `issues-first-commit-test-temporal` (under `revised`,
+  `issues-first-commit-test-revised`), and it runs once, as the random one does.
 
 The forests are refitted with the tree count the parameters file gives, in a line whose four
 tab-separated fields are `forest`, `every_model`, `trees` and the count. A random-split file
 without it, as every existing one, means 300 trees, and the selection under the random rule
 still writes none.
 
-In the test, under either rule, every reading is also given without the issues of new projects,
+In the test, under any rule, every reading is also given without the issues of new projects,
 with their count.
 
 ### Commands that only read
