@@ -509,7 +509,29 @@ public enum Command {
       without the issues of new projects, with their count. Writes the
       predictions, diagnostics, relevance and uncertainty to REPORT_DIR;
       records the run, with the time the test was opened and the SHA-256 of
-      every input and output, in ISSUES_DB.""");
+      every input and output, in ISSUES_DB."""),
+
+  ISSUES_FIRST_COMMIT_SAME_MODEL_CALIBRATION("issues-first-commit-same-model-calibration",
+      new app.cli.commands.IssuesFirstCommitSameModelCalibrationCommand(), """
+      Issue duration from the first commit, SAME-MODEL CALIBRATION: a
+      SENSITIVITY after the opening of the revised design's outer test; it
+      chooses nothing. Beside the test step's prediction intervals (the outer
+      models' predictions with the factors the inner models calibrated), the
+      inner models, fitted once on the inner fitting rows at the lambda as
+      chosen, predict the usual-flow inner validation and the outer test, and
+      their own factors widen their own predictions. Per model and level, both
+      designs: coverage with its interval resampling whole projects, median
+      width, width over the global median's, factor, calibration issues and
+      the MAE on the outer test, context only; on every outer test issue
+      first, then the usual flow at the outer training's fence, then both
+      without new projects. Under SPLIT_RULE=revised only. Refuses, reading no
+      label, unless ISSUES_DB holds the opening (issues-first-commit-test-revised),
+      REPORT_DIR does not exist and is not the test step's folder, and
+      ELASTIC_NET_PARAMETERS was made on MATRIX; refuses when the outer
+      models refitted do not reproduce TEST_PREDICTIONS, the test step's
+      predictions, or the outer test rows carry no inner column. Writes
+      same-model-calibration.md and .tsv to REPORT_DIR; records the run in
+      ISSUES_DB as issues-first-commit-same-model-calibration.""");
 
   private static final Map<String, Command> CommandMap = Arrays.stream(values())
       .collect(Collectors.toUnmodifiableMap(command -> command.token, command -> command));
