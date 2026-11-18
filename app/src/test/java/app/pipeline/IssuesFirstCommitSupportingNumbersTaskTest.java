@@ -43,6 +43,16 @@ public class IssuesFirstCommitSupportingNumbersTaskTest {
    * after their first commit.
    */
   public static StudySource source() {
+    return source(n -> n == 10 ? 17 : 3, false);
+  }
+
+  /**
+   * As {@link #source()}, issue n's second commit {@code secondDay.applyAsInt(n)} days after its
+   * Monday; with {@code quick}, each issue resolved an hour after its second commit instead of 30
+   * days after its Monday, so under the revised rule only the issue at each cut crosses it.
+   */
+  private static StudySource source(final java.util.function.IntUnaryOperator secondDay,
+      final boolean quick) {
     final List<Corpus.Issue> issues = new ArrayList<>();
     final List<Corpus.Event> events = new ArrayList<>();
     final List<Corpus.Commit> commits = new ArrayList<>();
@@ -50,16 +60,17 @@ public class IssuesFirstCommitSupportingNumbersTaskTest {
     for (int n = 1; n <= 10; n++) {
       final String id = id(n);
       final long monday = MONDAY + 7L * (n - 1) * DAY;
-      final long second = monday + (n == 10 ? 17 : 3) * DAY;
+      final long second = monday + secondDay.applyAsInt(n) * DAY;
+      final long resolved = quick ? second + DAY / 24 : monday + 30 * DAY;
       issues.add(new Corpus.Issue(id, "P-" + n, "p", monday, "rep", "rep", null, "Bug", "Major",
           null, List.of(), List.of()));
       if (n <= 6) {
         events.add(new Corpus.Event(id, monday + 2 * DAY, "status", "x", "Open", "In Progress",
             n + "%%2"));
       }
-      events.add(new Corpus.Event(id, monday + 30 * DAY, "status", "x", "Open", "Resolved",
+      events.add(new Corpus.Event(id, resolved, "status", "x", "Open", "Resolved",
           n + "%%0"));
-      events.add(new Corpus.Event(id, monday + 30 * DAY, "resolution", "x", null, "Fixed",
+      events.add(new Corpus.Event(id, resolved, "resolution", "x", null, "Fixed",
           n + "%%1"));
       commits.add(new Corpus.Commit("a" + n, "p", "ha" + n, "dev", monday + DAY, monday + DAY, 1,
           List.of(id)));
@@ -159,6 +170,34 @@ public class IssuesFirstCommitSupportingNumbersTaskTest {
     assertEquals(FirstCommit.NO_WAIT_CAP, none.waitFenceK());
     for (final IssuesFirstCommitSupportingNumbersTask.Example e : none.examples()) {
       assertEquals(0, e.pick().entry().explanation().count().capped());
+    }
+  }
+
+  @Test
+  @DisplayName("under the revised rule the examples are chosen among the outer training by "
+      + "verdict, its crossing issue included, at the cap the draw learns without the wait of "
+      + "the issue crossing the inner cut")
+  void revisedReadsTheOuterTrainingByVerdict() {
+    // waits of 1, 1, 2, 2 and 3 days on the inner fitting, issues 1 to 5; issue 5, at the inner
+    // cut, crosses it, and issue 7, at the outer cut, crosses that one
+    final int[] waits = {1, 1, 2, 2, 3};
+    final java.util.function.IntUnaryOperator second =
+        n -> 1 + (n <= 5 ? waits[n - 1] : n == 10 ? 16 : 1);
+    final IssuesFirstCommitSupportingNumbersTask.Report revised =
+        new IssuesFirstCommitSupportingNumbersTask(source(second, true), SilentProgress.INSTANCE,
+            SplitRule.REVISED, 1.5).run();
+    final IssuesFirstCommitSupportingNumbersTask.Report temporal =
+        new IssuesFirstCommitSupportingNumbersTask(source(second, true), SilentProgress.INSTANCE,
+            SplitRule.TEMPORAL, 1.5).run();
+    assertEquals(7, revised.training(), "the outer training keeps its crossing issue 7");
+    assertEquals(4, revised.threshold().gaps(), "issue 5's wait crosses the inner cut");
+    assertEquals(5, temporal.threshold().gaps());
+    assertTrue(revised.threshold().cap() < temporal.threshold().cap(),
+        revised.threshold() + " against " + temporal.threshold());
+    for (final IssuesFirstCommitSupportingNumbersTask.Example e : revised.examples()) {
+      assertTrue(Integer.parseInt(e.pick().entry().id(), 16) <= 7, "on the outer training");
+      assertEquals(FirstCommit.count(e.issue(), e.verdict(), revised.threshold().cap()),
+          e.pick().entry().explanation().count(), "explained at the revised cap");
     }
   }
 }
