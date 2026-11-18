@@ -3,6 +3,7 @@ package app.issues;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.ArrayList;
@@ -366,8 +367,23 @@ class PredictionIntervalsTest {
     return Arrays.stream(observed).map(o -> Math.expm1(Math.log1p(o) - residual)).toArray();
   }
 
-  /** The joint of a calibration where "a" misses by 0.1 and "b" by 0.9, and a test of five. */
-  private static SimilarityScoring.SameModel joint(final boolean swapped) {
+  /** Every model's predictions of {@code n} issues, all {@code value}, in the models' order. */
+  private static Map<String, double[]> constant(final int n, final double value) {
+    final Map<String, double[]> out = new LinkedHashMap<>();
+    for (final String m : List.of(SimilarityScoring.GLOBAL, "a", "b")) {
+      final double[] p = new double[n];
+      Arrays.fill(p, value);
+      out.put(m, p);
+    }
+    return out;
+  }
+
+  /**
+   * The one fit of a calibration where "a" misses by 0.1 and "b" by 0.9, and a test of five whose
+   * usual flow is the first four; without new projects, the test's last issue, then the usual
+   * flow's last too, are left out.
+   */
+  private static SimilarityScoring.SameModel sameFit(final boolean swapped) {
     final double[] observed = new double[19];
     for (int i = 0; i < observed.length; i++) {
       observed[i] = 2 + i;
@@ -377,16 +393,12 @@ class PredictionIntervalsTest {
     calibration.put("a", below(observed, swapped ? 0.9 : 0.1));
     calibration.put("b", below(observed, swapped ? 0.1 : 0.9));
     final double[] truth = {10, 11, 13, 20, 30};
-    final Map<String, double[]> test = new LinkedHashMap<>();
-    for (final String m : List.of(SimilarityScoring.GLOBAL, "a", "b")) {
-      test.put(m, new double[] {10, 10, 10, 10, 10});
-    }
-    final SimilarityScoring.Report all = report(TailCut.Reading.ALL, truth, test);
     return new SimilarityScoring.SameModel(
         report(TailCut.Reading.USUAL_FLOW, observed, calibration),
-        report(TailCut.Reading.USUAL_FLOW, Arrays.copyOf(truth, 4), Map.of(
-            SimilarityScoring.GLOBAL, new double[] {10, 10, 10, 10}, "a",
-            new double[] {10, 10, 10, 10}, "b", new double[] {10, 10, 10, 10})), all);
+        report(TailCut.Reading.USUAL_FLOW, Arrays.copyOf(truth, 4), constant(4, 10)),
+        report(TailCut.Reading.ALL, truth, constant(5, 10)),
+        report(TailCut.Reading.USUAL_FLOW, Arrays.copyOf(truth, 3), constant(3, 10)),
+        report(TailCut.Reading.ALL, Arrays.copyOf(truth, 4), constant(4, 10)));
   }
 
   private static PredictionIntervals.Read read(final List<PredictionIntervals.Read> reads,
@@ -398,9 +410,9 @@ class PredictionIntervalsTest {
   @Test
   @DisplayName("same model: each model's interval on the outer test takes the factor of its own "
       + "residuals on the calibration, 0.1 for a and 0.9 for b, hand computed; swapping the "
-      + "calibration swaps the factors (the revised design's ticket 06)")
+      + "calibration swaps the factors")
   void sameModelFactorsAreTheModelsOwn() {
-    final PredictionIntervals.Joint j = PredictionIntervals.sameModel(joint(false),
+    final PredictionIntervals.Joint j = PredictionIntervals.sameModel(sameFit(false),
         PredictionIntervals.FLOOR, 1);
     for (int l = 0; l < PredictionIntervals.LEVELS.size(); l++) {
       assertEquals(0.1, j.calibrated().get("a").factors()[l], EXACT);
@@ -423,7 +435,7 @@ class PredictionIntervalsTest {
     }
     // the usual flow first, then every issue, as the outer test's intervals are read
     assertEquals(TailCut.Reading.USUAL_FLOW, j.reads().getFirst().reading());
-    final PredictionIntervals.Joint swapped = PredictionIntervals.sameModel(joint(true),
+    final PredictionIntervals.Joint swapped = PredictionIntervals.sameModel(sameFit(true),
         PredictionIntervals.FLOOR, 1);
     for (final double level : PredictionIntervals.LEVELS) {
       assertEquals(widthB, read(swapped.reads(), TailCut.Reading.ALL, "a", level).overall()
@@ -433,5 +445,110 @@ class PredictionIntervalsTest {
     }
     assertTrue(PredictionIntervals.SAME_MODEL.contains("one fit"));
     assertNotEquals(PredictionIntervals.OUTER, PredictionIntervals.SAME_MODEL);
+  }
+
+  @Test
+  @DisplayName("same model, without new projects: the factors are the one calibration's, the "
+      + "reads those of the test parts without new projects")
+  void sameModelWithoutNewProjects() {
+    final PredictionIntervals.Joint whole = PredictionIntervals.sameModel(sameFit(false),
+        PredictionIntervals.FLOOR, 1);
+    final PredictionIntervals.Joint seen = PredictionIntervals.sameModel(sameFit(false),
+        PredictionIntervals.FLOOR, 1, true);
+    for (final String m : List.of("a", "b")) {
+      assertTrue(Arrays.equals(whole.calibrated().get(m).factors(),
+          seen.calibrated().get(m).factors()), m);
+      assertEquals(19, seen.calibrated().get(m).n());
+    }
+    for (final double level : PredictionIntervals.LEVELS) {
+      assertEquals(4, read(seen.reads(), TailCut.Reading.ALL, "a", level).overall().n());
+      assertEquals(3, read(seen.reads(), TailCut.Reading.USUAL_FLOW, "a", level).overall().n());
+      // without the issue of 30, b covers 10, 11, 13 and 20: all four
+      assertEquals(1.0, read(seen.reads(), TailCut.Reading.ALL, "b", level).overall()
+          .coverage().value(), EXACT);
+    }
+  }
+
+  @Test
+  @DisplayName("the one fit refuses parts that are not of one fit: other models, another fitted "
+      + "model or forest, other band limits, other fitting rows")
+  void sameFitRefusesTwoFits() {
+    final SimilarityScoring.SameModel s = sameFit(false);
+    final SimilarityScoring.Report c = s.calibration();
+    final SimilarityScoring.Report t = s.allTest();
+    // one fitted object shared by the parts is accepted
+    final app.issues.model.Fitting.Fitted f = new app.issues.model.Fitting.Fitted(null, 0, 0,
+        List.of(), List.of(), List.of(), 0, new double[0], null, 0, List.of(), null);
+    final app.issues.model.Fitting.Fitted g = new app.issues.model.Fitting.Fitted(null, 0, 0,
+        List.of(), List.of(), List.of(), 0, new double[0], null, 0, List.of(), null);
+    final SimilarityScoring.SameModel one = new SimilarityScoring.SameModel(withFitted(c, f),
+        withFitted(s.usualTest(), f), withFitted(t, f), withFitted(s.usualTestWithoutNew(), f),
+        withFitted(s.allTestWithoutNew(), f));
+    assertEquals(19, one.calibration().scoredRows());
+    final List<SimilarityScoring.Report> others = List.of(
+        withFitted(t, g),
+        new SimilarityScoring.Report(t.scope(), t.reading(), t.fences(), t.bandTops(),
+            t.fitRows(), t.scoredRows(), t.innerFitRows(), t.scoredUnits(), t.observed(),
+            t.models().subList(0, 2), t.comparisons(), t.unseenProjects(), t.unseenRows(),
+            t.withCommitRows(), t.withCommits(), t.implementationCommit(), t.withoutCommits(),
+            t.orderings(), t.withoutNewProjects(), t.newProjects(), t.newProjectRows(),
+            t.analogyFallbacks()),
+        new SimilarityScoring.Report(t.scope(), t.reading(), t.fences(), new double[] {2, 5, 11},
+            t.fitRows(), t.scoredRows(), t.innerFitRows(), t.scoredUnits(), t.observed(),
+            t.models(), t.comparisons(), t.unseenProjects(), t.unseenRows(),
+            t.withCommitRows(), t.withCommits(), t.implementationCommit(), t.withoutCommits(),
+            t.orderings(), t.withoutNewProjects(), t.newProjects(), t.newProjectRows(),
+            t.analogyFallbacks()),
+        new SimilarityScoring.Report(t.scope(), t.reading(), t.fences(), t.bandTops(),
+            t.fitRows() + 1, t.scoredRows(), t.innerFitRows(), t.scoredUnits(), t.observed(),
+            t.models(), t.comparisons(), t.unseenProjects(), t.unseenRows(),
+            t.withCommitRows(), t.withCommits(), t.implementationCommit(), t.withoutCommits(),
+            t.orderings(), t.withoutNewProjects(), t.newProjects(), t.newProjectRows(),
+            t.analogyFallbacks()));
+    for (final SimilarityScoring.Report other : others) {
+      assertThrows(IllegalArgumentException.class, () -> new SimilarityScoring.SameModel(c,
+          s.usualTest(), other, s.usualTestWithoutNew(), s.allTestWithoutNew()));
+    }
+    // the fitted model of another fit, where the calibration's is f
+    assertThrows(IllegalArgumentException.class, () -> new SimilarityScoring.SameModel(
+        withFitted(c, f), withFitted(s.usualTest(), f), withFitted(t, f),
+        withFitted(s.usualTestWithoutNew(), f), withFitted(s.allTestWithoutNew(), g)));
+    // a forest of another fit, beside the same fitted model
+    final app.issues.model.Forest.Frozen tree = forest();
+    final app.issues.model.Forest.Frozen otherTree = forest();
+    assertThrows(IllegalArgumentException.class, () -> new SimilarityScoring.SameModel(
+        withForest(c, tree), withForest(s.usualTest(), tree), withForest(t, otherTree),
+        withForest(s.usualTestWithoutNew(), tree), withForest(s.allTestWithoutNew(), tree)));
+  }
+
+  /** A forest with nothing in it, a new object on every call. */
+  private static app.issues.model.Forest.Frozen forest() {
+    return new app.issues.model.Forest.Frozen(null, 0, 0, 0, List.of(), List.of(), new double[0],
+        null, List.of());
+  }
+
+  /** {@code r} with every model's fitted object {@code f}. */
+  private static SimilarityScoring.Report withFitted(final SimilarityScoring.Report r,
+      final app.issues.model.Fitting.Fitted f) {
+    return withModels(r, r.models().stream().map(m -> new SimilarityScoring.Scored(m.name(),
+        m.kind(), m.predicted(), m.score(), m.errors(), m.bands(), f, m.removed(), m.forest()))
+        .toList());
+  }
+
+  /** {@code r} with every model's forest {@code tree}. */
+  private static SimilarityScoring.Report withForest(final SimilarityScoring.Report r,
+      final app.issues.model.Forest.Frozen tree) {
+    return withModels(r, r.models().stream().map(m -> new SimilarityScoring.Scored(m.name(),
+        m.kind(), m.predicted(), m.score(), m.errors(), m.bands(), m.fitted(), m.removed(), tree))
+        .toList());
+  }
+
+  private static SimilarityScoring.Report withModels(final SimilarityScoring.Report t,
+      final List<SimilarityScoring.Scored> models) {
+    return new SimilarityScoring.Report(t.scope(), t.reading(), t.fences(), t.bandTops(),
+        t.fitRows(), t.scoredRows(), t.innerFitRows(), t.scoredUnits(), t.observed(), models,
+        t.comparisons(), t.unseenProjects(), t.unseenRows(), t.withCommitRows(), t.withCommits(),
+        t.implementationCommit(), t.withoutCommits(), t.orderings(), t.withoutNewProjects(),
+        t.newProjects(), t.newProjectRows(), t.analogyFallbacks());
   }
 }

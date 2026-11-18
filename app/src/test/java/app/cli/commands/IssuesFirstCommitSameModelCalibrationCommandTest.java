@@ -39,8 +39,10 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * The same-model calibration step (the revised design's ticket 06), end to end on the synthetic
  * first-commit matrix at the temporal sides, read under the revised rule: its outer test rows
- * carry the inner variant's columns, as the revised similarity stage writes them. The selection
- * and the test step run once, for every test here.
+ * carry the inner variant's columns, as the revised similarity stage writes them. A project,
+ * {@code p4}, has inner validation and outer test issues and no inner fitting row: new to the
+ * inner model alone, so the readings without new projects are drawn. The selection and the test
+ * step run once, for every test here.
  */
 class IssuesFirstCommitSameModelCalibrationCommandTest {
 
@@ -53,6 +55,8 @@ class IssuesFirstCommitSameModelCalibrationCommandTest {
   private static Path testDir;
   /** The revised design's runs the selection and the test step recorded: the opening among them. */
   private static final List<Map<String, Object>> OPENED = new ArrayList<>();
+  /** The rows the test step recorded beside its run: its prediction intervals among them. */
+  private static final List<Map<String, Object>> TEST_ROWS = new ArrayList<>();
 
   /** A run store of the revised design's collection and the random one's, both in memory. */
   static final class Store implements ResultStore {
@@ -92,6 +96,9 @@ class IssuesFirstCommitSameModelCalibrationCommandTest {
         public String record(final Map<String, Object> run,
             final List<Map<String, Object>> rows) {
           revised.add(run);
+          if (IssuesSimilarityTestCommand.FIRST_COMMIT_REVISED_STAGE.equals(run.get("stage"))) {
+            TEST_ROWS.addAll(rows);
+          }
           return "revised-run";
         }
 
@@ -121,7 +128,7 @@ class IssuesFirstCommitSameModelCalibrationCommandTest {
   /** The selection, then the test step's opening, under the revised rule, once for the class. */
   @BeforeAll
   static void openTheTest() throws Exception {
-    matrix = SelectionFixture.temporal(shared.resolve("matrix.tsv"));
+    matrix = SelectionFixture.temporal(shared.resolve("matrix.tsv"), 3, 3);
     parameters = shared.resolve("elastic-net.tsv");
     testDir = shared.resolve("test");
     final Map<String, String> settings = new HashMap<>();
@@ -187,12 +194,16 @@ class IssuesFirstCommitSameModelCalibrationCommandTest {
     assertTrue(md.get(2).contains("it chooses nothing"), md.get(2));
     final List<String> table =
         Files.readAllLines(report.resolve(IssuesFirstCommitSameModelCalibrationCommand.TABLE));
+    // the nature first, a comment line, then the header
+    assertEquals("# " + IssuesFirstCommitSameModelCalibrationCommand.NATURE, table.getFirst());
     assertEquals(String.join("\t", IssuesFirstCommitSameModelCalibrationCommand.COLUMNS),
-        table.getFirst());
-    final List<String[]> rows = table.subList(1, table.size()).stream()
+        table.get(1));
+    final List<String[]> rows = table.subList(2, table.size()).stream()
         .map(l -> l.split("\t", -1)).toList();
     final List<String> readings = rows.stream().map(r -> r[0]).distinct().toList();
-    assertEquals(List.of("all", "usual_flow"), readings.subList(0, 2));
+    // p4 is new to the inner model: the readings without new projects are drawn
+    assertEquals(List.of("all", "usual_flow", "all_without_new_projects",
+        "usual_flow_without_new_projects"), readings);
     assertEquals("all", rows.getFirst()[0]);
     final List<String> models = OPENED.getLast().get("models") instanceof List<?> l
         ? l.stream().map(Object::toString).toList() : List.of();
@@ -213,10 +224,84 @@ class IssuesFirstCommitSameModelCalibrationCommandTest {
     for (int i = 0; i + 1 < rows.size(); i += 2) {
       assertEquals(rows.get(i)[10], rows.get(i + 1)[10]);
       assertEquals(rows.get(i)[11], rows.get(i + 1)[11]);
-      assertEquals(rows.get(i)[4], rows.get(i + 1)[4], "the same issues in both designs");
+      if (!rows.get(i)[0].endsWith("_without_new_projects")) {
+        assertEquals(rows.get(i)[4], rows.get(i + 1)[4], "the same issues in both designs");
+      }
     }
     assertTrue(rows.stream().filter(r -> r[1].equals("own_retrospective") && r[0].equals("all"))
         .map(r -> r[12]).distinct().count() > 1, "the inner model's MAE is its own");
+
+    // without new projects: the same factors, from the one fit, on fewer inner-model issues
+    final Map<String, Object> recorded = store.revised.getLast();
+    final int newRows = (int) recorded.get("new_project_rows_inner_model");
+    assertEquals(List.of("p4"), recorded.get("new_projects_inner_model"));
+    assertEquals(List.of(), recorded.get("new_projects_outer_model"));
+    assertTrue(newRows > 0);
+    for (final String[] r : rows) {
+      if (!r[0].endsWith("_without_new_projects")) {
+        continue;
+      }
+      final String base = r[0].substring(0, r[0].length() - "_without_new_projects".length());
+      final String[] whole = rows.stream().filter(x -> x[0].equals(base) && x[1].equals(r[1])
+          && x[2].equals(r[2]) && x[3].equals(r[3])).findFirst().orElseThrow();
+      assertEquals(whole[10], r[10], "the factor of the one calibration: " + r[1]);
+      assertEquals(whole[11], r[11]);
+      if (r[3].equals(IssuesFirstCommitSameModelCalibrationCommand.OUTER_DESIGN)) {
+        assertEquals(whole[4], r[4], "no new project to the outer model");
+      } else if (base.equals("all")) {
+        assertEquals(Integer.parseInt(whole[4]) - newRows, Integer.parseInt(r[4]));
+      } else {
+        assertTrue(Integer.parseInt(r[4]) < Integer.parseInt(whole[4]), r[1]);
+      }
+    }
+
+    // the test step's design reproduces the test step's own coverages and factors
+    int matched = 0;
+    for (final String[] r : rows) {
+      if (!r[3].equals(IssuesFirstCommitSameModelCalibrationCommand.OUTER_DESIGN)
+          || r[0].endsWith("_without_new_projects")) {
+        continue;
+      }
+      final Map<String, Object> written = TEST_ROWS.stream()
+          .filter(x -> "prediction_interval".equals(x.get("kind")) && r[0].equals(x.get("reading"))
+              && r[1].equals(x.get("model")) && Double.parseDouble(r[2]) == (double) x.get("level")
+              && "all".equals(x.get("observed_band"))).findFirst().orElseThrow();
+      assertEquals((int) written.get("n"), Integer.parseInt(r[4]), r[0] + " " + r[1]);
+      if (written.containsKey("coverage")) {
+        assertEquals((double) written.get("coverage"), Double.parseDouble(r[5]), 0.0, r[1]);
+        assertEquals(written.get("coverage_ci_projects"),
+            List.of(Double.parseDouble(r[6]), Double.parseDouble(r[7])), r[1]);
+        assertEquals((double) written.get("median_width_business_days"),
+            Double.parseDouble(r[8]), 0.0, r[1]);
+        assertEquals((double) written.get("mae_business_days"), Double.parseDouble(r[12]), 0.0,
+            r[1]);
+        matched++;
+      }
+    }
+    assertEquals(2 * 15 * PredictionIntervals.LEVELS.size(), matched);
+    // the factors, read back off the test step's prediction intervals around its estimates
+    final List<String[]> percentiles = Files.readAllLines(
+        testDir.resolve(IssuesSimilarityTestCommand.PERCENTILES)).stream().skip(1)
+        .map(x -> x.split("\t", -1)).toList();
+    int factors = 0;
+    for (final String[] p : percentiles) {
+      final double estimate = Double.parseDouble(p[4]);
+      for (int level = 0; level < PredictionIntervals.LEVELS.size(); level++) {
+        final double high = Double.parseDouble(p[6 + 2 * level]);
+        if (!(estimate > 0) || Double.isInfinite(high)) {
+          continue;
+        }
+        final double lvl = PredictionIntervals.LEVELS.get(level);
+        final String[] row = rows.stream().filter(x -> x[0].equals("all") && x[1].equals(p[1])
+            && Double.parseDouble(x[2]) == lvl
+            && x[3].equals(IssuesFirstCommitSameModelCalibrationCommand.OUTER_DESIGN))
+            .findFirst().orElseThrow();
+        assertEquals(Double.parseDouble(row[10]), Math.log1p(high) - Math.log1p(estimate), 1e-9,
+            p[1] + " " + lvl);
+        factors++;
+      }
+    }
+    assertTrue(factors > 0, "some prediction interval to read a factor from");
 
     assertEquals(OPENED.size() + 1, store.revised.size(), "one run, in the revised collection");
     assertTrue(store.random.isEmpty());

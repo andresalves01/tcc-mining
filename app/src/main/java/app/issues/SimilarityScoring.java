@@ -229,17 +229,57 @@ public final class SimilarityScoring {
    * The inner models' predictions of the inner validation and of the outer test, from one fit
    * (the revised design's ticket 06): what the same-model intervals read, so the factors and the
    * predictions they are applied to cannot come from two fits. Each part is a {@link Report} of
-   * {@link Scope#SAME_MODEL}, with no comparison drawn; every model's {@code fitted} and {@code
-   * forest} are the one fit, the same objects in the three, their own predictions of every
-   * issue scored, validation and test together.
+   * {@link Scope#SAME_MODEL}, with no comparison drawn, every figure of it read on its own
+   * issues; every model's {@code fitted} and {@code forest} are the one fit, the same objects in
+   * the five parts, which the constructor checks along with the models, their order, the band
+   * limits and the fitting rows.
+   *
+   * <p>Those objects are the fit's, not the part's: their {@code predicted()} and {@code score()}
+   * cover every issue the fit scored, the whole inner validation and the outer test together, in
+   * that order. A part's predictions and figures are its {@link Scored#predicted()} and {@link
+   * Scored#score()}.
    *
    * @param calibration the usual-flow inner validation, at the inner fitting's fence: what {@link
-   *     #calibration} reads, bit for bit
+   *     #calibration} reads, bit for bit; whole whatever the reading of the outer test
    * @param usualTest the outer test issues at or below the outer training's usual-flow fence, the
    *     issues of the test step's usual flow, so the two designs are read on the same issues
    * @param allTest every outer test issue
+   * @param usualTestWithoutNew {@code usualTest} without the issues of the projects new to the
+   *     inner model, those with no inner fitting row before the tail cut
+   * @param allTestWithoutNew {@code allTest} without them
    */
-  public record SameModel(Report calibration, Report usualTest, Report allTest) {}
+  public record SameModel(Report calibration, Report usualTest, Report allTest,
+      Report usualTestWithoutNew, Report allTestWithoutNew) {
+
+    public SameModel {
+      final List<Report> parts = java.util.Arrays.asList(calibration, usualTest, allTest,
+          usualTestWithoutNew, allTestWithoutNew);
+      if (parts.contains(null)) {
+        throw new IllegalArgumentException("every part of the one fit, none missing");
+      }
+      final List<String> names = calibration.models().stream().map(Scored::name).toList();
+      for (final Report part : parts.subList(1, parts.size())) {
+        if (!names.equals(part.models().stream().map(Scored::name).toList())) {
+          throw new IllegalArgumentException("the parts of one fit hold the same models in the "
+              + "same order: " + names + " and "
+              + part.models().stream().map(Scored::name).toList());
+        }
+        if (!java.util.Arrays.equals(calibration.bandTops(), part.bandTops())
+            || calibration.fitRows() != part.fitRows()) {
+          throw new IllegalArgumentException("the parts of one fit share its band limits and "
+              + "its fitting rows");
+        }
+        for (int m = 0; m < names.size(); m++) {
+          final Scored a = calibration.models().get(m);
+          final Scored b = part.models().get(m);
+          if (a.fitted() != b.fitted() || a.forest() != b.forest()) {
+            throw new IllegalArgumentException(names.get(m) + " of another fit: the parts of "
+                + "one fit share every fitted model and forest");
+          }
+        }
+      }
+    }
+  }
 
   /**
    * One model scored on the outer test.
@@ -762,14 +802,13 @@ public final class SimilarityScoring {
 
   /**
    * The same-model calibration (the revised design's ticket 06), on the threads {@link Parallel}
-   * asks for the draws: see {@link #sameModel(List, Map, Map, double, Population, Design,
-   * boolean, int)}.
+   * asks for the fits: see {@link #sameModel(List, Map, Map, double, Population, Design, int)}.
    */
   public static SameModel sameModel(final List<RowCache.Entry> entries,
       final Map<String, ElasticNetSelection.Choice> choices,
       final Map<String, Forest.Choice> forests, final double k, final Population population,
-      final Design design, final boolean withoutNew) {
-    return sameModel(entries, choices, forests, k, population, design, withoutNew,
+      final Design design) {
+    return sameModel(entries, choices, forests, k, population, design,
         Parallel.threads(Parallel.ELASTIC_NET_THREADS));
   }
 
@@ -778,19 +817,18 @@ public final class SimilarityScoring {
    * test was opened that chooses nothing: every model fitted once, as {@link #calibration} fits
    * it (the inner fitting rows that teach, at or below the inner fitting's fence of {@code k},
    * the lambda as chosen, the inner variant), predicting the whole inner validation and the
-   * outer test, {@link Scope#SAME_MODEL}. Three readings of that one fit: the usual-flow inner
+   * outer test, {@link Scope#SAME_MODEL}. Five readings of that one fit: the usual-flow inner
    * validation, at the inner fitting's usual-flow fence, the calibration; the outer test issues at
    * or below the outer training's usual-flow fence, the test step's usual flow; every outer test
-   * issue. No label of the inner validation or of the outer test enters the fit.
-   *
-   * @param withoutNew whether the outer test is read without the issues of new projects, those
-   *     with no inner fitting row before the tail cut: the projects the inner model never saw;
-   *     the calibration is the whole usual-flow inner validation either way
+   * issue; and those two without the issues of the projects new to the inner model, those with no
+   * inner fitting row before the tail cut. The calibration is the whole usual-flow inner
+   * validation in every reading. No label of the inner validation or of the outer test enters
+   * the fit.
    */
   public static SameModel sameModel(final List<RowCache.Entry> entries,
       final Map<String, ElasticNetSelection.Choice> choices,
       final Map<String, Forest.Choice> forests, final double k, final Population population,
-      final Design design, final boolean withoutNew, final int fitThreads) {
+      final Design design, final int fitThreads) {
     final Prepared p = prepared(entries, choices, forests, k, Scope.SAME_MODEL, population);
     // the test step's usual flow: the outer training's fence, so both designs read the same issues
     final double outerUsualFence = TailCut.fence(
@@ -829,8 +867,10 @@ public final class SimilarityScoring {
     final Fences testFences = new Fences(k, p.fence(), outerUsualFence, fitted, usualTest.size(),
         allTest.size());
     return new SameModel(calibration,
-        slice(p, fit, usualTest, TailCut.Reading.USUAL_FLOW, testFences, allTest, withoutNew),
-        slice(p, fit, allTest, TailCut.Reading.ALL, testFences, allTest, withoutNew));
+        slice(p, fit, usualTest, TailCut.Reading.USUAL_FLOW, testFences, allTest, false),
+        slice(p, fit, allTest, TailCut.Reading.ALL, testFences, allTest, false),
+        slice(p, fit, usualTest, TailCut.Reading.USUAL_FLOW, testFences, allTest, true),
+        slice(p, fit, allTest, TailCut.Reading.ALL, testFences, allTest, true));
   }
 
   /**

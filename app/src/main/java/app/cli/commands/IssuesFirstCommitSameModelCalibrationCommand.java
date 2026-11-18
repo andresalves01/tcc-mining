@@ -32,12 +32,12 @@ import java.util.Set;
 import java.util.function.Function;
 
 /**
- * SENSITIVITY, after the opening of the revised design's outer test (its ticket 06, review
- * comment 8): it chooses nothing. The prediction intervals of the test step take the factors the
- * inner models calibrated on the usual-flow inner validation and apply them to the outer models'
- * predictions, an approximation ({@link PredictionIntervals#OUTER}). Here, beside them, the inner
- * models themselves predict the outer test, from the one fit whose residuals gave the factors
- * ({@link SimilarityScoring#sameModel}, {@link PredictionIntervals#SAME_MODEL}): per model and
+ * SENSITIVITY, after the opening of the revised design's outer test (its ticket 06): it chooses
+ * nothing. The prediction intervals of the test step take the factors the inner models
+ * calibrated on the usual-flow inner validation and apply them to the outer models' predictions,
+ * an approximation ({@link PredictionIntervals#OUTER}). Here, beside them, the inner models
+ * themselves predict the outer test, from the one fit whose residuals gave the factors ({@link
+ * SimilarityScoring#sameModel}, {@link PredictionIntervals#SAME_MODEL}): per model and
  * level, the coverage with its interval resampling whole projects, the median width, the width
  * over the global median's, the factor and its calibration issues, and the model's MAE on the
  * outer test, context and never a competitor of the outer model's. Overall figures only, no
@@ -57,9 +57,9 @@ import java.util.function.Function;
  * of a column of the inner variant the models read (the revised similarity stage writes them),
  * and outer models that, refitted here, do not reproduce the test step's predictions within
  * {@link SimilarityScoring#RERUN_TOLERANCE}. Reads MATRIX, ELASTIC_NET_PARAMETERS and
- * TEST_PREDICTIONS; writes {@link #REPORT} and {@link #TABLE} to REPORT_DIR, nothing to the test
- * step's folder; records the run in ISSUES_DB, in the revised design's collection, under {@link
- * #STAGE}.
+ * TEST_PREDICTIONS; writes {@link #REPORT} and {@link #TABLE} to REPORT_DIR, each with {@link
+ * #NATURE} first, nothing to the test step's folder; records the run in ISSUES_DB, in the
+ * revised design's collection, under {@link #STAGE}.
  */
 public final class IssuesFirstCommitSameModelCalibrationCommand implements CommandRunner {
 
@@ -67,11 +67,17 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
 
   public static final String REPORT = "same-model-calibration.md";
 
+  /**
+   * The table: its first line is a comment, {@code "# "} and {@link #NATURE}; then the header,
+   * {@link #COLUMNS}, tab separated, and one row per reading, model, level and design. A reader
+   * skips the lines that start with {@code #} (pandas' {@code comment="#"}, R's {@code
+   * comment.char = "#"}); no row starts with it, every row's first field being a reading's name.
+   */
   public static final String TABLE = "same-model-calibration.tsv";
 
-  /** What this step is, at the top of its report and in its record. */
-  public static final String LABEL = "SENSITIVITY, after the opening of the outer test (the "
-      + "revised design's ticket 06, review comment 8): it chooses nothing";
+  /** What this step is: at the top of its report and of its table, and in its record. */
+  public static final String NATURE = "SENSITIVITY, after the opening of the outer test: the "
+      + "inner models' own prediction intervals beside the test step's; it chooses nothing";
 
   /** The test step's intervals: the outer models' predictions, the inner models' factors. */
   public static final String OUTER_DESIGN = "outer_model_inner_factors";
@@ -104,10 +110,13 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
    *     {@code _without_new_projects}
    * @param outer the test step's reads of this reading: the outer models with the inner factors
    * @param same the same-model reads of this reading
+   * @param calibrated per model, the factors both designs' reads of this reading took: the one
+   *     fit's, on the usual-flow inner validation
    */
   record Reading(String name, TailCut.Reading reading, SimilarityScoring.Report outerReport,
       List<PredictionIntervals.Read> outer, SimilarityScoring.Report sameReport,
-      List<PredictionIntervals.Read> same) {}
+      List<PredictionIntervals.Read> same,
+      Map<String, PredictionIntervals.Calibration> calibrated) {}
 
   @Override
   public void run(final Context context) throws CommandFailedException {
@@ -228,8 +237,7 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
     final SimilarityScoring.Readings outer;
     final double rerun;
     final List<Reading> readings = new ArrayList<>();
-    final SimilarityScoring.SameModel joint;
-    final PredictionIntervals.Joint own;
+    final SimilarityScoring.SameModel sameFit;
     final long fitting = System.nanoTime();
     try {
       outer = SimilarityScoring.readings(population.entries(), chosen.choices(),
@@ -242,37 +250,38 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
             + "reproduce the test step's predictions in %s: largest difference %.3g business "
             + "days, tolerance %.0e", testPredictions, rerun, SimilarityScoring.RERUN_TOLERANCE));
       }
-      joint = SimilarityScoring.sameModel(population.entries(), chosen.choices(),
-          chosen.forests(), k, Population.FIRST_COMMIT, chosen.design(), false);
-      own = PredictionIntervals.sameModel(joint, floor, threads);
-      // the factors are the joint calibration's, bit for bit the test step's inner calibration
+      // one fit of the inner models: every reading below is a slice of it
+      sameFit = SimilarityScoring.sameModel(population.entries(), chosen.choices(),
+          chosen.forests(), k, Population.FIRST_COMMIT, chosen.design());
+      final PredictionIntervals.Joint sameIntervals =
+          PredictionIntervals.sameModel(sameFit, floor, threads);
+      // the factors are the one fit's calibration, bit for bit the test step's inner calibration
       final List<PredictionIntervals.Read> outerReads = PredictionIntervals.outer(
-          own.calibrated(), PredictionIntervals.Sample.of(outer.main(), floor),
+          sameIntervals.calibrated(), PredictionIntervals.Sample.of(outer.main(), floor),
           PredictionIntervals.Sample.of(outer.complementary(), floor), threads);
       readings.add(reading("all", TailCut.Reading.ALL, outer.complementary(), outerReads,
-          joint.allTest(), own.reads()));
+          sameFit.allTest(), sameIntervals));
       readings.add(reading("usual_flow", TailCut.Reading.USUAL_FLOW, outer.main(), outerReads,
-          joint.usualTest(), own.reads()));
+          sameFit.usualTest(), sameIntervals));
       final boolean outerNew = outer.complementary().newProjectRows() > 0;
-      final boolean innerNew = joint.allTest().newProjectRows() > 0;
+      final boolean innerNew = sameFit.allTest().newProjectRows() > 0;
       if (outerNew || innerNew) {
         final SimilarityScoring.Readings outerSeen = !outerNew ? outer
             : SimilarityScoring.withoutNewProjects(population.entries(), chosen.choices(),
                 chosen.forests(), k, SimilarityScoring.Scope.RESERVED, Population.FIRST_COMMIT,
                 chosen.design());
+        final PredictionIntervals.Joint sameSeen = !innerNew ? sameIntervals
+            : PredictionIntervals.sameModel(sameFit, floor, threads, true);
         final List<PredictionIntervals.Read> outerSeenReads = !outerNew ? outerReads
-            : PredictionIntervals.outer(own.calibrated(),
+            : PredictionIntervals.outer(sameSeen.calibrated(),
                 PredictionIntervals.Sample.of(outerSeen.main(), floor),
                 PredictionIntervals.Sample.of(outerSeen.complementary(), floor), threads);
-        final SimilarityScoring.SameModel jointSeen = !innerNew ? joint
-            : SimilarityScoring.sameModel(population.entries(), chosen.choices(),
-                chosen.forests(), k, Population.FIRST_COMMIT, chosen.design(), true);
-        final List<PredictionIntervals.Read> ownSeen = !innerNew ? own.reads()
-            : PredictionIntervals.sameModel(jointSeen, floor, threads).reads();
         readings.add(reading("all_without_new_projects", TailCut.Reading.ALL,
-            outerSeen.complementary(), outerSeenReads, jointSeen.allTest(), ownSeen));
+            outerSeen.complementary(), outerSeenReads,
+            innerNew ? sameFit.allTestWithoutNew() : sameFit.allTest(), sameSeen));
         readings.add(reading("usual_flow_without_new_projects", TailCut.Reading.USUAL_FLOW,
-            outerSeen.main(), outerSeenReads, jointSeen.usualTest(), ownSeen));
+            outerSeen.main(), outerSeenReads,
+            innerNew ? sameFit.usualTestWithoutNew() : sameFit.usualTest(), sameSeen));
       }
     } catch (final IllegalArgumentException e) {
       throw refused(e.getMessage());
@@ -280,16 +289,17 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
     final double scoringSeconds = (System.nanoTime() - fitting) / 1e9;
 
     final List<String> table = new ArrayList<>();
+    table.add("# " + NATURE);
     table.add(String.join("\t", COLUMNS));
     final List<Map<String, Object>> rows = new ArrayList<>();
     for (final Reading r : readings) {
-      for (final Map<String, Object> row : rows(r, own.calibrated())) {
+      for (final Map<String, Object> row : rows(r)) {
         rows.add(row);
         table.add(String.join("\t", row.values().stream().map(String::valueOf).toList()));
       }
     }
     final List<String> md = report(matrix, elasticNet, testPredictions, chosen, predictionsSha,
-        rerun, k, outer, joint, readings, own.calibrated());
+        rerun, k, outer, sameFit, readings);
     md.forEach(line -> System.out.println("  " + line));
     final String reportSha;
     final String tableSha;
@@ -309,7 +319,7 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
     run.put("stage", STAGE);
     run.put(SplitRule.RULE_FIELD, rule.rule());
     run.put(SplitRule.DESIGN_FIELD, rule.setting());
-    run.put("nature", LABEL);
+    run.put("nature", NATURE);
     run.put("outer_test", "read again after its opening ("
         + IssuesSimilarityTestCommand.FIRST_COMMIT_REVISED_STAGE + "), for a sensitivity that "
         + "chooses nothing");
@@ -318,19 +328,19 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
     run.put("design_" + OUTER_DESIGN, PredictionIntervals.OUTER);
     run.put("design_" + SAME_DESIGN, PredictionIntervals.SAME_MODEL);
     run.put("readings", readings.stream().map(Reading::name).toList());
-    run.put("models", joint.allTest().models().stream().map(SimilarityScoring.Scored::name)
+    run.put("models", sameFit.allTest().models().stream().map(SimilarityScoring.Scored::name)
         .toList());
     run.put("tail_cut_k", k);
-    run.put("inner_fit_rows", joint.allTest().fitRows());
+    run.put("inner_fit_rows", sameFit.allTest().fitRows());
     run.put("outer_fit_rows", outer.complementary().fitRows());
-    run.put("calibration_rows", joint.calibration().scoredRows());
-    run.put("outer_test_rows", joint.allTest().scoredRows());
-    run.put("usual_flow_outer_test_rows", joint.usualTest().scoredRows());
-    run.put("usual_flow_fence_outer_training", joint.usualTest().fences().usualFence());
+    run.put("calibration_rows", sameFit.calibration().scoredRows());
+    run.put("outer_test_rows", sameFit.allTest().scoredRows());
+    run.put("usual_flow_outer_test_rows", sameFit.usualTest().scoredRows());
+    run.put("usual_flow_fence_outer_training", sameFit.usualTest().fences().usualFence());
     run.put("new_projects_outer_model", List.copyOf(outer.complementary().newProjects()));
     run.put("new_project_rows_outer_model", outer.complementary().newProjectRows());
-    run.put("new_projects_inner_model", List.copyOf(joint.allTest().newProjects()));
-    run.put("new_project_rows_inner_model", joint.allTest().newProjectRows());
+    run.put("new_projects_inner_model", List.copyOf(sameFit.allTest().newProjects()));
+    run.put("new_project_rows_inner_model", sameFit.allTest().newProjectRows());
     run.put("matrix_sha256", chosen.matrixSha());
     run.put("elastic_net_parameters_sha256", chosen.elasticNetSha());
     run.put("test_predictions_sha256", predictionsSha);
@@ -374,21 +384,23 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
     return needed.stream().filter(n -> !held.contains(n)).toList();
   }
 
-  /** One reading of both designs, each design's reads of that reading alone. */
+  /**
+   * One reading of both designs, each design's reads of that reading alone, with the factors of
+   * {@code same}, those the outer reads took too.
+   */
   private static Reading reading(final String name, final TailCut.Reading reading,
       final SimilarityScoring.Report outerReport, final List<PredictionIntervals.Read> outer,
-      final SimilarityScoring.Report sameReport, final List<PredictionIntervals.Read> same) {
+      final SimilarityScoring.Report sameReport, final PredictionIntervals.Joint same) {
     return new Reading(name, reading, outerReport,
         outer.stream().filter(r -> r.reading() == reading).toList(), sameReport,
-        same.stream().filter(r -> r.reading() == reading).toList());
+        same.reads().stream().filter(r -> r.reading() == reading).toList(), same.calibrated());
   }
 
   /**
    * The table's rows of one reading: per model, in the report's order, per level, the test step's
-   * design, then the same-model design.
+   * design, then the same-model design, each with the reading's own factors.
    */
-  static List<Map<String, Object>> rows(final Reading r,
-      final Map<String, PredictionIntervals.Calibration> calibrated) {
+  static List<Map<String, Object>> rows(final Reading r) {
     final List<Map<String, Object>> out = new ArrayList<>();
     for (final SimilarityScoring.Scored m : r.sameReport().models()) {
       for (int l = 0; l < PredictionIntervals.LEVELS.size(); l++) {
@@ -398,7 +410,7 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
               : r.same()).stream().filter(x -> x.model().equals(m.name()) && x.level() == level)
               .findFirst().orElseThrow();
           final PredictionIntervals.Group g = read.overall();
-          final PredictionIntervals.Calibration c = calibrated.get(m.name());
+          final PredictionIntervals.Calibration c = r.calibrated().get(m.name());
           final Map<String, Object> row = new LinkedHashMap<>();
           row.put("reading", r.name());
           row.put("model", m.name());
@@ -423,13 +435,12 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
   private static List<String> report(final Path matrix, final Path elasticNet,
       final Path testPredictions, final IssuesSimilarityTestCommand.Chosen chosen,
       final String predictionsSha, final double rerun, final double k,
-      final SimilarityScoring.Readings outer, final SimilarityScoring.SameModel joint,
-      final List<Reading> readings,
-      final Map<String, PredictionIntervals.Calibration> calibrated) {
+      final SimilarityScoring.Readings outer, final SimilarityScoring.SameModel sameFit,
+      final List<Reading> readings) {
     final List<String> md = new ArrayList<>();
     md.add("# Issue duration from the first commit: same-model calibration (SENSITIVITY)");
     md.add("");
-    md.add("**" + LABEL + ".** The revised design's outer test had been opened by "
+    md.add("**" + NATURE + ".** The revised design's outer test had been opened by "
         + IssuesSimilarityTestCommand.FIRST_COMMIT_REVISED_STAGE + "; this reading adds a "
         + "second design of its prediction intervals beside the test step's, and changes none "
         + "of its results.");
@@ -455,16 +466,16 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
     md.add(f("Inner fitting rows fitted (at or below the fence of k): %d. Outer training rows "
         + "fitted: %d. Calibration issues (usual-flow inner validation): %d. Outer test issues: "
         + "%d, of which %d in the usual flow (at or below %.3f business days, the outer "
-        + "training's fence, the test step's usual flow).", joint.allTest().fitRows(),
-        outer.complementary().fitRows(), joint.calibration().scoredRows(),
-        joint.allTest().scoredRows(), joint.usualTest().scoredRows(),
-        joint.usualTest().fences().usualFence()));
+        + "training's fence, the test step's usual flow).", sameFit.allTest().fitRows(),
+        outer.complementary().fitRows(), sameFit.calibration().scoredRows(),
+        sameFit.allTest().scoredRows(), sameFit.usualTest().scoredRows(),
+        sameFit.usualTest().fences().usualFence()));
     md.add(f("New projects, with outer test issues and no row on the model's own fitting side: "
         + "%d for the outer models, %s, with %d issues; %d for the inner models, %s, with %d "
         + "issues.", outer.complementary().newProjects().size(),
         outer.complementary().newProjects(), outer.complementary().newProjectRows(),
-        joint.allTest().newProjects().size(), joint.allTest().newProjects(),
-        joint.allTest().newProjectRows()));
+        sameFit.allTest().newProjects().size(), sameFit.allTest().newProjects(),
+        sameFit.allTest().newProjectRows()));
     for (final Reading r : readings) {
       md.add("");
       md.add("## " + title(r));
@@ -472,7 +483,7 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
       md.add("| model | level | design | n | coverage [95%] | median width (bd) | width / "
           + "global median's | factor | calibration n | MAE on the outer test (bd) |");
       md.add("|---|---:|---|---:|---|---:|---:|---:|---:|---:|");
-      for (final Map<String, Object> row : rows(r, calibrated)) {
+      for (final Map<String, Object> row : rows(r)) {
         md.add(f("| %s | %.0f%% | %s | %d | %s | %.3f | %.3f | %.4f | %d | %.3f |",
             row.get("model"), 100 * (double) row.get("level"), row.get("design"),
             (int) row.get("n"), coverage(row), (double) row.get("median_width_bd"),

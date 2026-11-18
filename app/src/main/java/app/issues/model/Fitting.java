@@ -49,7 +49,7 @@ public final class Fitting {
      * The same-model calibration (the revised design's ticket 06), after the outer test was
      * opened: the inner fitting rows that teach fit, exactly as under {@link #INNER}, and the
      * whole inner validation is scored, then the outer test. A mode of its own, so {@link #INNER}
-     * keeps refusing the reserved side.
+     * keeps refusing the outer test.
      */
     INNER_MODEL_ON_TEST
   }

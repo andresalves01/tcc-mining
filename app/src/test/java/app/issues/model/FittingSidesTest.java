@@ -73,7 +73,7 @@ class FittingSidesTest {
     assertEquals(List.of("c4", "c5", "t1", "t2"),
         s.scoreRows().stream().map(Row::unitId).toList());
     assertEquals(s.scoreUnits().size(), s.observed().length);
-    // INNER still refuses the reserved side: the outer test is in neither of its sides
+    // INNER still refuses the outer test: it is in neither of its sides
     final Fitting.Sides inner = Fitting.sides(shuffled, Fitting.Mode.INNER, P);
     assertEquals(List.of("c4", "c5"), ids(inner.scoreUnits()));
   }

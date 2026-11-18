@@ -352,17 +352,30 @@ public final class PredictionIntervals {
   }
 
   /**
-   * The same-model intervals ({@link #SAME_MODEL}): every model calibrated on {@code joint}'s
-   * calibration, both halves together as {@link #calibrated} does, and those factors applied to
-   * the same model's predictions of the outer test, on every issue of each of {@code joint}'s
-   * test readings. Taking the joint whole, never factors and predictions apart, the two cannot
-   * come from different fits.
+   * The same-model intervals ({@link #SAME_MODEL}) on every outer test issue: {@link
+   * #sameModel(SimilarityScoring.SameModel, double, int, boolean)} with the new projects kept.
    */
-  public static Joint sameModel(final SimilarityScoring.SameModel joint, final double floor,
+  public static Joint sameModel(final SimilarityScoring.SameModel fit, final double floor,
       final int threads) {
-    final Map<String, Calibration> calibrated = calibrated(Sample.of(joint.calibration(), floor));
-    return new Joint(calibrated, outer(calibrated, Sample.of(joint.usualTest(), floor),
-        Sample.of(joint.allTest(), floor), threads));
+    return sameModel(fit, floor, threads, false);
+  }
+
+  /**
+   * The same-model intervals ({@link #SAME_MODEL}): every model calibrated on {@code fit}'s
+   * calibration, both halves together as {@link #calibrated} does, and those factors applied to
+   * the same model's predictions of the outer test, on every issue of each of {@code fit}'s test
+   * readings, or of those without the projects new to the inner model. Taking the one fit whole,
+   * never factors and predictions apart, the two cannot come from different fits.
+   *
+   * @param withoutNew whether the test readings are those without the issues of new projects; the
+   *     calibration is the whole usual-flow inner validation either way
+   */
+  public static Joint sameModel(final SimilarityScoring.SameModel fit, final double floor,
+      final int threads, final boolean withoutNew) {
+    final Map<String, Calibration> calibrated = calibrated(Sample.of(fit.calibration(), floor));
+    return new Joint(calibrated, outer(calibrated,
+        Sample.of(withoutNew ? fit.usualTestWithoutNew() : fit.usualTest(), floor),
+        Sample.of(withoutNew ? fit.allTestWithoutNew() : fit.allTest(), floor), threads));
   }
 
   /** Per model and level, the figures on the issues {@code rows} of {@code s}. */

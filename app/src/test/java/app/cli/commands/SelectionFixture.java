@@ -141,6 +141,17 @@ final class SelectionFixture {
    * sides are the same.
    */
   static Path temporal(final Path path, final int newIssues) throws IOException {
+    return temporal(path, newIssues, 0);
+  }
+
+  /**
+   * {@link #temporal(Path, int)} with the first {@code testIssues} outer test issues, in the
+   * order of their start, moved to {@code p4} too: with its inner validation issues on the outer
+   * training side, {@code p4} is no new project to the outer model, but it has no inner fitting
+   * row, so it is new to the inner model, which predicts those outer test issues.
+   */
+  static Path temporal(final Path path, final int newIssues, final int testIssues)
+      throws IOException {
     final Population population = Population.FIRST_COMMIT;
     final List<RowCache.Entry> moved = new ArrayList<>();
     final List<SplitRule.Candidate> candidates = new ArrayList<>();
@@ -159,7 +170,11 @@ final class SelectionFixture {
     final List<String> renamed = moved.stream()
         .filter(e -> parts.inner().get(e.unit().issueId()) == Part.TEST)
         .sorted(java.util.Comparator.comparing((RowCache.Entry e) -> e.unit().startedAt()))
-        .limit(newIssues).map(e -> e.unit().issueId()).toList();
+        .limit(newIssues).map(e -> e.unit().issueId()).collect(
+            java.util.stream.Collectors.toCollection(ArrayList::new));
+    moved.stream().filter(e -> parts.outer().get(e.unit().issueId()) == Part.TEST)
+        .sorted(java.util.Comparator.comparing((RowCache.Entry e) -> e.unit().startedAt()))
+        .limit(testIssues).map(e -> e.unit().issueId()).forEach(renamed::add);
     final List<RowCache.Entry> out = new ArrayList<>();
     for (final RowCache.Entry e : moved) {
       final String id = e.unit().issueId();
