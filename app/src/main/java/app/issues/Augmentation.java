@@ -36,7 +36,10 @@ import java.util.stream.IntStream;
  * after its own start; no label of the other side ever enters -- no validation label in the inner
  * variant, no test label in the outer -- and no row ever reads its own: the neighbours, the
  * cluster's members and the reporter median leave the query out by id. The split is random and
- * stratified by project ({@link ProjectSplit}), so no instant separates the sides.
+ * stratified by project ({@link ProjectSplit}), so no instant separates the sides. Under the
+ * revised temporal design an issue crossing a level's cut ({@link Verdict#CROSSING}) is in no
+ * history of that level and reads no column there unless the level scores it; the cluster centres,
+ * which read no label, are still fitted on the whole training side, crossing issues included.
  *
  * <p><b>Neighbours.</b> The candidates are the history issues sharing at least one token with the
  * query; the closest n by Jaccard distance give the unweighted median of their business days,
@@ -98,9 +101,6 @@ public final class Augmentation {
    */
   public static final double UNIT_TOLERANCE = 1e-4;
 
-  private static final String TRAIN = "TRAIN";
-  private static final String TEST = "TEST";
-
   /** Which split a column is computed against; its name ends in the suffix. */
   public enum Variant {
     INNER("_inner"), OUTER("_outer");
@@ -117,8 +117,9 @@ public final class Augmentation {
     }
 
     /**
-     * The rows whose outcomes may be history, the training side: the inner fitting set, or the
-     * outer training.
+     * The rows whose outcomes may be history, those of the training side that teach ({@link
+     * Verdict#teaches}): the inner fitting set, or the outer training, never an issue crossing
+     * this level's cut.
      */
     public boolean fitting(final Issue i) {
       return fitting(i.outer(), i.inner());
@@ -126,7 +127,15 @@ public final class Augmentation {
 
     /** The same, by an issue's outer and inner verdicts. */
     public boolean fitting(final String outer, final String inner) {
-      return this == INNER ? TRAIN.equals(outer) && TRAIN.equals(inner) : TRAIN.equals(outer);
+      return Verdict.teaches(this, outer, inner);
+    }
+
+    /**
+     * The rows of the training side, whether they teach or cross this level's cut ({@link
+     * Verdict#trainingSide}): what the cluster centres are fitted on, since they read no label.
+     */
+    public boolean trainingSide(final Issue i) {
+      return Verdict.trainingSide(this, i.outer(), i.inner());
     }
 
     /** The rows scored against the training side: inner validation, or outer test. */
@@ -136,7 +145,7 @@ public final class Augmentation {
 
     /** The same, by an issue's outer and inner verdicts. */
     public boolean scored(final String outer, final String inner) {
-      return this == INNER ? TRAIN.equals(outer) && TEST.equals(inner) : TEST.equals(outer);
+      return Verdict.scored(this, outer, inner);
     }
 
     public String split(final Issue i) {
@@ -154,8 +163,9 @@ public final class Augmentation {
    * @param innerDays its status-adjusted business days at its own day boundary; what the inner
    *     history reads, with 0 excluded
    * @param outerDays the same duration read by the outer variant
-   * @param outer the outer verdict: TRAIN or TEST
-   * @param inner the inner verdict inside the outer training, TRAIN or TEST; empty outside it
+   * @param outer the outer verdict: TRAIN, TEST or CROSSING ({@link Verdict})
+   * @param inner the inner verdict inside the outer training, TRAIN, TEST or CROSSING; empty
+   *     outside it
    * @param description the cleaned description at the first In Progress, null when there is none
    */
   public record Issue(String id, String project, String reporter, long start, long resolved,
@@ -338,10 +348,15 @@ public final class Augmentation {
       final List<Issue> rows = new ArrayList<>(fitting);
       issues.stream().filter(v::scored).forEach(rows::add);
       final List<Issue> history = fitting.stream().filter(i -> i.counted(v)).toList();
+      // the cluster centres read no label: fitted on the whole training side, crossing issues
+      // included, in the same order; without crossing issues the history itself
+      final List<Issue> centres = issues.stream().filter(v::trainingSide)
+          .sorted(Comparator.comparingLong(Issue::start).thenComparing(Issue::id))
+          .filter(i -> i.counted(v)).toList();
       final Index index = new Index(history, tokens);
       final Space space = new Space(history, vectors);
       histories.add(new History(v, rows.size(), history.size()));
-      frozen.add(new Frozen(v, history, rows));
+      frozen.add(new Frozen(v, history, centres, rows));
       final List<Space.Found> found = space.search(rows, mostVectors);
       for (int k = 0; k < rows.size(); k++) {
         final Issue q = rows.get(k);
@@ -357,8 +372,12 @@ public final class Augmentation {
         embeddingQueries, List.copyOf(vectors.embedded.values()), clusterFits, clusterQueries);
   }
 
-  /** One variant's history and the rows that read it: its training side, then its scored rows. */
-  private record Frozen(Variant variant, List<Issue> history, List<Issue> rows) {}
+  /**
+   * One variant's history, the issues its cluster centres are fitted on, and the rows that read
+   * it: its training side that teaches, then its scored rows.
+   */
+  private record Frozen(Variant variant, List<Issue> history, List<Issue> centres,
+      List<Issue> rows) {}
 
   /**
    * Fits every history for every k, all fits on a pool of threads of their own, then assigns each
@@ -372,7 +391,7 @@ public final class Augmentation {
     final List<Callable<Clusterer.Fit>> jobs = new ArrayList<>();
     for (final Frozen f : frozen) {
       final List<Issue> kept =
-          f.history().stream().filter(h -> vectors.row(h.id()) >= 0).toList();
+          f.centres().stream().filter(h -> vectors.row(h.id()) >= 0).toList();
       final double[][] x = new double[kept.size()][];
       for (int j = 0; j < x.length; j++) {
         x[j] = vectors.vector(vectors.row(kept.get(j).id()));
@@ -399,8 +418,11 @@ public final class Augmentation {
           for (int g = 0; g < k; g++) {
             groups.add(new ArrayList<>());
           }
+          // a median reads the members that teach alone: no crossing label among them
           for (int j = 0; j < x.length; j++) {
-            groups.get(nearest[j]).add(kept.get(j));
+            if (f.variant().fitting(kept.get(j))) {
+              groups.get(nearest[j]).add(kept.get(j));
+            }
           }
         }
         fits.add(new ClusterFit(f.variant(), k, x.length, distinct, fit.fitted(),

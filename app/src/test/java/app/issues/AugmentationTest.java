@@ -825,4 +825,159 @@ class AugmentationTest {
     assertTrue(r.columns().get("f35").containsKey(Augmentation.jaccard(5, Variant.INNER)),
         "an issue of 0 business days is still a row with columns of its own");
   }
+  // ---------------------------------------------------------------- crossing issues
+
+  /** {@code i} at other verdicts, everything else kept. */
+  private static Augmentation.Issue at(final Augmentation.Issue i, final String outer,
+      final String inner) {
+    return new Augmentation.Issue(i.id(), i.project(), i.reporter(), i.start(), i.resolved(),
+        i.innerDays(), i.outerDays(), outer, inner, i.description());
+  }
+
+  /**
+   * The rows of {@link #random} with some training issues crossing a cut, as the revised design
+   * marks them: of the fitting issues every fourth crosses the outer cut (case 3) and every
+   * fourth after it the inner cut alone (case 2); of the validation issues every third crosses
+   * the outer cut (case 5).
+   */
+  private List<Augmentation.Issue> crossed() {
+    final List<Augmentation.Issue> out = new ArrayList<>();
+    for (final Augmentation.Issue i : issues) {
+      final int n = Integer.parseInt(i.id().substring(1));
+      if (i.id().startsWith("f") && n % 4 == 0) {
+        out.add(at(i, "CROSSING", "CROSSING"));
+      } else if (i.id().startsWith("f") && n % 4 == 1) {
+        out.add(at(i, "TRAIN", "CROSSING"));
+      } else if (i.id().startsWith("v") && n % 3 == 0) {
+        out.add(at(i, "CROSSING", "TEST"));
+      } else {
+        out.add(i);
+      }
+    }
+    return out;
+  }
+
+  @Test
+  @DisplayName("crossing issues: no neighbour, reporter issue or cluster member at a level is one "
+      + "that does not teach there; a crossing issue reads no column at a level that neither "
+      + "teaches nor scores it, and the inner validation keeps the ones crossing the outer cut")
+  void crossingIssuesTeachNothing() {
+    random(7);
+    randomVectors(3);
+    final List<Augmentation.Issue> rows = crossed();
+    final Map<String, Augmentation.Issue> byId = new HashMap<>();
+    rows.forEach(i -> byId.put(i.id(), i));
+    final Augmentation.Result r = run(rows);
+    int read = 0;
+    for (final Augmentation.Query q : r.queries()) {
+      for (final Augmentation.Neighbour n : q.nearest()) {
+        final Augmentation.Issue h = byId.get(n.id());
+        assertTrue(Verdict.teaches(q.variant(), h.outer(), h.inner()), q + " " + n);
+        read++;
+      }
+    }
+    for (final Augmentation.EmbeddingQuery q : r.embeddingQueries()) {
+      for (final Augmentation.Neighbour n : q.nearest()) {
+        final Augmentation.Issue h = byId.get(n.id());
+        assertTrue(Verdict.teaches(q.variant(), h.outer(), h.inner()), q + " " + n);
+        read++;
+      }
+    }
+    for (final Augmentation.ClusterFit f : r.clusterFits()) {
+      for (final String m : f.members().stream().flatMap(List::stream).toList()) {
+        final Augmentation.Issue h = byId.get(m);
+        assertTrue(Verdict.teaches(f.variant(), h.outer(), h.inner()), f.variant() + " " + m);
+        read++;
+      }
+    }
+    assertTrue(read > 1_000, "the histories were exercised: " + read);
+    for (final Augmentation.History h : r.histories()) {
+      assertEquals(rows.stream().filter(i -> Verdict.teaches(h.variant(), i.outer(), i.inner())
+          && i.innerDays() >= 1).count(), h.history(), h.toString());
+    }
+    for (final Augmentation.Issue i : rows) {
+      for (final Variant v : Variant.values()) {
+        final boolean reads = Verdict.teaches(v, i.outer(), i.inner())
+            || Verdict.scored(v, i.outer(), i.inner());
+        if (!reads) {
+          assertTrue(r.columns().get(i.id()).keySet().stream()
+              .noneMatch(c -> c.endsWith(v.suffix())), i + " " + v);
+        }
+      }
+    }
+    // case 5: scored in the inner level, so it has an inner neighbour search of its own
+    assertEquals("inner_validation", query(r, "v0", Variant.INNER).split());
+    assertTrue(r.queries().stream().noneMatch(q -> q.id().equals("f0")), "case 3 reads nothing");
+  }
+
+  @Test
+  @DisplayName("crossing issues: the cluster centres are fitted on the whole training side, "
+      + "crossing issues included, in the same order, so every fit and every row's nearest centre "
+      + "is that of the same issues unmarked; only the members a median reads change")
+  void crossingCentres() {
+    random(7);
+    randomVectors(3);
+    final Augmentation.Result plain = run(issues);
+    final Augmentation.Result marked = run(crossed());
+    assertEquals(plain.clusterFits().size(), marked.clusterFits().size());
+    boolean fewer = false;
+    for (int f = 0; f < plain.clusterFits().size(); f++) {
+      final Augmentation.ClusterFit a = plain.clusterFits().get(f);
+      final Augmentation.ClusterFit b = marked.clusterFits().get(f);
+      assertEquals(a.variant(), b.variant());
+      assertEquals(a.k(), b.k());
+      assertEquals(a.vectors(), b.vectors(), "the training side's vectors, crossing included");
+      assertEquals(a.distinct(), b.distinct());
+      assertEquals(a.fitted(), b.fitted());
+      assertEquals(Double.doubleToLongBits(a.distortion()),
+          Double.doubleToLongBits(b.distortion()), a.variant() + " " + a.k());
+      fewer |= b.members().stream().mapToInt(List::size).sum()
+          < a.members().stream().mapToInt(List::size).sum();
+    }
+    assertTrue(fewer, "the crossing issues left the members");
+    final Map<String, Augmentation.ClusterQuery> before = new HashMap<>();
+    plain.clusterQueries().forEach(q -> before.put(q.id() + q.variant() + q.k(), q));
+    int compared = 0;
+    for (final Augmentation.ClusterQuery q : marked.clusterQueries()) {
+      final Augmentation.ClusterQuery p = before.get(q.id() + q.variant() + q.k());
+      if (p != null && q.cluster() >= 0) {
+        assertEquals(p.cluster(), q.cluster(), q.toString());
+        assertEquals(Double.doubleToLongBits(p.distance()), Double.doubleToLongBits(q.distance()));
+        compared++;
+      }
+    }
+    assertTrue(compared > 100, "rows compared: " + compared);
+  }
+
+  @Test
+  @DisplayName("crossing issues: a crossing label moves no column of the level it crosses -- the "
+      + "outer cut's crossing issues none at all, the inner cut's alone no inner column")
+  void crossingLabelsMoveNothing() {
+    random(11);
+    randomVectors(5);
+    final List<Augmentation.Issue> rows = crossed();
+    final Map<String, Map<String, Double>> before = run(rows).columns();
+    final List<Augmentation.Issue> outer = rows.stream().map(i -> i.outer().equals("CROSSING")
+        ? new Augmentation.Issue(i.id(), i.project(), i.reporter(), i.start(),
+            i.resolved() + 5_000 * H, i.innerDays() + 5_000, i.outerDays() + 5_000, i.outer(),
+            i.inner(), i.description()) : i).toList();
+    assertEquals(before, run(outer).columns());
+    final List<Augmentation.Issue> inner = rows.stream().map(i -> i.outer().equals("TRAIN")
+        && i.inner().equals("CROSSING") ? new Augmentation.Issue(i.id(), i.project(),
+            i.reporter(), i.start(), i.resolved() + 5_000 * H, i.innerDays() + 5_000,
+            i.outerDays() + 5_000, i.outer(), i.inner(), i.description()) : i).toList();
+    final Map<String, Map<String, Double>> moved = run(inner).columns();
+    boolean outerMoved = false;
+    for (final String id : before.keySet()) {
+      for (final String column : Augmentation.columns()) {
+        if (column.endsWith(Variant.INNER.suffix())) {
+          assertEquals(before.get(id).get(column), moved.get(id).get(column), id + column);
+        } else {
+          outerMoved |= !java.util.Objects.equals(before.get(id).get(column),
+              moved.get(id).get(column));
+        }
+      }
+    }
+    assertTrue(outerMoved, "an issue crossing the inner cut alone teaches the outer level");
+  }
 }
