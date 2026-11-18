@@ -91,6 +91,8 @@ public final class IssuesSimilarityTask {
   private final Embedder embedder;
   private final int dimension;
   private final Clusterer clusterer;
+  /** The rule the run declares: whether its histories are point in time. */
+  private final SplitRule rule;
 
   /**
    * The split checked against the random rule ({@link ProjectSplit#differences}), the descriptions
@@ -107,12 +109,15 @@ public final class IssuesSimilarityTask {
     this(source, progress, embedder, clusterer, population, SplitRule.RANDOM);
   }
 
-  /** The same, the split checked against {@code rule}, the one the run declares. */
+  /**
+   * The same, the split checked against {@code rule}, the one the run declares, whose histories
+   * are point in time when the rule says so ({@link SplitRule#pointInTime}).
+   */
   public IssuesSimilarityTask(final StudySource source, final Progress progress,
       final Embedder embedder, final Clusterer clusterer, final Population population,
       final SplitRule rule) {
     this(source, progress, e -> rule.differences(e, population), embedder,
-        EmbeddingModel.DIMENSION, clusterer, population);
+        EmbeddingModel.DIMENSION, clusterer, population, rule);
   }
 
   /**
@@ -130,6 +135,15 @@ public final class IssuesSimilarityTask {
   IssuesSimilarityTask(final StudySource source, final Progress progress,
       final Function<List<RowCache.Entry>, List<String>> split, final Embedder embedder,
       final int dimension, final Clusterer clusterer, final Population population) {
+    this(source, progress, split, embedder, dimension, clusterer, population, SplitRule.RANDOM);
+  }
+
+  /** The same, the histories those of {@code rule}. */
+  IssuesSimilarityTask(final StudySource source, final Progress progress,
+      final Function<List<RowCache.Entry>, List<String>> split, final Embedder embedder,
+      final int dimension, final Clusterer clusterer, final Population population,
+      final SplitRule rule) {
+    this.rule = rule;
     this.source = source;
     this.progress = progress;
     this.split = split;
@@ -201,7 +215,8 @@ public final class IssuesSimilarityTask {
     progress.phase(3, 4, "Jaccard and embedding neighbours, K-means clusters and reporter medians "
         + "of %,d issues, %,d with a description", entries.size(), descriptions.size());
     final Augmentation.Result result =
-        Augmentation.run(issues(entries, descriptions, target), embedder, dimension, clusterer);
+        Augmentation.run(issues(entries, descriptions, target), embedder, dimension, clusterer,
+            histories());
 
     progress.phase(4, 4, "adding %d columns", Augmentation.columns().size()
         + BusinessDays.COLUMNS.size());
@@ -237,7 +252,9 @@ public final class IssuesSimilarityTask {
    * commit that counts, the matrix's start. Each description is the one {@link Initial#at}
    * recovers at that instant; every history and median reads the target the extraction wrote
    * ({@link FirstCommit#TARGET_COLUMN}), the training side's only and never the row's own, as
-   * {@link Augmentation} reads any target. The status is not read: no day boundary of the
+   * {@link Augmentation} reads any target; under the revised temporal design every history is a
+   * point-in-time history, and the outer test answers at the inner level too ({@link
+   * Augmentation.Histories#POINT_IN_TIME}). The status is not read: no day boundary of the
    * clicker and no active business days are written, the target's own boundary already in the
    * matrix. Refuses, before the corpus is read, a split that is not its rule's and a row without
    * its target of at least one business day or without the attributes of decision 16a; then an
@@ -294,7 +311,8 @@ public final class IssuesSimilarityTask {
     progress.phase(2, 3, "Jaccard and embedding neighbours, K-means clusters and reporter medians "
         + "of %,d issues, %,d with a description", entries.size(), descriptions.size());
     final Augmentation.Result result =
-        Augmentation.run(issues(entries, descriptions, target), embedder, dimension, clusterer);
+        Augmentation.run(issues(entries, descriptions, target), embedder, dimension, clusterer,
+            histories());
 
     progress.phase(3, 3, "adding %d columns", Augmentation.columns().size());
     final List<RowCache.Entry> out = new ArrayList<>(entries.size());
@@ -330,6 +348,15 @@ public final class IssuesSimilarityTask {
     return u != null && u.created() == e.unit().createdAt().toEpochMilli()
         && u.resolved() == e.unit().resolvedAt().toEpochMilli() && u.created() < start
         && start < u.resolved();
+  }
+
+  /**
+   * Which members every history admits: point in time under a rule that says so, the revised
+   * temporal design; the whole side under every other, the In Progress study's included.
+   */
+  Augmentation.Histories histories() {
+    return rule.pointInTime() ? Augmentation.Histories.POINT_IN_TIME
+        : Augmentation.Histories.WHOLE_SIDE;
   }
 
   /**

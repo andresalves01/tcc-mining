@@ -446,6 +446,75 @@ class FirstCommitStagesTest {
   }
 
   @Test
+  @DisplayName("revised similarity reads point-in-time histories: no neighbour resolved at a row's "
+      + "first commit or after it, and the outer test answers at the inner level; the temporal "
+      + "design of 02/11 reads the whole side and leaves the outer test without inner columns")
+  void revisedHistoriesArePointInTime() {
+    final ExtractionFixture fixture = new ExtractionFixture();
+    final IssuesInProgressExtractTask.Report r = extraction(fixture);
+    final List<RowCache.Entry> sides = TeamColumns.join(temporal(r.entries()), r.team());
+    final Map<String, RowCache.Entry> byId = new HashMap<>();
+    sides.forEach(e -> byId.put(e.unit().issueId(), e));
+    final Map<SplitRule, IssuesSimilarityTask.Report> runs = new EnumMap<>(SplitRule.class);
+    for (final SplitRule rule : List.of(SplitRule.TEMPORAL, SplitRule.REVISED)) {
+      final IssuesSimilarityTask.Report s = new IssuesSimilarityTask(fixture.source(),
+          SilentProgress.INSTANCE, StagesFixture.WORDS, new SmileKMeans(),
+          Population.FIRST_COMMIT, rule).run(sides);
+      assertEquals(List.of(), s.refused(), rule.toString());
+      runs.put(rule, s);
+    }
+    final IssuesSimilarityTask.Report revised = runs.get(SplitRule.REVISED);
+    int read = 0;
+    for (final Augmentation.Query q : revised.result().queries()) {
+      for (final Augmentation.Neighbour n : q.nearest()) {
+        assertTrue(byId.get(n.id()).unit().resolvedAt()
+            .isBefore(byId.get(q.id()).unit().startedAt()), q + " " + n);
+        read++;
+      }
+    }
+    for (final Augmentation.EmbeddingQuery q : revised.result().embeddingQueries()) {
+      for (final Augmentation.Neighbour n : q.nearest()) {
+        assertTrue(byId.get(n.id()).unit().resolvedAt()
+            .isBefore(byId.get(q.id()).unit().startedAt()), q + " " + n);
+        read++;
+      }
+    }
+    // the fixture's issues all overlap: none was resolved before another's first commit, so every
+    // revised history is empty and every similarity value missing, without error; the unit tests
+    // of the augmentation read non-empty point-in-time histories
+    assertTrue(sides.stream().noneMatch(h -> sides.stream().anyMatch(q -> h.unit().resolvedAt()
+        .isBefore(q.unit().startedAt()))), "the fixture's issues overlap");
+    assertEquals(0, read);
+    for (final RowCache.Entry e : revised.entries()) {
+      assertTrue(Augmentation.columns().stream()
+          .noneMatch(c -> e.row().values().containsKey(c)), e.unit().key());
+    }
+    assertTrue(runs.get(SplitRule.TEMPORAL).entries().stream().anyMatch(e -> Augmentation
+        .columns().stream().anyMatch(c -> e.row().values().containsKey(c))));
+    int later = 0;
+    for (final Augmentation.Query q : runs.get(SplitRule.TEMPORAL).result().queries()) {
+      for (final Augmentation.Neighbour n : q.nearest()) {
+        later += byId.get(n.id()).unit().resolvedAt()
+            .isBefore(byId.get(q.id()).unit().startedAt()) ? 0 : 1;
+      }
+    }
+    assertTrue(later > 0, "the whole side reads issues resolved after a row's first commit");
+    final long tests = sides.stream().filter(e -> "TEST".equals(e.outer(Population.FIRST_COMMIT)))
+        .count();
+    assertTrue(tests > 0);
+    assertEquals(tests, revised.result().queries().stream().filter(q -> q.variant()
+        == Augmentation.Variant.INNER && q.split().equals("outer_test")).count());
+    assertTrue(runs.get(SplitRule.TEMPORAL).result().queries().stream().noneMatch(q ->
+        q.variant() == Augmentation.Variant.INNER && q.split().equals("outer_test")));
+    for (final RowCache.Entry e : runs.get(SplitRule.TEMPORAL).entries()) {
+      if ("TEST".equals(e.outer(Population.FIRST_COMMIT))) {
+        assertTrue(e.row().values().keySet().stream()
+            .noneMatch(c -> c.endsWith(Augmentation.Variant.INNER.suffix())), e.unit().key());
+      }
+    }
+  }
+
+  @Test
   @DisplayName("the temporal team run uses its own collection and refuses a mixed collection "
       + "before reading the corpus")
   void temporalTeamRun() throws Exception {
