@@ -12,6 +12,7 @@ import app.issues.RowCache;
 import app.issues.TimeTravel;
 import app.issues.Universe;
 import app.issues.Universe.Population;
+import app.issues.Verdict;
 import app.issues.World;
 import app.study.Row;
 import app.issues.port.StudySource;
@@ -127,8 +128,8 @@ public final class IssuesInProgressExtractTask {
 
   /**
    * The columns of {@code units}, each read at its own start ({@link Universe.Unit#start}), the
-   * time-travel gate at that instant, and the cache's entries under {@code population}'s split.
-   * Phases {@code phase - 1} and {@code phase} of {@code phases}.
+   * time-travel gate at that instant, and the cache's entries under {@code population}'s split,
+   * at the verdicts of {@code split} ({@link ProjectSplit.Parts#outerVerdict}). Phases {@code phase - 1} and {@code phase} of {@code phases}.
    *
    * @param studied the issues whose executors' first touches the extractor learns
    * @param extra per issue id, further values written after the pause flag, in the order of
@@ -182,10 +183,10 @@ public final class IssuesInProgressExtractTask {
         }
       }
       team.put(u.id(), revised);
-      final Universe.Part outer = split.outer().get(u.id());
-      final Universe.Part inner = split.inner().get(u.id());
+      // the verdicts of the sides: the side's name, or CROSSING for an issue of a crossing set
       final Map<Population, String[]> parts = new EnumMap<>(Population.class);
-      parts.put(population, new String[] {outer.name(), inner == null ? "" : inner.name()});
+      parts.put(population, new String[] {split.outerVerdict(u.id()).name(),
+          Verdict.text(split.innerVerdict(u.id()))});
       final Row row = row(u.id(), values.get(u.id()));
       final Map<String, Double> withPause = new java.util.LinkedHashMap<>(row.values());
       withPause.put(PAUSED, values.get(u.id()).get(PAUSED));

@@ -123,4 +123,41 @@ class IssuesInProgressExtractTest {
     assertEquals(13.0, first.row().values().get("K14_project_issues_90d"),
         "the thirteen issues of p created before pa's start");
   }
+
+  @Test
+  @DisplayName("the cache's split columns hold the verdicts of the sides drawn: CROSSING for an "
+      + "issue of a crossing set, as the revised design marks it, every other its side's name")
+  void verdictsWritten() {
+    final StudySource source = new ExtractionFixture().source();
+    final Corpus corpus = source.load();
+    final app.issues.Universe universe = app.issues.Universe.of(corpus);
+    final List<app.issues.Universe.Unit> units = universe.population(Population.IN_PROGRESS);
+    final Map<String, String> projects = new HashMap<>();
+    units.forEach(u -> projects.put(u.id(), u.project()));
+    final ProjectSplit.Parts drawn = ProjectSplit.draw(projects);
+    final List<String> fitting = new java.util.TreeSet<>(drawn.inner().keySet()).stream()
+        .filter(id -> drawn.inner().get(id) == app.issues.Universe.Part.TRAIN).toList();
+    final String validation = new java.util.TreeSet<>(drawn.inner().keySet()).stream()
+        .filter(id -> drawn.inner().get(id) == app.issues.Universe.Part.TEST).findFirst()
+        .orElseThrow();
+    // case 3, case 2 and case 5
+    final ProjectSplit.Parts crossing = new ProjectSplit.Parts(drawn.outer(), drawn.inner(),
+        Set.of(fitting.get(0), validation), Set.of(fitting.get(0), fitting.get(1)));
+    final IssuesInProgressExtractTask.Report r = IssuesInProgressExtractTask.columns(source,
+        SilentProgress.INSTANCE, corpus, universe, units, new java.util.TreeSet<>(projects.keySet()),
+        IssuesInProgressExtractTask.IN_PROGRESS_STARTER, Population.IN_PROGRESS, crossing,
+        IssuesInProgressExtractTask.summary(units.size(), projects, crossing), Map.of(),
+        List.of(), 1, 1);
+    final Map<String, String> found = new java.util.TreeMap<>();
+    for (final RowCache.Entry e : r.entries()) {
+      final String id = e.unit().issueId();
+      assertEquals(crossing.outerVerdict(id).name(), e.outer(Population.IN_PROGRESS), id);
+      assertEquals(app.issues.Verdict.text(crossing.innerVerdict(id)),
+          e.inner(Population.IN_PROGRESS), id);
+      found.put(id, e.outer(Population.IN_PROGRESS) + "/" + e.inner(Population.IN_PROGRESS));
+    }
+    assertEquals("CROSSING/CROSSING", found.get(fitting.get(0)));
+    assertEquals("TRAIN/CROSSING", found.get(fitting.get(1)));
+    assertEquals("CROSSING/TEST", found.get(validation));
+  }
 }
