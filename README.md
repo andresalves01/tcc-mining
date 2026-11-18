@@ -362,7 +362,11 @@ than the run's. Under `SPLIT_RULE=temporal` or `revised`:
   comparisons. When a project of the inner validation has no inner fitting issue, every table but
   the prediction intervals is given again without that project's issues.
 - **Opening.** It is recorded as `issues-first-commit-test-temporal` (under `revised`,
-  `issues-first-commit-test-revised`), and it runs once, as the random one does.
+  `issues-first-commit-test-revised`), and it runs once, as the random one does. Under
+  `revised` it refuses, before it reads the parameters or any row, unless the newest extraction
+  run of `runs_revised` declares the crossing issues left out (`crossing_left_out`) and the
+  similarity run that wrote the matrix's columns, found through the retrospective run that wrote
+  the matrix, declares point-in-time histories.
 
 The forests are refitted with the tree count the parameters file gives, in a line whose four
 tab-separated fields are `forest`, `every_model`, `trees` and the count. A random-split file
