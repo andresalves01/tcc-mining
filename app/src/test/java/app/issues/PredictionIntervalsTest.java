@@ -339,4 +339,99 @@ class PredictionIntervalsTest {
             Double.POSITIVE_INFINITY, 2}));
     assertEquals(2.5, PredictionIntervals.median(new double[] {4, 1, 3, 2}));
   }
+
+  /**
+   * A report of the same-model scope with only what the intervals read: the issues' projects,
+   * their truth, every model's predictions, the band limits.
+   */
+  private static SimilarityScoring.Report report(final TailCut.Reading reading,
+      final double[] observed, final Map<String, double[]> predicted) {
+    final List<IssueUnit> units = new ArrayList<>();
+    final java.time.Instant t = java.time.Instant.parse("2016-03-01T10:00:00Z");
+    for (int i = 0; i < observed.length; i++) {
+      units.add(new IssueUnit("i" + i, "K-" + i, "p" + (i % 2), "r", "e", t,
+          t.plusSeconds(86_400), "Fixed", false, t));
+    }
+    final List<SimilarityScoring.Scored> models = new ArrayList<>();
+    predicted.forEach((name, p) -> models.add(new SimilarityScoring.Scored(name, "elastic-net",
+        p, null, null, List.of(), null, List.of(), null)));
+    return new SimilarityScoring.Report(SimilarityScoring.Scope.SAME_MODEL, reading, null,
+        new double[] {2, 5, 10}, 0, observed.length, 0, units, observed, models, List.of(),
+        Set.of(), 0, 0, List.of(), new boolean[observed.length], List.of(), List.of(), false,
+        Set.of(), 0, 0);
+  }
+
+  /** {@code observed} moved down by {@code residual} on the log1p scale. */
+  private static double[] below(final double[] observed, final double residual) {
+    return Arrays.stream(observed).map(o -> Math.expm1(Math.log1p(o) - residual)).toArray();
+  }
+
+  /** The joint of a calibration where "a" misses by 0.1 and "b" by 0.9, and a test of five. */
+  private static SimilarityScoring.SameModel joint(final boolean swapped) {
+    final double[] observed = new double[19];
+    for (int i = 0; i < observed.length; i++) {
+      observed[i] = 2 + i;
+    }
+    final Map<String, double[]> calibration = new LinkedHashMap<>();
+    calibration.put(SimilarityScoring.GLOBAL, below(observed, 0.5));
+    calibration.put("a", below(observed, swapped ? 0.9 : 0.1));
+    calibration.put("b", below(observed, swapped ? 0.1 : 0.9));
+    final double[] truth = {10, 11, 13, 20, 30};
+    final Map<String, double[]> test = new LinkedHashMap<>();
+    for (final String m : List.of(SimilarityScoring.GLOBAL, "a", "b")) {
+      test.put(m, new double[] {10, 10, 10, 10, 10});
+    }
+    final SimilarityScoring.Report all = report(TailCut.Reading.ALL, truth, test);
+    return new SimilarityScoring.SameModel(
+        report(TailCut.Reading.USUAL_FLOW, observed, calibration),
+        report(TailCut.Reading.USUAL_FLOW, Arrays.copyOf(truth, 4), Map.of(
+            SimilarityScoring.GLOBAL, new double[] {10, 10, 10, 10}, "a",
+            new double[] {10, 10, 10, 10}, "b", new double[] {10, 10, 10, 10})), all);
+  }
+
+  private static PredictionIntervals.Read read(final List<PredictionIntervals.Read> reads,
+      final TailCut.Reading reading, final String model, final double level) {
+    return reads.stream().filter(r -> r.reading() == reading && r.model().equals(model)
+        && r.level() == level).findFirst().orElseThrow();
+  }
+
+  @Test
+  @DisplayName("same model: each model's interval on the outer test takes the factor of its own "
+      + "residuals on the calibration, 0.1 for a and 0.9 for b, hand computed; swapping the "
+      + "calibration swaps the factors (the revised design's ticket 06)")
+  void sameModelFactorsAreTheModelsOwn() {
+    final PredictionIntervals.Joint j = PredictionIntervals.sameModel(joint(false),
+        PredictionIntervals.FLOOR, 1);
+    for (int l = 0; l < PredictionIntervals.LEVELS.size(); l++) {
+      assertEquals(0.1, j.calibrated().get("a").factors()[l], EXACT);
+      assertEquals(0.9, j.calibrated().get("b").factors()[l], EXACT);
+      assertEquals(19, j.calibrated().get("a").n());
+    }
+    // a prediction of 10 with the factor f: expm1(ln 11 +- f), well above the floor
+    final double widthA = Math.expm1(Math.log(11) + 0.1) - Math.expm1(Math.log(11) - 0.1);
+    final double widthB = Math.expm1(Math.log(11) + 0.9) - Math.expm1(Math.log(11) - 0.9);
+    for (final double level : PredictionIntervals.LEVELS) {
+      final PredictionIntervals.Read a = read(j.reads(), TailCut.Reading.ALL, "a", level);
+      final PredictionIntervals.Read b = read(j.reads(), TailCut.Reading.ALL, "b", level);
+      assertEquals(5, a.overall().n());
+      assertEquals(widthA, a.overall().medianWidth(), 1e-9);
+      assertEquals(widthB, b.overall().medianWidth(), 1e-9);
+      // ln(12/11) = 0.087 is inside 0.1; ln(14/11) = 0.24 and ln(21/11) = 0.65 inside 0.9 only
+      assertEquals(0.4, a.overall().coverage().value(), EXACT);
+      assertEquals(0.8, b.overall().coverage().value(), EXACT);
+      assertEquals(4, read(j.reads(), TailCut.Reading.USUAL_FLOW, "a", level).overall().n());
+    }
+    // the usual flow first, then every issue, as the outer test's intervals are read
+    assertEquals(TailCut.Reading.USUAL_FLOW, j.reads().getFirst().reading());
+    final PredictionIntervals.Joint swapped = PredictionIntervals.sameModel(joint(true),
+        PredictionIntervals.FLOOR, 1);
+    for (final double level : PredictionIntervals.LEVELS) {
+      assertEquals(widthB, read(swapped.reads(), TailCut.Reading.ALL, "a", level).overall()
+          .medianWidth(), 1e-9);
+      assertEquals(widthA, read(swapped.reads(), TailCut.Reading.ALL, "b", level).overall()
+          .medianWidth(), 1e-9);
+    }
+    assertTrue(PredictionIntervals.SAME_MODEL.contains("one fit"));
+    assertNotEquals(PredictionIntervals.OUTER, PredictionIntervals.SAME_MODEL);
+  }
 }

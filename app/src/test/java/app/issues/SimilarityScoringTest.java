@@ -1575,6 +1575,69 @@ class SimilarityScoringTest {
   }
 
   @Test
+  @DisplayName("same model, end to end: the factors widening the outer test predictions are "
+      + "those of the residuals of the very fit that made them, read off its calibration; those "
+      + "predictions are the inner model's, not the outer model's (the revised design's ticket "
+      + "06)")
+  void sameModelIntervalsEndToEnd() {
+    final List<RowCache.Entry> entries = withTail(corpus());
+    final SimilarityScoring.SameModel s = sameModel(entries, false);
+    final PredictionIntervals.Joint j =
+        PredictionIntervals.sameModel(s, PredictionIntervals.FLOOR, 1);
+    final SimilarityScoring.Readings outer = SimilarityScoring.readings(entries, choices(0.2),
+        forests(), 1.5, RESERVED, 1, 1, Population.IN_PROGRESS,
+        SimilarityScoring.Design.of(CLUSTER_16));
+    assertEquals(s.calibration().models().stream().map(SimilarityScoring.Scored::name).toList(),
+        List.copyOf(j.calibrated().keySet()));
+    for (final SimilarityScoring.Scored m : s.calibration().models()) {
+      // the factor by hand: the order statistic of this fit's own residuals on the calibration
+      final double[] residuals = new double[s.calibration().scoredRows()];
+      for (int i = 0; i < residuals.length; i++) {
+        residuals[i] = Math.abs(Math.log1p(s.calibration().observed()[i])
+            - Math.log1p(m.predicted()[i]));
+      }
+      java.util.Arrays.sort(residuals);
+      for (int l = 0; l < PredictionIntervals.LEVELS.size(); l++) {
+        final int k = (int) Math.ceil((residuals.length + 1)
+            * PredictionIntervals.LEVELS.get(l) - 1e-9);
+        final double factor = k > residuals.length ? Double.POSITIVE_INFINITY
+            : residuals[k - 1];
+        assertEquals(hex(factor), hex(j.calibrated().get(m.name()).factors()[l]), m.name());
+        // each outer test issue's interval is the fit's own prediction widened by that factor
+        final double level = PredictionIntervals.LEVELS.get(l);
+        final PredictionIntervals.Read read = j.reads().stream()
+            .filter(r -> r.reading() == TailCut.Reading.ALL && r.model().equals(m.name())
+                && r.level() == level).findFirst().orElseThrow();
+        final double[] test = model(s.allTest(), m.name()).predicted();
+        final double[] widths = new double[test.length];
+        int covered = 0;
+        for (int i = 0; i < test.length; i++) {
+          final double[] in = PredictionIntervals.interval(test[i], factor,
+              PredictionIntervals.FLOOR);
+          widths[i] = in[1] - in[0];
+          covered += PredictionIntervals.covers(test[i], factor, PredictionIntervals.FLOOR,
+              s.allTest().observed()[i]) ? 1 : 0;
+        }
+        java.util.Arrays.sort(widths);
+        final int mid = widths.length / 2;
+        final double median = widths.length % 2 == 1 || widths[mid - 1] == widths[mid]
+            ? widths[mid] : widths[mid - 1] + (widths[mid] - widths[mid - 1]) / 2;
+        assertEquals(hex(median), hex(read.overall().medianWidth()), m.name());
+        assertEquals((double) covered / test.length, read.overall().coverage().value(), 1e-12,
+            m.name());
+        assertEquals(s.allTest().scoredRows(), read.overall().n());
+      }
+    }
+    // the predictions widened are the inner model's: not the outer model's
+    for (final String m : ELASTIC_NET) {
+      assertFalse(java.util.Arrays.equals(model(outer.complementary(), m).predicted(),
+          model(s.allTest(), m).predicted()), m);
+    }
+    assertEquals(2 * s.calibration().models().size() * PredictionIntervals.LEVELS.size(),
+        j.reads().size());
+  }
+
+  @Test
   @DisplayName("same model: the outer test's usual flow is the outer test's, at the outer "
       + "training's fence, the same issues the test step reads; every outer test issue is read "
       + "in the other; the calibration keeps the inner fence")

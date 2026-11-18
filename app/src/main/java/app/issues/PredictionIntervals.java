@@ -44,6 +44,11 @@ import java.util.TreeSet;
  * <p><b>Outer test</b> ({@link #outer}, item 53 viii). The factors calibrated on the whole
  * usual-flow inner validation by the inner models are applied to the outer models' predictions,
  * an approximation ({@link #OUTER}).
+ *
+ * <p><b>Same model</b> ({@link #sameModel}, the revised design's ticket 06, a sensitivity after
+ * the outer test was opened). The inner models' own predictions of the outer test, from the fit
+ * whose residuals on the whole usual-flow inner validation gave the factors ({@link
+ * #SAME_MODEL}).
  */
 public final class PredictionIntervals {
 
@@ -91,6 +96,29 @@ public final class PredictionIntervals {
       + "models are refitted on the whole outer training side, so no held-out outer issue is left "
       + "to calibrate on; the outer coverage shows whether it holds; the bands of the observed "
       + "duration are those of the outer training rows fitted";
+
+  /**
+   * What the same-model intervals are, in words (the revised design's ticket 06, a sensitivity
+   * after the outer test was opened that chooses nothing).
+   */
+  public static final String SAME_MODEL = "the inner models' own intervals: each inner model, "
+      + "fitted on the inner fitting rows at the lambda as chosen, predicts the whole usual-flow "
+      + "inner validation and the outer test from one fit, and its intervals on the outer test "
+      + "take the factors of its own residuals on that validation, so the factors and the "
+      + "predictions they widen come from the same model; the inner validation is the latest "
+      + "stretch in time of the outer training; the inner models are fitted on older issues than "
+      + "the outer ones, so their error on the outer test is context, never a competitor of the "
+      + "outer models'; the bands of the observed duration are those of the inner fitting rows "
+      + "fitted";
+
+  /**
+   * The same-model intervals: per model, its factors, and the reads of the outer test.
+   *
+   * @param calibrated per model, the factors of its residuals on the usual-flow inner validation
+   * @param reads per reading (the usual flow, then every issue), model and level, the figures on
+   *     the outer test of the model's own predictions with its own factors
+   */
+  public record Joint(Map<String, Calibration> calibrated, List<Read> reads) {}
 
   /**
    * The calibration halves.
@@ -321,6 +349,20 @@ public final class PredictionIntervals {
     reads.addAll(read(TailCut.Reading.USUAL_FLOW, calibrated, usual, every(usual), threads));
     reads.addAll(read(TailCut.Reading.ALL, calibrated, all, every(all), threads));
     return List.copyOf(reads);
+  }
+
+  /**
+   * The same-model intervals ({@link #SAME_MODEL}): every model calibrated on {@code joint}'s
+   * calibration, both halves together as {@link #calibrated} does, and those factors applied to
+   * the same model's predictions of the outer test, on every issue of each of {@code joint}'s
+   * test readings. Taking the joint whole, never factors and predictions apart, the two cannot
+   * come from different fits.
+   */
+  public static Joint sameModel(final SimilarityScoring.SameModel joint, final double floor,
+      final int threads) {
+    final Map<String, Calibration> calibrated = calibrated(Sample.of(joint.calibration(), floor));
+    return new Joint(calibrated, outer(calibrated, Sample.of(joint.usualTest(), floor),
+        Sample.of(joint.allTest(), floor), threads));
   }
 
   /** Per model and level, the figures on the issues {@code rows} of {@code s}. */
