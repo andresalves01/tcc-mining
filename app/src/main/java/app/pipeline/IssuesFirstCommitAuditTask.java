@@ -115,11 +115,13 @@ public final class IssuesFirstCommitAuditTask {
   /**
    * @param overlap per side of this split's outer training, per side of the In Progress split,
    *     how many issues; the outer test is left out, its size is in {@code sizes}
+   * @param waitFenceK the k of the wait fence the cap was learned with, {@link
+   *     FirstCommit#NO_WAIT_CAP} for none
    */
   public record Report(int bots, CodeTotals code, List<Step> funnel, DuplicateTotals duplicates, Sizes sizes,
       FirstCommit.Threshold threshold, Training training, List<Sensitivity> sensitivity,
       Map<Side, Map<Side, Integer>> overlap, List<IssueRow> rows, SplitRule rule,
-      Temporal temporal) {}
+      Temporal temporal, double waitFenceK) {}
 
   /** How many projects have issues on each side. */
   public record Projects(int train, int test, int fit, int validation) {}
@@ -169,17 +171,26 @@ public final class IssuesFirstCommitAuditTask {
   private final StudySource source;
   private final Progress progress;
   private final SplitRule rule;
+  private final double waitK;
 
   /** The audit under the random rule. */
   public IssuesFirstCommitAuditTask(final StudySource source, final Progress progress) {
     this(source, progress, SplitRule.RANDOM);
   }
 
+  /** The audit under {@code rule}, with the official wait fence. */
   public IssuesFirstCommitAuditTask(final StudySource source, final Progress progress,
       final SplitRule rule) {
+    this(source, progress, rule, FirstCommit.DEFAULT_WAIT_K);
+  }
+
+  /** The audit under {@code rule}, the wait fence at Q3 + {@code waitK} IQR. */
+  public IssuesFirstCommitAuditTask(final StudySource source, final Progress progress,
+      final SplitRule rule, final double waitK) {
     this.source = source;
     this.progress = progress;
     this.rule = rule;
+    this.waitK = waitK;
   }
 
   /**
@@ -220,7 +231,7 @@ public final class IssuesFirstCommitAuditTask {
     final FirstCommit.Boundary boundary = b.boundary();
     final Map<Double, Drawn> drawn = new LinkedHashMap<>();
     for (final double limit : FirstCommit.SENSITIVITY) {
-      drawn.put(limit, draw(issues, limit, boundary, rule));
+      drawn.put(limit, draw(issues, limit, boundary, rule, waitK));
     }
     final Drawn main = drawn.get(FirstCommit.SHARE);
 
@@ -270,12 +281,13 @@ public final class IssuesFirstCommitAuditTask {
         FirstCommit.summary(d.training().values().stream().map(FirstCommit.Count::total)
             .toList()))));
     final Temporal temporal = rule.temporal()
-        ? temporal(b, main, draw(issues, FirstCommit.SHARE, boundary, SplitRule.RANDOM).threshold())
+        ? temporal(b, main,
+            draw(issues, FirstCommit.SHARE, boundary, SplitRule.RANDOM, waitK).threshold())
         : null;
     return new Report(bots.size(),
         new CodeTotals(tally.counted, tally.originals, tally.replaced), funnel,
         new DuplicateTotals(dupIssues, sameAuthorDate, sameTitleLines, belowTwo), main.sizes(),
-        main.threshold(), training(main.training()), sensitivity, overlap, rows, rule, temporal);
+        main.threshold(), training(main.training()), sensitivity, overlap, rows, rule, temporal, waitK);
   }
 
   /**
@@ -463,6 +475,12 @@ public final class IssuesFirstCommitAuditTask {
    */
   static Drawn draw(final Map<String, FirstCommit.Issue> issues, final double limit,
       final FirstCommit.Boundary boundary, final SplitRule rule) {
+    return draw(issues, limit, boundary, rule, FirstCommit.DEFAULT_WAIT_K);
+  }
+
+  /** As {@link #draw(Map, double, FirstCommit.Boundary, SplitRule)}, the fence at {@code waitK}. */
+  static Drawn draw(final Map<String, FirstCommit.Issue> issues, final double limit,
+      final FirstCommit.Boundary boundary, final SplitRule rule, final double waitK) {
     final Map<String, FirstCommit.Verdict> verdicts = new LinkedHashMap<>();
     final Map<String, String> projects = new HashMap<>();
     final List<SplitRule.Candidate> candidates = new ArrayList<>();
@@ -482,7 +500,7 @@ public final class IssuesFirstCommitAuditTask {
         gaps.addAll(FirstCommit.gaps(issues.get(id), verdicts.get(id)));
       }
     });
-    final FirstCommit.Threshold threshold = FirstCommit.threshold(gaps).requirePositive();
+    final FirstCommit.Threshold threshold = FirstCommit.threshold(gaps, waitK).requirePositive();
     final Map<String, FirstCommit.Count> training = new TreeMap<>();
     parts.outer().forEach((id, part) -> {
       if (part == Part.TRAIN) {

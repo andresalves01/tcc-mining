@@ -96,6 +96,47 @@ class FirstCommitSelectionTest {
     return matrix;
   }
 
+  /** A store whose extraction run recorded the wait fence {@code k}. */
+  private static ResultStore extractedWith(final double k, final List<Map<String, Object>> runs) {
+    return new ResultStore() {
+      @Override
+      public String record(final Map<String, Object> run, final List<Map<String, Object>> rows) {
+        runs.add(run);
+        return "run";
+      }
+
+      @Override
+      public double waitFenceK() {
+        return k;
+      }
+    };
+  }
+
+  @Test
+  @DisplayName("a matrix extracted with WAIT_FENCE_K=3 is stated with k = 3 by the selection and "
+      + "the inner report, not as the official 1.5")
+  void statesTheMatrixsWaitFence() throws Exception {
+    final Path matrix = sealedMatrix();
+    final Path parameters = dir.resolve("elastic-net-k3.tsv");
+    final Map<String, String> settings = new HashMap<>();
+    settings.put("MATRIX", matrix.toString());
+    settings.put("ELASTIC_NET_PARAMETERS", parameters.toString());
+    final List<Map<String, Object>> runs = new ArrayList<>();
+    final ResultStore store = extractedWith(3.0, runs);
+    new IssuesSimilarityElasticNetCommand(settings::get).run(context(own(), store));
+    assertEquals(FirstCommit.rule(3.0), runs.get(0).get("target"));
+    assertTrue(FirstCommit.rule(3.0).contains("Q3 + 3 IQR"));
+
+    final Path reports = dir.resolve("inner-k3");
+    settings.put("REPORT_DIR", reports.toString());
+    new IssuesSimilarityInnerReportCommand(settings::get).run(context(own(), store));
+    final List<String> report =
+        Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.REPORT));
+    assertTrue(report.stream().anyMatch(l -> l.startsWith("- target: " + FirstCommit.rule(3.0))),
+        report.toString());
+    assertTrue(report.stream().noneMatch(l -> l.contains(FirstCommit.RULE)), report.toString());
+  }
+
   @Test
   @DisplayName("the selection and the inner report run on the first-commit split, sets and "
       + "target, never parsing the outer test past its split field, recording only in the "

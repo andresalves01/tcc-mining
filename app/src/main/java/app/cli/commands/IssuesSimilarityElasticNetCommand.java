@@ -153,6 +153,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     final boolean firstCommit = study == Population.FIRST_COMMIT;
     // before any row is read, choose the run store of the declared design
     final ResultStore store = IssuesInProgressExtractCommand.runStore(context, study, rule);
+    final double waitK = IssuesInProgressExtractCommand.matrixWaitFenceK(store, study);
 
     final String matrixSha;
     final List<RowCache.Entry> entries;
@@ -205,7 +206,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
           + e.getMessage()));
     }
 
-    System.out.printf("  target: %s; %s%n", BusinessDays.target(training),
+    System.out.printf("  target: %s; %s%n", BusinessDays.target(training, waitK),
         BusinessDays.HOLIDAYS);
     System.out.printf("  population: %s%n", BusinessDays.populationRule(training));
     System.out.printf("  %s: %s%n", ElasticNetSelection.RETROSPECTIVE,
@@ -319,7 +320,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
       run.put(SplitRule.DESIGN_FIELD, rule.setting());
     }
     run.putAll(statements(study));
-    run.put("target", BusinessDays.target(training));
+    run.put("target", BusinessDays.target(training, waitK));
     run.put("population", BusinessDays.populationRule(training));
     if (firstCommit) {
       run.put("study", study.name());

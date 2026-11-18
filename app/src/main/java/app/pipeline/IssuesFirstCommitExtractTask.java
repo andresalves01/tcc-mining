@@ -71,10 +71,12 @@ public final class IssuesFirstCommitExtractTask {
    * @param threshold the cap learned on the inner fitting
    * @param training the target of the outer training
    * @param temporal what the temporal rule adds; null under the random rule
+   * @param waitFenceK the k of the wait fence the cap was learned with, {@link
+   *     FirstCommit#NO_WAIT_CAP} for none
    */
   public record Report(IssuesInProgressExtractTask.Report extraction, int base,
       List<IssuesFirstCommitAuditTask.Step> funnel, FirstCommit.Threshold threshold,
-      FirstCommit.Summary training, Temporal temporal) {}
+      FirstCommit.Summary training, Temporal temporal, double waitFenceK) {}
 
   /**
    * What the temporal rule adds to the extraction, as the audit counts it; nothing here reads a
@@ -93,6 +95,7 @@ public final class IssuesFirstCommitExtractTask {
   private final StudySource source;
   private final Progress progress;
   private final SplitRule rule;
+  private final double waitK;
 
   /** The extraction under the random rule. */
   public IssuesFirstCommitExtractTask(final StudySource source, final Progress progress) {
@@ -102,18 +105,25 @@ public final class IssuesFirstCommitExtractTask {
   /** The extraction whose sides, cap and target are drawn by {@code rule}, as the audit's. */
   public IssuesFirstCommitExtractTask(final StudySource source, final Progress progress,
       final SplitRule rule) {
+    this(source, progress, rule, FirstCommit.DEFAULT_WAIT_K);
+  }
+
+  /** As above, the wait fence at Q3 + {@code waitK} IQR ({@link FirstCommit#NO_WAIT_CAP}: none). */
+  public IssuesFirstCommitExtractTask(final StudySource source, final Progress progress,
+      final SplitRule rule, final double waitK) {
     this.source = source;
     this.progress = progress;
     this.rule = rule;
+    this.waitK = waitK;
   }
 
   public Report run() {
     final IssuesFirstCommitAuditTask.Base b =
-        new IssuesFirstCommitAuditTask(source, progress).base(PHASES);
+        new IssuesFirstCommitAuditTask(source, progress, rule, waitK).base(PHASES);
 
     progress.phase(4, PHASES, "selection, split and cap");
     final IssuesFirstCommitAuditTask.Drawn drawn =
-        IssuesFirstCommitAuditTask.draw(b.issues(), FirstCommit.SHARE, b.boundary(), rule);
+        IssuesFirstCommitAuditTask.draw(b.issues(), FirstCommit.SHARE, b.boundary(), rule, waitK);
     final int cap = drawn.threshold().cap();
     final List<Universe.Unit> units = new ArrayList<>(drawn.parts().outer().size());
     final Map<String, String> projects = new HashMap<>(drawn.parts().outer().size() * 2);
@@ -171,7 +181,7 @@ public final class IssuesFirstCommitExtractTask {
     return new Report(withoutPause(extraction), b.units().size(),
         IssuesFirstCommitAuditTask.funnel(b.units().size(), drawn.verdicts()), drawn.threshold(),
         FirstCommit.summary(training),
-        rule.temporal() ? temporal(b.issues(), drawn, projects) : null);
+        rule.temporal() ? temporal(b.issues(), drawn, projects) : null, waitK);
   }
 
   /** The cuts, the issues crossing them and the new projects of a temporal draw. */

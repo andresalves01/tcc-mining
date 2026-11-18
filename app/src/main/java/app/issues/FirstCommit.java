@@ -48,12 +48,88 @@ public final class FirstCommit {
       + "code on at least two dates, no commit linked to another issue, and a target of at least "
       + "one business day; the split is drawn over them alone";
 
+  /**
+   * The k of the wait fence, Q3 + k IQR, of the official run. Not to be confused with the usual
+   * flow's k of the tail cut ({@code TailCut.USUAL_FLOW_K}), a fence over the duration.
+   */
+  public static final double DEFAULT_WAIT_K = 1.5;
+
+  /** The k that cuts no wait: an infinite fence, so the cap is the largest wait. */
+  public static final double NO_WAIT_CAP = Double.POSITIVE_INFINITY;
+
   /** The rules in words, for the audit. */
-  public static final String RULE = "first commit to first resolution; marks are the commits "
-      + "and the human patches after the first commit; business days between marks capped at "
-      + "the largest gap not above Q3 + 1.5 IQR of the inner fitting's gaps, never below the "
-      + "dates with explicit human activity; after the last mark only dates with human comments, "
-      + "attachments or reviews; status not read";
+  public static final String RULE = rule(DEFAULT_WAIT_K);
+
+  /** The run setting naming the wait fence's k: empty is {@link #DEFAULT_WAIT_K}, {@code none}. */
+  public static final String WAIT_FENCE_SETTING = "WAIT_FENCE_K";
+
+  /** How a run record and the stage output write an infinite fence: no cap on the waits. */
+  public static final String NONE = "none";
+
+  /** The fence in words for a k: {@code Q3 + 1.5 IQR}, or that no wait is capped. */
+  public static String fenceText(final double k) {
+    return k == NO_WAIT_CAP ? "no cap on the waits" : "Q3 + " + number(k) + " IQR";
+  }
+
+  /** The fence in Portuguese, as the reports write it: {@code Q3 + 1,5 IQR}, or {@code sem teto}. */
+  public static String fenceTextPt(final double k) {
+    return k == NO_WAIT_CAP ? "sem teto" : "Q3 + " + numberPt(k) + " IQR";
+  }
+
+  /** A k in Portuguese: a whole number without decimals, otherwise with a comma. */
+  public static String numberPt(final double k) {
+    return number(k).replace('.', ',');
+  }
+
+  private static String number(final double k) {
+    return k == Math.rint(k) ? Long.toString((long) k) : Double.toString(k);
+  }
+
+  /** The rules in words, for the audit, with the wait fence at {@code k}. */
+  public static String rule(final double k) {
+    final String fence = k == NO_WAIT_CAP ? "no cap on the waits: every wait counted, never "
+        + "below" : "capped at the largest gap not above " + fenceText(k)
+        + " of the inner fitting's gaps, never below";
+    return "first commit to first resolution; marks are the commits "
+        + "and the human patches after the first commit; business days between marks "
+        + fence + " the "
+        + "dates with explicit human activity; after the last mark only dates with human comments, "
+        + "attachments or reviews; status not read";
+  }
+
+  /**
+   * The k a run setting names: empty is {@link #DEFAULT_WAIT_K}, {@code none} is {@link
+   * #NO_WAIT_CAP}; zero, a negative number, NaN, infinity or text is refused.
+   */
+  public static double waitFenceK(final String setting) {
+    if (setting == null || setting.isBlank()) {
+      return DEFAULT_WAIT_K;
+    }
+    final String s = setting.strip();
+    if (NONE.equals(s)) {
+      return NO_WAIT_CAP;
+    }
+    final double k;
+    try {
+      k = Double.parseDouble(s);
+    } catch (final NumberFormatException e) {
+      throw refusedFence(setting);
+    }
+    if (!(k > 0) || Double.isInfinite(k)) {
+      throw refusedFence(setting);
+    }
+    return k;
+  }
+
+  private static IllegalArgumentException refusedFence(final String setting) {
+    return new IllegalArgumentException(WAIT_FENCE_SETTING + " must be a positive number or '"
+        + NONE + "', got '" + setting + "'");
+  }
+
+  /** A k as the run record and the audit write it: {@code none} or the number. */
+  public static String waitFenceLabel(final double k) {
+    return k == NO_WAIT_CAP ? NONE : Double.toString(k);
+  }
 
   /** The matrix column of the target in business days, written by the extraction. */
   public static final String TARGET_COLUMN = "FC_target_days";
@@ -313,18 +389,29 @@ public final class FirstCommit {
     return v;
   }
 
+  /** What a mark is: a commit that counts, or a human patch after the first commit. */
+  public enum Kind { COMMIT, PATCH }
+
+  /** One mark: its instant and what it is. */
+  public record Mark(long at, Kind kind) {}
+
   /** The commits and the patches after the first commit and before the resolution, in order. */
   public static List<Long> marks(final Issue issue, final Verdict v) {
+    return typedMarks(issue, v).stream().map(Mark::at).toList();
+  }
+
+  private static List<Mark> typedMarks(final Issue issue, final Verdict v) {
     requireCounted(v);
     final long start = v.kept().getFirst().at();
-    final List<Long> out = new ArrayList<>();
-    v.kept().forEach(c -> out.add(c.at()));
+    final List<Mark> out = new ArrayList<>();
+    v.kept().forEach(c -> out.add(new Mark(c.at(), Kind.COMMIT)));
     for (final long p : issue.patches()) {
       if (p > start && p < issue.resolved()) {
-        out.add(p);
+        out.add(new Mark(p, Kind.PATCH));
       }
     }
-    out.sort(Long::compare);
+    // stable: at one instant the commit stays before the patch
+    out.sort(java.util.Comparator.comparingLong(Mark::at));
     return out;
   }
 
@@ -338,9 +425,53 @@ public final class FirstCommit {
     return out;
   }
 
+  /**
+   * One wait between two consecutive marks, as the target counts it.
+   *
+   * @param businessDays its business days, uncapped
+   * @param active of them, the dates with explicit human activity or a mark: the floor of the cap
+   * @param counted the business days the target counts: the cap, never below {@code active}
+   * @param cut the business days the cap took out
+   */
+  public record Wait(long from, long to, int businessDays, int active, int counted, int cut) {}
+
+  /**
+   * How one issue's target is made: its marks, each wait with what the cap cut, the dates of the
+   * tail, and the business days of the calendar over the same span.
+   *
+   * @param count the target and its parts
+   * @param marks the commits and patches, in order
+   * @param kinds what each mark is, in the same order as {@code marks}
+   * @param waits the waits between consecutive marks
+   * @param tail the dates with human activity after the last mark, in order
+   * @param calendar the business days from the first commit's date, excluded, to the resolution's
+   */
+  public record Explanation(Count count, List<Long> marks, List<Kind> kinds, List<Wait> waits,
+      List<LocalDate> tail, int calendar) {
+
+    /** The business days the target counts. */
+    public int total() {
+      return count.total();
+    }
+  }
+
   /** The issue's target with the waits capped at {@code cap} business days. */
   public static Count count(final Issue issue, final Verdict v, final int cap) {
-    final List<Long> m = marks(issue, v);
+    return explain(issue, v, cap).count();
+  }
+
+  /** The date of an instant at the day boundary {@code hour}. */
+  public static LocalDate dateOf(final long at, final int hour) {
+    return date(at, hour);
+  }
+
+  /**
+   * The issue's target with the waits capped at {@code cap} business days, and how it is made;
+   * {@link #count} is its {@code count()}.
+   */
+  public static Explanation explain(final Issue issue, final Verdict v, final int cap) {
+    final List<Mark> typed = typedMarks(issue, v);
+    final List<Long> m = typed.stream().map(Mark::at).toList();
     final int hour = v.hour();
     final long start = m.getFirst();
     final long end = issue.resolved();
@@ -357,6 +488,7 @@ public final class FirstCommit {
     explicit.retainAll(whole);
     int implementation = 0;
     int capped = 0;
+    final List<Wait> waits = new ArrayList<>(m.size());
     for (int i = 1; i < m.size(); i++) {
       final Set<LocalDate> wait = between(m.get(i - 1), m.get(i), hour);
       final Set<LocalDate> worked = new HashSet<>(wait);
@@ -364,6 +496,8 @@ public final class FirstCommit {
       final int counted = Math.max(Math.min(wait.size(), cap), worked.size());
       implementation += counted;
       capped += wait.size() - counted;
+      waits.add(new Wait(m.get(i - 1), m.get(i), wait.size(), worked.size(), counted,
+          wait.size() - counted));
     }
     final Set<LocalDate> tail = between(m.getLast(), end, hour);
     tail.retainAll(active);
@@ -372,7 +506,10 @@ public final class FirstCommit {
       throw new IllegalStateException("a date counted twice: " + issue.key());
     }
     final int patches = m.size() - v.kept().size();
-    return new Count(total, implementation, tail.size(), capped, m.size(), patches);
+    return new Explanation(
+        new Count(total, implementation, tail.size(), capped, m.size(), patches), m,
+        typed.stream().map(Mark::kind).toList(), List.copyOf(waits),
+        tail.stream().sorted().toList(), whole.size());
   }
 
   // ------------------------------------------------------------------ cap and summaries
@@ -395,13 +532,26 @@ public final class FirstCommit {
 
   /** The cap learned on {@code gaps}: the largest one not above Q3 + 1.5 IQR. */
   public static Threshold threshold(final List<Integer> gaps) {
+    return threshold(gaps, DEFAULT_WAIT_K);
+  }
+
+  /**
+   * The cap learned on {@code gaps}: the largest one not above Q3 + {@code k} IQR; with {@link
+   * #NO_WAIT_CAP} the fence is infinite and the cap is the largest gap. A k that is not positive
+   * is refused.
+   */
+  public static Threshold threshold(final List<Integer> gaps, final double k) {
+    if (!(k > 0)) {
+      throw new IllegalArgumentException("the wait fence's k must be positive, got " + k);
+    }
     if (gaps.isEmpty()) {
       throw new IllegalArgumentException("no gap between marks to learn a cap from");
     }
     final double[] sorted = gaps.stream().mapToDouble(Integer::doubleValue).sorted().toArray();
     final double q1 = TailCut.quantile(sorted, .25);
     final double q3 = TailCut.quantile(sorted, .75);
-    final double fence = q3 + 1.5 * (q3 - q1);
+    // an explicit infinity: with an IQR of zero, 0 * Infinity would be NaN
+    final double fence = k == NO_WAIT_CAP ? NO_WAIT_CAP : q3 + k * (q3 - q1);
     final int cap = gaps.stream().filter(g -> g <= fence).mapToInt(Integer::intValue).max()
         .orElseThrow();
     return new Threshold(q1, TailCut.quantile(sorted, .5), q3, fence, cap, gaps.size());

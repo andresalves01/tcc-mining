@@ -281,7 +281,7 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     final Map<String, Integer> changed = firstCommit ? Map.of() : changedByActiveTime(r);
     if (firstCommit) {
       System.out.printf("%n  TARGET READ BY EVERY HISTORY: %s, the extraction's (%s)%n",
-          FirstCommit.TARGET_COLUMN, FirstCommit.RULE);
+          FirstCommit.TARGET_COLUMN, FirstCommit.rule(store.waitFenceK()));
     } else {
       System.out.printf("%n  DAY BOUNDARIES: %s; %s%n", BusinessDays.TARGET,
           BusinessDays.HOLIDAYS);
@@ -373,7 +373,7 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     }
     if (firstCommit) {
       run.put("study_population", population.name());
-      run.put("target", FirstCommit.RULE);
+      run.put("target", FirstCommit.rule(store.waitFenceK()));
       run.put("target_column", FirstCommit.TARGET_COLUMN);
       run.put("population", FirstCommit.POPULATION);
       run.put("description_at", "the first commit that counts");

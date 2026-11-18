@@ -58,7 +58,29 @@ public enum Command {
       that cross the cuts, the random rule's cap, and the censoring at the
       end of the data (dates and counts only). Writes audit.md and
       per-issue.tsv to AUDIT_DIR; writes nothing to any database and records
-      no run."""),
+      no run. WAIT_FENCE_K (empty is 1.5, none is no cap) sets the k of the
+      wait fence, Q3 + k IQR, the cap on the waits is learned with; the
+      audit then names it in audit.md, and the sensitivity to the share
+      limit and the random rule's cap use the same k."""),
+
+  ISSUES_FIRST_COMMIT_SUPPORTING_NUMBERS("issues-first-commit-supporting-numbers",
+      new app.cli.commands.IssuesFirstCommitSupportingNumbersCommand(), """
+      Issue duration from the first commit: the numbers that support the
+      text, read only, over the audit's base (issues resolved as Fixed at
+      their first resolution with a commit that counts). Counts, each over
+      its own denominator and apart from the funnel: the issues created at
+      the instant of their first commit or after it; the issues whose first
+      commit is before their first In Progress, among those that had one
+      (the creation is never used as the start); and the issues with a
+      single commit, before the duplicates are removed. Then three worked
+      examples explained from the outer training alone, never the test: the
+      largest gap between the calendar's business days and the study's, the
+      most business days the cap cut, and the most days of tail, ties by id,
+      the next distinct issue when one repeats, with the marks, each wait
+      and its cut, and the tail's dates. SPLIT_RULE and WAIT_FENCE_K are
+      read as the audit reads them. Writes filter-counts.md,
+      worked-example.md and worked-example.tsv to SUPPORTING_DIR; writes
+      nothing to any database and records no run."""),
 
   CHECK("check", new CheckCommand(), """
       Report what the source corpus holds before a stage spends an hour on it:

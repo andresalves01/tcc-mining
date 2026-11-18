@@ -9,6 +9,7 @@ import app.cli.CommandFailedException;
 import app.cli.Context;
 import app.issues.Corpus;
 import app.issues.DurationEvidence;
+import app.issues.FirstCommit;
 import app.issues.FirstCommitFacts;
 import app.issues.RowCache;
 import app.issues.World;
@@ -173,6 +174,51 @@ class IssuesFirstCommitAuditCommandTest {
     final String md = Files.readString(out.resolve("audit.md"));
     assertFalse(md.contains("Censura"), md);
     assertFalse(md.contains("Corte externo"), md);
+  }
+
+  @Test
+  @DisplayName("the default wait fence leaves audit.md as it was: no line about the k")
+  void defaultFenceLeavesTheSummaryAsItWas() throws Exception {
+    final Path out = dir.resolve("default-fence");
+    new IssuesFirstCommitAuditCommand(Map.of("AUDIT_DIR", out.toString())::get)
+        .run(context(source(1)));
+    final String md = Files.readString(out.resolve("audit.md"));
+    assertTrue(md.contains("Cerca (Q3 + 1,5 IQR)"), md);
+    assertFalse(md.contains("Cerca das esperas"), md);
+    assertTrue(md.contains("Regra: " + FirstCommit.RULE + "."), md);
+  }
+
+  @Test
+  @DisplayName("WAIT_FENCE_K=3 and none are named in the header, the table and the rule, and an "
+      + "infinite fence is written as a word")
+  void waitFenceIsRecorded() throws Exception {
+    final Path three = dir.resolve("k3");
+    new IssuesFirstCommitAuditCommand(Map.of("AUDIT_DIR", three.toString(),
+        "WAIT_FENCE_K", "3")::get).run(context(source(1)));
+    final String md3 = Files.readString(three.resolve("audit.md"));
+    assertTrue(md3.contains("Cerca das esperas: Q3 + 3 IQR (sensibilidade; a oficial é 1,5)"), md3);
+    assertTrue(md3.contains("Cerca (Q3 + 3 IQR)"), md3);
+    assertTrue(md3.contains("Regra: " + FirstCommit.rule(3.0) + "."), md3);
+
+    final Path none = dir.resolve("none");
+    new IssuesFirstCommitAuditCommand(Map.of("AUDIT_DIR", none.toString(),
+        "WAIT_FENCE_K", "none", "SPLIT_RULE", "temporal")::get).run(context(source(1)));
+    final String mdNone = Files.readString(none.resolve("audit.md"));
+    assertTrue(mdNone.contains("Cerca das esperas: sem teto (sensibilidade; a oficial é 1,5)"),
+        mdNone);
+    assertTrue(mdNone.contains("Regra: " + FirstCommit.rule(FirstCommit.NO_WAIT_CAP) + "."),
+        mdNone);
+    assertFalse(mdNone.contains("Infinity") || mdNone.contains("NaN"), mdNone);
+  }
+
+  @Test
+  @DisplayName("refuses a WAIT_FENCE_K that is zero, negative, NaN or not a number, before reading")
+  void invalidWaitFence() {
+    for (final String bad : List.of("0", "-1", "NaN", "abc")) {
+      assertThrows(CommandFailedException.class, () -> new IssuesFirstCommitAuditCommand(
+          Map.of("AUDIT_DIR", dir.resolve("bad").toString(), "WAIT_FENCE_K", bad)::get)
+          .run(context(null)), bad);
+    }
   }
 
   @Test

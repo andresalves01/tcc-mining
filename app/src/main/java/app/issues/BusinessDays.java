@@ -285,8 +285,16 @@ public final class BusinessDays {
   }
 
   public static String target(final List<RowCache.Entry> entries) {
+    return target(entries, FirstCommit.DEFAULT_WAIT_K);
+  }
+
+  /**
+   * The target in words; for the first-commit study's rows, with the wait fence at {@code
+   * waitK}, the k the matrix was extracted with.
+   */
+  public static String target(final List<RowCache.Entry> entries, final double waitK) {
     if (firstCommit(entries)) {
-      return FirstCommit.RULE;
+      return FirstCommit.rule(waitK);
     }
     return AdjustedDuration.marked(entries) ? AdjustedDuration.RULE : TARGET;
   }

@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import app.issues.FirstCommit;
 import app.issues.ProjectSplit;
 import app.issues.RowCache;
 import app.issues.SplitRule;
@@ -121,6 +122,30 @@ class IssuesFirstCommitExtractTaskTest {
     assertEquals(fc.threshold(), random.threshold());
     assertNull(fc.temporal());
     assertNull(random.temporal());
+  }
+
+  @Test
+  @DisplayName("the wait fence's k reaches the extraction: the report carries it, FC_target_days "
+      + "is counted at the audit's cap for that k, and the default is 1.5")
+  void waitFence() {
+    assertEquals(FirstCommit.DEFAULT_WAIT_K, fc.waitFenceK());
+    final IssuesFirstCommitExtractTask.Report none = new IssuesFirstCommitExtractTask(
+        fixture.source(), SilentProgress.INSTANCE, SplitRule.RANDOM, FirstCommit.NO_WAIT_CAP).run();
+    final IssuesFirstCommitAuditTask.Report a = new IssuesFirstCommitAuditTask(fixture.source(),
+        SilentProgress.INSTANCE, SplitRule.RANDOM, FirstCommit.NO_WAIT_CAP).run();
+    assertEquals(FirstCommit.NO_WAIT_CAP, none.waitFenceK());
+    assertEquals(Double.POSITIVE_INFINITY, none.threshold().fence());
+    assertEquals(a.threshold(), none.threshold());
+    assertEquals(a.training().target(), none.training());
+    final Map<String, RowCache.Entry> byId = none.extraction().entries().stream()
+        .collect(Collectors.toMap(e -> e.unit().issueId(), e -> e));
+    for (final IssueRow row : a.rows()) {
+      if (row.side() != null) {
+        final var v = byId.get(row.id()).row().values();
+        assertEquals((double) row.count().total(), v.get(IssuesFirstCommitExtractTask.TARGET));
+        assertEquals(0.0, v.get(IssuesFirstCommitExtractTask.CAPPED), "no wait is cut");
+      }
+    }
   }
 
   /** Each entry's id, outer side and inner side, in order. */

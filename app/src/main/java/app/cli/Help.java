@@ -103,6 +103,16 @@ public final class Help {
                                                 -inner-report read it
           AUDIT_DIR         (unset)             issues-first-commit-audit: where audit.md and
                                                 per-issue.tsv go
+          SUPPORTING_DIR    (unset)             issues-first-commit-supporting-numbers: where
+                                                filter-counts.md, worked-example.md and
+                                                worked-example.tsv go
+          WAIT_FENCE_K      1.5                 the k of the first-commit target's wait fence,
+                                                Q3 + k IQR (empty is 1.5, none is no cap; zero,
+                                                negative, NaN, infinity or text is refused):
+                                                read by issues-first-commit-audit, the first-commit
+                                                issues-in-progress-extract and
+                                                issues-first-commit-supporting-numbers; the
+                                                In Progress study never reads it
           SPLIT_RULE        random              random | temporal | revised: the rule the
                                                 first-commit audit and extraction draw, and the
                                                 similarity, retrospective, selection and test
