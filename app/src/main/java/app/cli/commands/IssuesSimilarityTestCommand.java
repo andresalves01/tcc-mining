@@ -56,8 +56,10 @@ import java.util.function.Function;
  * on the outer training rows at or below the fence of the k the parameters file records, both
  * fences taken on the outer training set, never on the outer test. Every table is printed and
  * recorded twice, each document with its {@code reading}: on the outer test issues at or below
- * the usual flow's fence, the main reading, and on every one, the complementary reading. The
- * predictions file holds every scored issue; the diagnostics are the main reading's.
+ * the usual flow's fence, and on every one. The usual flow is the main reading and every issue
+ * the complementary one, but under the revised temporal design, where every issue is the main
+ * reading and is printed and recorded first ({@link TailCut.Reading#main}). The predictions file
+ * holds every scored issue; the diagnostics are the usual flow's, the fit being the same in both.
  *
  * <p><b>Relevance</b> ({@link SimilarityScoring#relevance}). Per Elastic Net model, each
  * standardised column's coefficient in the refit on the outer training set, with its 95%
@@ -576,9 +578,16 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         + "outer test%n", r.fitRows(), r.fences().uncutFitRows(), TailCut.label(cut.k()),
         r.fences().fence(), r.scoredRows());
     System.out.printf("  tail cut: %s; %s%n", TailCut.RULE, TailCut.QUANTILES);
-    System.out.printf(PredictedBands.READINGS_LINE, TailCut.Reading.USUAL_FLOW.description(),
-        main.scoredRows(), main.fences().usualFence(),
-        TailCut.Reading.ALL.description(), r.scoredRows());
+    if (TailCut.Reading.main(rule) == TailCut.Reading.ALL) {
+      // the revised design: all issues, its main reading, first; the usual flow with its fence
+      System.out.printf(PredictedBands.readingsLine(rule), TailCut.Reading.ALL.description(rule),
+          r.scoredRows(), TailCut.Reading.USUAL_FLOW.description(rule), main.scoredRows(),
+          main.fences().usualFence());
+    } else {
+      System.out.printf(PredictedBands.readingsLine(rule),
+          TailCut.Reading.USUAL_FLOW.description(rule), main.scoredRows(),
+          main.fences().usualFence(), TailCut.Reading.ALL.description(rule), r.scoredRows());
+    }
     System.out.printf("  final lambda = chosen lambda x %,d / %,d, alpha as chosen; no "
         + "recalibration%n", r.fitRows(), r.innerFitRows());
     System.out.printf("  random forests (robustness check): %d trees, depth %d, seed %d, the chosen "
@@ -604,12 +613,13 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         PredictionIntervals.FACTOR, PredictionIntervals.OUTER);
 
     final List<Map<String, Object>> rows = new ArrayList<>();
-    final List<SimilarityScoring.Report> scored = new ArrayList<>(List.of(main, r));
+    // the main reading under the rule first, then the other; the same again without new projects
+    final List<SimilarityScoring.Report> scored = new ArrayList<>(readings.ordered(rule));
     if (withoutNew != null) {
-      scored.addAll(List.of(withoutNew.main(), withoutNew.complementary()));
+      scored.addAll(withoutNew.ordered(rule));
     }
     for (final SimilarityScoring.Report reading : scored) {
-      System.out.printf("%n  READING: %s%n", readingDescription(reading));
+      System.out.printf("%n  READING: %s%n", readingDescription(reading, rule));
       final List<Map<String, Object>> of = new ArrayList<>();
       print(reading, of, choices, sidePhrase(), firstCommitStudy());
       printIntervals((reading.withoutNewProjects() ? intervalsWithoutNew : intervals).stream()
@@ -620,7 +630,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     }
     printRelevance(relevance, rows);
     final UncertaintyTables.Tables uncertainty = UncertaintyTables.of(readings,
-        population.entries(), calibrated, Parallel.threads(Parallel.BOOTSTRAP_THREADS));
+        population.entries(), calibrated, Parallel.threads(Parallel.BOOTSTRAP_THREADS), rule);
     rows.addAll(uncertainty.documents());
     uncertainty.markdown().forEach(line -> System.out.println("  " + line));
 
@@ -681,7 +691,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       run.put("analogy_estimate", analogy == null
           ? "absent: not a model of this step under the " + rule.setting() + " split"
           : analogyRecord(analogy, r, main));
-      run.put("new_projects", newProjects(r, main, withoutNew));
+      run.put("new_projects", newProjects(r, main, withoutNew, rule));
     }
     run.put("target", BusinessDays.target(entries, waitK));
     run.put("population", BusinessDays.populationRule(entries));
@@ -708,7 +718,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     }
     run.put("estimation_uncertainty_rule", EstimationUncertainty.RULE);
     run.put("estimation_uncertainty_intervals", EstimationUncertainty.INTERVAL_RULE);
-    run.put("prediction_percentiles", EstimationUncertainty.PERCENTILE_RULE);
+    run.put("prediction_percentiles", EstimationUncertainty.percentileRule(rule));
     run.put("spsp_context", UncertaintyTables.context());
     run.put("relevance", RELEVANCE_RULE);
     run.put("forest_grid", IssuesSimilarityElasticNetCommand.forestGrid(chosen.trees()));
@@ -865,9 +875,10 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
         + (reading.withoutNewProjects() ? "_without_new_projects" : "");
   }
 
-  /** A reading in words, as printed. */
-  private static String readingDescription(final SimilarityScoring.Report reading) {
-    return reading.reading().description() + (reading.withoutNewProjects()
+  /** A reading in words, with its role under {@code rule}, as printed. */
+  private static String readingDescription(final SimilarityScoring.Report reading,
+      final SplitRule rule) {
+    return reading.reading().description(rule) + (reading.withoutNewProjects()
         ? String.format(", without the %,d issues of the %d new projects %s",
             reading.newProjectRows(), reading.newProjects().size(), reading.newProjects())
         : "");
@@ -891,9 +902,13 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     return out;
   }
 
-  /** The new projects as the run record states them. */
+  /**
+   * The new projects as the run record states them, the readings without them named with the
+   * main reading under {@code rule} first.
+   */
   private static Map<String, Object> newProjects(final SimilarityScoring.Report all,
-      final SimilarityScoring.Report usual, final SimilarityScoring.Readings withoutNew) {
+      final SimilarityScoring.Report usual, final SimilarityScoring.Readings withoutNew,
+      final SplitRule rule) {
     final Map<String, Object> out = new LinkedHashMap<>();
     out.put("rule", NEW_PROJECTS);
     out.put("projects", List.copyOf(all.newProjects()));
@@ -901,7 +916,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     out.put("usual_flow_issues", usual.newProjectRows());
     out.put("readings_without_them", withoutNew == null
         ? "none apart: with no new project each reading without them is the reading itself"
-        : List.of(readingName(withoutNew.main()), readingName(withoutNew.complementary())));
+        : withoutNew.ordered(rule).stream().map(IssuesSimilarityTestCommand::readingName)
+            .toList());
     return out;
   }
 

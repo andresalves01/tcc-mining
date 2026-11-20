@@ -99,9 +99,9 @@ split and the temporal design opened on 02/11/2026 it reads that side at any dat
 temporal design it is a **point-in-time history**.
 
 **Point-in-time history**:
-For one issue, the training-side issues whose first resolution comes strictly before that
-issue's first commit, the issue itself never among them: only labels already known when its
-work began. It may be empty, and its summary is then missing. In the revised design of the
+For one issue, the training-side issues that teach at its level, the crossing issues never among
+them, whose first resolution comes strictly before that issue's first commit, the issue itself
+never among them either: only labels already known when its work began. It may be empty, and its summary is then missing. In the revised design of the
 first-commit temporal split every history is one: the reporter median, the similarity medians and the analogy estimate. The
 embedding clusters are drawn from the training side's descriptions and do not read labels.
 Only the median of the members is point-in-time.
@@ -213,10 +213,15 @@ _Avoid_: baseline
 ### Evaluation
 
 **Usual-flow reading**:
-The evaluation on the validation issues of the usual flow; the main reading.
+The evaluation on the validation issues of the usual flow. It is the main reading in the In
+Progress study and in the first-commit study's designs before the review (the random split and
+the temporal design opened on 02/11/2026); in the revised temporal design it is the complementary
+one. The choices are scored on it in every design.
 
 **Complementary reading**:
-The same evaluation on every validation issue, the tail included.
+The same evaluation on every validation issue, the tail included. It is the complementary reading
+in the In Progress study and in the first-commit designs before the review; in the revised
+temporal design it is the main reading, the full population.
 
 **Paired comparison**:
 The difference between two models on the same issues, with a 95% interval from resampling whole

@@ -37,7 +37,8 @@ import java.util.TreeSet;
  *
  * <p><b>Calibration</b> ({@link #inner}). On the usual-flow inner validation issues, split in two
  * halves by whole projects ({@link #halves}): half A calibrates, half B checks the coverage, on
- * the usual flow (the main reading) and on every validation issue of B (the complementary one).
+ * the usual flow and on every validation issue of B, whichever is the main reading ({@link
+ * TailCut.Reading#main}).
  * The factors for every later use are then recomputed on A and B together. A project with no
  * usual-flow validation issue is B's.
  *
@@ -302,8 +303,8 @@ public final class PredictionIntervals {
 
   /**
    * The inner calibration: the halves of {@code usual}'s issues, every model calibrated on half
-   * A, its check on half B of {@code usual} (the main reading) and of {@code all} (the
-   * complementary one), and every model calibrated again on all of {@code usual}.
+   * A, its check on half B of {@code usual} and of {@code all} (either can be the main reading,
+   * {@link TailCut.Reading#main}), and every model calibrated again on all of {@code usual}.
    *
    * @param usual the usual-flow inner validation issues, the calibration issues
    * @param all every inner validation issue, the same models

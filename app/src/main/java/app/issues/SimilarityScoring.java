@@ -352,8 +352,22 @@ public final class SimilarityScoring {
   /** The fourteen models, the forests at {@link Forest#TREES}: every file of the random split. */
   private static final Design FOURTEEN = Design.of(null);
 
-  /** Both readings of one fit: the usual flow, the main one, and every scored issue. */
-  public record Readings(Report main, Report complementary) {}
+  /**
+   * Both readings of one fit.
+   *
+   * @param main the usual flow, the main reading in every design but the revised temporal one
+   *     ({@link TailCut.Reading#main}); the selection scores every choice on it in all of them
+   * @param complementary every scored issue, all issues; the main reading of the revised
+   *     temporal design
+   */
+  public record Readings(Report main, Report complementary) {
+
+    /** Both reports, the main reading under {@code rule} first ({@link TailCut.Reading#main}). */
+    public List<Report> ordered(final SplitRule rule) {
+      return TailCut.Reading.main(rule) == TailCut.Reading.ALL ? List.of(complementary, main)
+          : List.of(main, complementary);
+    }
+  }
 
   /**
    * @param reading which scored issues it reads; every figure below is of those
