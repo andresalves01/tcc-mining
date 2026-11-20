@@ -137,13 +137,19 @@ public final class IssuesFirstCommitAuditTask {
    *     with issues on the outer test and none on the outer training side, crossing issues
    *     included; null otherwise
    * @param newInnerProjects the projects with issues on the inner validation alone, and how many
+   *     there; under a rule that leaves crossing issues out, those with no inner fitting issue
+   *     that teaches, as the scoring reads them
+   * @param newInnerProjectsTrainingSide under a rule that leaves crossing issues out, the projects
+   *     with issues on the inner validation and none on the inner fitting side, crossing issues
+   *     included; null otherwise
    * @param crossing the outer training issues whose first resolution comes after the outer cut
    * @param innerCrossing the inner fitting issues whose first resolution comes after the inner cut
    * @param random the cap the random rule learns on the same issues, for comparison
    */
   public record Temporal(TemporalSplit.Cuts cuts, Projects projects, FirstCommit.Summary fit,
       FirstCommit.Summary validation, Map<String, Integer> newProjects,
-      Map<String, Integer> newProjectsTrainingSide, Map<String, Integer> newInnerProjects, int crossing, int innerCrossing,
+      Map<String, Integer> newProjectsTrainingSide, Map<String, Integer> newInnerProjects,
+      Map<String, Integer> newInnerProjectsTrainingSide, int crossing, int innerCrossing,
       FirstCommit.Threshold random, Censoring censoring) {}
 
   /**
@@ -631,10 +637,17 @@ public final class IssuesFirstCommitAuditTask {
     final boolean revised = main.rule().crossingOut();
     final Map<String, Part> taught = new HashMap<>(main.parts().outer());
     taught.keySet().removeAll(main.parts().outerCrossing());
+    final Map<String, Integer> byFittingSide = newProjects(projects, main.parts().inner());
+    // the inner fitting issues that teach: those crossing the inner cut left out, the inner
+    // validation kept whole
+    final Map<String, Part> innerTaught = new HashMap<>(main.parts().inner());
+    innerTaught.keySet().removeAll(main.parts().innerCrossing());
     return new Temporal(cuts, counts, summaryOrNull(targets.get(Side.FIT)),
         summaryOrNull(targets.get(Side.VALIDATION)),
         revised ? newProjects(projects, taught) : byTrainingSide,
-        revised ? byTrainingSide : null, newProjects(projects, main.parts().inner()),
+        revised ? byTrainingSide : null,
+        revised ? newProjects(projects, innerTaught) : byFittingSide,
+        revised ? byFittingSide : null,
         crossing.outer(), crossing.inner(), random,
         censoring(b.corpus(), b.universe(), b.bots(), cuts.outer(), test));
   }

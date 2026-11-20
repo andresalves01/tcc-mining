@@ -256,8 +256,16 @@ public final class IssuesFirstCommitAuditCommand implements CommandRunner {
       md.add("- Projetos novos (sem issue no lado de treino, issues que cruzam o corte "
           + "incluídas): " + newProjects(t.newProjectsTrainingSide()));
     }
-    md.add("- Projetos com issues na validação interna e nenhuma no ajuste interno: "
-        + newProjects(t.newInnerProjects()));
+    if (t.newInnerProjectsTrainingSide() == null) {
+      md.add("- Projetos com issues na validação interna e nenhuma no ajuste interno: "
+          + newProjects(t.newInnerProjects()));
+    } else {
+      md.add("- Projetos com issues na validação interna e nenhuma issue que ensine no ajuste "
+          + "interno (como a pontuação os lê): " + newProjects(t.newInnerProjects()));
+      md.add("- Projetos com issues na validação interna e nenhuma no lado de ajuste interno, "
+          + "issues que cruzam o corte interno incluídas: "
+          + newProjects(t.newInnerProjectsTrainingSide()));
+    }
     md.add("- Issues de treino que cruzam o corte externo (primeiro commit até o corte, primeira "
         + "resolução depois dele): " + n(t.crossing()) + " de " + n(r.sizes().train()) + ".");
     md.add("- Issues do ajuste interno que cruzam o corte interno: " + n(t.innerCrossing())
