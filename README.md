@@ -154,10 +154,10 @@ It needs `AUDIT_DIR`, where it writes `audit.md` and `per-issue.tsv`, and writes
 MongoDB. Give it `APP_OPTS=-Xmx6g`.
 
 `WAIT_FENCE_K` sets the k of the cap's fence, Q3 + k IQR of the inner fitting's waits. Empty is 1.5,
-the official value; a positive number is that k; `none` is no cap, an infinite fence. Zero, a
-negative number, NaN, infinity or text is refused before anything is read. It is a sensitivity of
-the first-commit study only (the In Progress study never reads it): with any value but 1.5 the
-`audit.md` names the k in its header, its table and its rule.
+the official value; a positive number is that k; `none` is no cap at all, an infinite fence, so no
+wait is cut, however long. Zero, a negative number, NaN, infinity or text is refused before anything
+is read. It is a sensitivity of the first-commit study only (the In Progress study never reads it):
+with any value but 1.5 the `audit.md` names the k in its header, its table and its rule.
 
 ### 4b. Issue duration from the first commit: supporting numbers
 
@@ -166,8 +166,11 @@ first-commit study. It reads the audit's base, with `SPLIT_RULE` and `WAIT_FENCE
 reads them, and writes to `SUPPORTING_DIR`: `filter-counts.md` (how many issues with a commit that
 counts were created after their first commit, at its very instant, had it before their first In
 Progress, or have a single commit), `worked-example.md` and `worked-example.tsv` (three issues of
-the outer training, chosen by fixed criteria, with their marks, waits and tail). The outer test is
-never explained. It needs `SUPPORTING_DIR` and writes nothing to MongoDB. Give it `APP_OPTS=-Xmx6g`.
+the outer training, chosen by fixed criteria, with their marks, waits and tail: the largest gap
+between the calendar's business days and the study's, the most business days the cap cut, and the
+most business days after the last mark that did not count). Under `SPLIT_RULE=revised` they are
+chosen only among the outer training issues that teach, those crossing the outer cut left out. The
+outer test is never explained. It needs `SUPPORTING_DIR` and writes nothing to MongoDB. Give it `APP_OPTS=-Xmx6g`.
 
 ### 5. Issue duration from the first commit: extraction
 

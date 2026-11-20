@@ -323,9 +323,10 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
     if (waitK != FirstCommit.DEFAULT_WAIT_K) {
       System.out.printf("    wait fence: %s%n", FirstCommit.fenceText(waitK));
     }
-    System.out.printf(EN, "    Q1 %.2f  median %.2f  Q3 %.2f  fence %s  cap %d business days"
+    System.out.printf(EN, "    Q1 %.2f  median %.2f  Q3 %.2f  fence %s  cap %s"
         + "  (%,d waits)%n", t.q1(), t.median(), t.q3(),
-        Double.isInfinite(t.fence()) ? FirstCommit.NONE : String.format(EN, "%.2f", t.fence()), t.cap(),
+        Double.isInfinite(t.fence()) ? FirstCommit.NONE : String.format(EN, "%.2f", t.fence()),
+        t.uncapped() ? FirstCommit.NONE + ", no wait cut" : t.cap() + " business days",
         t.gaps());
     final FirstCommit.Summary a = fc.training();
     System.out.printf("%n  TARGET ON THE OUTER TRAINING, BUSINESS DAYS (the outer test's is not "
@@ -377,7 +378,7 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
     cap.put("median", t.median());
     cap.put("q3", t.q3());
     cap.put("fence", Double.isInfinite(t.fence()) ? FirstCommit.NONE : (Object) t.fence());
-    cap.put("cap", t.cap());
+    cap.put("cap", t.uncapped() ? FirstCommit.NONE : (Object) t.cap());
     cap.put("waits", t.gaps());
     run.put("wait_cap", cap);
     if (tc == null) {

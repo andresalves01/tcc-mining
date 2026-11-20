@@ -100,25 +100,51 @@ class SupportingNumbersTest {
   /** An entry whose target has {@code calendar - total} days of gap, and the given parts. */
   private static Entry entry(final String id, final int calendar, final int total,
       final int capped, final int tail) {
+    return entry(id, calendar, total, capped, tail, tail);
+  }
+
+  /**
+   * As above, with {@code tailBusinessDays} business days after the last mark, of which {@code
+   * tail} counted.
+   */
+  private static Entry entry(final String id, final int calendar, final int total,
+      final int capped, final int tail, final int tailBusinessDays) {
     final FirstCommit.Count count = new FirstCommit.Count(total, total - tail, tail, capped, 3, 0);
     return new Entry(id, "P-" + id, new FirstCommit.Explanation(count, List.of(),
-        List.of(), List.of(), Collections.nCopies(tail, LocalDate.of(2024, 1, 1)), calendar));
+        List.of(), List.of(), Collections.nCopies(tail, LocalDate.of(2024, 1, 1)),
+        tailBusinessDays, calendar));
   }
 
   @Test
-  @DisplayName("picks the largest calendar-minus-study gap, the largest capped and the largest "
-      + "tail in days, one issue for each")
+  @DisplayName("picks the largest calendar-minus-study gap, the largest capped and the most "
+      + "business days after the last mark that did not count, one issue for each")
   void picksByThreeCriteria() {
     final List<Entry> entries = List.of(
         entry("1", 100, 20, 5, 1), // gap 80
         entry("2", 60, 40, 30, 2), // gap 20, the most capped
-        entry("3", 30, 25, 0, 9)); // gap 5, the longest tail
+        entry("3", 30, 25, 0, 1, 6), // gap 5, five days of tail that did not count
+        entry("4", 30, 25, 0, 9)); // gap 5, the most tail days counted, all of them
     final List<Pick> picks = SupportingNumbers.choose(entries);
     assertEquals(List.of("1", "2", "3"), picks.stream().map(p -> p.entry().id()).toList());
-    assertEquals(List.of("calendar_minus_study", "capped", "tail"),
+    assertEquals(List.of("calendar_minus_study", "capped", "tail_not_counted"),
         picks.stream().map(Pick::criterion).toList());
-    assertEquals(List.of(80L, 30L, 9L), picks.stream().map(Pick::value).toList());
+    assertEquals(List.of(80L, 30L, 5L), picks.stream().map(Pick::value).toList());
     assertTrue(picks.stream().allMatch(p -> p.note().isEmpty()));
+  }
+
+  @Test
+  @DisplayName("the tail criterion is the tail that did not count, not the tail that counted: an "
+      + "issue with many tail days counted loses to one whose tail weighed more")
+  void tailThatWeighed() {
+    final List<Entry> entries = List.of(
+        entry("1", 100, 20, 50, 1), // the gap and the capped go here
+        entry("2", 90, 40, 40, 1), // next by both
+        entry("3", 40, 30, 0, 20, 20), // twenty tail days, every one counted
+        entry("4", 40, 30, 0, 1, 12)); // eleven tail days that did not count
+    final Pick tail = SupportingNumbers.choose(entries).get(2);
+    assertEquals(SupportingNumbers.TAIL, tail.criterion());
+    assertEquals("4", tail.entry().id());
+    assertEquals(11L, tail.value());
   }
 
   @Test

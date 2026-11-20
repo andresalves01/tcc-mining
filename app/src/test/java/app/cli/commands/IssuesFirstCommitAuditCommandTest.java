@@ -163,6 +163,24 @@ class IssuesFirstCommitAuditCommandTest {
     assertTrue(md.contains("divisão aleatória"), "the random rule's cap beside it: " + md);
     final List<String> lines = Files.readAllLines(out.resolve("per-issue.tsv"));
     assertEquals(1 + 7, lines.size(), "the header and the training side, never the test side");
+    assertTrue(md.contains("- Projetos com issues na validação interna e nenhuma no ajuste "
+        + "interno: "), "the temporal line as it was: " + md);
+  }
+
+  @Test
+  @DisplayName("under SPLIT_RULE=revised the inner level's new projects come by both readings, "
+      + "each labelled, as the outer level's")
+  void revisedInnerNewProjectsLabelled() throws Exception {
+    final Path out = dir.resolve("revised");
+    new IssuesFirstCommitAuditCommand(Map.of("AUDIT_DIR", out.toString(),
+        "SPLIT_RULE", "revised")::get).run(context(source(1)));
+    final String md = Files.readString(out.resolve("audit.md"));
+    assertTrue(md.contains("- Projetos com issues na validação interna e nenhuma issue que ensine "
+        + "no ajuste interno (como a pontuação os lê): "), md);
+    assertTrue(md.contains("- Projetos com issues na validação interna e nenhuma no lado de "
+        + "ajuste interno, issues que cruzam o corte interno incluídas: "), md);
+    assertFalse(md.contains("- Projetos com issues na validação interna e nenhuma no ajuste "
+        + "interno: "), "no line without its reading: " + md);
   }
 
   @Test
@@ -209,6 +227,8 @@ class IssuesFirstCommitAuditCommandTest {
     assertTrue(mdNone.contains("Regra: " + FirstCommit.rule(FirstCommit.NO_WAIT_CAP) + "."),
         mdNone);
     assertFalse(mdNone.contains("Infinity") || mdNone.contains("NaN"), mdNone);
+    assertTrue(mdNone.contains("| sem cerca | nenhum |"), "no cap, not a number of days: " + mdNone);
+    assertFalse(mdNone.contains("2.147.483.647"), mdNone);
   }
 
   @Test

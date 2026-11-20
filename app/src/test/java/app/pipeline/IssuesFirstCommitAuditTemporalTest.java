@@ -258,4 +258,21 @@ class IssuesFirstCommitAuditTemporalTest {
     assertEquals(Map.of("c", 1, "n", 2), r.newProjects(), "no issue that teaches");
     assertEquals(Map.of("n", 2), r.newProjectsTrainingSide(), "no issue on the training side");
   }
+
+  @Test
+  @DisplayName("the revised audit gives the inner level's new projects by both readings too, each "
+      + "labelled: by the inner fitting issues that teach, as the scoring reads them, and by the "
+      + "whole inner fitting side; the temporal one by the inner fitting alone")
+  void revisedNewInnerProjectsBothReadings() {
+    // project c: one inner fitting issue, crossing both cuts, and one inner validation issue
+    eligible(11, "c", 3, 3, monday(9));
+    eligible(12, "c", 6, 3, null);
+    final Temporal t = run(SplitRule.TEMPORAL).temporal();
+    assertNull(t.newInnerProjectsTrainingSide());
+    assertEquals(Map.of(), t.newInnerProjects(), "c has an issue on the inner fitting");
+    final Temporal r = run(SplitRule.REVISED).temporal();
+    assertEquals(Map.of("c", 1), r.newInnerProjects(), "no inner fitting issue that teaches");
+    assertEquals(Map.of(), r.newInnerProjectsTrainingSide(),
+        "c has an issue on the inner fitting side, crossing the inner cut");
+  }
 }

@@ -174,28 +174,37 @@ public class IssuesFirstCommitSupportingNumbersTaskTest {
   }
 
   @Test
-  @DisplayName("under the revised rule the examples are chosen among the outer training by "
-      + "verdict, its crossing issue included, at the cap the draw learns without the wait of "
-      + "the issue crossing the inner cut")
-  void revisedReadsTheOuterTrainingByVerdict() {
+  @DisplayName("under the revised rule the examples are chosen among the outer training issues "
+      + "that teach, the one crossing the outer cut left out though it tops the gap, at the cap "
+      + "the draw learns without the wait of the issue crossing the inner cut; the temporal rule "
+      + "keeps every outer training issue")
+  void revisedReadsTheOuterTrainingThatTeaches() {
     // waits of 1, 1, 2, 2 and 3 days on the inner fitting, issues 1 to 5; issue 5, at the inner
-    // cut, crosses it, and issue 7, at the outer cut, crosses that one
+    // cut, crosses it, and issue 7, at the outer cut, crosses that one, with the longest wait of
+    // the outer training
     final int[] waits = {1, 1, 2, 2, 3};
     final java.util.function.IntUnaryOperator second =
-        n -> 1 + (n <= 5 ? waits[n - 1] : n == 10 ? 16 : 1);
+        n -> 1 + (n <= 5 ? waits[n - 1] : n == 10 || n == 7 ? 16 : 1);
     final IssuesFirstCommitSupportingNumbersTask.Report revised =
         new IssuesFirstCommitSupportingNumbersTask(source(second, true), SilentProgress.INSTANCE,
             SplitRule.REVISED, 1.5).run();
     final IssuesFirstCommitSupportingNumbersTask.Report temporal =
         new IssuesFirstCommitSupportingNumbersTask(source(second, true), SilentProgress.INSTANCE,
             SplitRule.TEMPORAL, 1.5).run();
-    assertEquals(7, revised.training(), "the outer training keeps its crossing issue 7");
+    assertEquals(6, revised.training(), "the outer training issues that teach, issue 7 out");
+    assertEquals(1, revised.crossing(), "issue 7 crosses the outer cut");
+    assertEquals(7, temporal.training(), "every outer training issue, issue 7 included");
+    assertEquals(0, temporal.crossing());
+    assertTrue(temporal.examples().stream().anyMatch(e -> e.pick().entry().id().equals(id(7))),
+        "the temporal rule would show issue 7");
+    assertTrue(revised.examples().stream().noneMatch(e -> e.pick().entry().id().equals(id(7))),
+        "issue 7 teaches nothing under the revised rule");
     assertEquals(4, revised.threshold().gaps(), "issue 5's wait crosses the inner cut");
     assertEquals(5, temporal.threshold().gaps());
     assertTrue(revised.threshold().cap() < temporal.threshold().cap(),
         revised.threshold() + " against " + temporal.threshold());
     for (final IssuesFirstCommitSupportingNumbersTask.Example e : revised.examples()) {
-      assertTrue(Integer.parseInt(e.pick().entry().id(), 16) <= 7, "on the outer training");
+      assertTrue(Integer.parseInt(e.pick().entry().id(), 16) <= 6, "teaches on the outer level");
       assertEquals(FirstCommit.count(e.issue(), e.verdict(), revised.threshold().cap()),
           e.pick().entry().explanation().count(), "explained at the revised cap");
     }

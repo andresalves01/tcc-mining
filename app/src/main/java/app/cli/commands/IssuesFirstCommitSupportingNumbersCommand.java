@@ -133,16 +133,29 @@ public final class IssuesFirstCommitSupportingNumbersCommand implements CommandR
     final List<String> md = new ArrayList<>();
     md.add("# Estudo do primeiro commit: exemplo trabalhado");
     md.add("");
-    md.add("Só leitura: nada foi gravado em banco. As issues vêm do treino externo ("
-        + n(r.training()) + " issues); nenhuma do teste externo é explicada aqui.");
+    md.add(r.crossing() == 0
+        ? "Só leitura: nada foi gravado em banco. As issues vêm do treino externo ("
+            + n(r.training()) + " issues); nenhuma do teste externo é explicada aqui."
+        : "Só leitura: nada foi gravado em banco. As issues vêm do treino externo, só das que "
+            + "ensinam no nível externo (" + n(r.training()) + " issues). As " + n(r.crossing())
+            + " que cruzam o corte externo ficam fora, porque o modelo nunca aprende com elas. "
+            + "Nenhuma issue do teste externo é explicada aqui.");
     md.add("");
     md.add("- Divisão: " + r.rule().rule() + ".");
     md.add("- Cerca das esperas: " + FirstCommit.fenceTextPt(r.waitFenceK()) + ".");
-    md.add("- Teto das esperas, aprendido no ajuste interno: " + n(r.threshold().cap())
-        + " dias úteis (" + n(r.threshold().gaps()) + " esperas).");
+    md.add(r.threshold().uncapped()
+        ? "- Teto das esperas: nenhum, nenhuma espera é cortada (o ajuste interno tem "
+            + n(r.threshold().gaps()) + " esperas)."
+        : "- Teto das esperas, aprendido no ajuste interno: " + n(r.threshold().cap())
+            + " dias úteis (" + n(r.threshold().gaps()) + " esperas).");
     md.add("- Escolha: a maior diferença entre os dias úteis de calendário e os do estudo "
         + "(calendar_minus_study), o maior número de dias úteis que o teto tirou das esperas "
-        + "(capped) e a maior cauda em dias absolutos (tail). Empates pelo menor id; se um "
+        + "(capped) e o maior número de dias úteis depois da última marca que não contaram "
+        + "(tail_not_counted): os dias úteis da cauda sem atividade humana, que o estudo deixa "
+        + "de fora. A diferença de cada issue é a soma das duas partes, os dias que o teto "
+        + "tirou e os dias da cauda que não contaram; o segundo e o terceiro critérios "
+        + "escolhem a issue em que cada parte pesou mais. "
+        + "Empates pelo menor id; se um "
         + "critério cai numa issue já escolhida, entra a próxima distinta e a nota diz isso.");
     md.add("- A maior diferença tende a ser uma issue anômala: o exemplo mostra como o alvo "
         + "é feito, não o caso típico.");
@@ -161,6 +174,9 @@ public final class IssuesFirstCommitSupportingNumbersCommand implements CommandR
       md.add("- Dias úteis do calendário, do primeiro commit à resolução: " + n(x.calendar())
           + "; dias úteis do estudo: " + n(c.total()) + " (implementação " + n(c.implementation())
           + ", cauda " + n(c.tail()) + "); o teto tirou " + n(c.capped()) + ".");
+      md.add("- Dias úteis depois da última marca: " + n(x.tailBusinessDays()) + ", dos quais "
+          + n(c.tail()) + " contaram (datas com atividade humana) e " + n(x.tailUncounted())
+          + " não contaram.");
       md.add("");
       md.add("Marcas (" + n(x.marks().size()) + ", " + n(c.patches()) + " delas patches):");
       md.add("");
@@ -193,7 +209,8 @@ public final class IssuesFirstCommitSupportingNumbersCommand implements CommandR
     final List<String> out = new ArrayList<>();
     out.add(String.join("\t", "criterion", "value", "note", "id", "key", "project", "created",
         "first_commit", "resolved", "marks", "patches", "calendar_business_days",
-        "study_business_days", "implementation", "tail_days", "capped", "waits", "tail_dates"));
+        "study_business_days", "implementation", "tail_days", "tail_business_days",
+        "tail_not_counted", "capped", "waits", "tail_dates"));
     for (final Example e : r.examples()) {
       final SupportingNumbers.Pick p = e.pick();
       final FirstCommit.Explanation x = p.entry().explanation();
@@ -208,7 +225,8 @@ public final class IssuesFirstCommitSupportingNumbersCommand implements CommandR
           Instant.ofEpochMilli(e.issue().resolved()).toString(), Integer.toString(c.marks()),
           Integer.toString(c.patches()), Integer.toString(x.calendar()),
           Integer.toString(c.total()), Integer.toString(c.implementation()),
-          Integer.toString(c.tail()), Integer.toString(c.capped()), waits,
+          Integer.toString(c.tail()), Integer.toString(x.tailBusinessDays()),
+          Integer.toString(x.tailUncounted()), Integer.toString(c.capped()), waits,
           x.tail().stream().map(Object::toString).collect(Collectors.joining(";"))));
     }
     return out;
