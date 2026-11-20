@@ -63,8 +63,11 @@ import java.util.function.Function;
  * <p><b>Prediction intervals</b> (ticket 24; {@link PredictionIntervals}). Calibrated on the
  * usual-flow validation issues of half A, one factor per model and level, checked on half B in
  * each reading, overall and per band of the observed duration (the error bands, read after the
- * fact), the halves by whole projects; nothing of them chooses a model, k or column. The report's
- * header states each model's prediction span.
+ * fact), the halves by whole projects; nothing of them chooses a model, k or column. Under the
+ * revised temporal design the calibration issues are every validation issue, the tail above the
+ * usual flow's fence included, its main reading ({@link PredictionIntervals#calibrationReading}):
+ * the halves, the check and the factors follow them. The report's header states each model's
+ * prediction span.
  *
  * <p><b>The first-commit study's temporal split</b> (its ticket 06). The parameters file's split
  * rule must be the one {@code SPLIT_RULE} declares, which the report describes ({@link
@@ -291,13 +294,14 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
       throw refused(e.getMessage());
     }
 
-    // the usual flow: the intervals are calibrated on it and the forests' importance read on it,
-    // whichever reading is the main one
+    // the usual flow: the forests' importance is read on it, whichever reading is the main one;
+    // the intervals are calibrated on the rule's main reading, every validation issue under the
+    // revised design, the usual flow under every other rule
     final SimilarityScoring.Report main = readings.main();
     final PredictionIntervals.Inner intervals = PredictionIntervals.inner(
         PredictionIntervals.Sample.of(main, app.issues.AdjustedDuration.marked(training) ? 0 : 1),
         PredictionIntervals.Sample.of(readings.complementary(), app.issues.AdjustedDuration.marked(training) ? 0 : 1),
-        Parallel.threads(Parallel.BOOTSTRAP_THREADS));
+        PredictionIntervals.calibrationReading(rule), Parallel.threads(Parallel.BOOTSTRAP_THREADS));
     final Map<String, List<String>> files = new LinkedHashMap<>();
     files.put(REPORT, report(readings, withoutNew, intervals, relevance, population, chosen,
         matrix, elasticNet, study, rule, waitK));
@@ -597,15 +601,27 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
         BusinessDays.BANDS, BusinessDays.bandLimits(r.bandTops()), r.fitRows(),
         TailCut.QUANTILES));
     final PredictionIntervals.Halves h = intervals.halves();
-    md.add("- prediction intervals: " + PredictionIntervals.rule(app.issues.AdjustedDuration.marked(population.entries()) ? 0 : 1) + "; "
+    md.add("- prediction intervals: " + PredictionIntervals.rule(app.issues.AdjustedDuration.marked(population.entries()) ? 0 : 1, rule) + "; "
         + PredictionIntervals.FACTOR);
-    md.add(f("- calibration halves of the %d usual-flow validation issues: A, %d projects, %d "
-        + "issues, calibrates; B, the other projects, %d issues, is checked; with the tail, in "
-        + "the %s reading, B holds %d validation issues; the projects of A: %s",
-        h.aIssues() + h.bIssues(), h.a().size(), h.aIssues(), h.bIssues(),
-        TailCut.Reading.main(rule) == TailCut.Reading.ALL ? "main" : "complementary",
-        checked(intervals, TailCut.Reading.ALL), h.a()));
-    md.add("- each model's prediction span on the usual-flow validation issues, business days: "
+    final boolean whole = PredictionIntervals.calibrationReading(rule) == TailCut.Reading.ALL;
+    if (whole) {
+      // the revised design: every validation issue calibrates, the tail included
+      md.add(f("- calibration halves of the %d validation issues, the %d above the usual flow's "
+          + "k = 3 fence included: A, %d projects, %d issues, calibrates; B, the other projects, "
+          + "%d issues, is checked; in the usual flow, the complementary reading, B holds %d "
+          + "validation issues; the projects of A: %s", h.aIssues() + h.bIssues(),
+          r.scoredRows() - readings.main().scoredRows(), h.a().size(), h.aIssues(), h.bIssues(),
+          checked(intervals, TailCut.Reading.USUAL_FLOW), h.a()));
+    } else {
+      md.add(f("- calibration halves of the %d usual-flow validation issues: A, %d projects, %d "
+          + "issues, calibrates; B, the other projects, %d issues, is checked; with the tail, in "
+          + "the %s reading, B holds %d validation issues; the projects of A: %s",
+          h.aIssues() + h.bIssues(), h.a().size(), h.aIssues(), h.bIssues(),
+          TailCut.Reading.main(rule) == TailCut.Reading.ALL ? "main" : "complementary",
+          checked(intervals, TailCut.Reading.ALL), h.a()));
+    }
+    md.add("- each model's prediction span on the " + (whole ? "calibration issues, every "
+        + "validation issue" : "usual-flow validation issues") + ", business days: "
         + String.join("; ", intervals.calibrated().entrySet().stream().map(e -> f("%s %.2f-%.2f",
             e.getKey(), e.getValue().low(), e.getValue().high())).toList()));
     md.add("- the factors recomputed on A and B together, for later use, are in " + CALIBRATION

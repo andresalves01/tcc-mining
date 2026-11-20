@@ -35,20 +35,24 @@ import java.util.TreeSet;
  * reading after the fact: the band never chooses the factor, the observed duration being unknown
  * when the interval is given.
  *
- * <p><b>Calibration</b> ({@link #inner}). On the usual-flow inner validation issues, split in two
+ * <p><b>Calibration</b> ({@link #inner}). On the inner validation issues of the rule's
+ * calibration reading ({@link #calibrationReading}): the usual flow under every rule but the
+ * revised one; every inner validation issue, the tail above the usual flow's fence included,
+ * under the revised temporal design, whose main reading that is. Those issues are split in two
  * halves by whole projects ({@link #halves}): half A calibrates, half B checks the coverage, on
  * the usual flow and on every validation issue of B, whichever is the main reading ({@link
- * TailCut.Reading#main}).
- * The factors for every later use are then recomputed on A and B together. A project with no
- * usual-flow validation issue is B's.
+ * TailCut.Reading#main}). The factors for every later use are then recomputed on A and B
+ * together. A project with no calibration issue is B's.
  *
- * <p><b>Outer test</b> ({@link #outer}, item 53 viii). The factors calibrated on the whole
- * usual-flow inner validation by the inner models are applied to the outer models' predictions,
- * an approximation ({@link #OUTER}).
+ * <p><b>Outer test</b> ({@link #outer}, item 53 viii). The factors the inner models calibrated
+ * on the whole calibration reading of the inner validation are applied to the outer models'
+ * predictions, an approximation ({@link #OUTER}); under the revised design it is shown for
+ * comparison only, the official intervals being the same-model ones ({@link
+ * #outer(SplitRule)}).
  *
- * <p><b>Same model</b> ({@link #sameModel}, the revised design's ticket 06, a sensitivity after
- * the outer test was opened). The inner models' own predictions of the outer test, from the fit
- * whose residuals on the whole usual-flow inner validation gave the factors ({@link
+ * <p><b>Same model</b> ({@link #sameModel}, the revised design's official intervals, chosen
+ * before its outer test was opened). The inner models' own predictions of the outer test, from
+ * the fit whose residuals on every inner validation issue gave the factors ({@link
  * #SAME_MODEL}).
  */
 public final class PredictionIntervals {
@@ -91,7 +95,30 @@ public final class PredictionIntervals {
         .replace("coverage at 1 day", "coverage at the lower bound");
   }
 
-  /** What the outer test's intervals are, in words. */
+  /**
+   * The inner validation issues the intervals are calibrated on under {@code rule}: its main
+   * reading ({@link TailCut.Reading#main}), every inner validation issue, the tail above the usual
+   * flow's fence included, under the revised temporal design; the usual flow under every other
+   * rule, as before it.
+   */
+  public static TailCut.Reading calibrationReading(final SplitRule rule) {
+    return TailCut.Reading.main(rule);
+  }
+
+  /**
+   * {@link #rule(double)} under {@code rule}: under the revised temporal design the calibration
+   * issues are every inner validation issue ({@link #calibrationReading}); under every other rule
+   * the text is {@link #rule(double)}'s.
+   */
+  public static String rule(final double floor, final SplitRule rule) {
+    final String text = rule(floor);
+    return calibrationReading(rule) == TailCut.Reading.ALL
+        ? text.replace("calibrated on the usual-flow inner validation issues", "calibrated on "
+            + "every inner validation issue, the tail above the usual flow's k = 3 fence included")
+        : text;
+  }
+
+  /** What the outer test's intervals are, in words, under every rule but the revised one. */
   public static final String OUTER = "the outer models' intervals take the factors the inner "
       + "models calibrated on the whole usual-flow inner validation, an approximation: the outer "
       + "models are refitted on the whole outer training side, so no held-out outer issue is left "
@@ -99,14 +126,37 @@ public final class PredictionIntervals {
       + "duration are those of the outer training rows fitted";
 
   /**
-   * What the same-model intervals are, in words (the revised design's ticket 06, a sensitivity
-   * after the outer test was opened that chooses nothing).
+   * What the test step's intervals are, in words, under the revised temporal design: the same
+   * construction as {@link #OUTER}, on every inner validation issue, shown for comparison beside
+   * the official same-model intervals ({@link #SAME_MODEL}).
    */
-  public static final String SAME_MODEL = "the inner models' own intervals: each inner model, "
-      + "fitted on the inner fitting rows at the lambda as chosen, predicts the whole usual-flow "
-      + "inner validation and the outer test from one fit, and its intervals on the outer test "
-      + "take the factors of its own residuals on that validation, so the factors and the "
-      + "predictions they widen come from the same model; the inner validation is the latest "
+  public static final String OUTER_APPROXIMATION = "an approximation, for comparison, not the "
+      + "official intervals of the revised design, which are the same-model ones: the outer "
+      + "models' intervals take the factors the inner models calibrated on every inner validation "
+      + "issue, the tail above the usual flow's k = 3 fence included; the outer models are "
+      + "refitted on the whole outer training side, so no held-out outer issue is left to "
+      + "calibrate on; the outer coverage shows whether it holds; the bands of the observed "
+      + "duration are those of the outer training rows fitted";
+
+  /**
+   * What the test step's intervals are under {@code rule}: {@link #OUTER_APPROXIMATION} under
+   * the revised temporal design, {@link #OUTER} under every other rule.
+   */
+  public static String outer(final SplitRule rule) {
+    return rule == SplitRule.REVISED ? OUTER_APPROXIMATION : OUTER;
+  }
+
+  /**
+   * What the same-model intervals are, in words: the revised design's official ones, chosen
+   * before its outer test was opened.
+   */
+  public static final String SAME_MODEL = "the official prediction intervals of the revised "
+      + "design, chosen before its outer test was opened: each inner model, fitted on the inner "
+      + "fitting rows at the lambda as chosen, predicts every inner validation issue, the tail "
+      + "above the usual flow's k = 3 fence included, and the outer test from one fit, and its "
+      + "intervals on the outer test take the factors of its own residuals on that validation, "
+      + "so the factors and the predictions they widen come from the same model; the inner "
+      + "validation is the latest "
       + "stretch in time of the outer training; the inner models are fitted on older issues than "
       + "the outer ones, so their error on the outer test is context, never a competitor of the "
       + "outer models'; the bands of the observed duration are those of the inner fitting rows "
@@ -115,7 +165,7 @@ public final class PredictionIntervals {
   /**
    * The same-model intervals: per model, its factors, and the reads of the outer test.
    *
-   * @param calibrated per model, the factors of its residuals on the usual-flow inner validation
+   * @param calibrated per model, the factors of its residuals on every inner validation issue
    * @param reads per reading (the usual flow, then every issue), model and level, the figures on
    *     the outer test of the model's own predictions with its own factors
    */
@@ -302,24 +352,36 @@ public final class PredictionIntervals {
   }
 
   /**
-   * The inner calibration: the halves of {@code usual}'s issues, every model calibrated on half
-   * A, its check on half B of {@code usual} and of {@code all} (either can be the main reading,
-   * {@link TailCut.Reading#main}), and every model calibrated again on all of {@code usual}.
-   *
-   * @param usual the usual-flow inner validation issues, the calibration issues
-   * @param all every inner validation issue, the same models
+   * The inner calibration on the usual flow, every rule's but the revised one: {@link
+   * #inner(Sample, Sample, TailCut.Reading, int)} at {@link TailCut.Reading#USUAL_FLOW}.
    */
   public static Inner inner(final Sample usual, final Sample all, final int threads) {
-    final Halves halves = halves(usual.projects());
-    final List<Integer> a = rows(usual, halves, true);
+    return inner(usual, all, TailCut.Reading.USUAL_FLOW, threads);
+  }
+
+  /**
+   * The inner calibration: the halves of the calibration issues, {@code usual}'s or {@code all}'s
+   * as {@code calibration} says ({@link #calibrationReading}), every model calibrated on half A,
+   * its check on half B of {@code usual} and of {@code all} (either can be the main reading,
+   * {@link TailCut.Reading#main}), and every model calibrated again on every calibration issue.
+   *
+   * @param usual the usual-flow inner validation issues
+   * @param all every inner validation issue, the same models
+   * @param calibration which of the two the calibration issues are
+   */
+  public static Inner inner(final Sample usual, final Sample all,
+      final TailCut.Reading calibration, final int threads) {
+    final Sample on = calibration == TailCut.Reading.ALL ? all : usual;
+    final Halves halves = halves(on.projects());
+    final List<Integer> a = rows(on, halves, true);
     final Map<String, Calibration> checked = new LinkedHashMap<>();
-    usual.predicted().forEach((model, predicted) ->
-        checked.put(model, calibrate(pick(predicted, a), pick(usual.observed(), a), usual.floor())));
+    on.predicted().forEach((model, predicted) ->
+        checked.put(model, calibrate(pick(predicted, a), pick(on.observed(), a), on.floor())));
     final List<Read> reads = new ArrayList<>();
     reads.addAll(read(TailCut.Reading.USUAL_FLOW, checked, usual, rows(usual, halves, false),
         threads));
     reads.addAll(read(TailCut.Reading.ALL, checked, all, rows(all, halves, false), threads));
-    return new Inner(halves, Collections.unmodifiableMap(checked), calibrated(usual),
+    return new Inner(halves, Collections.unmodifiableMap(checked), calibrated(on),
         List.copyOf(reads));
   }
 
@@ -327,7 +389,9 @@ public final class PredictionIntervals {
    * Every model calibrated on every issue of {@code usual}, both halves together: the factors for
    * every later use.
    *
-   * @param usual the usual-flow inner validation issues, the inner models' predictions of them
+   * @param usual the calibration issues, the inner models' predictions of them: the usual-flow
+   *     inner validation, or every inner validation issue under the revised design ({@link
+   *     #calibrationReading})
    */
   public static Map<String, Calibration> calibrated(final Sample usual) {
     final Map<String, Calibration> out = new LinkedHashMap<>();
@@ -341,8 +405,9 @@ public final class PredictionIntervals {
    * its inner twin was {@code calibrated} with, on every issue of each reading, the bands those
    * of the samples, the outer scope's.
    *
-   * @param calibrated per model, the inner calibration on the whole usual-flow inner validation
-   *     ({@link Inner#calibrated}); one for every model of the samples
+   * @param calibrated per model, the inner calibration on the whole calibration reading of the
+   *     inner validation ({@link Inner#calibrated}, {@link #calibrationReading}); one for every
+   *     model of the samples
    */
   public static List<Read> outer(final Map<String, Calibration> calibrated, final Sample usual,
       final Sample all, final int threads) {
@@ -369,7 +434,7 @@ public final class PredictionIntervals {
    * never factors and predictions apart, the two cannot come from different fits.
    *
    * @param withoutNew whether the test readings are those without the issues of new projects; the
-   *     calibration is the whole usual-flow inner validation either way
+   *     calibration is every inner validation issue either way
    */
   public static Joint sameModel(final SimilarityScoring.SameModel fit, final double floor,
       final int threads, final boolean withoutNew) {

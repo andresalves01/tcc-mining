@@ -175,8 +175,8 @@ public final class SimilarityScoring {
      */
     RESERVED(Fitting.Mode.RESERVED, Augmentation.Variant.OUTER, "outer training"),
     /**
-     * The same-model calibration (the revised design's ticket 06), a sensitivity after the
-     * outer test was opened that chooses nothing: the inner models, fitted as {@link #INNER}
+     * The same-model calibration, the revised design's official prediction intervals, chosen
+     * before its outer test was opened: the inner models, fitted as {@link #INNER}
      * fits them, the lambda as chosen, the inner variant read, predict the whole inner
      * validation and then the outer test, from one fit ({@link #sameModel}). The fences, the
      * references and the analogy estimate's fallback are the inner fitting's; no forest's
@@ -239,8 +239,9 @@ public final class SimilarityScoring {
    * that order. A part's predictions and figures are its {@link Scored#predicted()} and {@link
    * Scored#score()}.
    *
-   * @param calibration the usual-flow inner validation, at the inner fitting's fence: what {@link
-   *     #calibration} reads, bit for bit; whole whatever the reading of the outer test
+   * @param calibration every inner validation issue, the tail above the inner fitting's
+   *     usual-flow fence included: what {@link #calibration} reads on all issues, bit for bit;
+   *     whole whatever the reading of the outer test
    * @param usualTest the outer test issues at or below the outer training's usual-flow fence, the
    *     issues of the test step's usual flow, so the two designs are read on the same issues
    * @param allTest every outer test issue
@@ -534,9 +535,11 @@ public final class SimilarityScoring {
   /**
    * The inner calibration the outer test's prediction intervals read (ticket 24, item 53 viii):
    * every model refitted as the inner report fits it, on the inner fitting rows at or below the
-   * fence of {@code k}, and its predictions of the usual-flow inner validation issues, the main
-   * reading of the inner report; no comparison is drawn. Of the outer test nothing is read: the
-   * inner scope fits and scores the outer training rows only.
+   * fence of {@code k}, and its predictions of the usual-flow inner validation issues, what every
+   * rule but the revised one calibrates on (the revised design's calibration is {@link
+   * #calibration(List, Map, Map, double, Population, Design, TailCut.Reading)} on every issue);
+   * no comparison is drawn. Of the outer test nothing is read: the inner scope fits and scores
+   * the outer training rows only.
    */
   public static Report calibration(final List<RowCache.Entry> entries,
       final Map<String, ElasticNetSelection.Choice> choices,
@@ -563,7 +566,22 @@ public final class SimilarityScoring {
       final Map<String, ElasticNetSelection.Choice> choices,
       final Map<String, Forest.Choice> forests, final double k, final Population population,
       final Design design) {
-    return score(entries, choices, forests, k, Scope.INNER, TailCut.Reading.USUAL_FLOW, false,
+    return calibration(entries, choices, forests, k, population, design,
+        TailCut.Reading.USUAL_FLOW);
+  }
+
+  /**
+   * {@link #calibration(List, Map, Map, double, Population, Design)} on the inner validation
+   * issues of {@code reading}: the usual flow under every rule but the revised one, every inner
+   * validation issue, the tail above the usual flow's fence included, under the revised temporal
+   * design ({@link PredictionIntervals#calibrationReading}). The fit is the same in both; only
+   * the issues read differ.
+   */
+  public static Report calibration(final List<RowCache.Entry> entries,
+      final Map<String, ElasticNetSelection.Choice> choices,
+      final Map<String, Forest.Choice> forests, final double k, final Population population,
+      final Design design, final TailCut.Reading reading) {
+    return score(entries, choices, forests, k, Scope.INNER, reading, false,
         Parallel.threads(Parallel.ELASTIC_NET_THREADS),
         Parallel.threads(Parallel.BOOTSTRAP_THREADS), population, design, false);
   }
@@ -815,8 +833,8 @@ public final class SimilarityScoring {
   }
 
   /**
-   * The same-model calibration (the revised design's ticket 06), on the threads {@link Parallel}
-   * asks for the fits: see {@link #sameModel(List, Map, Map, double, Population, Design, int)}.
+   * The same-model calibration (the revised design's official intervals), on the threads
+   * {@link Parallel} asks for the fits: see {@link #sameModel(List, Map, Map, double, Population, Design, int)}.
    */
   public static SameModel sameModel(final List<RowCache.Entry> entries,
       final Map<String, ElasticNetSelection.Choice> choices,
@@ -827,17 +845,17 @@ public final class SimilarityScoring {
   }
 
   /**
-   * The same-model calibration (the revised design's ticket 06), a sensitivity after the outer
-   * test was opened that chooses nothing: every model fitted once, as {@link #calibration} fits
-   * it (the inner fitting rows that teach, at or below the inner fitting's fence of {@code k},
-   * the lambda as chosen, the inner variant), predicting the whole inner validation and the
-   * outer test, {@link Scope#SAME_MODEL}. Five readings of that one fit: the usual-flow inner
-   * validation, at the inner fitting's usual-flow fence, the calibration; the outer test issues at
-   * or below the outer training's usual-flow fence, the test step's usual flow; every outer test
-   * issue; and those two without the issues of the projects new to the inner model, those with no
-   * inner fitting row before the tail cut. The calibration is the whole usual-flow inner
-   * validation in every reading. No label of the inner validation or of the outer test enters
-   * the fit.
+   * The same-model calibration: the revised design's official prediction intervals, chosen
+   * before its outer test was opened. Every model fitted once, as {@link #calibration} fits it
+   * (the inner fitting rows that teach, at or below the inner fitting's fence of {@code k}, the
+   * lambda as chosen, the inner variant), predicting the whole inner validation and the outer
+   * test, {@link Scope#SAME_MODEL}. Five readings of that one fit: every inner validation issue,
+   * the tail above the inner fitting's usual-flow fence included, the calibration, the revised
+   * design's main reading; the outer test issues at or below the outer training's usual-flow
+   * fence, the test step's usual flow; every outer test issue; and those two without the issues
+   * of the projects new to the inner model, those with no inner fitting row before the tail cut.
+   * The calibration is every inner validation issue in every reading. No label of the inner
+   * validation or of the outer test enters the fit.
    */
   public static SameModel sameModel(final List<RowCache.Entry> entries,
       final Map<String, ElasticNetSelection.Choice> choices,
@@ -875,7 +893,8 @@ public final class SimilarityScoring {
       }
     }
     final int fitted = p.whole().fitUnits().size();
-    final Report calibration = slice(p, fit, usualValidation, TailCut.Reading.USUAL_FLOW,
+    // the calibration: every inner validation issue, the revised design's main reading
+    final Report calibration = slice(p, fit, validation, TailCut.Reading.ALL,
         new Fences(k, p.fence(), p.usualFence(), fitted, usualValidation.size(),
             validation.size()), validation, false);
     final Fences testFences = new Fences(k, p.fence(), outerUsualFence, fitted, usualTest.size(),

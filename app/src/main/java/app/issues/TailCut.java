@@ -65,7 +65,9 @@ public final class TailCut {
    * <p>Which one is the main reading depends on the design ({@link #main}): the usual flow in the
    * In Progress study and in the first-commit study's designs before the review, all issues in
    * the revised temporal design (the review of November 2026). Under every rule the selection
-   * scores each choice on the usual flow, and the prediction intervals are calibrated on it.
+   * scores each choice on the usual flow. The prediction intervals are calibrated on the main
+   * reading ({@link PredictionIntervals#calibrationReading}): on the usual flow under every rule
+   * but the revised one, on all issues under it.
    */
   public enum Reading {
     /**

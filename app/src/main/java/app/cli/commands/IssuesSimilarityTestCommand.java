@@ -70,11 +70,15 @@ import java.util.function.Function;
  *
  * <p><b>Prediction intervals</b> (ticket 24; {@link PredictionIntervals}). The inner models are
  * refitted as the inner report fits them and calibrated on the whole usual-flow inner validation
- * ({@link SimilarityScoring#calibration}); their factors, one per model and level, are applied to
- * the outer models' predictions, an approximation (item 53 viii), and the coverage, median width,
- * width over the global median's and MAE are printed and recorded per reading, model and level,
- * overall and per band of the observed duration, read after the fact. The bands, the error
- * bands', are cut at the quartiles of the outer training rows fitted.
+ * ({@link SimilarityScoring#calibration}), or, under the revised temporal design, on every inner
+ * validation issue, its main reading ({@link PredictionIntervals#calibrationReading}); their
+ * factors, one per model and level, are applied to the outer models' predictions, an
+ * approximation (item 53 viii), and the coverage, median width, width over the global median's
+ * and MAE are printed and recorded per reading, model and level, overall and per band of the
+ * observed duration, read after the fact. The bands, the error bands', are cut at the quartiles
+ * of the outer training rows fitted. Under the revised design these intervals are shown for
+ * comparison and say so: its official intervals are the same-model ones, from {@link
+ * IssuesFirstCommitSameModelCalibrationCommand}, run right after this step.
  *
  * <p><b>The first-commit study's temporal split</b> (its ticket 07). The parameters file's header
  * names the split rule its choices were made under ({@link ElasticNetSelection#headerRule}, the
@@ -551,11 +555,12 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       relevance = SimilarityScoring.relevance(population.entries(), choices, cut.k(),
           SimilarityScoring.Scope.RESERVED, study);
       // the prediction intervals (ticket 24, item 53 viii): the inner models refitted and
-      // calibrated on the whole usual-flow inner validation, applied to the outer models
+      // calibrated on the whole usual-flow inner validation, or on every inner validation issue
+      // under the revised design, applied to the outer models
       calibrated =
           PredictionIntervals.calibrated(PredictionIntervals.Sample.of(
               SimilarityScoring.calibration(population.entries(), choices, forests, cut.k(),
-                  study, chosen.design()), floor));
+                  study, chosen.design(), PredictionIntervals.calibrationReading(rule)), floor));
       intervals = PredictionIntervals.outer(calibrated,
           PredictionIntervals.Sample.of(readings.main(), floor),
           PredictionIntervals.Sample.of(readings.complementary(), floor),
@@ -609,8 +614,9 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
           r.analogyFallbacks(), r.scoredRows(), main.analogyFallbacks(), main.scoredRows());
     }
     System.out.printf(PredictedBands.BANDS_LINE, BusinessDays.BANDS, BusinessDays.bandLimits(r.bandTops()));
-    System.out.printf("  prediction intervals: %s; %s; %s%n", PredictionIntervals.rule(app.issues.AdjustedDuration.marked(entries) ? 0 : 1),
-        PredictionIntervals.FACTOR, PredictionIntervals.OUTER);
+    System.out.printf("  prediction intervals: %s; %s; %s%n",
+        PredictionIntervals.rule(app.issues.AdjustedDuration.marked(entries) ? 0 : 1, rule),
+        PredictionIntervals.FACTOR, PredictionIntervals.outer(rule));
 
     final List<Map<String, Object>> rows = new ArrayList<>();
     // the main reading under the rule first, then the other; the same again without new projects
@@ -623,7 +629,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       final List<Map<String, Object>> of = new ArrayList<>();
       print(reading, of, choices, sidePhrase(), firstCommitStudy());
       printIntervals((reading.withoutNewProjects() ? intervalsWithoutNew : intervals).stream()
-          .filter(x -> x.reading() == reading.reading()).toList(), reading.bandTops(), of);
+          .filter(x -> x.reading() == reading.reading()).toList(), reading.bandTops(), of,
+          intervalsLabel(rule));
       final String name = readingName(reading);
       of.forEach(row -> row.put("reading", name));
       rows.addAll(of);
@@ -684,6 +691,11 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     }
     run.put("models", r.models().stream().map(SimilarityScoring.Scored::name).toList());
     run.putAll(statements());
+    if (rule == SplitRule.REVISED) {
+      // the revised design's official intervals are the same-model step's; these, for comparison
+      run.put("prediction_interval_outer_calibration", PredictionIntervals.outer(rule));
+      run.put("prediction_interval_official", OFFICIAL_INTERVALS);
+    }
     run.put("outer_test_draw", examined(rule));
     // the first-commit study's additions (its temporal split's ticket 07); the In Progress
     // study's record stays as it was
@@ -695,7 +707,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     }
     run.put("target", BusinessDays.target(entries, waitK));
     run.put("population", BusinessDays.populationRule(entries));
-    run.put("prediction_intervals", PredictionIntervals.rule(app.issues.AdjustedDuration.marked(entries) ? 0 : 1));
+    run.put("prediction_intervals",
+        PredictionIntervals.rule(app.issues.AdjustedDuration.marked(entries) ? 0 : 1, rule));
     run.put("population_rows", populationRows(population));
     run.put("matrix_sha256", matrixSha);
     if (splitReferenceSetting != null && !splitReferenceSetting.isBlank()) {
@@ -1256,12 +1269,34 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
    *
    * @param tops the bands' limits, the error bands' of the outer training rows fitted
    */
+  /**
+   * The revised design's official intervals, in the test step's record: they are not this
+   * step's, whose intervals are the approximation shown for comparison.
+   */
+  static final String OFFICIAL_INTERVALS = "the same-model intervals of "
+      + IssuesFirstCommitSameModelCalibrationCommand.STAGE + ", run right after this step: "
+      + PredictionIntervals.SAME_MODEL + "; the intervals of this step are the approximation, "
+      + "shown for comparison";
+
+  /** What the interval tables of the test step are under {@code rule}, in their heading. */
+  static String intervalsLabel(final SplitRule rule) {
+    return rule == SplitRule.REVISED ? "the approximation, for comparison; the official "
+        + "intervals are " + IssuesFirstCommitSameModelCalibrationCommand.STAGE + "'s"
+        : "an approximation";
+  }
+
   static void printIntervals(final List<PredictionIntervals.Read> reads,
       final double[] tops, final List<Map<String, Object>> rows) {
-    System.out.printf("%n  prediction intervals, the inner calibration applied (an approximation):"
+    printIntervals(reads, tops, rows, intervalsLabel(SplitRule.RANDOM));
+  }
+
+  /** The interval tables, headed as {@code label} says what they are. */
+  static void printIntervals(final List<PredictionIntervals.Read> reads,
+      final double[] tops, final List<Map<String, Object>> rows, final String label) {
+    System.out.printf("%n  prediction intervals, the inner calibration applied (%s):"
         + " coverage [95%% interval resampling whole projects], median width in business days, "
         + "width over the global median's, MAE in business days; overall and per band of the "
-        + "observed duration (%s), read after the fact%n", BusinessDays.bandLimits(tops));
+        + "observed duration (%s), read after the fact%n", label, BusinessDays.bandLimits(tops));
     final String[] labels = BusinessDays.bandLabels(tops);
     for (final PredictionIntervals.Read x : reads) {
       final StringBuilder line = new StringBuilder(String.format(java.util.Locale.ROOT,

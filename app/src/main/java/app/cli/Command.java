@@ -558,7 +558,11 @@ public enum Command {
       median learned on the outer training (refused without the column; a
       file of the random split holding it is refused too), the forests' tree
       count must be given there, and the opening is recorded as
-      issues-first-commit-test-temporal. Every reading is also given
+      issues-first-commit-test-temporal. Under SPLIT_RULE=revised the
+      prediction intervals are calibrated on every inner validation issue
+      and labelled an approximation, for comparison: the official ones are
+      issues-first-commit-same-model-calibration's, run right after this
+      step. Every reading is also given
       without the issues of new projects, with their count. Writes the
       predictions, diagnostics, relevance and uncertainty to REPORT_DIR;
       records the run, with the time the test was opened and the SHA-256 of
@@ -566,15 +570,17 @@ public enum Command {
 
   ISSUES_FIRST_COMMIT_SAME_MODEL_CALIBRATION("issues-first-commit-same-model-calibration",
       new app.cli.commands.IssuesFirstCommitSameModelCalibrationCommand(), """
-      Issue duration from the first commit, SAME-MODEL CALIBRATION: a
-      SENSITIVITY after the opening of the revised design's outer test; it
-      chooses nothing. Beside the test step's prediction intervals (the outer
-      models' predictions with the factors the inner models calibrated), the
-      inner models, fitted once on the inner fitting rows at the lambda as
-      chosen, predict the usual-flow inner validation and the outer test, and
-      their own factors widen their own predictions. Per model and level, both
-      designs: coverage with its interval resampling whole projects, median
-      width, width over the global median's, factor, calibration issues and
+      Issue duration from the first commit, SAME-MODEL CALIBRATION: the
+      revised design's OFFICIAL PREDICTION INTERVALS,
+      chosen before the outer test was opened, run right after the test step
+      as part of the opening. The inner models, fitted once on the inner
+      fitting rows at the lambda as chosen, predict every inner validation
+      issue (the tail above the usual flow's fence included) and the outer
+      test, and their own factors widen their own predictions. Beside them,
+      for comparison, the test step's intervals, an approximation: the outer
+      models' predictions with the same factors. Both are calibrated on
+      every inner validation issue. Per model and level, both designs:
+      coverage with its interval resampling whole projects, median width, width over the global median's, factor, calibration issues and
       the MAE on the outer test, context only; on every outer test issue
       first, then the usual flow at the outer training's fence, then both
       without new projects. Under SPLIT_RULE=revised only. Refuses, reading no

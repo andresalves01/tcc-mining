@@ -394,7 +394,7 @@ class PredictionIntervalsTest {
     calibration.put("b", below(observed, swapped ? 0.1 : 0.9));
     final double[] truth = {10, 11, 13, 20, 30};
     return new SimilarityScoring.SameModel(
-        report(TailCut.Reading.USUAL_FLOW, observed, calibration),
+        report(TailCut.Reading.ALL, observed, calibration),
         report(TailCut.Reading.USUAL_FLOW, Arrays.copyOf(truth, 4), constant(4, 10)),
         report(TailCut.Reading.ALL, truth, constant(5, 10)),
         report(TailCut.Reading.USUAL_FLOW, Arrays.copyOf(truth, 3), constant(3, 10)),
@@ -541,6 +541,130 @@ class PredictionIntervalsTest {
     return withModels(r, r.models().stream().map(m -> new SimilarityScoring.Scored(m.name(),
         m.kind(), m.predicted(), m.score(), m.errors(), m.bands(), m.fitted(), m.removed(), tree))
         .toList());
+  }
+
+  /** The issues of {@code s} whose truth is at most {@code fence}: a usual flow of its own. */
+  private static PredictionIntervals.Sample atMost(final PredictionIntervals.Sample s,
+      final double fence) {
+    final List<Integer> kept = new ArrayList<>();
+    for (int i = 0; i < s.observed().length; i++) {
+      if (s.observed()[i] <= fence) {
+        kept.add(i);
+      }
+    }
+    final Map<String, double[]> predicted = new LinkedHashMap<>();
+    s.predicted().forEach((m, p) -> predicted.put(m, kept.stream().mapToDouble(i -> p[i])
+        .toArray()));
+    return new PredictionIntervals.Sample(kept.stream().map(s.projects()::get).toList(),
+        kept.stream().mapToDouble(i -> s.observed()[i]).toArray(), predicted, s.bandTops(),
+        s.floor());
+  }
+
+  @Test
+  @DisplayName("under the revised rule the intervals are calibrated on every inner validation "
+      + "issue, the tail above the usual flow's fence included: the halves, the check and the "
+      + "factors for later use; a tail label moves them; under every other rule they are the "
+      + "usual flow's, bit for bit as before, and a tail label moves none")
+  void revisedCalibratesOnTheWholeValidation() {
+    assertEquals(TailCut.Reading.ALL, PredictionIntervals.calibrationReading(SplitRule.REVISED));
+    for (final SplitRule rule : SplitRule.values()) {
+      if (rule != SplitRule.REVISED) {
+        assertEquals(TailCut.Reading.USUAL_FLOW, PredictionIntervals.calibrationReading(rule),
+            rule.setting());
+      }
+    }
+    final PredictionIntervals.Sample all = sample(2000, 25, 31);
+    final double[] sorted = all.observed().clone();
+    Arrays.sort(sorted);
+    final PredictionIntervals.Sample usual = atMost(all, sorted[1800]);
+    assertTrue(usual.observed().length < all.observed().length, "a tail above the fence");
+
+    final PredictionIntervals.Inner before = PredictionIntervals.inner(usual, all, 1);
+    final PredictionIntervals.Inner usualFlow =
+        PredictionIntervals.inner(usual, all, TailCut.Reading.USUAL_FLOW, 1);
+    final PredictionIntervals.Inner revised =
+        PredictionIntervals.inner(usual, all, TailCut.Reading.ALL, 1);
+    // every other rule: the usual flow, as before
+    assertEquals(before.halves(), usualFlow.halves());
+    assertEquals(before.reads(), usualFlow.reads());
+    for (final String m : all.predicted().keySet()) {
+      assertEquals(Arrays.toString(before.checked().get(m).factors()),
+          Arrays.toString(usualFlow.checked().get(m).factors()), m);
+      assertEquals(Arrays.toString(before.calibrated().get(m).factors()),
+          Arrays.toString(usualFlow.calibrated().get(m).factors()), m);
+      assertEquals(usual.observed().length, usualFlow.calibrated().get(m).n(), m);
+    }
+    // the revised rule: the halves of every validation issue, its factors of every issue
+    assertEquals(PredictionIntervals.halves(all.projects()), revised.halves());
+    assertEquals(all.observed().length, revised.halves().aIssues() + revised.halves().bIssues());
+    for (final String m : all.predicted().keySet()) {
+      assertEquals(all.observed().length, revised.calibrated().get(m).n(), m);
+      assertEquals(Arrays.toString(PredictionIntervals.calibrate(all.predicted().get(m),
+          all.observed(), PredictionIntervals.FLOOR).factors()),
+          Arrays.toString(revised.calibrated().get(m).factors()), m);
+      assertEquals(Arrays.toString(PredictionIntervals.calibrated(all).get(m).factors()),
+          Arrays.toString(revised.calibrated().get(m).factors()), m);
+    }
+    assertNotEquals(Arrays.toString(usualFlow.calibrated().get(MODEL).factors()),
+        Arrays.toString(revised.calibrated().get(MODEL).factors()));
+    // the check still reads half B in both readings
+    for (final PredictionIntervals.Read r : revised.reads()) {
+      final PredictionIntervals.Sample s = r.reading() == TailCut.Reading.ALL ? all : usual;
+      final long inB = s.projects().stream().filter(p -> !revised.halves().a().contains(p))
+          .count();
+      assertEquals(inB, r.overall().n(), r.reading() + " " + r.model());
+    }
+
+    // a label of the tail, above the fence: it moves the revised factors, never the usual ones
+    final double[] moved = all.observed().clone();
+    for (int i = 0; i < moved.length; i++) {
+      if (moved[i] > sorted[1800]) {
+        moved[i] += 400;
+      }
+    }
+    final PredictionIntervals.Sample tailMoved = new PredictionIntervals.Sample(all.projects(),
+        moved, all.predicted(), all.bandTops(), PredictionIntervals.FLOOR);
+    final PredictionIntervals.Inner revisedMoved =
+        PredictionIntervals.inner(usual, tailMoved, TailCut.Reading.ALL, 1);
+    final PredictionIntervals.Inner usualMoved =
+        PredictionIntervals.inner(usual, tailMoved, TailCut.Reading.USUAL_FLOW, 1);
+    assertNotEquals(Arrays.toString(revised.calibrated().get(MODEL).factors()),
+        Arrays.toString(revisedMoved.calibrated().get(MODEL).factors()));
+    for (final String m : all.predicted().keySet()) {
+      assertEquals(Arrays.toString(usualFlow.calibrated().get(m).factors()),
+          Arrays.toString(usualMoved.calibrated().get(m).factors()), m);
+      assertEquals(Arrays.toString(usualFlow.checked().get(m).factors()),
+          Arrays.toString(usualMoved.checked().get(m).factors()), m);
+    }
+  }
+
+  @Test
+  @DisplayName("the texts say which interval is official: under the revised rule the same-model "
+      + "one, calibrated on every inner validation issue, the test step's an approximation for "
+      + "comparison; under every other rule the texts are as before")
+  void textsSayWhichIsOfficial() {
+    for (final SplitRule rule : SplitRule.values()) {
+      if (rule == SplitRule.REVISED) {
+        continue;
+      }
+      assertEquals(PredictionIntervals.RULE, PredictionIntervals.rule(1, rule), rule.setting());
+      assertEquals(PredictionIntervals.rule(0), PredictionIntervals.rule(0, rule));
+      assertEquals(PredictionIntervals.OUTER, PredictionIntervals.outer(rule), rule.setting());
+    }
+    final String rule = PredictionIntervals.rule(1, SplitRule.REVISED);
+    assertTrue(rule.contains("calibrated on every inner validation issue, the tail above the "
+        + "usual flow's k = 3 fence included"), rule);
+    assertFalse(rule.contains("usual-flow inner validation"), rule);
+    assertTrue(PredictionIntervals.rule(0, SplitRule.REVISED).contains("raised to 0 business day"));
+    final String outer = PredictionIntervals.outer(SplitRule.REVISED);
+    assertTrue(outer.startsWith("an approximation, for comparison"), outer);
+    assertTrue(outer.contains("not the official intervals"), outer);
+    assertTrue(outer.contains("every inner validation issue"), outer);
+    assertFalse(outer.contains("usual-flow"), outer);
+    assertTrue(PredictionIntervals.SAME_MODEL.startsWith("the official prediction intervals of "
+        + "the revised design"), PredictionIntervals.SAME_MODEL);
+    assertTrue(PredictionIntervals.SAME_MODEL.contains("every inner validation issue"));
+    assertFalse(PredictionIntervals.SAME_MODEL.contains("usual-flow"));
   }
 
   private static SimilarityScoring.Report withModels(final SimilarityScoring.Report t,

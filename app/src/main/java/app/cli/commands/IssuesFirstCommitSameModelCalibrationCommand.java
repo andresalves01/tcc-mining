@@ -32,16 +32,16 @@ import java.util.Set;
 import java.util.function.Function;
 
 /**
- * SENSITIVITY, after the opening of the revised design's outer test (its ticket 06): it chooses
- * nothing. The prediction intervals of the test step take the factors the inner models
- * calibrated on the usual-flow inner validation and apply them to the outer models' predictions,
- * an approximation ({@link PredictionIntervals#OUTER}). Here, beside them, the inner models
- * themselves predict the outer test, from the one fit whose residuals gave the factors ({@link
- * SimilarityScoring#sameModel}, {@link PredictionIntervals#SAME_MODEL}): per model and
- * level, the coverage with its interval resampling whole projects, the median width, the width
- * over the global median's, the factor and its calibration issues, and the model's MAE on the
- * outer test, context and never a competitor of the outer model's. Overall figures only, no
- * band.
+ * The revised design's OFFICIAL prediction intervals, chosen before its outer test was opened
+ * and computed right after the test step, as part of the opening. The inner models themselves
+ * predict the outer test, from the one fit whose residuals on every inner validation issue gave
+ * the factors ({@link SimilarityScoring#sameModel}, {@link PredictionIntervals#SAME_MODEL}).
+ * Beside them, for comparison, the test step's intervals: the same factors applied to the outer
+ * models' predictions, an approximation ({@link PredictionIntervals#OUTER_APPROXIMATION}). Per
+ * model and level, the coverage with its interval resampling whole projects, the median width,
+ * the width over the global median's, the factor and its calibration issues, and the model's MAE
+ * on the outer test, context and never a competitor of the outer model's. Overall figures only,
+ * no band.
  *
  * <p>Readings: every outer test issue first, then the usual flow at the outer training's fence,
  * the test step's issues; then both without the issues of new projects, when either design has
@@ -76,13 +76,18 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
   public static final String TABLE = "same-model-calibration.tsv";
 
   /** What this step is: at the top of its report and of its table, and in its record. */
-  public static final String NATURE = "SENSITIVITY, after the opening of the outer test: the "
-      + "inner models' own prediction intervals beside the test step's; it chooses nothing";
+  public static final String NATURE = "OFFICIAL prediction intervals of the revised design, "
+      + "chosen before the outer test was opened: the inner models' own intervals, calibrated on "
+      + "every inner validation issue, beside the test step's, an approximation shown for "
+      + "comparison";
 
-  /** The test step's intervals: the outer models' predictions, the inner models' factors. */
+  /**
+   * The test step's intervals, the approximation shown for comparison: the outer models'
+   * predictions, the inner models' factors.
+   */
   public static final String OUTER_DESIGN = "outer_model_inner_factors";
 
-  /** The same-model intervals: the inner models' predictions and their own factors. */
+  /** The same-model intervals, the official ones: the inner models' predictions, their factors. */
   public static final String SAME_DESIGN = "inner_model_same_factors";
 
   public static final List<String> COLUMNS = List.of("reading", "model", "level", "design", "n",
@@ -111,7 +116,7 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
    * @param outer the test step's reads of this reading: the outer models with the inner factors
    * @param same the same-model reads of this reading
    * @param calibrated per model, the factors both designs' reads of this reading took: the one
-   *     fit's, on the usual-flow inner validation
+   *     fit's, on every inner validation issue
    */
   record Reading(String name, TailCut.Reading reading, SimilarityScoring.Report outerReport,
       List<PredictionIntervals.Read> outer, SimilarityScoring.Report sameReport,
@@ -138,10 +143,10 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
     final Path testDir = testPredictions.toAbsolutePath().normalize().getParent();
     if (dir.toAbsolutePath().normalize().startsWith(testDir)) {
       throw refused(dir + " is the test step's REPORT_DIR, or lies in it (" + testDir
-          + "); this sensitivity writes nothing there");
+          + "); this step writes nothing there");
     }
     if (Files.exists(dir)) {
-      throw refused(dir + " exists; this sensitivity writes to a folder of its own");
+      throw refused(dir + " exists; this step writes to a folder of its own");
     }
     final ResultStore store =
         IssuesInProgressExtractCommand.runStore(context, Population.FIRST_COMMIT, rule);
@@ -150,7 +155,7 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
     if (opened.isEmpty() || !opened.get()) {
       throw refused((opened.isEmpty() ? "ISSUES_DB cannot tell whether a run of "
           : "ISSUES_DB holds no run of ") + IssuesSimilarityTestCommand.FIRST_COMMIT_REVISED_STAGE
-          + ": the revised design's outer test has not been opened, and this sensitivity never "
+          + ": the revised design's outer test has not been opened, and this step never "
           + "opens it");
     }
 
@@ -255,7 +260,8 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
           chosen.forests(), k, Population.FIRST_COMMIT, chosen.design());
       final PredictionIntervals.Joint sameIntervals =
           PredictionIntervals.sameModel(sameFit, floor, threads);
-      // the factors are the one fit's calibration, bit for bit the test step's inner calibration
+      // the factors are the one fit's calibration on every inner validation issue, bit for bit
+      // the test step's inner calibration under the revised rule
       final List<PredictionIntervals.Read> outerReads = PredictionIntervals.outer(
           sameIntervals.calibrated(), PredictionIntervals.Sample.of(outer.main(), floor),
           PredictionIntervals.Sample.of(outer.complementary(), floor), threads);
@@ -320,12 +326,14 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
     run.put(SplitRule.RULE_FIELD, rule.rule());
     run.put(SplitRule.DESIGN_FIELD, rule.setting());
     run.put("nature", NATURE);
-    run.put("outer_test", "read again after its opening ("
-        + IssuesSimilarityTestCommand.FIRST_COMMIT_REVISED_STAGE + "), for a sensitivity that "
-        + "chooses nothing");
-    run.put("prediction_intervals", PredictionIntervals.rule(floor));
+    run.put("outer_test", "read again right after its opening ("
+        + IssuesSimilarityTestCommand.FIRST_COMMIT_REVISED_STAGE + "), for the official "
+        + "prediction intervals chosen before it");
+    run.put("prediction_intervals", PredictionIntervals.rule(floor, rule));
     run.put("prediction_interval_factor", PredictionIntervals.FACTOR);
-    run.put("design_" + OUTER_DESIGN, PredictionIntervals.OUTER);
+    run.put("official_design", SAME_DESIGN);
+    run.put("approximation_design", OUTER_DESIGN);
+    run.put("design_" + OUTER_DESIGN, PredictionIntervals.outer(rule));
     run.put("design_" + SAME_DESIGN, PredictionIntervals.SAME_MODEL);
     run.put("readings", readings.stream().map(Reading::name).toList());
     run.put("models", sameFit.allTest().models().stream().map(SimilarityScoring.Scored::name)
@@ -334,6 +342,7 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
     run.put("inner_fit_rows", sameFit.allTest().fitRows());
     run.put("outer_fit_rows", outer.complementary().fitRows());
     run.put("calibration_rows", sameFit.calibration().scoredRows());
+    run.put("usual_flow_inner_validation_rows", sameFit.calibration().fences().usualRows());
     run.put("outer_test_rows", sameFit.allTest().scoredRows());
     run.put("usual_flow_outer_test_rows", sameFit.usualTest().scoredRows());
     run.put("usual_flow_fence_outer_training", sameFit.usualTest().fences().usualFence());
@@ -438,12 +447,13 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
       final SimilarityScoring.Readings outer, final SimilarityScoring.SameModel sameFit,
       final List<Reading> readings) {
     final List<String> md = new ArrayList<>();
-    md.add("# Issue duration from the first commit: same-model calibration (SENSITIVITY)");
+    md.add("# Issue duration from the first commit: same-model calibration (the official "
+        + "prediction intervals)");
     md.add("");
-    md.add("**" + NATURE + ".** The revised design's outer test had been opened by "
-        + IssuesSimilarityTestCommand.FIRST_COMMIT_REVISED_STAGE + "; this reading adds a "
-        + "second design of its prediction intervals beside the test step's, and changes none "
-        + "of its results.");
+    md.add("**" + NATURE + ".** The revised design's outer test was opened by "
+        + IssuesSimilarityTestCommand.FIRST_COMMIT_REVISED_STAGE + "; this step, part of the "
+        + "opening, gives the official prediction intervals beside the test step's "
+        + "approximation, and changes none of the test step's results.");
     md.add("");
     md.add("- matrix: " + matrix + " (sha256 " + chosen.matrixSha() + ")");
     md.add("- parameters: " + elasticNet + " (sha256 " + chosen.elasticNetSha() + ")");
@@ -454,8 +464,10 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
     md.add("");
     md.add("## The two designs");
     md.add("");
-    md.add("- " + OUTER_DESIGN + " (the test step's): " + PredictionIntervals.OUTER + ".");
-    md.add("- " + SAME_DESIGN + ": " + PredictionIntervals.SAME_MODEL + ".");
+    md.add("- " + SAME_DESIGN + " (the official intervals): " + PredictionIntervals.SAME_MODEL
+        + ".");
+    md.add("- " + OUTER_DESIGN + " (the test step's, an approximation for comparison): "
+        + PredictionIntervals.outer(SplitRule.REVISED) + ".");
     md.add("- Both designs use the same factors, one per model and level: "
         + PredictionIntervals.FACTOR + ". They differ only in the predictions the factors "
         + "widen.");
@@ -464,10 +476,12 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
         + "with nothing here.");
     md.add("");
     md.add(f("Inner fitting rows fitted (at or below the fence of k): %d. Outer training rows "
-        + "fitted: %d. Calibration issues (usual-flow inner validation): %d. Outer test issues: "
+        + "fitted: %d. Calibration issues (every inner validation issue, %d of them in the usual "
+        + "flow, the rest above its k = 3 fence): %d. Outer test issues: "
         + "%d, of which %d in the usual flow (at or below %.3f business days, the outer "
         + "training's fence, the test step's usual flow).", sameFit.allTest().fitRows(),
-        outer.complementary().fitRows(), sameFit.calibration().scoredRows(),
+        outer.complementary().fitRows(), sameFit.calibration().fences().usualRows(),
+        sameFit.calibration().scoredRows(),
         sameFit.allTest().scoredRows(), sameFit.usualTest().scoredRows(),
         sameFit.usualTest().fences().usualFence()));
     md.add(f("New projects, with outer test issues and no row on the model's own fitting side: "

@@ -1,6 +1,7 @@
 package app.cli.commands;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import app.cli.Context;
@@ -9,6 +10,7 @@ import app.identity.Strictness;
 import app.issues.Augmentation;
 import app.issues.Augmentation.Variant;
 import app.issues.FirstCommit;
+import app.issues.PredictionIntervals;
 import app.issues.RowCache;
 import app.issues.SplitRule;
 import app.issues.TeamColumns;
@@ -353,6 +355,18 @@ class RevisedDesignTest {
         .map(r -> (String) r.get("reading")).distinct().toList();
   }
 
+  /**
+   * Whether a printed line says the intervals are calibrated on the usual flow, as every rule but
+   * the revised one does ({@link PredictionIntervals#RULE}, {@link PredictionIntervals#OUTER}),
+   * or gives the calibration halves or prediction spans of the usual-flow validation issues.
+   */
+  private static boolean calibratesOnTheUsualFlow(final String line) {
+    return line.contains("calibrated on the usual-flow inner validation")
+        || line.contains("calibrated on the whole usual-flow inner validation")
+        || line.contains("calibration halves of the") && line.contains("usual-flow validation")
+        || line.contains("prediction span on the usual-flow");
+  }
+
   /** All issues before the usual flow, and likewise without the issues of new projects. */
   private static void allFirst(final List<String> names, final String where) {
     assertTrue(names.size() >= 2, where + ": " + names);
@@ -367,7 +381,9 @@ class RevisedDesignTest {
   @DisplayName("under the revised rule all issues are the main reading and the usual flow the "
       + "complementary one: the selection's record still says the choices are scored on the "
       + "usual flow; the inner report and the test step give all issues first in their sections, "
-      + "files and rows, the machine names unchanged; the usual-flow fence is read from the log")
+      + "files and rows, the machine names unchanged; the usual-flow fence is read from the log; "
+      + "the intervals are calibrated on every validation issue, the test step's labelled the "
+      + "approximation for comparison")
   void fullPopulationIsTheMainReading() throws Exception {
     final Path matrix = dir.resolve("matrix.tsv");
     final Path fixture = SelectionFixture.revised(dir.resolve("fixture.tsv"));
@@ -402,6 +418,26 @@ class RevisedDesignTest {
         || l.contains("usual flow (main reading)") || l.contains("all issues (complementary")
         || l.contains("illustrated on the complementary reading")),
         "no line calls the usual flow the main reading");
+    // the intervals are calibrated on every validation issue, the tail above the usual flow's
+    // fence included: the halves and the factors for later use
+    final List<String> innerPredictions =
+        Files.readAllLines(inner.resolve(IssuesSimilarityInnerReportCommand.PREDICTIONS));
+    final int validation = innerPredictions.size() - 1;
+    assertEquals("usual_flow", innerPredictions.getFirst().split("\t")[4]);
+    final long tail = innerPredictions.stream().skip(1)
+        .filter(l -> l.split("\t")[4].equals("false")).count();
+    assertTrue(tail > 0, "some validation issue above the usual flow's fence");
+    final List<String> calibration =
+        Files.readAllLines(inner.resolve(IssuesSimilarityInnerReportCommand.CALIBRATION));
+    assertEquals(Set.of(Integer.toString(validation)), calibration.stream().skip(1)
+        .map(l -> l.split("\t")[2]).collect(Collectors.toSet()), "every factor's issues");
+    assertTrue(report.stream().anyMatch(l -> l.startsWith("- calibration halves of the "
+        + validation + " validation issues, the " + tail + " above the usual flow's k = 3 fence "
+        + "included: ")), String.join("\n", report));
+    assertTrue(report.stream().anyMatch(l -> l.startsWith("- prediction intervals: "
+        + PredictionIntervals.rule(1, SplitRule.REVISED))), String.join("\n", report));
+    assertTrue(report.stream().noneMatch(RevisedDesignTest::calibratesOnTheUsualFlow),
+        "no line calibrates on the usual flow");
     for (final String file : List.of(IssuesSimilarityInnerReportCommand.MODELS,
         IssuesSimilarityInnerReportCommand.BANDS, IssuesSimilarityInnerReportCommand.COMPARISONS,
         IssuesSimilarityInnerReportCommand.ORDERING, IssuesSimilarityInnerReportCommand.INTERVALS,
@@ -435,6 +471,22 @@ class RevisedDesignTest {
     assertTrue(!run.getFirst().get("prediction_percentiles").toString()
         .contains("illustrated on the complementary reading"), "the record's percentile rule");
     allFirst(readingOrderOfRows(recordedRows.getLast()), "the test step's rows");
+    // the test step's intervals are the approximation, for comparison, and say so; the official
+    // ones are the same-model step's, calibrated on the same issues
+    assertEquals(PredictionIntervals.rule(1, SplitRule.REVISED),
+        run.getFirst().get("prediction_intervals"));
+    assertEquals(PredictionIntervals.outer(SplitRule.REVISED),
+        run.getFirst().get("prediction_interval_outer_calibration"));
+    assertTrue(run.getFirst().get("prediction_interval_official").toString()
+        .contains(IssuesFirstCommitSameModelCalibrationCommand.STAGE));
+    assertTrue(log.stream().anyMatch(l -> l.startsWith("  prediction intervals, the inner "
+        + "calibration applied (the approximation, for comparison; the official intervals are "
+        + IssuesFirstCommitSameModelCalibrationCommand.STAGE + "'s)")), String.join("\n", log));
+    assertTrue(log.stream().noneMatch(RevisedDesignTest::calibratesOnTheUsualFlow),
+        "no line calibrates on the usual flow");
+    final String percentiles = run.getFirst().get("prediction_percentiles").toString();
+    assertTrue(percentiles.contains("they illustrate the approximation"), percentiles);
+    assertFalse(percentiles.contains("usual-flow coverage"), percentiles);
     @SuppressWarnings("unchecked")
     final Map<String, Object> newProjects = (Map<String, Object>) run.getFirst()
         .get("new_projects");
