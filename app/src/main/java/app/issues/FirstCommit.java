@@ -54,7 +54,10 @@ public final class FirstCommit {
    */
   public static final double DEFAULT_WAIT_K = 1.5;
 
-  /** The k that cuts no wait: an infinite fence, so the cap is the largest wait. */
+  /**
+   * The k that cuts no wait: an infinite fence and no cap at all ({@link Threshold#uncapped}),
+   * not even the largest wait the cap would be learned on.
+   */
   public static final double NO_WAIT_CAP = Double.POSITIVE_INFINITY;
 
   /** The rules in words, for the audit. */
@@ -87,14 +90,13 @@ public final class FirstCommit {
 
   /** The rules in words, for the audit, with the wait fence at {@code k}. */
   public static String rule(final double k) {
-    final String fence = k == NO_WAIT_CAP ? "no cap on the waits: every wait counted, never "
-        + "below" : "capped at the largest gap not above " + fenceText(k)
-        + " of the inner fitting's gaps, never below";
+    final String waits = k == NO_WAIT_CAP
+        ? "every business day between marks counted, no cap on the waits and no wait cut"
+        : "business days between marks capped at the largest gap not above " + fenceText(k)
+            + " of the inner fitting's gaps, never below the dates with explicit human activity";
     return "first commit to first resolution; marks are the commits "
-        + "and the human patches after the first commit; business days between marks "
-        + fence + " the "
-        + "dates with explicit human activity; after the last mark only dates with human comments, "
-        + "attachments or reviews; status not read";
+        + "and the human patches after the first commit; " + waits + "; after the last mark "
+        + "only dates with human comments, attachments or reviews; status not read";
   }
 
   /**
@@ -240,11 +242,17 @@ public final class FirstCommit {
   /**
    * The cap on the waits between marks, learned once.
    *
-   * @param fence Q3 + 1.5 IQR of the gaps
-   * @param cap the largest gap not above the fence
+   * @param fence Q3 + k IQR of the gaps; infinite with {@link #NO_WAIT_CAP}
+   * @param cap the largest gap not above the fence; {@link Integer#MAX_VALUE} when the fence is
+   *     infinite, so no wait is cut, however long, whether or not it was among the gaps
    * @param gaps how many gaps it was learned on
    */
   public record Threshold(double q1, double median, double q3, double fence, int cap, int gaps) {
+
+    /** Whether no wait is capped: the fence of {@link #NO_WAIT_CAP}. */
+    public boolean uncapped() {
+      return Double.isInfinite(fence);
+    }
 
     /** This threshold, refused when its cap is below one business day. */
     public Threshold requirePositive() {
@@ -537,8 +545,9 @@ public final class FirstCommit {
 
   /**
    * The cap learned on {@code gaps}: the largest one not above Q3 + {@code k} IQR; with {@link
-   * #NO_WAIT_CAP} the fence is infinite and the cap is the largest gap. A k that is not positive
-   * is refused.
+   * #NO_WAIT_CAP} the fence is infinite and there is no cap ({@link Integer#MAX_VALUE}): a wait
+   * longer than every gap here, of an issue the cap is not learned on, is not cut either. A k
+   * that is not positive is refused.
    */
   public static Threshold threshold(final List<Integer> gaps, final double k) {
     if (!(k > 0)) {
@@ -552,8 +561,8 @@ public final class FirstCommit {
     final double q3 = TailCut.quantile(sorted, .75);
     // an explicit infinity: with an IQR of zero, 0 * Infinity would be NaN
     final double fence = k == NO_WAIT_CAP ? NO_WAIT_CAP : q3 + k * (q3 - q1);
-    final int cap = gaps.stream().filter(g -> g <= fence).mapToInt(Integer::intValue).max()
-        .orElseThrow();
+    final int cap = k == NO_WAIT_CAP ? Integer.MAX_VALUE
+        : gaps.stream().filter(g -> g <= fence).mapToInt(Integer::intValue).max().orElseThrow();
     return new Threshold(q1, TailCut.quantile(sorted, .5), q3, fence, cap, gaps.size());
   }
 }

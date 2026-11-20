@@ -154,10 +154,10 @@ It needs `AUDIT_DIR`, where it writes `audit.md` and `per-issue.tsv`, and writes
 MongoDB. Give it `APP_OPTS=-Xmx6g`.
 
 `WAIT_FENCE_K` sets the k of the cap's fence, Q3 + k IQR of the inner fitting's waits. Empty is 1.5,
-the official value; a positive number is that k; `none` is no cap, an infinite fence. Zero, a
-negative number, NaN, infinity or text is refused before anything is read. It is a sensitivity of
-the first-commit study only (the In Progress study never reads it): with any value but 1.5 the
-`audit.md` names the k in its header, its table and its rule.
+the official value; a positive number is that k; `none` is no cap at all, an infinite fence, so no
+wait is cut, however long. Zero, a negative number, NaN, infinity or text is refused before anything
+is read. It is a sensitivity of the first-commit study only (the In Progress study never reads it):
+with any value but 1.5 the `audit.md` names the k in its header, its table and its rule.
 
 ### 4b. Issue duration from the first commit: supporting numbers
 

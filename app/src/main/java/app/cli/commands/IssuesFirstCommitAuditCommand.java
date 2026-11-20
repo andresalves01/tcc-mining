@@ -63,9 +63,9 @@ public final class IssuesFirstCommitAuditCommand implements CommandRunner {
     final Report r =
         new IssuesFirstCommitAuditTask(context.study(), context.progress(), rule, waitK).run();
     write(root, r);
-    System.out.printf("%n  First-commit audit: %,d issues drawn (training %,d, test %,d); cap %d "
-        + "business days%n", r.sizes().rows(), r.sizes().train(), r.sizes().test(),
-        r.threshold().cap());
+    System.out.printf("%n  First-commit audit: %,d issues drawn (training %,d, test %,d); %s%n",
+        r.sizes().rows(), r.sizes().train(), r.sizes().test(), r.threshold().uncapped()
+            ? "no cap on the waits" : "cap " + r.threshold().cap() + " business days");
     if (r.temporal() != null) {
       System.out.printf("  temporal split: outer cut %s, inner cut %s%n",
           r.temporal().cuts().outer(), r.temporal().cuts().inner());
@@ -89,6 +89,11 @@ public final class IssuesFirstCommitAuditCommand implements CommandRunner {
   /** The fence's value, a word when it is infinite. */
   private static String fence(final FirstCommit.Threshold t) {
     return Double.isInfinite(t.fence()) ? "sem cerca" : d(t.fence());
+  }
+
+  /** The cap in business days, a word when there is none. */
+  private static String cap(final FirstCommit.Threshold t) {
+    return t.uncapped() ? "nenhum" : n(t.cap());
   }
 
   static List<String> summary(final Report r) {
@@ -154,14 +159,15 @@ public final class IssuesFirstCommitAuditCommand implements CommandRunner {
     md.add("| Q1 | Mediana | Q3 | Cerca (" + FirstCommit.fenceTextPt(r.waitFenceK()) + ") | Teto | Intervalos |");
     md.add("|---:|---:|---:|---:|---:|---:|");
     md.add("| " + d(t.q1()) + " | " + d(t.median()) + " | " + d(t.q3()) + " | " + fence(t)
-        + " | " + n(t.cap()) + " | " + n(t.gaps()) + " |");
+        + " | " + cap(t) + " | " + n(t.gaps()) + " |");
     md.add("");
     if (r.temporal() != null) {
       final FirstCommit.Threshold old = r.temporal().random();
       md.add("O teto acima é aprendido só nas esperas do ajuste interno temporal e aplicado "
           + "congelado a todas as issues. Na divisão aleatória, sobre as mesmas issues e nesta "
-          + "mesma rodada, o teto é " + n(old.cap()) + " dias úteis (cerca " + fence(old)
-          + ", " + n(old.gaps()) + " intervalos); a auditoria de 25/10/2026, com a divisão "
+          + "mesma rodada, " + (old.uncapped() ? "também não há teto (" : "o teto é "
+          + n(old.cap()) + " dias úteis (cerca " + fence(old) + ", ") + n(old.gaps())
+          + " intervalos); a auditoria de 25/10/2026, com a divisão "
           + "aleatória, aprendeu 2.");
       md.add("");
     }
@@ -191,7 +197,7 @@ public final class IssuesFirstCommitAuditCommand implements CommandRunner {
     md.add("|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
     for (final IssuesFirstCommitAuditTask.Sensitivity s : r.sensitivity()) {
       md.add("| " + d(100 * s.limit()) + "% | " + n(s.sizes().rows()) + " | "
-          + n(s.sizes().train()) + " | " + n(s.sizes().test()) + " | " + n(s.threshold().cap())
+          + n(s.sizes().train()) + " | " + n(s.sizes().test()) + " | " + cap(s.threshold())
           + " | " + quantiles(s.target()) + " |");
     }
     md.add("");

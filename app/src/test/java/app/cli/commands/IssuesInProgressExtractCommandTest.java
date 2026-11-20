@@ -255,6 +255,8 @@ class IssuesInProgressExtractCommandTest {
     assertEquals("none", run.get("wait_fence_k"));
     assertEquals(FirstCommit.rule(FirstCommit.NO_WAIT_CAP), run.get("target_rule"));
     assertEquals("none", ((Map<?, ?>) run.get("wait_cap")).get("fence"));
+    assertEquals("none", ((Map<?, ?>) run.get("wait_cap")).get("cap"),
+        "no cap, not the largest wait");
   }
 
   @Test

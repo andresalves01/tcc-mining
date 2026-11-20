@@ -412,7 +412,7 @@ class IssuesFirstCommitAuditTaskTest {
     final IssuesFirstCommitAuditTask.Drawn none = IssuesFirstCommitAuditTask.draw(from,
         FirstCommit.SHARE, MIDNIGHT, SplitRule.TEMPORAL, FirstCommit.NO_WAIT_CAP);
     assertEquals(2, usual.threshold().cap());
-    assertEquals(8, none.threshold().cap(), "the largest wait of the inner fitting");
+    assertEquals(Integer.MAX_VALUE, none.threshold().cap(), "no cap at all");
     // the validation's waits (4 business days) are cut at 2, kept whole with no cap
     assertEquals(2, usual.training().get(id(6)).total());
     assertEquals(4, none.training().get(id(6)).total());
@@ -470,5 +470,33 @@ class IssuesFirstCommitAuditTaskTest {
         "counted from the crossing sets, no issue read");
     assertEquals(t.crossing(from), d.crossing(Map.of()),
         "the temporal design counts the same issues from their first resolutions");
+  }
+
+  @Test
+  @DisplayName("with no cap, a wait longer than every wait the cap is learned on is not cut: the "
+      + "inner fitting issue crossing the inner cut, outside that set, keeps its whole wait in the "
+      + "outer training, which k = 1.5 and k = 3 cut")
+  void noCapCutsNoWaitOutsideTheLearningSet() {
+    final Map<String, FirstCommit.Issue> from = new LinkedHashMap<>();
+    // as in revisedCap: week 4 crosses the inner cut, and its wait, a week from Monday to Monday
+    // (five business days), is left out of the waits the cap is learned on
+    final int[] gaps = {1, 1, 2, 2, 7, 1, 1, 1, 1, 1};
+    for (int week = 0; week < 10; week++) {
+      final FirstCommit.Issue i = started(week + 1, "p", week, gaps[week]);
+      from.put(i.id(), i);
+    }
+    final IssuesFirstCommitAuditTask.Drawn none = IssuesFirstCommitAuditTask.draw(from,
+        FirstCommit.SHARE, MIDNIGHT, SplitRule.REVISED, FirstCommit.NO_WAIT_CAP);
+    assertEquals(Set.of(id(5)), none.parts().innerCrossing());
+    assertTrue(none.threshold().uncapped());
+    assertEquals(5, none.training().get(id(5)).total(), "the whole wait of five days");
+    assertEquals(0, none.training().values().stream().mapToInt(FirstCommit.Count::capped).sum());
+    for (final double k : new double[] {1.5, 3.0}) {
+      final IssuesFirstCommitAuditTask.Drawn finite = IssuesFirstCommitAuditTask.draw(from,
+          FirstCommit.SHARE, MIDNIGHT, SplitRule.REVISED, k);
+      assertEquals(2, finite.threshold().cap(), "learned on the waits 1, 1, 2, 2; k " + k);
+      assertEquals(2, finite.training().get(id(5)).total(), "k " + k);
+      assertEquals(3, finite.training().get(id(5)).capped(), "k " + k);
+    }
   }
 }

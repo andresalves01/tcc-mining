@@ -138,8 +138,11 @@ public final class IssuesFirstCommitSupportingNumbersCommand implements CommandR
     md.add("");
     md.add("- Divisão: " + r.rule().rule() + ".");
     md.add("- Cerca das esperas: " + FirstCommit.fenceTextPt(r.waitFenceK()) + ".");
-    md.add("- Teto das esperas, aprendido no ajuste interno: " + n(r.threshold().cap())
-        + " dias úteis (" + n(r.threshold().gaps()) + " esperas).");
+    md.add(r.threshold().uncapped()
+        ? "- Teto das esperas: nenhum, nenhuma espera é cortada (o ajuste interno tem "
+            + n(r.threshold().gaps()) + " esperas)."
+        : "- Teto das esperas, aprendido no ajuste interno: " + n(r.threshold().cap())
+            + " dias úteis (" + n(r.threshold().gaps()) + " esperas).");
     md.add("- Escolha: a maior diferença entre os dias úteis de calendário e os do estudo "
         + "(calendar_minus_study), o maior número de dias úteis que o teto tirou das esperas "
         + "(capped) e a maior cauda em dias absolutos (tail). Empates pelo menor id; se um "

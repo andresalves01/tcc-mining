@@ -97,6 +97,8 @@ class IssuesFirstCommitSupportingNumbersCommandTest {
     final String md = Files.readString(out.resolve("worked-example.md"));
     assertTrue(md.contains("sem teto"), md);
     assertFalse(md.contains("Infinity"), md);
+    assertTrue(md.contains("- Teto das esperas: nenhum, nenhuma espera é cortada"), md);
+    assertFalse(md.contains("2.147.483.647"), md);
   }
 
   @Test

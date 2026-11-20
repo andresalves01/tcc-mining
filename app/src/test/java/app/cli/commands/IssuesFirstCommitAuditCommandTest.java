@@ -209,6 +209,8 @@ class IssuesFirstCommitAuditCommandTest {
     assertTrue(mdNone.contains("Regra: " + FirstCommit.rule(FirstCommit.NO_WAIT_CAP) + "."),
         mdNone);
     assertFalse(mdNone.contains("Infinity") || mdNone.contains("NaN"), mdNone);
+    assertTrue(mdNone.contains("| sem cerca | nenhum |"), "no cap, not a number of days: " + mdNone);
+    assertFalse(mdNone.contains("2.147.483.647"), mdNone);
   }
 
   @Test

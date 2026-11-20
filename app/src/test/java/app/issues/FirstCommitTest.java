@@ -1,6 +1,7 @@
 package app.issues;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -416,14 +417,27 @@ class FirstCommitTest {
   }
 
   @Test
-  @DisplayName("with no cap the fence is infinite and the cap is the largest wait, so none is cut")
+  @DisplayName("with no cap the fence is infinite and there is no cap at all: a wait longer than "
+      + "every wait it was learned on is not cut, while a finite k cuts it")
   void noWaitCap() {
     final FirstCommit.Threshold t = FirstCommit.threshold(GAPS, FirstCommit.NO_WAIT_CAP);
     assertEquals(Double.POSITIVE_INFINITY, t.fence());
-    assertEquals(50, t.cap());
+    assertTrue(t.uncapped());
+    assertEquals(Integer.MAX_VALUE, t.cap(), "no cap, not the largest wait (50)");
     final FirstCommit.Issue i = worked(List.of(code("a", "x", day(2), 10L),
         code("b", "x", day(16), 30L)), List.of(), List.of(day(10)), day(16) + H);
     assertEquals(0, FirstCommit.count(i, select(i), t.cap()).capped());
+    // a wait of more business days than the 50 the cap was learned on
+    final long far = day(2) + 98 * 24 * H;
+    final FirstCommit.Issue longer = worked(List.of(code("a", "x", day(2), 10L),
+        code("b", "x", far, 30L)), List.of(), List.of(day(10)), far + H);
+    assertTrue(FirstCommit.gaps(longer, select(longer)).getFirst() > 50);
+    assertEquals(0, FirstCommit.count(longer, select(longer), t.cap()).capped());
+    for (final double k : new double[] {1.5, 3.0}) {
+      final FirstCommit.Threshold finite = FirstCommit.threshold(GAPS, k);
+      assertFalse(finite.uncapped());
+      assertTrue(FirstCommit.count(longer, select(longer), finite.cap()).capped() > 0, "k " + k);
+    }
     assertEquals("no cap on the waits", FirstCommit.fenceText(FirstCommit.NO_WAIT_CAP));
   }
 
@@ -433,7 +447,7 @@ class FirstCommitTest {
     final FirstCommit.Threshold t =
         FirstCommit.threshold(List.of(1, 1, 1, 1, 7), FirstCommit.NO_WAIT_CAP);
     assertEquals(Double.POSITIVE_INFINITY, t.fence());
-    assertEquals(7, t.cap());
+    assertEquals(Integer.MAX_VALUE, t.cap());
     assertEquals(1, FirstCommit.threshold(List.of(1, 1, 1, 1, 7), 1.5).cap(),
         "with a cap the same gaps cut the wait of 7");
   }
