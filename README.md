@@ -370,6 +370,19 @@ than the run's. Under `SPLIT_RULE=temporal` or `revised`:
   run of `runs_revised` declares the crossing issues left out (`crossing_left_out`) and the
   similarity run that wrote the matrix's columns, found through the retrospective run that wrote
   the matrix, declares point-in-time histories.
+- **Prediction intervals, under `revised` only.** The official intervals are the same-model ones,
+  chosen before the opening: the inner model, fitted once on the inner fitting rows, predicts the
+  test, and its factors come from its own errors on every inner validation issue, the tail above
+  the usual flow's fence included. `issues-first-commit-same-model-calibration` computes them
+  right after the opening, as part of it: it reads `MATRIX`, `ELASTIC_NET_PARAMETERS` and
+  `TEST_PREDICTIONS` (the test's `similarity-test-predictions.tsv`), refuses unless
+  `runs_revised` holds the opening, unless `REPORT_DIR` is a new folder outside the test's and
+  unless the outer models refitted reproduce the test's predictions, writes
+  `same-model-calibration.md` and `.tsv` and records its run in `runs_revised`. The test's own
+  intervals, the outer models with the inner models' factors, are calibrated on the same issues
+  and labelled an approximation, shown for comparison; so are the intervals of its percentile
+  tables. The inner report's check by halves uses the same issues. Under `random` and `temporal`
+  the intervals are calibrated on the usual-flow inner validation, as before.
 
 The forests are refitted with the tree count the parameters file gives, in a line whose four
 tab-separated fields are `forest`, `every_model`, `trees` and the count. A random-split file

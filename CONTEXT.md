@@ -241,7 +241,11 @@ labels.
 
 **Prediction interval**:
 The range around an estimate that holds a stated share of such issues (80% or 95%), calibrated on
-the inner validation.
+the inner validation. In the revised design it is calibrated with the same model that gives the
+estimate, on the whole inner validation, the tail above the usual flow included; the interval of
+the model fitted on the whole outer training, with factors learned by the inner model, is an
+approximation shown for comparison.
+
 **Prediction quartile**:
 One of the four ranges of a model's own estimates. It does not choose a calibration factor:
 each model and interval level uses one pooled inner-validation factor.

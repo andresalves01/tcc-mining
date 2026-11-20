@@ -1303,6 +1303,37 @@ class SimilarityScoringTest {
   }
 
   @Test
+  @DisplayName("the revised design's calibration reads every inner validation issue, the tail "
+      + "above the usual flow's fence included, with the same fit's predictions; the usual-flow "
+      + "calibration is the one every other rule reads, bit for bit as before")
+  void calibrationOnEveryValidationIssue() {
+    final List<RowCache.Entry> entries = withTail(corpus());
+    final SimilarityScoring.Report before =
+        SimilarityScoring.calibration(entries, choices(0.2), forests(), 1.5);
+    final SimilarityScoring.Report usual = SimilarityScoring.calibration(entries, choices(0.2),
+        forests(), 1.5, Population.IN_PROGRESS, SimilarityScoring.Design.of(null),
+        TailCut.Reading.USUAL_FLOW);
+    final SimilarityScoring.Report all = SimilarityScoring.calibration(entries, choices(0.2),
+        forests(), 1.5, Population.IN_PROGRESS, SimilarityScoring.Design.of(null),
+        PredictionIntervals.calibrationReading(SplitRule.REVISED));
+    assertEquals(SimilarityScoring.predictions(before), SimilarityScoring.predictions(usual));
+    assertEquals(TailCut.Reading.ALL, all.reading());
+    final SimilarityScoring.Readings inner = SimilarityScoring.readings(entries, choices(0.2),
+        forests(), 1.5, INNER, 1, 1);
+    assertEquals(ids(inner.complementary()), ids(all));
+    assertTrue(all.scoredRows() > usual.scoredRows(), "issues above the usual flow's fence");
+    assertTrue(java.util.Arrays.stream(all.observed())
+        .anyMatch(o -> o > all.fences().usualFence()), "the tail is in the calibration");
+    for (final SimilarityScoring.Scored m : all.models()) {
+      assertEquals(java.util.Arrays.toString(model(inner.complementary(), m.name()).predicted()),
+          java.util.Arrays.toString(m.predicted()), m.name());
+    }
+    // the usual flow's issues are a part of it, with the same predictions
+    final Map<String, Map<String, Double>> every = byId(all);
+    byId(usual).forEach((id, line) -> assertEquals(every.get(id), line, id));
+  }
+
+  @Test
   @DisplayName("the outer test's prediction intervals, end to end on the synthetic corpus: the "
       + "inner calibration applied to the outer models, every model of both readings read, the "
       + "global median's widths finite (ticket 24; code only, the seal holds)")
@@ -1524,16 +1555,20 @@ class SimilarityScoringTest {
 
   @Test
   @DisplayName("same model: its calibration is, bit for bit, the calibration the outer test's "
-      + "intervals read, the analogy estimate included, from one fit that also predicts the outer "
-      + "test")
+      + "intervals read under the revised rule, every inner validation issue, the analogy "
+      + "estimate included, from one fit that also predicts the outer test")
   void sameModelCalibrationIsTheInnerCalibration() {
     final List<RowCache.Entry> entries = withTail(corpus());
     final SimilarityScoring.Report c = SimilarityScoring.calibration(entries, choices(0.2),
-        forests(), 1.5, Population.IN_PROGRESS, SimilarityScoring.Design.of(CLUSTER_16));
+        forests(), 1.5, Population.IN_PROGRESS, SimilarityScoring.Design.of(CLUSTER_16),
+        PredictionIntervals.calibrationReading(SplitRule.REVISED));
     final SimilarityScoring.SameModel s = sameModel(entries);
     final SimilarityScoring.Report sc = s.calibration();
     assertEquals(SimilarityScoring.Scope.SAME_MODEL, sc.scope());
-    assertEquals(TailCut.Reading.USUAL_FLOW, sc.reading());
+    // every inner validation issue, the tail above the usual flow's fence included
+    assertEquals(TailCut.Reading.ALL, sc.reading());
+    assertTrue(sc.scoredRows() > sc.fences().usualRows(), "the tail is in the calibration");
+    assertEquals(sc.fences().allRows(), sc.scoredRows());
     assertEquals(SimilarityScoring.predictions(c), SimilarityScoring.predictions(sc));
     assertEquals(c.models().stream().map(SimilarityScoring.Scored::name).toList(),
         sc.models().stream().map(SimilarityScoring.Scored::name).toList());

@@ -40,15 +40,28 @@ public final class EstimationUncertainty {
       + "outer refits reuse inner factors approximately";
 
   /**
-   * {@link #PERCENTILE_RULE} under {@code rule}: under the revised temporal design all issues are
-   * the main reading ({@link TailCut.Reading#main}), so the intervals are illustrated there, on
-   * the main reading, while they still target the usual flow's coverage.
+   * The percentiles' rule under the revised temporal design: the intervals are calibrated on
+   * every inner validation issue ({@link PredictionIntervals#calibrationReading}), all issues
+   * being its main reading; around the outer models' estimates they are the approximation shown
+   * for comparison, not the official same-model intervals ({@link PredictionIntervals#SAME_MODEL}),
+   * which the same-model calibration step reports.
+   */
+  public static final String REVISED_PERCENTILE_RULE = "percentiles of each model's estimates "
+      + "on the scored issues, using type-7 interpolation; the pooled inner calibration on every "
+      + "inner validation issue, the tail above the usual flow's k = 3 fence included, supplies "
+      + "80%/95% prediction intervals around those estimates; these are illustrations, not "
+      + "confidence intervals for percentiles or evidence of percentile-specific coverage; "
+      + "intervals target the coverage on all issues, the main reading; around the outer "
+      + "refits' estimates they illustrate the approximation, the inner factors reused on the "
+      + "outer models, not the official same-model intervals, which the same-model calibration "
+      + "step reports";
+
+  /**
+   * The percentiles' rule under {@code rule}: {@link #REVISED_PERCENTILE_RULE} under the revised
+   * temporal design, {@link #PERCENTILE_RULE} under every other rule.
    */
   public static String percentileRule(final SplitRule rule) {
-    return TailCut.Reading.main(rule) == TailCut.Reading.ALL
-        ? PERCENTILE_RULE.replace("even when illustrated on the complementary reading",
-            "even when illustrated on all issues, the main reading")
-        : PERCENTILE_RULE;
+    return rule == SplitRule.REVISED ? REVISED_PERCENTILE_RULE : PERCENTILE_RULE;
   }
 
   public record Estimate(double value, double low, double high, int validDraws) {}

@@ -189,9 +189,11 @@ class IssuesFirstCommitSameModelCalibrationCommandTest {
   }
 
   @Test
-  @DisplayName("writes the sensitivity's report and table, every outer test issue first, then "
-      + "the usual flow, both designs per model and level, and records its run under a stage "
-      + "of its own citing the same-model intervals; nothing in the test step's folder moves")
+  @DisplayName("writes the official intervals' report and table, every outer test issue first, "
+      + "then the usual flow, both designs per model and level, the test step's labelled the "
+      + "approximation, calibrated on every inner validation issue, and records its run under a "
+      + "stage of its own citing the same-model intervals as official; nothing in the test "
+      + "step's folder moves")
   void writesBothDesigns() throws Exception {
     final Map<String, String> before = snapshot(testDir);
     final Path report = dir.resolve("same-model");
@@ -201,8 +203,20 @@ class IssuesFirstCommitSameModelCalibrationCommandTest {
 
     final List<String> md =
         Files.readAllLines(report.resolve(IssuesFirstCommitSameModelCalibrationCommand.REPORT));
-    assertTrue(md.get(2).startsWith("**SENSITIVITY, after the opening"), md.get(2));
-    assertTrue(md.get(2).contains("it chooses nothing"), md.get(2));
+    // the official intervals, chosen before the opening: no sensitivity, nothing post hoc
+    assertTrue(md.get(0).contains("the official prediction intervals"), md.get(0));
+    assertTrue(md.get(2).startsWith("**OFFICIAL prediction intervals of the revised design"),
+        md.get(2));
+    assertTrue(md.get(2).contains("chosen before the outer test was opened"), md.get(2));
+    for (final String line : md) {
+      assertFalse(line.contains("SENSITIVITY") || line.toLowerCase(java.util.Locale.ROOT)
+          .contains("sensitivity") || line.contains("chooses nothing"), line);
+    }
+    assertTrue(md.contains("- " + IssuesFirstCommitSameModelCalibrationCommand.SAME_DESIGN
+        + " (the official intervals): " + PredictionIntervals.SAME_MODEL + "."), md.toString());
+    assertTrue(md.contains("- " + IssuesFirstCommitSameModelCalibrationCommand.OUTER_DESIGN
+        + " (the test step's, an approximation for comparison): "
+        + PredictionIntervals.outer(SplitRule.REVISED) + "."), md.toString());
     final List<String> table =
         Files.readAllLines(report.resolve(IssuesFirstCommitSameModelCalibrationCommand.TABLE));
     // the nature first, a comment line, then the header
@@ -321,8 +335,24 @@ class IssuesFirstCommitSameModelCalibrationCommandTest {
     assertEquals("issues-first-commit-same-model-calibration", run.get("stage"));
     assertEquals("revised", run.get(SplitRule.DESIGN_FIELD));
     assertTrue(run.containsValue(PredictionIntervals.SAME_MODEL));
-    assertTrue(run.containsValue(PredictionIntervals.OUTER));
-    assertTrue(((String) run.get("nature")).contains("chooses nothing"));
+    assertTrue(run.containsValue(PredictionIntervals.outer(SplitRule.REVISED)));
+    assertEquals(PredictionIntervals.rule(1, SplitRule.REVISED), run.get("prediction_intervals"));
+    assertTrue(((String) run.get("nature")).startsWith("OFFICIAL"), (String) run.get("nature"));
+    assertFalse(((String) run.get("nature")).contains("chooses nothing"));
+    assertEquals(IssuesFirstCommitSameModelCalibrationCommand.SAME_DESIGN,
+        run.get("official_design"));
+    assertEquals(IssuesFirstCommitSameModelCalibrationCommand.OUTER_DESIGN,
+        run.get("approximation_design"));
+    // the calibration is every inner validation issue, the tail above the usual flow's fence too
+    final int calibrationRows = (int) run.get("calibration_rows");
+    assertTrue(calibrationRows > (int) run.get("usual_flow_inner_validation_rows"),
+        "the tail is in the calibration");
+    assertEquals(Set.of(Integer.toString(calibrationRows)),
+        rows.stream().map(r -> r[11]).collect(Collectors.toSet()), "every factor's n");
+    final long validation = RowCache.read(matrix).stream()
+        .filter(e -> Verdict.scored(Augmentation.Variant.INNER, e, Population.FIRST_COMMIT))
+        .filter(e -> e.row().values().get(app.issues.FirstCommit.TARGET_COLUMN) >= 1).count();
+    assertEquals(validation, calibrationRows, "every inner validation issue");
     assertEquals(Sha256.of(testDir.resolve(IssuesSimilarityTestCommand.PREDICTIONS)),
         run.get("test_predictions_sha256"));
     assertTrue((double) run.get("rerun_max_difference_business_days")
