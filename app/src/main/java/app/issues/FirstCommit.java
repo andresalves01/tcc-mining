@@ -452,14 +452,24 @@ public final class FirstCommit {
    * @param kinds what each mark is, in the same order as {@code marks}
    * @param waits the waits between consecutive marks
    * @param tail the dates with human activity after the last mark, in order
+   * @param tailBusinessDays the business days after the last mark's date up to the resolution's,
+   *     counted or not; with the waits' business days they make up {@code calendar}
    * @param calendar the business days from the first commit's date, excluded, to the resolution's
    */
   public record Explanation(Count count, List<Long> marks, List<Kind> kinds, List<Wait> waits,
-      List<LocalDate> tail, int calendar) {
+      List<LocalDate> tail, int tailBusinessDays, int calendar) {
 
     /** The business days the target counts. */
     public int total() {
       return count.total();
+    }
+
+    /**
+     * The business days after the last mark that did not count: the tail's business days without
+     * human activity, which the study leaves out.
+     */
+    public int tailUncounted() {
+      return tailBusinessDays - tail.size();
     }
   }
 
@@ -508,6 +518,7 @@ public final class FirstCommit {
           wait.size() - counted));
     }
     final Set<LocalDate> tail = between(m.getLast(), end, hour);
+    final int tailBusinessDays = tail.size();
     tail.retainAll(active);
     final int total = implementation + tail.size();
     if (total > whole.size()) {
@@ -517,7 +528,7 @@ public final class FirstCommit {
     return new Explanation(
         new Count(total, implementation, tail.size(), capped, m.size(), patches), m,
         typed.stream().map(Mark::kind).toList(), List.copyOf(waits),
-        tail.stream().sorted().toList(), whole.size());
+        tail.stream().sorted().toList(), tailBusinessDays, whole.size());
   }
 
   // ------------------------------------------------------------------ cap and summaries

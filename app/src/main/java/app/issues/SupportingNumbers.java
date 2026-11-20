@@ -92,15 +92,20 @@ public final class SupportingNumbers {
   /** The business days the cap took out of the waits. */
   public static final String CAPPED = "capped";
 
-  /** The dates with human activity after the last mark, in absolute days. */
-  public static final String TAIL = "tail";
+  /**
+   * The business days after the last mark that did not count ({@link
+   * FirstCommit.Explanation#tailUncounted}): where the tail weighed most on the gap between the
+   * calendar and the study.
+   */
+  public static final String TAIL = "tail_not_counted";
 
   /**
    * The worked examples among {@code entries}, which the caller draws from the outer training
-   * alone: the largest gap between the calendar's business days and the study's, then the most
-   * business days cut from the waits, then the most days of tail in absolute terms. Ties go to the
-   * smaller id. An issue already chosen is skipped, and the next best is taken with a note. With
-   * fewer issues than criteria, fewer are picked.
+   * alone (under the revised rule, from its issues that teach): the largest gap between the
+   * calendar's business days and the study's, then the most business days cut from the waits,
+   * then the most business days after the last mark that did not count. Ties go to the smaller
+   * id. An issue already chosen is skipped, and the next best is taken with a note. With fewer
+   * issues than criteria, fewer are picked.
    */
   public static List<Pick> choose(final Collection<Entry> entries) {
     final List<Pick> picks = new ArrayList<>();
@@ -108,7 +113,7 @@ public final class SupportingNumbers {
     final List<Entry> pool = entries.stream().sorted(Comparator.comparing(Entry::id)).toList();
     pick(picks, taken, pool, GAP, e -> e.explanation().calendar() - e.explanation().total());
     pick(picks, taken, pool, CAPPED, e -> e.explanation().count().capped());
-    pick(picks, taken, pool, TAIL, e -> e.explanation().count().tail());
+    pick(picks, taken, pool, TAIL, e -> e.explanation().tailUncounted());
     return List.copyOf(picks);
   }
 

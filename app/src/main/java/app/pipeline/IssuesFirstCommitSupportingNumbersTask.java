@@ -14,10 +14,12 @@ import java.util.TreeSet;
 /**
  * The numbers that support the text of the first-commit study, read only: the filter's counts
  * over the audit's base ({@link IssuesFirstCommitAuditTask}), and the worked examples chosen among
- * the issues of the outer training ({@link SupportingNumbers#choose}). The audit's draw gives the
- * outer training, read by its verdicts ({@link app.issues.Verdict#outerTraining}, crossing issues
- * included), and the cap that draw learned; the outer test's issues are never explained, so no
- * target of the outer test is computed here.
+ * the issues of the outer training that teach ({@link SupportingNumbers#choose}). The audit's draw
+ * gives the outer training and the cap that draw learned. The examples come from its issues whose
+ * outer verdict is {@link app.issues.Verdict#TRAIN}: under the revised rule the issues crossing
+ * the outer cut teach nothing and are left out, so no example shows a target the model never
+ * learns from; under every other rule no issue crosses, and the whole outer training is read. The
+ * outer test's issues are never explained, so no target of the outer test is computed here.
  */
 public final class IssuesFirstCommitSupportingNumbersTask {
 
@@ -29,13 +31,16 @@ public final class IssuesFirstCommitSupportingNumbersTask {
 
   /**
    * @param counts the filter's counts over the Fixed issues with a commit that counts
-   * @param training the issues of the outer training the examples were chosen among
+   * @param training the issues of the outer training the examples were chosen among: those that
+   *     teach at the outer level
+   * @param crossing the outer training issues left out because they cross the outer cut; 0 under
+   *     every rule but the revised one
    * @param threshold the cap the examples' waits are cut at
    * @param examples the chosen issues, in the order of their criteria
    * @param rule the split rule that drew the outer training
    * @param waitFenceK the k of the wait fence the cap was learned with
    */
-  public record Report(SupportingNumbers.Counts counts, int training,
+  public record Report(SupportingNumbers.Counts counts, int training, int crossing,
       FirstCommit.Threshold threshold, List<Example> examples, SplitRule rule,
       double waitFenceK) {}
 
@@ -70,12 +75,12 @@ public final class IssuesFirstCommitSupportingNumbersTask {
         IssuesFirstCommitAuditTask.draw(b.issues(), FirstCommit.SHARE, b.boundary(), rule, waitK);
     // the cap the draw learned, under this run's rule and k
     final int cap = drawn.threshold().cap();
-    // the outer training by verdict, crossing issues included: an issue of the outer test is not
-    // explained
+    // the outer training issues that teach, by verdict: neither an issue of the outer test nor
+    // one crossing the outer cut is explained
     final List<String> training = new TreeSet<>(drawn.parts().outer().keySet()).stream()
-        .filter(id -> app.issues.Verdict.outerTraining(
-            app.issues.Verdict.text(drawn.parts().outerVerdict(id))))
+        .filter(id -> drawn.parts().outerVerdict(id) == app.issues.Verdict.TRAIN)
         .toList();
+    final int crossing = drawn.parts().outerCrossing().size();
     final List<SupportingNumbers.Entry> entries = new ArrayList<>(training.size());
     for (final String id : training) {
       final FirstCommit.Issue issue = b.issues().get(id);
@@ -87,7 +92,7 @@ public final class IssuesFirstCommitSupportingNumbersTask {
       examples.add(new Example(pick, b.issues().get(pick.entry().id()),
           drawn.verdicts().get(pick.entry().id())));
     }
-    return new Report(counts, training.size(), drawn.threshold(), List.copyOf(examples), rule,
-        waitK);
+    return new Report(counts, training.size(), crossing, drawn.threshold(),
+        List.copyOf(examples), rule, waitK);
   }
 }

@@ -73,9 +73,11 @@ public enum Command {
       commit is before their first In Progress, among those that had one
       (the creation is never used as the start); and the issues with a
       single commit, before the duplicates are removed. Then three worked
-      examples explained from the outer training alone, never the test: the
-      largest gap between the calendar's business days and the study's, the
-      most business days the cap cut, and the most days of tail, ties by id,
+      examples explained from the outer training alone, never the test, and
+      under SPLIT_RULE=revised only from its issues that teach (those crossing
+      the outer cut left out): the largest gap between the calendar's business
+      days and the study's, the most business days the cap cut, and the most
+      business days after the last mark that did not count, ties by id,
       the next distinct issue when one repeats, with the marks, each wait
       and its cut, and the tail's dates. SPLIT_RULE and WAIT_FENCE_K are
       read as the audit reads them. Writes filter-counts.md,

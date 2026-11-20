@@ -63,14 +63,18 @@ class IssuesFirstCommitSupportingNumbersCommandTest {
 
     final String md = Files.readString(out.resolve("worked-example.md"));
     assertTrue(md.contains("treino externo"), md);
-    assertTrue(md.contains("calendar_minus_study") && md.contains("capped") && md.contains("tail"),
-        md);
+    assertTrue(md.contains("calendar_minus_study") && md.contains("capped")
+        && md.contains("tail_not_counted"), md);
+    assertTrue(md.contains("dias úteis depois da última marca que não contaram"), md);
+    assertTrue(md.contains("depois da última marca: "), md);
     assertTrue(md.contains("Marcas") && md.contains("Esperas") && md.contains("Cauda"), md);
     assertFalse(md.contains("P-10 "), "the outer test's issue is not shown: " + md);
 
     final List<String> rows = Files.readAllLines(out.resolve("worked-example.tsv"));
     assertEquals(1 + 3, rows.size(), "the header and the three examples");
     assertTrue(rows.getFirst().startsWith("criterion\tvalue\tnote\tid\tkey"), rows.getFirst());
+    assertTrue(rows.getFirst().contains("\ttail_days\ttail_business_days\ttail_not_counted\t"),
+        rows.getFirst());
   }
 
   @Test

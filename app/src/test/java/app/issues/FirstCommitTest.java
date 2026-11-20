@@ -361,6 +361,38 @@ class FirstCommitTest {
   }
 
   @Test
+  @DisplayName("explain gives the tail's business days after the last mark and those of them that "
+      + "did not count, the calendar's business days beyond the waits")
+  void explainTailUncounted() {
+    final FirstCommit.Issue i = tailed();
+    final FirstCommit.Explanation e = FirstCommit.explain(i, select(i), 3);
+    // after Tuesday 16 up to Monday 22: 17, 18, 19 and 22; the activity on 18 and 19 counts
+    assertEquals(4, e.tailBusinessDays());
+    assertEquals(2, e.tailUncounted());
+    assertEquals(e.calendar(), e.tailBusinessDays()
+        + e.waits().stream().mapToInt(FirstCommit.Wait::businessDays).sum(),
+        "the waits and the tail split the calendar's business days");
+  }
+
+  @Test
+  @DisplayName("the gap between the calendar and the study is what the cap cut plus the tail "
+      + "that did not count, on every fixture and cap")
+  void gapIsCutPlusTailUncounted() {
+    final List<FirstCommit.Issue> fixtures = List.of(tailed(),
+        worked(List.of(code("a", "x", day(2), 10L), code("b", "x", day(16), 30L)), List.of(),
+            List.of(day(3), day(4), day(5), day(8), day(9)), day(29)),
+        worked(List.of(code("a", "x", day(1), 10L), code("b", "x", day(2), 30L)), List.of(day(4)),
+            List.of(day(3), day(4), day(5)), day(12)));
+    for (final FirstCommit.Issue i : fixtures) {
+      for (final int cap : new int[] {1, 3, 5, 20, Integer.MAX_VALUE}) {
+        final FirstCommit.Explanation e = FirstCommit.explain(i, select(i), cap);
+        assertEquals(e.calendar() - e.total(), e.count().capped() + e.tailUncounted(),
+            "cap " + cap);
+      }
+    }
+  }
+
+  @Test
   @DisplayName("explain records each mark's kind, commit or patch, even at one instant")
   void explainKinds() {
     final FirstCommit.Issue i = worked(
