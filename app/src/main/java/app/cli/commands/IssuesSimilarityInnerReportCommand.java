@@ -46,10 +46,13 @@ import java.util.function.Function;
  * table -- models, bands, paired comparisons, ordering intervals -- is read twice: on the
  * usual-flow validation issues, those at or below the k = 3 fence, the main reading used to judge
  * the pressure attributes; and on every validation issue, the complementary
- * reading, marked as such. The report's header states the chosen k, both fences, each k's error
+ * reading, marked as such. Under the revised temporal design the roles swap ({@link
+ * TailCut.Reading#main}): every validation issue is the main reading and comes first in the
+ * report and the files, the usual flow, where the choices are still scored, the complementary
+ * one. The report's header states the chosen k, both fences, each k's error
  * and how many issues each reading holds; each file's first column names the reading. The
  * predictions file holds every validation issue, with whether it is of the usual flow; the
- * coefficients and the permutation importance are the main reading's.
+ * coefficients and the permutation importance are the usual flow's.
  *
  * <p><b>Relevance</b> ({@link SimilarityScoring#relevance}). Per Elastic Net model, each
  * standardised column's coefficient with its 95% interval from resampling whole projects of the
@@ -288,6 +291,8 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
       throw refused(e.getMessage());
     }
 
+    // the usual flow: the intervals are calibrated on it and the forests' importance read on it,
+    // whichever reading is the main one
     final SimilarityScoring.Report main = readings.main();
     final PredictionIntervals.Inner intervals = PredictionIntervals.inner(
         PredictionIntervals.Sample.of(main, app.issues.AdjustedDuration.marked(training) ? 0 : 1),
@@ -297,7 +302,7 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     files.put(REPORT, report(readings, withoutNew, intervals, relevance, population, chosen,
         matrix, elasticNet, study, rule, waitK));
     final Side side = Side.of(study);
-    final List<SimilarityScoring.Report> scored = readingsOf(readings, withoutNew);
+    final List<SimilarityScoring.Report> scored = readingsOf(readings, withoutNew, rule);
     files.put(PREDICTIONS, predictions(readings, side));
     files.put(MODELS, models(scored, temporal));
     files.put(BANDS, bands(scored));
@@ -305,11 +310,11 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     files.put(ORDERING, ordering(scored));
     files.put(DIAGNOSTICS, IssuesSimilarityTestCommand.diagnostics(main));
     files.put(IMPORTANCE, IssuesSimilarityTestCommand.importance(main));
-    files.put(INTERVALS, intervals(intervals, main.bandTops()));
+    files.put(INTERVALS, intervals(intervals, main.bandTops(), rule));
     files.put(CALIBRATION, calibration(intervals));
     files.put(RELEVANCE, IssuesSimilarityTestCommand.relevance(relevance));
     final UncertaintyTables.Tables uncertainty = UncertaintyTables.of(readings, training,
-        intervals.calibrated(), Parallel.threads(Parallel.BOOTSTRAP_THREADS));
+        intervals.calibrated(), Parallel.threads(Parallel.BOOTSTRAP_THREADS), rule);
     final List<String> markdown = files.get(REPORT);
     final String footer = markdown.remove(markdown.size() - 1);
     markdown.addAll(uncertainty.markdown());
@@ -340,13 +345,16 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
   }
 
   /**
-   * Both readings, the main one first, then, when given, both again without the issues of new
-   * projects.
+   * Both readings, the main one under {@code rule} first ({@link TailCut.Reading#main}), then,
+   * when given, both again without the issues of new projects, in the same order.
    */
   private static List<SimilarityScoring.Report> readingsOf(final SimilarityScoring.Readings r,
-      final SimilarityScoring.Readings withoutNew) {
-    return withoutNew == null ? List.of(r.main(), r.complementary())
-        : List.of(r.main(), r.complementary(), withoutNew.main(), withoutNew.complementary());
+      final SimilarityScoring.Readings withoutNew, final SplitRule rule) {
+    final List<SimilarityScoring.Report> out = new ArrayList<>(r.ordered(rule));
+    if (withoutNew != null) {
+      out.addAll(withoutNew.ordered(rule));
+    }
+    return out;
   }
 
   /**
@@ -489,8 +497,10 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
 
   /**
    * The report in words and tables: the optimism stated first, then the tail cut, then every
-   * table of the main reading, the usual flow, then the same of the complementary one, every
-   * validation issue.
+   * table of the main reading, then the same of the complementary one. The main reading is the
+   * usual flow and the complementary one every validation issue, but under the revised temporal
+   * design, where every validation issue is the main reading and comes first ({@link
+   * TailCut.Reading#main}); the choices are scored on the usual flow under every rule.
    *
    * <p>Under the temporal split it also states the forests' tree count, the analogy estimate's
    * frozen column and fallback, and the new projects of the inner validation, gives every model's
@@ -534,9 +544,10 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
         + "of its %d issues to fit; usual flow: k %s, fence %s business days", TailCut.label(
             fences.k()), fences.fence(), r.fitRows(), fences.uncutFitRows(),
         TailCut.label(TailCut.USUAL_FLOW_K), fences.usualFence()));
+    final List<SimilarityScoring.Report> ordered = readings.ordered(rule);
     md.add(f("- readings: main, %s: %d inner validation issues; complementary, %s: %d",
-        TailCut.Reading.USUAL_FLOW.description(), readings.main().scoredRows(),
-        TailCut.Reading.ALL.description(), r.scoredRows()));
+        ordered.get(0).reading().description(rule), ordered.get(0).scoredRows(),
+        ordered.get(1).reading().description(rule), ordered.get(1).scoredRows()));
     md.add("- " + ElasticNetSelection.TAIL_CUT_MODEL);
     md.add("- each k on " + ElasticNetSelection.BEFORE_PRESSURE + ", its error on the usual-flow "
         + "validation issues: "
@@ -579,7 +590,9 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
           + "this population has at least two commits");
     }
     md.add("- the Elastic Nets' coefficients and the forests' permutation importance, here and in "
-        + "the files beside this one, are the main reading's");
+        + "the files beside this one, are the " + (TailCut.Reading.main(rule)
+            == TailCut.Reading.USUAL_FLOW ? "main reading's"
+            : "usual flow's, the complementary reading, on which the choices are scored"));
     md.add(f("- error bands: %s; here %s business days, of the %d cut inner fitting issues; %s",
         BusinessDays.BANDS, BusinessDays.bandLimits(r.bandTops()), r.fitRows(),
         TailCut.QUANTILES));
@@ -588,8 +601,9 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
         + PredictionIntervals.FACTOR);
     md.add(f("- calibration halves of the %d usual-flow validation issues: A, %d projects, %d "
         + "issues, calibrates; B, the other projects, %d issues, is checked; with the tail, in "
-        + "the complementary reading, B holds %d validation issues; the projects of A: %s",
+        + "the %s reading, B holds %d validation issues; the projects of A: %s",
         h.aIssues() + h.bIssues(), h.a().size(), h.aIssues(), h.bIssues(),
+        TailCut.Reading.main(rule) == TailCut.Reading.ALL ? "main" : "complementary",
         checked(intervals, TailCut.Reading.ALL), h.a()));
     md.add("- each model's prediction span on the usual-flow validation issues, business days: "
         + String.join("; ", intervals.calibrated().entrySet().stream().map(e -> f("%s %.2f-%.2f",
@@ -597,18 +611,29 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
     md.add("- the factors recomputed on A and B together, for later use, are in " + CALIBRATION
         + "; those of A, which the check reads, in " + INTERVALS);
     md.add("");
-    section(md, readings.main(), intervals, "Main reading: the usual flow", side, temporal);
-    section(md, r, intervals, "Complementary reading: all issues", side, temporal);
+    for (final SimilarityScoring.Report reading : ordered) {
+      section(md, reading, intervals, title(reading, rule), side, temporal, rule);
+    }
     if (withoutNew != null) {
-      section(md, withoutNew.main(), intervals, "Main reading: the usual flow"
-          + without(withoutNew.main()), side, temporal);
-      section(md, withoutNew.complementary(), intervals, "Complementary reading: all issues"
-          + without(withoutNew.complementary()), side, temporal);
+      for (final SimilarityScoring.Report reading : withoutNew.ordered(rule)) {
+        section(md, reading, intervals, title(reading, rule) + without(reading), side, temporal,
+            rule);
+      }
     }
     relevance(md, relevance, readings.main());
     md.add("Files beside this one: " + String.join(", ", OUTPUTS.subList(1, OUTPUTS.size()))
         + ".");
     return md;
+  }
+
+  /**
+   * A reading's heading: "Main reading" or "Complementary reading" by its role under {@code rule}
+   * ({@link TailCut.Reading#main}), then the issues it holds.
+   */
+  private static String title(final SimilarityScoring.Report r, final SplitRule rule) {
+    return (r.reading() == TailCut.Reading.main(rule) ? "Main reading: "
+        : "Complementary reading: ")
+        + (r.reading() == TailCut.Reading.USUAL_FLOW ? "the usual flow" : "all issues");
   }
 
   /** A heading's note on a reading without the issues of new projects: how many, of which. */
@@ -629,14 +654,15 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
   /**
    * Every table of one reading, under its own heading; with {@code relative}, each model's MMRE
    * and Pred(25) too. A reading without the issues of new projects has no interval table: the
-   * intervals are calibrated and checked on the halves of every issue.
+   * intervals are calibrated and checked on the halves of every issue. The reading is described
+   * with its role under {@code split}.
    */
   private static void section(final List<String> md, final SimilarityScoring.Report r,
       final PredictionIntervals.Inner intervals, final String title, final Side side,
-      final boolean relative) {
+      final boolean relative, final SplitRule split) {
     md.add("## " + title + " (" + r.scoredRows() + " issues)");
     md.add("");
-    md.add(r.reading().description() + ".");
+    md.add(r.reading().description(split) + ".");
     md.add("");
     md.add("### Every model (business days)");
     md.add("");
@@ -838,13 +864,19 @@ public final class IssuesSimilarityInnerReportCommand implements CommandRunner {
    *
    * @param tops the bands' limits, the error bands', of the inner fitting rows cut
    */
-  static List<String> intervals(final PredictionIntervals.Inner intervals, final double[] tops) {
+  static List<String> intervals(final PredictionIntervals.Inner intervals, final double[] tops,
+      final SplitRule rule) {
     final List<String> out = new ArrayList<>();
     out.add("reading\tmodel\tlevel\tobserved_band\tobserved_above_bd\tobserved_up_to_bd"
         + "\tcalibration_issues\tfactor\tn\tcoverage\tcoverage_ci_low\tcoverage_ci_high"
         + "\tmedian_width_bd\twidth_over_global\tmae_bd");
     final String[] labels = BusinessDays.bandLabels(tops);
-    for (final PredictionIntervals.Read x : intervals.reads()) {
+    // the main reading under the rule first, each reading's reads in their own order
+    final List<PredictionIntervals.Read> reads = new ArrayList<>();
+    for (final TailCut.Reading reading : TailCut.Reading.ordered(rule)) {
+      intervals.reads().stream().filter(x -> x.reading() == reading).forEach(reads::add);
+    }
+    for (final PredictionIntervals.Read x : reads) {
       final PredictionIntervals.Calibration c = intervals.checked().get(x.model());
       final String factor = d(c.factors()[PredictionIntervals.LEVELS.indexOf(x.level())]);
       final String reading = x.reading().name().toLowerCase(Locale.ROOT);

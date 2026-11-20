@@ -185,9 +185,26 @@ public final class PredictedBands {
   public static final String BANDS_LINE = "  error bands: %s; here %s business days, of the "
       + "outer training rows fitted%n";
 
-  /** The test stage's line of the readings, with the usual-flow fence to three decimals. */
+  /**
+   * The test stage's line of the readings, with the usual-flow fence to three decimals: the usual
+   * flow, the main reading, first, as every design but the revised one prints it (the temporal
+   * test of 02/11/2026 among them).
+   */
   public static final String READINGS_LINE = "  readings: %s, %,d issues (fence %.3f bd on the "
       + "outer training set); %s, %,d issues%n";
+
+  /**
+   * The same line under the revised temporal design, whose main reading is all issues: all issues
+   * first, then the usual flow with its fence.
+   */
+  public static final String READINGS_LINE_REVISED = "  readings: %s, %,d issues; %s, %,d issues "
+      + "(fence %.3f bd on the outer training set)%n";
+
+  /** The readings line the test stage prints under {@code rule}. */
+  public static String readingsLine(final SplitRule rule) {
+    return TailCut.Reading.main(rule) == TailCut.Reading.ALL ? READINGS_LINE_REVISED
+        : READINGS_LINE;
+  }
 
   // a decimal in either separator: the producer's printf does not fix the locale
   private static final String NUMBER = "[0-9]+(?:[.,][0-9]+)?";
@@ -195,9 +212,18 @@ public final class PredictedBands {
   private static final Pattern TOPS = pattern(BANDS_LINE, ".*?",
       "(" + NUMBER + "), (" + NUMBER + ") and (" + NUMBER + ")");
 
-  private static final Pattern FENCE = pattern(READINGS_LINE,
-      Pattern.quote("usual flow (main reading)") + ".*?", "[0-9][0-9.,\\s\u00a0\u202f']*",
-      "(" + NUMBER + ")", ".*?", "[0-9][0-9.,\\s\u00a0\u202f']*");
+  // a count in any locale's grouping
+  private static final String COUNT = "[0-9][0-9.,\\s\u00a0\u202f']*";
+
+  // the usual flow under any role: "usual flow (main reading)" before the review, "usual flow
+  // (complementary reading)" in the revised design
+  private static final String USUAL = Pattern.quote("usual flow (") + ".*?";
+
+  // either line, the usual flow first (group 1) or second (group 2)
+  private static final Pattern FENCE = Pattern.compile("(?:"
+      + pattern(READINGS_LINE, USUAL, COUNT, "(" + NUMBER + ")", ".*?", COUNT).pattern() + ")|(?:"
+      + pattern(READINGS_LINE_REVISED, ".*?", COUNT, USUAL, COUNT, "(" + NUMBER + ")").pattern()
+      + ")");
 
   /**
    * The regex of a printf format: its literals quoted, each specifier (but {@code %n}) replaced
@@ -251,10 +277,15 @@ public final class PredictedBands {
     return new double[] {number(m.group(1)), number(m.group(2)), number(m.group(3))};
   }
 
-  /** The usual-flow fence, in business days, as the test stage's log writes it (three decimals). */
+  /**
+   * The usual-flow fence, in business days, as the test stage's log writes it (three decimals),
+   * in either readings line: the usual flow first, as the main reading, or second, as the revised
+   * design's complementary one.
+   */
   public static double usualFence(final List<String> log) {
-    return number(only(log, FENCE, "test stage 'readings: usual flow (main reading) ... (fence X "
-        + "bd on the outer training set)'").group(1));
+    final Matcher m = only(log, FENCE, "test stage 'readings: ... usual flow (...) ... (fence X "
+        + "bd on the outer training set)'");
+    return number(m.group(1) != null ? m.group(1) : m.group(2));
   }
 
   /** Three finite, non-decreasing band tops and a finite, positive fence; else refused. */

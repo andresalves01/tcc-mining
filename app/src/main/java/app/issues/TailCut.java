@@ -19,8 +19,9 @@ import java.util.List;
  * <p><b>Usual flow.</b> The issues at or below the fence with {@link #USUAL_FLOW_K}, fixed at 3,
  * Tukey's convention for extreme outliers, apart from the fitting k chosen on the grid. Every
  * choice of the selection is scored on the usual-flow validation issues; in the scoring, the
- * scored issues of the usual flow are the main reading and every scored issue, all issues, the
- * complementary one.
+ * scored issues of the usual flow are one reading and every scored issue, all issues, the other:
+ * the usual flow the main one and all issues the complementary one, but under the revised
+ * temporal design, where all issues are the main reading ({@link Reading#main}).
  *
  * <p><b>Fitting cut.</b> The fitting rows above the fence with the chosen k leave every model's
  * and forest's fitting rows and the references' (global, project and executor-project medians).
@@ -60,29 +61,59 @@ public final class TailCut {
   /**
    * Which validation or test issues are read (ticket 23, item 50 i): what the selection scores
    * every choice on, and what each reading of the scoring holds. The fitting is the same in both.
+   *
+   * <p>Which one is the main reading depends on the design ({@link #main}): the usual flow in the
+   * In Progress study and in the first-commit study's designs before the review, all issues in
+   * the revised temporal design (the review of November 2026). Under every rule the selection
+   * scores each choice on the usual flow, and the prediction intervals are calibrated on it.
    */
   public enum Reading {
     /**
-     * The usual flow, the main reading: the scored issues at or below the fence at {@link
-     * #USUAL_FLOW_K} of the fitting side. Every choice of the selection is scored on it.
+     * The usual flow: the scored issues at or below the fence at {@link #USUAL_FLOW_K} of the
+     * fitting side. Every choice of the selection is scored on it. The main reading but under
+     * the revised temporal design, where it is the complementary one.
      */
-    USUAL_FLOW("usual flow (main reading): the scored issues at or below the k = 3 fence"),
+    USUAL_FLOW("usual flow", "the scored issues at or below the k = 3 fence"),
     /**
-     * All issues, the complementary reading: every scored issue, the tail included; what the
-     * selection scored before ticket 23.
+     * All issues: every scored issue, the tail included; what the selection scored before ticket
+     * 23. The complementary reading but under the revised temporal design, where it is the main
+     * one.
      */
-    ALL("all issues (complementary reading): every scored issue, those above the k = 3 fence "
-        + "included");
+    ALL("all issues", "every scored issue, those above the k = 3 fence included");
 
-    private final String description;
+    private final String label;
+    private final String holds;
 
-    Reading(final String description) {
-      this.description = description;
+    Reading(final String label, final String holds) {
+      this.label = label;
+      this.holds = holds;
     }
 
-    /** What the reading holds, in words, for the report. */
+    /**
+     * The main reading under {@code rule}: all issues under the revised temporal design, the
+     * usual flow under every other rule.
+     */
+    public static Reading main(final SplitRule rule) {
+      return rule == SplitRule.REVISED ? ALL : USUAL_FLOW;
+    }
+
+    /** Both readings, the main one under {@code rule} first. */
+    public static List<Reading> ordered(final SplitRule rule) {
+      return main(rule) == ALL ? List.of(ALL, USUAL_FLOW) : List.of(USUAL_FLOW, ALL);
+    }
+
+    /**
+     * What the reading holds, in words, for the report, with its role in every design but the
+     * revised one: the usual flow the main reading, all issues the complementary one.
+     */
     public String description() {
-      return description;
+      return description(SplitRule.RANDOM);
+    }
+
+    /** What the reading holds, in words, with its role under {@code rule} ({@link #main}). */
+    public String description(final SplitRule rule) {
+      return label + (this == main(rule) ? " (main reading): " : " (complementary reading): ")
+          + holds;
     }
   }
 

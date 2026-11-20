@@ -156,6 +156,30 @@ class PredictedBandsTest {
     assertThrows(IllegalArgumentException.class, () -> PredictedBands.usualFence(List.of("x")));
   }
 
+  @Test
+  @DisplayName("the usual-flow fence is read from the revised design's line too, where all issues, "
+      + "its main reading, come first and the usual flow, with its fence, second")
+  void readsTheFenceFromTheRevisedLine() {
+    assertEquals(30.0, PredictedBands.usualFence(List.of("  noise",
+        "  readings: all issues (main reading): every scored issue, those above the k = 3 fence "
+            + "included, 996 issues; usual flow (complementary reading): the scored issues at or "
+            + "below the k = 3 fence, 985 issues (fence 30.000 bd on the outer training set)")));
+    assertEquals(30.5, PredictedBands.usualFence(List.of(
+        "  readings: all issues (main reading): y, 1.996 issues; usual flow (complementary "
+            + "reading): x, 1.985 issues (fence 30,500 bd on the outer training set)")));
+    // the line as the test stage prints it under the revised rule
+    assertEquals(12.346, PredictedBands.usualFence(List.of(String.format(java.util.Locale.ROOT,
+        PredictedBands.readingsLine(SplitRule.REVISED),
+        TailCut.Reading.ALL.description(SplitRule.REVISED), 996,
+        TailCut.Reading.USUAL_FLOW.description(SplitRule.REVISED), 985, 12.3456)
+        .stripTrailing())));
+    // and as it prints it under every other rule, the usual flow first
+    assertEquals(12.346, PredictedBands.usualFence(List.of(String.format(java.util.Locale.ROOT,
+        PredictedBands.readingsLine(SplitRule.TEMPORAL),
+        TailCut.Reading.USUAL_FLOW.description(SplitRule.TEMPORAL), 985, 12.3456,
+        TailCut.Reading.ALL.description(SplitRule.TEMPORAL), 996).stripTrailing())));
+  }
+
   private static final String TEST_BANDS = "  error bands: bands of the observed business days; "
       + "here 2, 5,5 and 8 business days, of the outer training rows fitted";
 
@@ -181,6 +205,12 @@ class PredictedBandsTest {
         + "on the outer training set); all issues (c): y, 10 issues";
     assertThrows(IllegalArgumentException.class,
         () -> PredictedBands.usualFence(List.of(readings, readings)));
+    final String revised = "  readings: all issues (main reading): y, 10 issues; usual flow "
+        + "(complementary reading): x, 9 issues (fence 30.000 bd on the outer training set)";
+    assertThrows(IllegalArgumentException.class,
+        () -> PredictedBands.usualFence(List.of(revised, revised)));
+    assertThrows(IllegalArgumentException.class,
+        () -> PredictedBands.usualFence(List.of(readings, revised)));
   }
 
   @Test

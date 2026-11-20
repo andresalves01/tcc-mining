@@ -209,6 +209,7 @@ class RevisedDesignTest {
   // ------------------------------------------------------------------ selection and test step
 
   private final List<Map<String, Object>> recorded = new ArrayList<>();
+  private final List<List<Map<String, Object>>> recordedRows = new ArrayList<>();
   private final List<Map<String, Object>> upstream = new ArrayList<>();
 
   private Context context() {
@@ -220,6 +221,7 @@ class RevisedDesignTest {
       @Override
       public String record(final Map<String, Object> run, final List<Map<String, Object>> rows) {
         recorded.add(run);
+        recordedRows.add(rows);
         return "revised-run";
       }
 
@@ -261,6 +263,7 @@ class RevisedDesignTest {
   private Map<String, Object> test(final Path matrix, final Path parameters, final Path reports)
       throws Exception {
     recorded.clear();
+    recordedRows.clear();
     upstream.clear();
     upstream.addAll(RevisedUpstream.of(matrix));
     final Map<String, String> settings = new HashMap<>();
@@ -317,5 +320,134 @@ class RevisedDesignTest {
         "usual_flow_scored_rows", "error_band_tops_business_days", "inner_fit_rows")) {
       assertEquals(first.get(field), second.get(field), field);
     }
+  }
+
+  // ------------------------------------------------------------------ the main reading
+
+  private interface Step {
+    void run() throws Exception;
+  }
+
+  /** What {@code step} prints while it runs, line by line. */
+  private static List<String> printed(final Step step) throws Exception {
+    final java.io.PrintStream out = System.out;
+    final java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+    try {
+      System.setOut(new java.io.PrintStream(bytes, true,
+          java.nio.charset.StandardCharsets.UTF_8));
+      step.run();
+    } finally {
+      System.setOut(out);
+    }
+    return bytes.toString(java.nio.charset.StandardCharsets.UTF_8).lines().toList();
+  }
+
+  /** The reading names of a file's first column, in the order they first appear. */
+  private static List<String> readingOrder(final List<String> lines) {
+    return lines.stream().skip(1).map(l -> l.split("\t", 2)[0]).distinct().toList();
+  }
+
+  /** The readings of recorded rows, in the order they first appear. */
+  private static List<String> readingOrderOfRows(final List<Map<String, Object>> rows) {
+    return rows.stream().filter(r -> r.containsKey("reading"))
+        .map(r -> (String) r.get("reading")).distinct().toList();
+  }
+
+  /** All issues before the usual flow, and likewise without the issues of new projects. */
+  private static void allFirst(final List<String> names, final String where) {
+    assertTrue(names.size() >= 2, where + ": " + names);
+    assertEquals(List.of("all", "usual_flow"), names.subList(0, 2), where);
+    if (names.contains("usual_flow_without_new_projects")) {
+      assertTrue(names.indexOf("all_without_new_projects")
+          < names.indexOf("usual_flow_without_new_projects"), where + ": " + names);
+    }
+  }
+
+  @Test
+  @DisplayName("under the revised rule all issues are the main reading and the usual flow the "
+      + "complementary one: the selection's record still says the choices are scored on the "
+      + "usual flow; the inner report and the test step give all issues first in their sections, "
+      + "files and rows, the machine names unchanged; the usual-flow fence is read from the log")
+  void fullPopulationIsTheMainReading() throws Exception {
+    final Path matrix = dir.resolve("matrix.tsv");
+    final Path fixture = SelectionFixture.revised(dir.resolve("fixture.tsv"));
+    RowCache.write(matrix, RowCache.read(fixture), RowCache.columns(fixture), List.of(FC));
+    final Path parameters = dir.resolve("elastic-net.tsv");
+    final Map<String, String> settings = new HashMap<>();
+    settings.put("MATRIX", matrix.toString());
+    settings.put("ELASTIC_NET_PARAMETERS", parameters.toString());
+    settings.put(SplitRule.SETTING, "revised");
+    new IssuesSimilarityElasticNetCommand(settings::get).run(context());
+    assertEquals("usual flow (complementary reading): the scored issues at or below the k = 3 "
+        + "fence", recorded.getLast().get("validation_scored"), "the selection's record");
+
+    // the inner report: all issues first in its header, its sections and its files
+    final Path inner = dir.resolve("inner");
+    settings.put("REPORT_DIR", inner.toString());
+    new IssuesSimilarityInnerReportCommand(settings::get).run(context());
+    final List<String> report =
+        Files.readAllLines(inner.resolve(IssuesSimilarityInnerReportCommand.REPORT));
+    assertTrue(report.stream().anyMatch(l -> l.startsWith("- readings: main, all issues (main "
+        + "reading): every scored issue, those above the k = 3 fence included: ")
+        && l.contains("; complementary, usual flow (complementary reading): the scored issues "
+            + "at or below the k = 3 fence: ")), String.join("\n", report));
+    final List<String> sections = report.stream()
+        .filter(l -> l.startsWith("## Main reading") || l.startsWith("## Complementary reading"))
+        .toList();
+    assertTrue(sections.size() >= 2, sections.toString());
+    assertTrue(sections.get(0).startsWith("## Main reading: all issues ("), sections.toString());
+    assertTrue(sections.get(1).startsWith("## Complementary reading: the usual flow ("),
+        sections.toString());
+    assertTrue(report.stream().noneMatch(l -> l.contains("Main reading: the usual flow")
+        || l.contains("usual flow (main reading)") || l.contains("all issues (complementary")
+        || l.contains("illustrated on the complementary reading")),
+        "no line calls the usual flow the main reading");
+    for (final String file : List.of(IssuesSimilarityInnerReportCommand.MODELS,
+        IssuesSimilarityInnerReportCommand.BANDS, IssuesSimilarityInnerReportCommand.COMPARISONS,
+        IssuesSimilarityInnerReportCommand.ORDERING, IssuesSimilarityInnerReportCommand.INTERVALS,
+        IssuesSimilarityInnerReportCommand.UNCERTAINTY,
+        IssuesSimilarityInnerReportCommand.PERCENTILES)) {
+      allFirst(readingOrder(Files.readAllLines(inner.resolve(file))), file);
+    }
+
+    // the test step: all issues first in its readings line, its sections, files and rows
+    final Path reports = dir.resolve("test");
+    final List<Map<String, Object>> run = new ArrayList<>();
+    final List<String> log = printed(() -> run.add(test(matrix, parameters, reports)));
+    final List<String> line = log.stream().filter(l -> l.startsWith("  readings: ")).toList();
+    assertEquals(1, line.size(), String.join("\n", log));
+    assertTrue(line.get(0).startsWith("  readings: all issues (main reading): every scored "
+        + "issue, those above the k = 3 fence included, "), line.get(0));
+    assertTrue(line.get(0).contains("; usual flow (complementary reading): the scored issues at "
+        + "or below the k = 3 fence, "), line.get(0));
+    final List<String> read = log.stream().filter(l -> l.startsWith("  READING: ")).toList();
+    assertTrue(read.size() >= 2, read.toString());
+    assertTrue(read.get(0).startsWith("  READING: all issues (main reading)"), read.toString());
+    assertTrue(read.get(1).startsWith("  READING: usual flow (complementary reading)"),
+        read.toString());
+    if (read.size() > 2) {
+      assertTrue(read.get(2).startsWith("  READING: all issues (main reading)"), read.toString());
+    }
+    assertTrue(log.stream().noneMatch(l -> l.contains("usual flow (main reading)")
+        || l.contains("all issues (complementary")
+        || l.contains("illustrated on the complementary reading")),
+        "no line calls the usual flow the main reading");
+    assertTrue(!run.getFirst().get("prediction_percentiles").toString()
+        .contains("illustrated on the complementary reading"), "the record's percentile rule");
+    allFirst(readingOrderOfRows(recordedRows.getLast()), "the test step's rows");
+    @SuppressWarnings("unchecked")
+    final Map<String, Object> newProjects = (Map<String, Object>) run.getFirst()
+        .get("new_projects");
+    if (newProjects.get("readings_without_them") instanceof List<?> names) {
+      assertEquals(List.of("all_without_new_projects", "usual_flow_without_new_projects"), names);
+    }
+    for (final String file : List.of(IssuesSimilarityTestCommand.UNCERTAINTY,
+        IssuesSimilarityTestCommand.PERCENTILES)) {
+      allFirst(readingOrder(Files.readAllLines(reports.resolve(file))), file);
+    }
+    @SuppressWarnings("unchecked")
+    final Map<String, Object> cut = (Map<String, Object>) run.getFirst().get("tail_cut");
+    assertEquals(Math.round((double) cut.get("usual_flow_fence_business_days") * 1000) / 1000.0,
+        app.issues.PredictedBands.usualFence(log), 1e-9, "the fence, read from the log");
   }
 }

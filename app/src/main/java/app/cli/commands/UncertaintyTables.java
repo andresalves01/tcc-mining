@@ -7,6 +7,7 @@ import app.issues.EstimationUncertainty.Summary;
 import app.issues.PredictionIntervals;
 import app.issues.RowCache;
 import app.issues.SimilarityScoring;
+import app.issues.SplitRule;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -21,18 +22,29 @@ final class UncertaintyTables {
 
   private UncertaintyTables() {}
 
+  /**
+   * Both readings' tables, the main reading under {@code rule} first ({@link
+   * app.issues.TailCut.Reading#main}), the percentiles' rule in that design's words.
+   */
   static Tables of(final SimilarityScoring.Readings readings, final List<RowCache.Entry> entries,
-      final Map<String, PredictionIntervals.Calibration> calibrated, final int threads) {
+      final Map<String, PredictionIntervals.Calibration> calibrated, final int threads,
+      final SplitRule rule) {
     final Map<String, Boolean> descriptions = EstimationUncertainty.descriptions(entries);
     final List<EstimationUncertainty.Reading> results = new ArrayList<>();
-    for (final SimilarityScoring.Report r : List.of(readings.main(), readings.complementary())) {
+    for (final SimilarityScoring.Report r : readings.ordered(rule)) {
       results.add(EstimationUncertainty.read(EstimationUncertainty.Sample.of(r, descriptions),
           calibrated, threads));
     }
-    return render(results);
+    return render(results, EstimationUncertainty.percentileRule(rule));
   }
 
   static Tables render(final List<EstimationUncertainty.Reading> results) {
+    return render(results, EstimationUncertainty.PERCENTILE_RULE);
+  }
+
+  /** The tables of {@code results}, in their order, the percentiles stated by the given rule. */
+  static Tables render(final List<EstimationUncertainty.Reading> results,
+      final String percentileRule) {
     final List<String> md = new ArrayList<>();
     final List<String> stats = new ArrayList<>();
     final List<String> percentiles = new ArrayList<>();
@@ -109,7 +121,7 @@ final class UncertaintyTables {
       md.add("");
       md.add("### " + reading + ": percentiles of estimates with 95% prediction intervals");
       md.add("");
-      md.add(EstimationUncertainty.PERCENTILE_RULE + ".");
+      md.add(percentileRule + ".");
       md.add("");
       md.add("Each cell is estimated business days [95% prediction interval]. Constants "
           + "legitimately repeat across percentiles. The percentile TSV also contains "

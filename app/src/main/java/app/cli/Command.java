@@ -352,6 +352,8 @@ public enum Command {
       outer training set's business days), and every table is read twice:
       on the usual flow, the outer test issues at or below the k = 3 fence of
       the outer training set, the main reading, and on all issues, the
+      complementary one; under SPLIT_RULE=revised all issues are the main
+      reading, printed and recorded first, and the usual flow the
       complementary one. Reads MATRIX and ELASTIC_NET_PARAMETERS and chooses
       nothing. Scores the fourteen models the inner report scores: refits
       the six Elastic Net models (the own start model, Al-Zubaidi and Kikas
@@ -419,7 +421,10 @@ public enum Command {
       table, models, bands, paired comparisons and ordering intervals, is
       read twice: on the usual flow, the validation issues at or below the
       k = 3 fence of the inner fitting set, the main reading, and on all
-      issues, the complementary one, marked as such; the report's header
+      issues, the complementary one, marked as such (under
+      SPLIT_RULE=revised all issues are the main reading and come first,
+      the usual flow, where the choices are scored, the complementary one);
+      the report's header
       states the chosen k, the model it was chosen on, both fences and each
       reading's issues. Writes to REPORT_DIR: the report; the per-issue
       predictions with whether the issue is of the usual flow and whether

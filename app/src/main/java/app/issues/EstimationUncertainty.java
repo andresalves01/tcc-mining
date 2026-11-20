@@ -39,6 +39,18 @@ public final class EstimationUncertainty {
       + "intervals target usual-flow coverage even when illustrated on the complementary reading; "
       + "outer refits reuse inner factors approximately";
 
+  /**
+   * {@link #PERCENTILE_RULE} under {@code rule}: under the revised temporal design all issues are
+   * the main reading ({@link TailCut.Reading#main}), so the intervals are illustrated there, on
+   * the main reading, while they still target the usual flow's coverage.
+   */
+  public static String percentileRule(final SplitRule rule) {
+    return TailCut.Reading.main(rule) == TailCut.Reading.ALL
+        ? PERCENTILE_RULE.replace("even when illustrated on the complementary reading",
+            "even when illustrated on all issues, the main reading")
+        : PERCENTILE_RULE;
+  }
+
   public record Estimate(double value, double low, double high, int validDraws) {}
 
   public record Summary(String reading, String model, String grouping, String group,
