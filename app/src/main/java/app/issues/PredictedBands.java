@@ -243,8 +243,7 @@ public final class PredictedBands {
 
   /** The readings line the test stage prints under {@code rule}. */
   public static String readingsLine(final SplitRule rule) {
-    return TailCut.Reading.main(rule) == TailCut.Reading.ALL ? READINGS_LINE_REVISED
-        : READINGS_LINE;
+    return READINGS_LINE_REVISED;
   }
 
   // a decimal in either separator: the producer's printf does not fix the locale

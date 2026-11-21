@@ -444,7 +444,7 @@ class PredictionIntervalsTest {
           .medianWidth(), 1e-9);
     }
     assertTrue(PredictionIntervals.SAME_MODEL.contains("one fit"));
-    assertNotEquals(PredictionIntervals.OUTER, PredictionIntervals.SAME_MODEL);
+    assertNotEquals(PredictionIntervals.OUTER_APPROXIMATION, PredictionIntervals.SAME_MODEL);
   }
 
   @Test
@@ -643,14 +643,6 @@ class PredictionIntervalsTest {
       + "one, calibrated on every inner validation issue, the test step's an approximation for "
       + "comparison; under every other rule the texts are as before")
   void textsSayWhichIsOfficial() {
-    for (final SplitRule rule : SplitRule.values()) {
-      if (rule == SplitRule.REVISED) {
-        continue;
-      }
-      assertEquals(PredictionIntervals.RULE, PredictionIntervals.rule(1, rule), rule.setting());
-      assertEquals(PredictionIntervals.rule(0), PredictionIntervals.rule(0, rule));
-      assertEquals(PredictionIntervals.OUTER, PredictionIntervals.outer(rule), rule.setting());
-    }
     final String rule = PredictionIntervals.rule(1, SplitRule.REVISED);
     assertTrue(rule.contains("calibrated on every inner validation issue, the tail above the "
         + "usual flow's k = 3 fence included"), rule);

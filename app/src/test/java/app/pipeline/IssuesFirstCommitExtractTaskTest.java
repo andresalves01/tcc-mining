@@ -45,8 +45,10 @@ class IssuesFirstCommitExtractTaskTest {
   @BeforeEach
   void run() {
     fixture = new ExtractionFixture();
-    fc = new IssuesFirstCommitExtractTask(fixture.source(), SilentProgress.INSTANCE).run();
-    audit = new IssuesFirstCommitAuditTask(fixture.source(), SilentProgress.INSTANCE).run();
+    fc = new IssuesFirstCommitExtractTask(fixture.source(), SilentProgress.INSTANCE,
+        SplitRule.REVISED).run();
+    audit = new IssuesFirstCommitAuditTask(fixture.source(), SilentProgress.INSTANCE,
+        SplitRule.REVISED, app.issues.FirstCommit.DEFAULT_WAIT_K).run();
   }
 
   private Map<String, RowCache.Entry> entries() {
@@ -80,9 +82,13 @@ class IssuesFirstCommitExtractTaskTest {
       }
       training++;
       final RowCache.Entry e = entries.get(row.id());
-      assertEquals("TRAIN", e.outer(Population.FIRST_COMMIT));
-      assertEquals(row.side() == IssuesFirstCommitAuditTask.Side.FIT ? "TRAIN" : "TEST",
-          e.inner(Population.FIRST_COMMIT));
+      assertTrue(Verdict.OUTER_TRAINING.contains(e.outer(Population.FIRST_COMMIT)), row.key());
+      final String inner = e.inner(Population.FIRST_COMMIT);
+      if (row.side() == IssuesFirstCommitAuditTask.Side.FIT) {
+        assertTrue(Verdict.TRAIN.is(inner) || Verdict.CROSSING.is(inner), row.key());
+      } else {
+        assertEquals("TEST", inner, row.key());
+      }
       final Map<String, Double> v = e.row().values();
       assertEquals((double) row.count().total(), v.get(IssuesFirstCommitExtractTask.TARGET));
       assertEquals((double) row.count().implementation(),
@@ -103,7 +109,7 @@ class IssuesFirstCommitExtractTaskTest {
   @DisplayName("the split is the rule's, drawn over the population alone, under its own columns")
   void split() {
     final List<RowCache.Entry> entries = fc.extraction().entries();
-    assertEquals(List.of(), ProjectSplit.differences(entries, Population.FIRST_COMMIT));
+    assertEquals(List.of(), SplitRule.REVISED.differences(entries, Population.FIRST_COMMIT));
     for (final RowCache.Entry e : entries) {
       assertEquals(Set.of(Population.FIRST_COMMIT), e.parts().keySet());
       assertTrue(e.row().values().get(IssuesFirstCommitExtractTask.TARGET) >= 1);
@@ -114,29 +120,15 @@ class IssuesFirstCommitExtractTaskTest {
   }
 
   @Test
-  @DisplayName("the random rule is the default: the same extraction, with nothing of the temporal "
-      + "rule")
-  void randomByDefault() {
-    final IssuesFirstCommitExtractTask.Report random = new IssuesFirstCommitExtractTask(
-        fixture.source(), SilentProgress.INSTANCE, SplitRule.RANDOM).run();
-    assertEquals(fc.extraction().split(), random.extraction().split());
-    assertEquals(sides(fc.extraction().entries()), sides(random.extraction().entries()));
-    assertEquals(fc.extraction().entries().stream().map(RowCache.Entry::row).toList(),
-        random.extraction().entries().stream().map(RowCache.Entry::row).toList());
-    assertEquals(fc.threshold(), random.threshold());
-    assertNull(fc.temporal());
-    assertNull(random.temporal());
-  }
-
-  @Test
   @DisplayName("the wait fence's k reaches the extraction: the report carries it, FC_target_days "
       + "is counted at the audit's cap for that k, and the default is 1.5")
   void waitFence() {
     assertEquals(FirstCommit.DEFAULT_WAIT_K, fc.waitFenceK());
     final IssuesFirstCommitExtractTask.Report none = new IssuesFirstCommitExtractTask(
-        fixture.source(), SilentProgress.INSTANCE, SplitRule.RANDOM, FirstCommit.NO_WAIT_CAP).run();
+        fixture.source(), SilentProgress.INSTANCE, SplitRule.REVISED, FirstCommit.NO_WAIT_CAP)
+        .run();
     final IssuesFirstCommitAuditTask.Report a = new IssuesFirstCommitAuditTask(fixture.source(),
-        SilentProgress.INSTANCE, SplitRule.RANDOM, FirstCommit.NO_WAIT_CAP).run();
+        SilentProgress.INSTANCE, SplitRule.REVISED, FirstCommit.NO_WAIT_CAP).run();
     assertEquals(FirstCommit.NO_WAIT_CAP, none.waitFenceK());
     assertEquals(Double.POSITIVE_INFINITY, none.threshold().fence());
     assertEquals(a.threshold(), none.threshold());
@@ -159,84 +151,25 @@ class IssuesFirstCommitExtractTaskTest {
   }
 
   @Test
-  @DisplayName("under the temporal rule: the audit's sides, cap and training targets, its cuts, "
-      + "crossing issues and new projects, the same columns, and a matrix the temporal check "
-      + "accepts and the random one does not")
-  void temporal() {
-    final IssuesFirstCommitExtractTask.Report t = new IssuesFirstCommitExtractTask(
-        fixture.source(), SilentProgress.INSTANCE, SplitRule.TEMPORAL).run();
-    final IssuesFirstCommitAuditTask.Report a = new IssuesFirstCommitAuditTask(fixture.source(),
-        SilentProgress.INSTANCE, SplitRule.TEMPORAL).run();
-    final var s = t.extraction().split();
-    final var sizes = a.sizes();
-    assertEquals(List.of(sizes.rows(), sizes.projects(), sizes.train(), sizes.test(), sizes.fit(),
-        sizes.validation()),
-        List.of(s.rows(), s.projects(), s.train(), s.test(), s.fit(), s.validation()));
-    assertEquals(a.threshold(), t.threshold());
-    assertEquals(a.training().target(), t.training());
-    assertEquals(a.temporal().cuts(), t.temporal().cuts());
-    assertEquals(a.temporal().crossing(), t.temporal().crossing());
-    assertEquals(a.temporal().innerCrossing(), t.temporal().innerCrossing());
-    assertEquals(a.temporal().newProjects(), t.temporal().newProjects());
-    assertTrue(t.temporal().cuts().inner().isBefore(t.temporal().cuts().outer()));
-
-    final Map<String, RowCache.Entry> entries = t.extraction().entries().stream()
-        .collect(Collectors.toMap(e -> e.unit().issueId(), e -> e));
-    int training = 0;
-    for (final IssueRow row : a.rows()) {
-      if (row.side() == null) {
-        assertFalse(entries.containsKey(row.id()), row.key() + " left the population");
-        continue;
-      }
-      training++;
-      final RowCache.Entry e = entries.get(row.id());
-      assertEquals("TRAIN", e.outer(Population.FIRST_COMMIT));
-      assertEquals(row.side() == IssuesFirstCommitAuditTask.Side.FIT ? "TRAIN" : "TEST",
-          e.inner(Population.FIRST_COMMIT));
-      assertEquals((double) row.count().total(),
-          e.row().values().get(IssuesFirstCommitExtractTask.TARGET), row.key());
-    }
-    assertEquals(sizes.train(), training);
-
-    assertEquals(fc.extraction().columns(), t.extraction().columns());
-    assertEquals(List.of(), SplitRule.TEMPORAL.differences(t.extraction().entries(),
-        Population.FIRST_COMMIT));
-    assertNotEquals(List.of(), SplitRule.RANDOM.differences(t.extraction().entries(),
-        Population.FIRST_COMMIT), "the fixture's two rules draw different sides");
-    for (final RowCache.Entry e : t.extraction().entries()) {
-      assertTrue(e.row().values().get(IssuesFirstCommitExtractTask.TARGET) >= 1);
-    }
-  }
-
-  @Test
   @DisplayName("under the revised rule: the temporal rule's sides, so the same validation and test "
       + "issues, the crossing issues marked in the split columns and counted from the crossing "
       + "sets, the audit's cap learned without them, the training target with and without them, "
       + "the new projects by both definitions, and a matrix the revised check accepts and the "
       + "temporal one does not")
   void revised() {
-    final ExtractionFixture spread = new ExtractionFixture(1);
+    final ExtractionFixture spread = new ExtractionFixture();
     final IssuesFirstCommitExtractTask.Report r = new IssuesFirstCommitExtractTask(
         spread.source(), SilentProgress.INSTANCE, SplitRule.REVISED).run();
-    final IssuesFirstCommitExtractTask.Report t = new IssuesFirstCommitExtractTask(
-        spread.source(), SilentProgress.INSTANCE, SplitRule.TEMPORAL).run();
     final IssuesFirstCommitAuditTask.Report a = new IssuesFirstCommitAuditTask(spread.source(),
-        SilentProgress.INSTANCE, SplitRule.REVISED).run();
+        SilentProgress.INSTANCE, SplitRule.REVISED, app.issues.FirstCommit.DEFAULT_WAIT_K).run();
     final Population fc = Population.FIRST_COMMIT;
     final Map<String, String[]> rv = new HashMap<>();
     r.extraction().entries().forEach(e -> rv.put(e.unit().issueId(),
         new String[] {e.outer(fc), e.inner(fc)}));
-    final Map<String, String[]> tv = new HashMap<>();
-    t.extraction().entries().forEach(e -> tv.put(e.unit().issueId(),
-        new String[] {e.outer(fc), e.inner(fc)}));
-    assertEquals(tv.keySet(), rv.keySet(), "the same population");
     int outerCrossing = 0;
     int innerCrossing = 0;
     for (final String id : rv.keySet()) {
       final String[] x = rv.get(id);
-      final String[] y = tv.get(id);
-      assertEquals("TEST".equals(y[0]), "TEST".equals(x[0]), "the same outer test: " + id);
-      assertEquals("TEST".equals(y[1]), "TEST".equals(x[1]), "the same inner validation: " + id);
       outerCrossing += Verdict.CROSSING.is(x[0]) ? 1 : 0;
       innerCrossing += Verdict.CROSSING.is(x[1]) ? 1 : 0;
     }
@@ -244,16 +177,12 @@ class IssuesFirstCommitExtractTaskTest {
     assertTrue(outerCrossing < r.extraction().split().train(), "not every issue crosses");
     assertEquals(outerCrossing, r.temporal().crossing());
     assertEquals(innerCrossing, r.temporal().innerCrossing());
-    assertEquals(t.temporal().crossing(), r.temporal().crossing(),
-        "the issues the temporal design counts as crossing");
-    assertEquals(t.temporal().innerCrossing(), r.temporal().innerCrossing());
     assertEquals(a.threshold(), r.threshold(), "the audit's cap");
     assertEquals(a.temporal().crossing(), r.temporal().crossing());
 
     // the training target: the whole side, and the issues that teach at the outer level
     assertEquals(r.extraction().split().train(), r.training().n());
     final IssuesFirstCommitExtractTask.Revised revised = r.temporal().revised();
-    assertNull(t.temporal().revised(), "the temporal design adds nothing of the revised one");
     final List<Integer> teaching = new ArrayList<>();
     r.extraction().entries().stream().filter(e -> "TRAIN".equals(e.outer(fc)))
         .forEach(e -> teaching.add(e.row().values().get(IssuesFirstCommitExtractTask.TARGET)
@@ -275,8 +204,6 @@ class IssuesFirstCommitExtractTaskTest {
         revised.newProjectsTrainingSide().keySet());
 
     assertEquals(List.of(), SplitRule.REVISED.differences(r.extraction().entries(), fc));
-    assertNotEquals(List.of(), SplitRule.TEMPORAL.differences(r.extraction().entries(), fc));
-    assertNotEquals(List.of(), SplitRule.REVISED.differences(t.extraction().entries(), fc));
   }
 
   @Test
@@ -290,17 +217,6 @@ class IssuesFirstCommitExtractTaskTest {
     // P-5: no assignee; moved to In Progress by dev1, first commit by dev0-alt (Dev Zero)
     final RowCache.Entry five = entries.get(ExtractionFixture.id(5));
     assertEquals("Dev Zero", five.unit().executor());
-    final IssuesInProgressExtractTask.Report inProgress =
-        new IssuesInProgressExtractTask(fixture.source(), SilentProgress.INSTANCE).run();
-    final RowCache.Entry started = inProgress.entries().stream()
-        .filter(e -> e.unit().issueId().equals(ExtractionFixture.id(5))).findFirst()
-        .orElseThrow();
-    assertEquals("Dev One", started.unit().executor());
-    final RowCache.Entry six = inProgress.entries().stream()
-        .filter(e -> e.unit().issueId().equals(ExtractionFixture.id(6))).findFirst()
-        .orElseThrow();
-    assertEquals(2.0, six.row().values().get("Z08_priority"), "Minor at the In Progress");
-    assertNotEquals(started.unit().startedAt(), five.unit().startedAt());
     final Map<String, Integer> executors = new HashMap<>(fc.extraction().executors());
     assertEquals(fc.extraction().split().rows(),
         executors.values().stream().mapToInt(Integer::intValue).sum());
@@ -321,7 +237,8 @@ class IssuesFirstCommitExtractTaskTest {
     assertTrue(header.containsAll(IssuesFirstCommitExtractTask.TARGET_COLUMNS));
     assertTrue(!header.contains("andamento_externa"));
     final List<RowCache.Entry> back = RowCache.read(path, Population.FIRST_COMMIT, "TRAIN");
-    assertEquals(fc.extraction().split().train(), back.size());
+    assertEquals(fc.extraction().split().train() - fc.temporal().crossing(), back.size(),
+        "the outer training issues that do not cross the outer cut");
     final Map<String, RowCache.Entry> entries = entries();
     for (final RowCache.Entry e : back) {
       final RowCache.Entry original = entries.get(e.unit().issueId());
@@ -329,36 +246,23 @@ class IssuesFirstCommitExtractTaskTest {
       assertEquals(original.row().values().get(IssuesFirstCommitExtractTask.TARGET),
           e.row().values().get(IssuesFirstCommitExtractTask.TARGET));
     }
-    assertThrows(java.io.IOException.class,
-        () -> RowCache.read(path, Population.IN_PROGRESS, "TRAIN"));
-  }
-
-  @Test
-  @DisplayName("the universe does not build the first-commit population itself")
-  void universeRefuses() {
-    final Universe universe = Universe.of(fixture.corpus());
-    assertThrows(IllegalArgumentException.class,
-        () -> universe.population(Population.FIRST_COMMIT));
-    assertThrows(IllegalArgumentException.class,
-        () -> universe.unit(Population.FIRST_COMMIT, ExtractionFixture.id(1)));
   }
 
   /** An issue of both populations, the first by id. */
-  private String common(final IssuesInProgressExtractTask.Report inProgress) {
-    final Set<String> started = inProgress.entries().stream().map(e -> e.unit().issueId())
-        .collect(Collectors.toSet());
+  /** The first issue of the population that was moved to In Progress before its resolution. */
+  private String common(final ExtractionFixture f) {
+    final app.issues.Universe universe = app.issues.Universe.of(f.source().load());
     return fc.extraction().entries().stream().map(e -> e.unit().issueId())
-        .filter(started::contains).sorted().findFirst().orElseThrow();
+        .filter(id -> universe.started(id) != null).sorted().findFirst().orElseThrow();
   }
 
   @Test
   @DisplayName("decision 16a: the first commit's lines and its share of the issue's lines are "
-      + "written after the target; the pause flag, which reads the status, is not")
+      + "written after the target")
   void firstCommitAttributesWithoutPause() {
     assertEquals(IssuesFirstCommitExtractTask.COLUMNS, fc.extraction().columns()
         .subList(fc.extraction().columns().size() - IssuesFirstCommitExtractTask.COLUMNS.size(),
             fc.extraction().columns().size()));
-    assertTrue(!fc.extraction().columns().contains(IssuesInProgressExtractTask.PAUSED));
     final Map<String, RowCache.Entry> entries = entries();
     int checked = 0;
     for (final IssueRow row : audit.rows()) {
@@ -375,35 +279,25 @@ class IssuesFirstCommitExtractTaskTest {
     }
     assertTrue(checked > 0);
     for (final RowCache.Entry e : fc.extraction().entries()) {
-      assertTrue(!e.row().values().containsKey(IssuesInProgressExtractTask.PAUSED));
-      assertTrue(!e.row().absent().contains(IssuesInProgressExtractTask.PAUSED));
       assertTrue(e.row().values().keySet().containsAll(app.issues.FirstCommit.ATTRIBUTE_COLUMNS));
     }
-    final IssuesInProgressExtractTask.Report inProgress =
-        new IssuesInProgressExtractTask(fixture.source(), SilentProgress.INSTANCE).run();
-    assertTrue(inProgress.columns().contains(IssuesInProgressExtractTask.PAUSED),
-        "the In Progress cache keeps it");
   }
 
   @Test
   @DisplayName("the extracted counts observed during the work run from the first commit: a "
-      + "comment between the first In Progress and the first commit counts for In Progress only")
+      + "comment between the first In Progress and the first commit is not counted")
   void observedFromTheFirstCommit() {
     final ExtractionFixture before = new ExtractionFixture();
-    final String id = common(new IssuesInProgressExtractTask(before.source(),
-        SilentProgress.INSTANCE).run());
+    final String id = common(before);
     final ExtractionFixture with = new ExtractionFixture();
     with.comment(id, "zed", ExtractionFixture.day(2) + 2 * ExtractionFixture.H);
     final double fcBefore = value(new IssuesFirstCommitExtractTask(before.source(),
-        SilentProgress.INSTANCE).run().extraction().entries(), id, "K03_comments");
+        SilentProgress.INSTANCE, SplitRule.REVISED).run().extraction().entries(), id,
+        "K03_comments");
     final double fcWith = value(new IssuesFirstCommitExtractTask(with.source(),
-        SilentProgress.INSTANCE).run().extraction().entries(), id, "K03_comments");
-    final double ipBefore = value(new IssuesInProgressExtractTask(before.source(),
-        SilentProgress.INSTANCE).run().entries(), id, "K03_comments");
-    final double ipWith = value(new IssuesInProgressExtractTask(with.source(),
-        SilentProgress.INSTANCE).run().entries(), id, "K03_comments");
+        SilentProgress.INSTANCE, SplitRule.REVISED).run().extraction().entries(), id,
+        "K03_comments");
     assertEquals(fcBefore, fcWith, "before the first commit: not counted");
-    assertEquals(ipBefore + 1, ipWith, "after the first In Progress: counted");
   }
 
   @Test
@@ -411,11 +305,12 @@ class IssuesFirstCommitExtractTaskTest {
       + "after it: a later commit of a new author changes none of them")
   void nothingAfterTheFirstCommit() {
     final ExtractionFixture later = new ExtractionFixture();
-    // after every first commit of the fixture, in project p, on an issue outside the population
-    later.commitOn("late", "p", "dev9", ExtractionFixture.day(2) + 4 * ExtractionFixture.H, 500,
-        902);
+    // after the last first commit of project p, on an issue outside the population
+    later.commitOn("late", "p", "dev9", ExtractionFixture.at(22, 2) + 4 * ExtractionFixture.H,
+        500, 902);
     final IssuesFirstCommitExtractTask.Report other =
-        new IssuesFirstCommitExtractTask(later.source(), SilentProgress.INSTANCE).run();
+        new IssuesFirstCommitExtractTask(later.source(), SilentProgress.INSTANCE,
+            SplitRule.REVISED).run();
     assertEquals(fc.extraction().split(), other.extraction().split());
     assertEquals(new TreeMap<>(fc.extraction().team()),
         new TreeMap<>(other.extraction().team()));
@@ -436,9 +331,8 @@ class IssuesFirstCommitExtractTaskTest {
       }
     }
     assertTrue(compared > 100);
-    // the commit is seen where the window reaches past the first commit
-    final String id = fc.extraction().entries().stream()
-        .filter(e -> e.unit().project().equals("p")).findFirst().orElseThrow().unit().issueId();
+    // the commit is seen where the window reaches past the first commit: P-22's
+    final String id = ExtractionFixture.id(22);
     assertEquals(value(fc.extraction().entries(), id, "K19c2_project_commits_14d_obs") + 1,
         value(other.extraction().entries(), id, "K19c2_project_commits_14d_obs"));
   }

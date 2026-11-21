@@ -44,27 +44,20 @@ public final class ExtractionFixture {
   final Map<String, List<DurationEvidence.Activity>> activity = new HashMap<>();
   final Map<String, String> attachments = new HashMap<>();
   private int ext = 1;
-  private final int weeksApart;
 
-  /** Noon of day {@code d} of the studied issue {@code n}: {@link #day}, its weeks apart added. */
-  private long at(final int n, final int d) {
-    return day(d) + (long) n * weeksApart * 7 * World.DAY;
-  }
-
-  public ExtractionFixture() {
-    this(0);
+  /** Noon of day {@code d} of the studied issue {@code n}: {@link #day}, {@code n} weeks later. */
+  public static long at(final int n, final int d) {
+    return day(d) + (long) n * 7 * World.DAY;
   }
 
   /**
    * The fixture with each studied issue's whole history -- creation, events, commits, comments,
-   * activity and resolution -- moved {@code weeksApart} weeks later per issue number, so issue
-   * {@code n} starts {@code n * weeksApart} weeks after the first: whole weeks, so each issue's
-   * business days and day boundaries stay its own. With 0, the fixture of always; with 1, the
-   * first commits spread over thirty weeks, each issue resolved about two weeks after its start,
-   * so only the issues started just before a temporal cut cross it.
+   * activity and resolution -- moved a week later per issue number, so issue {@code n} starts
+   * {@code n} weeks after the first: whole weeks, so each issue's business days and day boundaries
+   * stay its own. The first commits spread over thirty weeks, each issue resolved about two weeks
+   * after its start, so only the issues started just before a temporal cut cross it.
    */
-  public ExtractionFixture(final int weeksApart) {
-    this.weeksApart = weeksApart;
+  public ExtractionFixture() {
     people.put("dev0", new Corpus.Person("Dev Zero", false));
     people.put("dev1", new Corpus.Person("Dev One", false));
     people.put("dev0-alt", new Corpus.Person("Dev Zero", false));

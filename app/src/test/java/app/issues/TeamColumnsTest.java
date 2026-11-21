@@ -27,7 +27,7 @@ class TeamColumnsTest {
   private static RowCache.Entry entry(final String id) {
     final Instant t = Instant.parse("2016-01-01T00:00:00Z");
     final Map<Population, String[]> parts = new EnumMap<>(Population.class);
-    parts.put(Population.IN_PROGRESS, new String[] {"TRAIN", "TRAIN"});
+    parts.put(Population.FIRST_COMMIT, new String[] {"TRAIN", "TRAIN"});
     return new RowCache.Entry(new IssueUnit(id, "P-" + id, "p", "r", "d", t, t.plusSeconds(7200),
         "Fixed", false, t.plusSeconds(3600)), new Row(id, Map.of("A03_team_size", 3.0), Set.of()), parts);
   }

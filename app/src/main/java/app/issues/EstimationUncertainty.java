@@ -32,13 +32,6 @@ public final class EstimationUncertainty {
       + "relative intervals require positive estimates from at least two projects; "
       + "sample SD requires at least two positive estimates; empty groups remain explicit";
 
-  public static final String PERCENTILE_RULE = "percentiles of each model's estimates on the "
-      + "scored issues, using type-7 interpolation; existing pooled inner calibration supplies "
-      + "80%/95% prediction intervals around those estimates; these are illustrations, not "
-      + "confidence intervals for percentiles or evidence of percentile-specific coverage; "
-      + "intervals target usual-flow coverage even when illustrated on the complementary reading; "
-      + "outer refits reuse inner factors approximately";
-
   /**
    * The percentiles' rule under the revised temporal design: the intervals are calibrated on
    * every inner validation issue ({@link PredictionIntervals#calibrationReading}), all issues
@@ -56,12 +49,9 @@ public final class EstimationUncertainty {
       + "outer models, not the official same-model intervals, which the same-model calibration "
       + "step reports";
 
-  /**
-   * The percentiles' rule under {@code rule}: {@link #REVISED_PERCENTILE_RULE} under the revised
-   * temporal design, {@link #PERCENTILE_RULE} under every other rule.
-   */
+  /** The percentiles' rule under {@code rule}: {@link #REVISED_PERCENTILE_RULE}. */
   public static String percentileRule(final SplitRule rule) {
-    return rule == SplitRule.REVISED ? REVISED_PERCENTILE_RULE : PERCENTILE_RULE;
+    return REVISED_PERCENTILE_RULE;
   }
 
   public record Estimate(double value, double low, double high, int validDraws) {}

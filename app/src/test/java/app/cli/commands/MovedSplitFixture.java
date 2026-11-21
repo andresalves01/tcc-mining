@@ -17,8 +17,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * A matrix of ten issues of one project at the random split's verdicts but one, moved to the other
- * outer side: what a stage that checks the split must refuse before reading anything else.
+ * A matrix of ten issues of one project at the revised design's verdicts but one, moved to the
+ * other outer side: what a stage that checks the split must refuse before reading anything else.
  */
 final class MovedSplitFixture {
 
@@ -30,8 +30,16 @@ final class MovedSplitFixture {
     for (int k = 0; k < 10; k++) {
       projects.put("i" + k, "p");
     }
-    final ProjectSplit.Parts parts = ProjectSplit.draw(projects);
     final Instant t = Instant.parse("2016-03-01T10:00:00Z");
+    final List<app.issues.SplitRule.Candidate> candidates = new ArrayList<>();
+    int k = 0;
+    for (final String id : projects.keySet()) {
+      final Instant start = t.plusSeconds(3600L * ++k);
+      candidates.add(new app.issues.SplitRule.Candidate(id, "p", start,
+          start.plusSeconds(86_400 * 3)));
+    }
+    final ProjectSplit.Parts parts = app.issues.TemporalSplit.drawRevised(candidates);
+    k = 0;
     final List<RowCache.Entry> entries = new ArrayList<>();
     for (final String id : projects.keySet()) {
       final Part inner = parts.inner().get(id);
@@ -41,12 +49,13 @@ final class MovedSplitFixture {
             : new String[] {"TRAIN", "TRAIN"};
       }
       final Map<Population, String[]> by = new EnumMap<>(Population.class);
-      by.put(Population.IN_PROGRESS, verdicts);
+      by.put(Population.FIRST_COMMIT, verdicts);
+      final Instant start = t.plusSeconds(3600L * ++k);
       entries.add(new RowCache.Entry(new IssueUnit(id, "P-" + id, "p", "r", "d", t,
-          t.plusSeconds(86_400 * 3), "Fixed", false, t.plusSeconds(3600)),
+          start.plusSeconds(86_400 * 3), "Fixed", false, start),
           new Row(id, Map.of("A01_desc_length", 12.0), Set.of()), by));
     }
-    RowCache.write(path, entries, List.of("A01_desc_length"), List.of(Population.IN_PROGRESS));
+    RowCache.write(path, entries, List.of("A01_desc_length"), List.of(Population.FIRST_COMMIT));
     return path;
   }
 }

@@ -34,17 +34,10 @@ public final class TemporalSplit {
   /** The share of the candidates up to the cut, in tenths: position {@code ceil(0.7 n)}. */
   public static final int TENTHS = 7;
 
-  /** The rule in words, for the help text and the run records. */
-  public static final String RULE = "temporal: the candidates ordered by their first commit, "
-      + "the issue id breaking ties; the cut is the instant at position ceil(0.7 n), from 1; "
-      + "training is every first commit at or before the cut, ties included, and test the rest; "
-      + "the same rule on the training side gives the inner fitting and the inner validation; "
-      + "no stratification by project; no issue is set aside";
-
   /**
-   * The revised design's rule in words, for the help text and the run records: the same sides,
-   * its crossing issues out of what the training side teaches, every history point-in-time. Never
-   * the words of {@link #RULE}, so a run of either design is told apart by them alone.
+   * The revised design's rule in words, for the help text and the run records: the temporal
+   * sides, its crossing issues out of what the training side teaches, every history
+   * point-in-time.
    */
   public static final String REVISED_RULE = "temporal, revised: the candidates ordered by their "
       + "first commit, the issue id breaking ties; the cut is the instant at position "
@@ -132,43 +125,13 @@ public final class TemporalSplit {
   }
 
   /**
-   * Where the matrix's sides under {@code population} are not this rule's, drawn again over the
-   * matrix's own issues from their start instant ({@link IssueUnit#startedAt}, the first commit
-   * that counts in a first-commit matrix); empty when every one is. Reads each row's id, project,
-   * start and sides, nothing else: no value and no outcome. A row without a start is a
-   * difference of its own. As with {@link ProjectSplit#differences}, a matrix missing issues is
-   * drawn again over those it holds, so this check does not prove it holds the whole population.
-   */
-  public static List<String> differences(final List<RowCache.Entry> entries,
-      final Population population) {
-    final List<Candidate> candidates = new ArrayList<>(entries.size());
-    for (final RowCache.Entry e : entries) {
-      if (e.unit().startedAt() == null) {
-        return List.of(e.unit().issueId() + " has no first-commit instant; the temporal split "
-            + "cannot be checked on this matrix");
-      }
-      candidates.add(new Candidate(e.unit().issueId(), e.unit().project(), e.unit().startedAt()));
-    }
-    final ProjectSplit.Parts parts;
-    final Cuts cuts;
-    try {
-      parts = draw(candidates);
-      cuts = cuts(candidates);
-    } catch (final IllegalArgumentException e) {
-      return List.of(e.getMessage() + "; the temporal split cannot be checked on this matrix");
-    }
-    return ProjectSplit.differences(entries, population, parts,
-        "temporal, cuts " + cuts.outer() + " and " + cuts.inner());
-  }
-
-  /**
    * Where the matrix's verdicts under {@code population} are not the revised design's ({@link
    * #drawRevised}), drawn again over the matrix's own issues; empty when every one is. Reads each
    * row's id, project, start and verdicts and, of the issues the rule puts on the outer training
    * side alone, the first resolution ({@link IssueUnit#resolvedAt}), which decides who crosses a
    * cut: no value, and nothing of the outer test but its start. A row without a start, and a
    * training row without its first resolution, is a difference of its own. A matrix of the
-   * temporal design fails here on its crossing rows, as this design's fails the temporal check.
+   * temporal design of 02/11/2026 fails here on its crossing rows.
    */
   public static List<String> differencesRevised(final List<RowCache.Entry> entries,
       final Population population) {

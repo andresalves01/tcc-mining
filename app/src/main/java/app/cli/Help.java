@@ -28,11 +28,8 @@ public final class Help {
         human commit to its first resolution. The app runs one design only: the first-commit
         population under the revised temporal split. The preparation commands build the prepared
         collections in smartshark_tcc once; the study's stages then run in the order below, in one
-        run folder (RUN_DIR), each reading what the previous one wrote there.
-
-        The descriptions below also mention settings of designs the app no longer runs
-        (POPULATION, SPLIT_RULE, the file and database settings): those are fixed, as listed at
-        the end, and printed at the top of every run.
+        run folder (RUN_DIR), each reading what the previous one wrote there. Every run prints its
+        settings at the top.
 
         Usage: app <command>
         """);

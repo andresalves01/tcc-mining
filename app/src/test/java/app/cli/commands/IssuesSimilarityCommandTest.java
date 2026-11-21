@@ -42,103 +42,11 @@ class IssuesSimilarityCommandTest {
   private static RowCache.Entry entry(final String id, final long startHours,
       final long hours, final String outer, final String inner) {
     final Map<Population, String[]> parts = new EnumMap<>(Population.class);
-    parts.put(Population.IN_PROGRESS, new String[] {outer, inner});
+    parts.put(Population.FIRST_COMMIT, new String[] {outer, inner});
     final Instant start = T.plusSeconds(3600 * startHours);
     return new RowCache.Entry(new IssueUnit(id, "P-" + id, "p", "r", "d", T,
         start.plusSeconds(3600 * hours), "Fixed", false, start),
         new Row(id, Map.of("A01_desc_length", 2.0), Set.of("TXT_desc_fog")), parts);
-  }
-
-  @Test
-  @DisplayName("the matrix keeps every header name and column of the cache, the new inner and "
-      + "outer columns after them; a missing value reads back missing")
-  void matrix(@TempDir final Path dir) throws IOException {
-    final List<RowCache.Entry> base = List.of(entry("a", 0, 10, "TRAIN", "TRAIN"),
-        entry("b", 1, 20, "TRAIN", "TRAIN"), entry("v", 100, 1, "TRAIN", "TEST"),
-        entry("t", 200, 1, "TEST", ""));
-    final Path cache = dir.resolve("cache.tsv");
-    RowCache.write(cache, base, List.of("A01_desc_length", "TXT_desc_fog"),
-        List.of(Population.IN_PROGRESS));
-    final String header = Files.readAllLines(cache).get(0);
-
-    final Map<String, String> text = Map.of("a", "x", "b", "y", "v", "x");
-    final List<Augmentation.Issue> issues = new ArrayList<>();
-    for (final RowCache.Entry e : base) {
-      issues.add(new Augmentation.Issue(e.unit().issueId(), "p", e.unit().reporter(),
-          e.unit().startedAt().toEpochMilli(), e.unit().resolvedAt().toEpochMilli(),
-          (int) e.unit().durationHours(),
-          (int) e.unit().durationHours(), e.outer(Population.IN_PROGRESS),
-          e.inner(Population.IN_PROGRESS),
-          text.get(e.unit().issueId())));
-    }
-    final Augmentation.Result result = Augmentation.run(issues,
-        s -> new Embedder.Embedding(new float[] {1, 0}, 3), 2, new SmileKMeans());
-    final List<RowCache.Entry> augmented = new ArrayList<>();
-    for (final RowCache.Entry e : base) {
-      final Map<String, Double> values = new HashMap<>(e.row().values());
-      values.putAll(result.columns().get(e.unit().issueId()));
-      values.put(BusinessDays.BOUNDARY, e.unit().issueId().equals("a") ? 21.0 : 4.0);
-      // b's one business day taken out as time back in Open
-      values.put(BusinessDays.ACTIVE, 0.0);
-      augmented.add(new RowCache.Entry(e.unit(),
-          new Row(e.row().unitId(), values, new HashSet<>(e.row().absent())), e.parts()));
-    }
-    final Map<String, DayBoundaries.Boundary> boundaries = Map.of(
-        "a", new DayBoundaries.Boundary(21, DayBoundaries.Source.PERSON, 12, 30),
-        "b", new DayBoundaries.Boundary(4, DayBoundaries.Source.FALLBACK, 0, 1),
-        "v", new DayBoundaries.Boundary(4, DayBoundaries.Source.FALLBACK, 0, 2),
-        "t", new DayBoundaries.Boundary(4, DayBoundaries.Source.FALLBACK, 0, 3));
-    final IssuesSimilarityTask.Report r = new IssuesSimilarityTask.Report(List.of(),
-        new ProjectSplit.Sizes(3, 1, 2, 1), augmented, result, 3, boundaries, Set.of());
-
-    final Path out = dir.resolve("matrix.tsv");
-    IssuesSimilarityCommand.writeMatrix(out, r, RowCache.columns(cache));
-    final String written = Files.readAllLines(out).get(0);
-    assertEquals(header + "\t" + String.join("\t", IssuesSimilarityTask.columns()) + "\t"
-        + String.join("\t", BusinessDays.COLUMNS), written);
-    assertTrue(written.contains("\tjaccard_median_5_inner\tjaccard_median_5_outer\t"));
-
-    final Map<String, RowCache.Entry> back = new HashMap<>();
-    RowCache.read(out).forEach(e -> back.put(e.unit().issueId(), e));
-    assertEquals(10.0, back.get("v").row().values().get(Augmentation.jaccard(5, Variant.INNER)));
-    assertNull(back.get("t").row().values().get(Augmentation.jaccard(5, Variant.OUTER)));
-    assertEquals(2.0, back.get("t").row().values().get("A01_desc_length"));
-    assertTrue(back.get("t").row().absent().contains("TXT_desc_fog"));
-    assertEquals(21.0, back.get("a").row().values().get(BusinessDays.BOUNDARY));
-    assertEquals(0.0, back.get("b").row().values().get(BusinessDays.ACTIVE));
-
-    final Map<String, List<String>> files = IssuesSimilarityCommand.diagnostics(r);
-    assertEquals(Set.of("jaccard-queries.tsv", "jaccard-neighbours.tsv", "coverage.tsv",
-        "histories.tsv", "embedding-queries.tsv", "embedding-neighbours.tsv",
-        "embedding-chunks.tsv", "cluster-fits.tsv", "cluster-sizes.tsv", "cluster-projects.tsv",
-        "cluster-queries.tsv", "day-boundaries.tsv"), files.keySet());
-    assertEquals(List.of("id\touter\tinner\tsource\tperson_hours\tproject_hours"
-        + "\tboundary_hour_utc\tbusiness_days_whole\tactive_business_days",
-        "a\tTRAIN\tTRAIN\tperson\t12\t30\t21\t0\t0",
-        "b\tTRAIN\tTRAIN\tfallback\t0\t1\t4\t1\t0",
-        "v\tTRAIN\tTEST\tfallback\t0\t2\t4\t0\t0",
-        "t\tTEST\t\tfallback\t0\t3\t4\t\t"), files.get("day-boundaries.tsv"),
-        "the outer test's business days left blank");
-    assertEquals(Map.of("person", 1, "project", 0, "fallback", 1),
-        IssuesSimilarityCommand.sources(r).get("inner_fitting"));
-    assertEquals(Map.of("person", 0, "project", 0, "fallback", 1),
-        IssuesSimilarityCommand.sources(r).get("outer_test"));
-    assertEquals(Map.of("inner_fitting", 1, "inner_validation", 0),
-        IssuesSimilarityCommand.changedByActiveTime(r),
-        "b's count changed, no other; the outer test not summarised");
-    assertTrue(files.get("jaccard-neighbours.tsv").contains("v\tinner\t1\ta\tp\t0.0"),
-        files.get("jaccard-neighbours.tsv").toString());
-    assertTrue(files.get("embedding-neighbours.tsv").contains("v\tinner\t1\ta\tp\t0.0"),
-        files.get("embedding-neighbours.tsv").toString());
-    assertTrue(files.get("embedding-neighbours.tsv").contains("v\tinner\t2\tb\tp\t0.0"),
-        "a tie, by id");
-    assertEquals("id\tvariant\tsplit\tcandidates\tused_5\tused_10\tused_20",
-        files.get("embedding-queries.tsv").get(0));
-    assertTrue(files.get("embedding-queries.tsv").contains(
-        "v\tinner\tinner_validation\t2\t2\t2\t2"),
-        files.get("embedding-queries.tsv").toString());
-    assertEquals(List.of("id\tproject\tchunks\tvalid\tproblem", "a\tp\t3\ttrue\t",
-        "b\tp\t3\ttrue\t", "v\tp\t3\ttrue\t"), files.get("embedding-chunks.tsv"));
   }
 
   /** An embedder giving each reference sentence its reference vector plus {@code delta}. */
@@ -158,22 +66,6 @@ class IssuesSimilarityCommandTest {
   private static List<long[]> ids(final String text) {
     return List.of(ReferenceCheck.items().stream().filter(i -> i.text().equals(text))
         .findFirst().orElseThrow().ids());
-  }
-
-  @Test
-  @DisplayName("the run record says what the histories read: point in time under the revised "
-      + "design, the outer test answering at the inner level; the whole side, whatever the dates, "
-      + "under every other rule, as before")
-  void historyRecord() {
-    assertEquals(IssuesSimilarityCommand.HISTORY,
-        IssuesSimilarityCommand.history(app.issues.SplitRule.RANDOM));
-    assertEquals(IssuesSimilarityCommand.HISTORY,
-        IssuesSimilarityCommand.history(app.issues.SplitRule.TEMPORAL));
-    final String revised = IssuesSimilarityCommand.history(app.issues.SplitRule.REVISED);
-    assertTrue(revised.startsWith("point-in-time"), revised);
-    assertTrue(revised.contains("strictly before"), revised);
-    assertTrue(revised.contains("outer test"), revised);
-    assertTrue(!revised.contains("whatever the dates"), revised);
   }
 
   @Test
@@ -206,21 +98,19 @@ class IssuesSimilarityCommandTest {
     issues.add(new Augmentation.Issue("v", "p", "r", 100 * 3_600_000L, 101 * 3_600_000L, 1, 1,
         "TRAIN", "TEST", "d0"));
     final Augmentation.Result result = Augmentation.run(issues,
-        s -> new Embedder.Embedding(vectors.get(s), 1), 2, new SmileKMeans());
+        s -> new Embedder.Embedding(vectors.get(s), 1), 2, new SmileKMeans(),
+        Augmentation.Histories.POINT_IN_TIME);
     final List<RowCache.Entry> entries = new ArrayList<>();
     for (final Augmentation.Issue i : issues) {
       final RowCache.Entry e = entry(i.id(), 0, 1, i.outer(), i.inner());
       final Map<String, Double> values = new HashMap<>(e.row().values());
-      values.put(BusinessDays.ACTIVE, 0.0);
       entries.add(new RowCache.Entry(new IssueUnit(i.id(), "P-" + i.id(), i.project(), "r", "d",
           T, T, "Fixed", false, T), new Row(i.id(), values, e.row().absent()), e.parts()));
     }
-    final Map<String, DayBoundaries.Boundary> boundaries = new HashMap<>();
-    issues.forEach(i -> boundaries.put(i.id(),
-        new DayBoundaries.Boundary(4, DayBoundaries.Source.FALLBACK, 0, 0)));
     final IssuesSimilarityTask.Report r = new IssuesSimilarityTask.Report(List.of(),
-        new ProjectSplit.Sizes(9, 0, 8, 1), entries, result, 9, boundaries, Set.of());
-    final Map<String, List<String>> files = IssuesSimilarityCommand.diagnostics(r);
+        new ProjectSplit.Sizes(9, 0, 8, 1), entries, result, 9, Set.of());
+    final Map<String, List<String>> files =
+        IssuesSimilarityCommand.diagnostics(r, Population.FIRST_COMMIT);
 
     assertEquals("variant\tk\tvectors\tdistinct\tfitted\tdistortion",
         files.get("cluster-fits.tsv").get(0));

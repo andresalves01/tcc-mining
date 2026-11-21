@@ -115,11 +115,6 @@ public final class IssuesFirstCommitExtractTask {
   private final SplitRule rule;
   private final double waitK;
 
-  /** The extraction under the random rule. */
-  public IssuesFirstCommitExtractTask(final StudySource source, final Progress progress) {
-    this(source, progress, SplitRule.RANDOM);
-  }
-
   /** The extraction whose sides, cap and target are drawn by {@code rule}, as the audit's. */
   public IssuesFirstCommitExtractTask(final StudySource source, final Progress progress,
       final SplitRule rule) {
@@ -200,53 +195,30 @@ public final class IssuesFirstCommitExtractTask {
         Population.FIRST_COMMIT, drawn.parts(),
         IssuesInProgressExtractTask.summary(units.size() + zero, projects, drawn.parts()),
         target, COLUMNS, 6, PHASES);
-    return new Report(withoutPause(extraction), b.units().size(),
+    return new Report(extraction, b.units().size(),
         IssuesFirstCommitAuditTask.funnel(b.units().size(), drawn.verdicts()), drawn.threshold(),
         FirstCommit.summary(training),
-        rule.temporal() ? temporal(b.issues(), drawn, projects, teaching) : null, waitK);
+        temporal(drawn, projects, teaching), waitK);
   }
 
   /**
-   * The cuts, the issues crossing them and the new projects of a temporal draw; under the revised
-   * design also the target of the outer training issues that teach, {@code teaching}, and the new
-   * projects by the other definition. A new project is one with no issue that teaches at the outer
-   * level, as the scoring reads it: an issue crossing the outer cut is left out of the training
-   * side's projects.
+   * The cuts, the issues crossing them, the new projects, the target of the outer training issues
+   * that teach, {@code teaching}, and the new projects by the other definition. A new project is
+   * one with no issue that teaches at the outer level, as the scoring reads it: an issue crossing
+   * the outer cut is left out of the training side's projects.
    */
-  private static Temporal temporal(final Map<String, FirstCommit.Issue> issues,
-      final IssuesFirstCommitAuditTask.Drawn drawn, final Map<String, String> projects,
-      final List<Integer> teaching) {
+  private static Temporal temporal(final IssuesFirstCommitAuditTask.Drawn drawn,
+      final Map<String, String> projects, final List<Integer> teaching) {
     final TemporalSplit.Cuts cuts = TemporalSplit.cuts(drawn.candidates());
     final ProjectSplit.Parts parts = drawn.parts();
-    final IssuesFirstCommitAuditTask.Crossing crossing = drawn.crossing(issues);
+    final IssuesFirstCommitAuditTask.Crossing crossing = drawn.crossing();
     final Map<String, Part> outerTeaching = new HashMap<>(parts.outer());
     outerTeaching.keySet().removeAll(parts.outerCrossing());
     final Map<String, Integer> newByTeaching =
         IssuesFirstCommitAuditTask.newProjects(projects, outerTeaching);
-    final Revised revised = !drawn.rule().crossingOut() ? null
-        : new Revised(FirstCommit.summary(teaching),
-            IssuesFirstCommitAuditTask.newProjects(projects, parts.outer()));
+    final Revised revised = new Revised(FirstCommit.summary(teaching),
+        IssuesFirstCommitAuditTask.newProjects(projects, parts.outer()));
     return new Temporal(cuts, crossing.outer(), crossing.inner(), newByTeaching, revised);
   }
 
-  /**
-   * The extraction without the pause flag ({@link IssuesInProgressExtractTask#PAUSED}): it reads
-   * the In Progress workflow, which this population does not start at, and the status is not read
-   * (spec decision 14; André, 25/10/2026). No column of the cache carries it.
-   */
-  static IssuesInProgressExtractTask.Report withoutPause(final IssuesInProgressExtractTask.Report r) {
-    final String paused = IssuesInProgressExtractTask.PAUSED;
-    final List<String> columns = r.columns().stream().filter(c -> !c.equals(paused)).toList();
-    final List<RowCache.Entry> entries = new ArrayList<>(r.entries().size());
-    for (final RowCache.Entry e : r.entries()) {
-      final Map<String, Double> values = new LinkedHashMap<>(e.row().values());
-      values.remove(paused);
-      final Set<String> absent = new java.util.HashSet<>(e.row().absent());
-      absent.remove(paused);
-      entries.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values, absent),
-          e.parts()));
-    }
-    return new IssuesInProgressExtractTask.Report(r.split(), r.travel(), r.executors(),
-        List.copyOf(entries), columns, r.team());
-  }
 }

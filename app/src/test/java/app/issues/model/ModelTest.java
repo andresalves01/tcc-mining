@@ -30,12 +30,12 @@ class ModelTest {
     final String[][] parts = {{"TRAIN", "TRAIN"}, {"TRAIN", "TEST"}, {"TEST", ""}};
     for (int i = 0; i < parts.length; i++) {
       final Map<Population, String[]> p = new EnumMap<>(Population.class);
-      p.put(Population.IN_PROGRESS, parts[i]);
+      p.put(Population.FIRST_COMMIT, parts[i]);
       entries.add(new RowCache.Entry(new IssueUnit("i" + i, "K-" + i, "p", "r", "e", t0,
           t0.plusSeconds(7200), "Fixed", false, t0.plusSeconds(3600)),
           new Row("i" + i, Map.of(), Set.of()), p));
     }
-    final Fitting.Sides inner = Fitting.sides(entries, Fitting.Mode.INNER, Population.IN_PROGRESS);
+    final Fitting.Sides inner = Fitting.sides(entries, Fitting.Mode.INNER, Population.FIRST_COMMIT);
     assertEquals(List.of("i0"), inner.fitUnits().stream().map(IssueUnit::issueId).toList());
     assertEquals(List.of("i1"), inner.scoreUnits().stream().map(IssueUnit::issueId).toList());
     assertEquals(1.0, inner.observed()[0], 1e-9, "one hour from the In Progress");

@@ -3,8 +3,6 @@ package app.cli.commands;
 import app.cli.CommandFailedException;
 import app.cli.CommandRunner;
 import app.cli.Context;
-import app.issues.BusinessDays;
-import app.issues.ProjectSplit;
 import app.issues.RowCache;
 import app.issues.SplitRule;
 import app.issues.TimeTravel;
@@ -17,33 +15,24 @@ import app.pipeline.IssuesFirstCommitExtractTask;
 import app.pipeline.IssuesInProgressExtractTask;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.function.Function;
 
 /**
- * The study's extraction: the issues resolved as Fixed read at their first In Progress, those of
- * at least one active business day kept, the split drawn over them at random and stratified by
- * project ({@link ProjectSplit}), and time travel at the first In Progress. Writes the cache to
- * CACHE only when the gate passed; records a summary, with the split's rule and seed, in
- * ISSUES_DB. Prints the split in counts only: no duration of either side.
- *
- * <p>With POPULATION=FIRST_COMMIT, the first-commit population instead ({@link
- * IssuesFirstCommitExtractTask}): the audit's population, split, cap and target, the columns read
- * at the first commit. It refuses the In Progress study's TARGET_DB and ISSUES_DB, so its run is
- * recorded in a database of its own, and prints of the target the outer training's alone. The
- * split is the rule SPLIT_RULE declares ({@link SplitRule}), random by default; the run is recorded
- * in that design's own run collection ({@link ResultStore#design}), and the stage refuses one that
- * already holds another design's runs. Under the temporal rule the record adds the cuts, the
- * issues crossing them and the new projects. Under the revised one it also gives how many issues
+ * The study's extraction ({@link IssuesFirstCommitExtractTask}): the first-commit population, its
+ * split under the revised temporal rule ({@link SplitRule}), the cap on the waits and the target,
+ * and every column read at the first commit that counts, with time travel checked at that instant.
+ * Writes the cache to CACHE only when the gate passed. It refuses the In Progress study's
+ * TARGET_DB and ISSUES_DB, records its run in the revised design's own run collection ({@link
+ * ResultStore#design}), refusing one that holds another design's runs, and prints of the target
+ * the outer training's alone. The record adds the cuts, the issues crossing them, how many issues
  * each level leaves out of what it teaches, that validation and test keep every issue, the outer
  * training's target with and without its crossing issues, and the new projects by both
- * definitions, each labelled. The In Progress population refuses a temporal rule.
+ * definitions, each labelled.
  */
 public final class IssuesInProgressExtractCommand implements CommandRunner {
 
@@ -65,91 +54,13 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
     this.settings = settings;
   }
 
-  /** The population POPULATION names, IN_PROGRESS when unset. */
-  static Population population(final String setting) throws CommandFailedException {
-    if (setting == null || setting.isBlank()) {
-      return Population.IN_PROGRESS;
-    }
-    try {
-      return Population.valueOf(setting.strip().toUpperCase(EN));
-    } catch (final IllegalArgumentException e) {
-      throw new CommandFailedException(List.of("  POPULATION must be one of "
-          + java.util.Arrays.toString(Population.values()) + ", got '" + setting + "'"));
-    }
-  }
-
   @Override
   public void run(final Context context) throws CommandFailedException {
     final String cache = settings.apply("CACHE");
     if (cache == null || cache.isBlank()) {
       throw new CommandFailedException(List.of("  CACHE=<output file> is required"));
     }
-    final Population population = population(settings.apply("POPULATION"));
-    final SplitRule rule;
-    try {
-      rule = SplitRule.declared(settings.apply(SplitRule.SETTING), population);
-    } catch (final IllegalArgumentException e) {
-      throw new CommandFailedException(List.of("  " + e.getMessage()));
-    }
-    if (population == Population.FIRST_COMMIT) {
-      firstCommit(context, cache, rule, waitFenceK(settings));
-      return;
-    }
-    final IssuesInProgressExtractTask.Report r =
-        new IssuesInProgressExtractTask(context.study(), context.progress()).run();
-
-    System.out.printf("%n  DURATION FROM IN PROGRESS -- EXTRACTION AND GATES%n");
-    final var s = r.split();
-    System.out.printf("%n  POPULATION AND SPLIT%n");
-    System.out.printf("    %,d In-Progress issues, %,d of 0 active business days never drawn%n",
-        s.started(), s.zeroDays());
-    System.out.printf("    %s%n", ProjectSplit.RULE);
-    System.out.printf("    %,d issues of %,d projects  training %,d  test %,d%n", s.rows(),
-        s.projects(), s.train(), s.test());
-    System.out.printf("    inner fitting %,d  inner validation %,d%n", s.fit(), s.validation());
-    System.out.printf("%n  EXECUTOR AT t0 (P8)%n");
-    r.executors().forEach((k, v) -> System.out.printf("    %-40s %,8d%n", k, v));
-
-    System.out.printf("%n  GATE 1 -- TIME TRAVEL AT t0 = IN PROGRESS (%d issues, seed %d)%n",
-        TimeTravel.SAMPLE, TimeTravel.SEED);
-    for (final TimeTravel.Check c : r.travel()) {
-      System.out.printf("    %-42s %4d of %4d equal   naive rule differs in %4d%n", c.column(),
-          c.same(), c.total(), c.naiveDiffers());
-      c.examples().forEach(x -> System.out.println("        " + x));
-    }
-
-    final Map<String, Object> run = new LinkedHashMap<>();
-    run.put("stage", STAGE);
-    run.put("gate_time_travel", r.travelPassed());
-    run.put("rows", r.entries().size());
-    run.put("population", BusinessDays.POPULATION);
-    run.put("split_rule", ProjectSplit.RULE);
-    run.put("split_seed", ProjectSplit.SEED);
-    run.put("split_share", ProjectSplit.SHARE);
-    final Map<String, Object> sizes = new LinkedHashMap<>();
-    sizes.put("in_progress", s.started());
-    sizes.put("zero_business_days", s.zeroDays());
-    sizes.put("drawn", s.rows());
-    sizes.put("projects", s.projects());
-    sizes.put("outer_training", s.train());
-    sizes.put("outer_test", s.test());
-    sizes.put("inner_fitting", s.fit());
-    sizes.put("inner_validation", s.validation());
-    run.put("split_sizes", sizes);
-    System.out.printf("%n  run recorded in ISSUES_DB: %s%n",
-        context.issuesResults().record(run, List.of()));
-
-    if (!r.passed()) {
-      throw new CommandFailedException(List.of("", "  REFUSED: the gate failed -- the cache was NOT "
-          + "written. Explain every mismatch before going on."));
-    }
-    try {
-      RowCache.write(Path.of(cache), r.entries(), r.columns(), List.of(Population.IN_PROGRESS));
-    } catch (final IOException e) {
-      throw new CommandFailedException(List.of("  could not write " + cache + ": " + e));
-    }
-    System.out.printf("%n  cache written: %s (%,d rows, %d columns)%n", cache,
-        r.entries().size(), r.columns().size());
+    firstCommit(context, cache, SplitRule.REVISED, waitFenceK(settings));
   }
 
   /** What the revised design keeps of every issue crossing a cut, in its record and its print. */
@@ -219,47 +130,38 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
   static ResultStore requireOwnDesign(final ResultStore store, final SplitRule rule)
       throws CommandFailedException {
     final ResultStore own;
-    final Optional<Set<SplitRule>> designs;
+    final Optional<Long> others;
     try {
       own = store.design(rule);
-      designs = own.designs();
+      others = own.otherDesignRuns();
     } catch (final RuntimeException e) {
       throw new CommandFailedException(List.of("  the runs of the " + rule.setting()
           + " design cannot be told apart from another design's: " + e.getMessage()));
     }
-    if (designs.isEmpty()) {
+    if (others.isEmpty()) {
       throw new CommandFailedException(List.of("  the run store cannot tell which design its "
           + "runs were drawn under, so the " + rule.setting() + " design is not recorded in it"));
     }
-    final Set<SplitRule> others = EnumSet.noneOf(SplitRule.class);
-    others.addAll(designs.get());
-    others.remove(rule);
-    if (!others.isEmpty()) {
+    if (others.get() > 0) {
       throw new CommandFailedException(List.of("  the run collection of the " + rule.setting()
-          + " design (suffix '" + rule.collectionSuffix() + "') already holds runs of " + others
-          + ": nothing is written over another design"));
+          + " design (suffix '" + rule.collectionSuffix() + "') already holds " + others.get()
+          + " runs of another design: nothing is written over another design"));
     }
     return own;
   }
 
-  /** The run store of a later stage, leaving the existing random run path unchanged. */
-  static ResultStore runStore(final Context context, final Population population,
-      final SplitRule rule) throws CommandFailedException {
-    if (population != Population.FIRST_COMMIT) {
-      return context.issuesResults();
-    }
+  /** The run store of a later stage: the revised design's, in databases of the study's own. */
+  static ResultStore runStore(final Context context) throws CommandFailedException {
     requireOwnDatabases(context.config());
-    return rule.temporal()
-        ? requireOwnDesign(context.issuesResults(), rule) : context.issuesResults();
+    return requireOwnDesign(context.issuesResults(), SplitRule.REVISED);
   }
 
   /**
-   * The k of the wait fence the matrix of {@code study} was extracted with, read from the run
-   * store of its design ({@link ResultStore#waitFenceK()}); the official k for any other study.
+   * The k of the wait fence the matrix was extracted with, read from the run store of its design
+   * ({@link ResultStore#waitFenceK()}); the official k when there is no store.
    */
-  static double matrixWaitFenceK(final ResultStore store, final Population study) {
-    return study == Population.FIRST_COMMIT && store != null
-        ? store.waitFenceK() : FirstCommit.DEFAULT_WAIT_K;
+  static double matrixWaitFenceK(final ResultStore store) {
+    return store != null ? store.waitFenceK() : FirstCommit.DEFAULT_WAIT_K;
   }
 
   /** The k of {@code WAIT_FENCE_K} in {@code settings}, refused as the stage's failure. */
@@ -300,24 +202,18 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
         s.projects(), s.train(), s.test());
     System.out.printf("    inner fitting %,d  inner validation %,d%n", s.fit(), s.validation());
     final IssuesFirstCommitExtractTask.Temporal tc = fc.temporal();
-    if (tc != null) {
-      System.out.printf("    outer cut %s  inner cut %s%n", tc.cuts().outer(), tc.cuts().inner());
-      System.out.printf("    crossing the cut: %,d outer training issues, %,d inner fitting "
-          + "issues (first resolution after the cut)%n", tc.crossing(), tc.innerCrossing());
-      if (tc.revised() == null) {
-        System.out.printf("    new projects (outer test alone): %,d, with %,d issues %s%n",
-            tc.newProjects().size(), issues(tc.newProjects()), tc.newProjects());
-      } else {
-        System.out.printf("    left out of what the training side teaches: %,d at the outer "
-            + "level, %,d at the inner; %s%n", tc.crossing(), tc.innerCrossing(), SCORED_SIDES);
-        final Map<String, Integer> side = tc.revised().newProjectsTrainingSide();
-        System.out.printf("    new projects (no issue that teaches, as the scoring reads them): "
-            + "%,d, with %,d issues %s%n", tc.newProjects().size(), issues(tc.newProjects()),
-            tc.newProjects());
-        System.out.printf("    new projects (no issue on the training side, crossing issues "
-            + "included): %,d, with %,d issues %s%n", side.size(), issues(side), side);
-      }
-    }
+    System.out.printf("    outer cut %s  inner cut %s%n", tc.cuts().outer(), tc.cuts().inner());
+    System.out.printf("    crossing the cut: %,d outer training issues, %,d inner fitting "
+        + "issues (first resolution after the cut)%n", tc.crossing(), tc.innerCrossing());
+    System.out.printf("    left out of what the training side teaches: %,d at the outer "
+        + "level, %,d at the inner; %s%n", tc.crossing(), tc.innerCrossing(), SCORED_SIDES);
+    final Map<String, Integer> byTrainingSide = tc.revised().newProjectsTrainingSide();
+    System.out.printf("    new projects (no issue that teaches, as the scoring reads them): "
+        + "%,d, with %,d issues %s%n", tc.newProjects().size(), issues(tc.newProjects()),
+        tc.newProjects());
+    System.out.printf("    new projects (no issue on the training side, crossing issues "
+        + "included): %,d, with %,d issues %s%n", byTrainingSide.size(), issues(byTrainingSide),
+        byTrainingSide);
     final FirstCommit.Threshold t = fc.threshold();
     System.out.printf("%n  WAIT CAP, LEARNED ON THE INNER FITTING%n");
     if (waitK != FirstCommit.DEFAULT_WAIT_K) {
@@ -331,15 +227,11 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
     final FirstCommit.Summary a = fc.training();
     System.out.printf("%n  TARGET ON THE OUTER TRAINING, BUSINESS DAYS (the outer test's is not "
         + "read here)%n");
-    final IssuesFirstCommitExtractTask.Revised revised = tc == null ? null : tc.revised();
-    if (revised != null) {
-      System.out.printf("    %s%n", WHOLE_SIDE);
-    }
+    final IssuesFirstCommitExtractTask.Revised revised = tc.revised();
+    System.out.printf("    %s%n", WHOLE_SIDE);
     print(a);
-    if (revised != null) {
-      System.out.printf("    %s%n", TEACHING_SIDE);
-      print(revised.teaching());
-    }
+    System.out.printf("    %s%n", TEACHING_SIDE);
+    print(revised.teaching());
     System.out.printf("%n  EXECUTOR AT THE FIRST COMMIT%n");
     r.executors().forEach((k, v) -> System.out.printf("    %-40s %,8d%n", k, v));
 
@@ -381,43 +273,31 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
     cap.put("cap", t.uncapped() ? FirstCommit.NONE : (Object) t.cap());
     cap.put("waits", t.gaps());
     run.put("wait_cap", cap);
-    if (tc == null) {
-      run.put(SplitRule.RULE_FIELD, ProjectSplit.RULE);
-      run.put("split_seed", ProjectSplit.SEED);
-      run.put("split_share", ProjectSplit.SHARE);
-    } else {
-      run.put(SplitRule.DESIGN_FIELD, rule.setting());
-      run.put(SplitRule.RULE_FIELD, rule.rule());
-      final Map<String, Object> cuts = new LinkedHashMap<>();
-      cuts.put("outer", tc.cuts().outer().toString());
-      cuts.put("inner", tc.cuts().inner().toString());
-      run.put("split_cuts", cuts);
-      final Map<String, Object> crossing = new LinkedHashMap<>();
-      crossing.put("outer_training", tc.crossing());
-      crossing.put("inner_fitting", tc.innerCrossing());
-      run.put("crossing_the_cut", crossing);
-      if (revised != null) {
-        final Map<String, Object> left = new LinkedHashMap<>();
-        left.put("outer_level", tc.crossing());
-        left.put("inner_level", tc.innerCrossing());
-        left.put("left_out_of", "everything the training side teaches at that level: the "
-            + "fitting rows, the reference medians, the fences, the wait cap and the histories");
-        left.put("scored_sides", SCORED_SIDES);
-        run.put("crossing_left_out", left);
-      }
-      final Map<String, Object> newProjects = newProjects(tc.newProjects());
-      if (revised != null) {
-        newProjects.put("definition", "projects with issues on the outer test and no issue that "
-            + "teaches at the outer level, as the scoring reads them");
-      }
-      run.put("new_projects", newProjects);
-      if (revised != null) {
-        final Map<String, Object> side = newProjects(revised.newProjectsTrainingSide());
-        side.put("definition", "projects with issues on the outer test and none on the outer "
-            + "training side, crossing issues included");
-        run.put("new_projects_by_training_side", side);
-      }
-    }
+    run.put(SplitRule.DESIGN_FIELD, rule.setting());
+    run.put(SplitRule.RULE_FIELD, rule.rule());
+    final Map<String, Object> cuts = new LinkedHashMap<>();
+    cuts.put("outer", tc.cuts().outer().toString());
+    cuts.put("inner", tc.cuts().inner().toString());
+    run.put("split_cuts", cuts);
+    final Map<String, Object> crossing = new LinkedHashMap<>();
+    crossing.put("outer_training", tc.crossing());
+    crossing.put("inner_fitting", tc.innerCrossing());
+    run.put("crossing_the_cut", crossing);
+    final Map<String, Object> left = new LinkedHashMap<>();
+    left.put("outer_level", tc.crossing());
+    left.put("inner_level", tc.innerCrossing());
+    left.put("left_out_of", "everything the training side teaches at that level: the "
+        + "fitting rows, the reference medians, the fences, the wait cap and the histories");
+    left.put("scored_sides", SCORED_SIDES);
+    run.put("crossing_left_out", left);
+    final Map<String, Object> newProjects = newProjects(tc.newProjects());
+    newProjects.put("definition", "projects with issues on the outer test and no issue that "
+        + "teaches at the outer level, as the scoring reads them");
+    run.put("new_projects", newProjects);
+    final Map<String, Object> side = newProjects(revised.newProjectsTrainingSide());
+    side.put("definition", "projects with issues on the outer test and none on the outer "
+        + "training side, crossing issues included");
+    run.put("new_projects_by_training_side", side);
     final Map<String, Object> sizes = new LinkedHashMap<>();
     sizes.put("fixed_base", fc.base());
     sizes.put("past_every_rule_but_the_target", s.started());
@@ -441,8 +321,8 @@ public final class IssuesInProgressExtractCommand implements CommandRunner {
     }
     run.put("target_columns", IssuesFirstCommitExtractTask.TARGET_COLUMNS);
     run.put("attribute_columns", FirstCommit.ATTRIBUTE_COLUMNS);
-    run.put("not_written", IssuesInProgressExtractTask.PAUSED + ": it reads the status, which "
-        + "this study does not read");
+    run.put("not_written", "PAUSA_volta_open: it reads the status, which this study does not "
+        + "read");
     System.out.printf("%n  run recorded in ISSUES_DB (%s, runs%s): %s%n", config.issuesDb(),
         rule.collectionSuffix(), store.record(run, List.of()));
 

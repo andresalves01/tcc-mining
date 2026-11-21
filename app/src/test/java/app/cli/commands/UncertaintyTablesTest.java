@@ -18,7 +18,8 @@ class UncertaintyTablesTest {
         Map.of("model", new double[] {0, 2}), new double[] {1, 2, 3}),
         Map.of("model", new PredictionIntervals.Calibration(20,
             new double[] {Math.log(2), Math.log(3)}, 0, 2, PredictionIntervals.FLOOR)), 1);
-    final var tables = UncertaintyTables.render(List.of(result));
+    final var tables = UncertaintyTables.render(List.of(result),
+        app.issues.EstimationUncertainty.percentileRule(app.issues.SplitRule.REVISED));
     assertEquals(1 + 9 * 6, tables.uncertainty().size());
     assertEquals(1 + 5, tables.percentiles().size());
     assertEquals(9 * 6 + 5, tables.documents().size());

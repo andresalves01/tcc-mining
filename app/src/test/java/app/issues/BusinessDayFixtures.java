@@ -9,9 +9,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Synthetic issues of the in-progress similarity chain in business days, as its two steps take
- * them: each issue ends a given count of business days after its start, and the entries reach the
- * steps through {@link BusinessDays#population}, every day boundary at {@value #HOUR}:00 UTC.
+ * Synthetic issues of the study in business days, as its steps take them: each issue ends a given
+ * count of business days after its start, carries that count as the first-commit target, and
+ * reaches the steps through {@link BusinessDays#population}, every day boundary at {@value
+ * #HOUR}:00 UTC.
  */
 final class BusinessDayFixtures {
 
@@ -38,17 +39,17 @@ final class BusinessDayFixtures {
   }
 
   /**
-   * The entries with every day boundary at {@value #HOUR}:00 UTC and, no fixture issue ever sent
-   * back to Open or Reopened, active business days those of the whole interval: the target in both variants.
+   * The entries with every day boundary at {@value #HOUR}:00 UTC and the target the business days
+   * of the whole interval, at least one.
    */
   static List<RowCache.Entry> bounded(final List<RowCache.Entry> entries) {
     final List<RowCache.Entry> out = new ArrayList<>(entries.size());
     for (final RowCache.Entry e : entries) {
       final Map<String, Double> values = new HashMap<>(e.row().values());
-      values.put(BusinessDays.BOUNDARY, (double) HOUR);
-      final double active = BusinessDays.count(
+      values.put(FirstCommit.BOUNDARY_COLUMN, (double) HOUR);
+      final double days = BusinessDays.count(
           e.unit().startedAt().toEpochMilli(), e.unit().resolvedAt().toEpochMilli(), HOUR);
-      values.put(BusinessDays.ACTIVE, active);
+      values.put(FirstCommit.TARGET_COLUMN, Math.max(1.0, days));
       out.add(new RowCache.Entry(e.unit(), new Row(e.row().unitId(), values, e.row().absent()),
           e.parts()));
     }

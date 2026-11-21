@@ -53,6 +53,7 @@ class IssuesFirstCommitAuditTaskTest {
   private final Map<String, FirstCommitFacts.Original> originals = new HashMap<>();
   private final Map<String, DurationEvidence> evidence = new HashMap<>();
   private final List<Set<String>> evidenceCalls = new ArrayList<>();
+  private final Map<String, Long> resolutions = new HashMap<>();
   private int ext = 1;
 
   private static String id(final int n) {
@@ -66,6 +67,7 @@ class IssuesFirstCommitAuditTaskTest {
   private void issue(final String project, final String key, final int n, final long created,
       final long resolved, final String reason) {
     final String id = id(n);
+    resolutions.put(id, resolved);
     issues.add(new Corpus.Issue(id, key, project, created, "rep", "rep", null, "Bug", "Major",
         null, List.of(), List.of()));
     events.add(new Corpus.Event(id, resolved, "status", "x", "Open", "Resolved", (ext++) + "%%0"));
@@ -82,14 +84,19 @@ class IssuesFirstCommitAuditTaskTest {
     natives.put("c" + sha, new FirstCommitFacts.Native(lines, "title " + sha));
   }
 
-  /** A Fixed issue in the population: two commits, the second {@code wait} days later. */
+  /**
+   * A Fixed issue in the population, {@code n} weeks after the first: two commits, the second
+   * {@code wait} days later, and the resolution four weeks after the creation, so only the issues
+   * started just before a temporal cut cross it.
+   */
   private void eligible(final int n, final int wait) {
-    issue(n, day(1) - H, day(30), "Fixed");
-    commit("a" + n, "dev", day(2), 10L, n);
-    commit("b" + n, "dev", day(2 + wait), 30L, n);
-    // also started in In Progress, so it belongs to that population too
-    events.add(new Corpus.Event(id(n), day(2) - H, "status", "dev", "Open", "In Progress",
-        (ext++) + "%%0"));
+    final int week = 7 * n;
+    issue(n, day(1 + week) - H, day(30 + week), "Fixed");
+    commit("a" + n, "dev", day(2 + week), 10L, n);
+    commit("b" + n, "dev", day(2 + wait + week), 30L, n);
+    // moved to In Progress an hour before its first commit
+    events.add(new Corpus.Event(id(n), day(2 + week) - H, "status", "dev", "Open",
+        "In Progress", (ext++) + "%%0"));
   }
 
   @BeforeEach
@@ -142,7 +149,7 @@ class IssuesFirstCommitAuditTaskTest {
   }
 
   private Report run() {
-    return run(SplitRule.RANDOM, FirstCommit.DEFAULT_WAIT_K);
+    return run(SplitRule.REVISED, FirstCommit.DEFAULT_WAIT_K);
   }
 
   private Report run(final SplitRule rule, final double waitK) {
@@ -187,9 +194,7 @@ class IssuesFirstCommitAuditTaskTest {
         return "in memory";
       }
     };
-    return waitK == FirstCommit.DEFAULT_WAIT_K && rule == SplitRule.RANDOM
-        ? new IssuesFirstCommitAuditTask(source, SilentProgress.INSTANCE).run()
-        : new IssuesFirstCommitAuditTask(source, SilentProgress.INSTANCE, rule, waitK).run();
+    return new IssuesFirstCommitAuditTask(source, SilentProgress.INSTANCE, rule, waitK).run();
   }
 
   private static Map<String, IssueRow> byKey(final Report r) {
@@ -261,18 +266,27 @@ class IssuesFirstCommitAuditTaskTest {
   }
 
   @Test
-  @DisplayName("the cap is learned on the inner fitting's gaps alone")
+  @DisplayName("the cap is learned on the inner fitting's gaps alone, without those of the issues "
+      + "crossing the inner cut")
   void capFromInnerFitting() {
     final Report r = run();
+    final long cut = r.temporal().cuts().inner().toEpochMilli();
     final List<Integer> gaps = new ArrayList<>();
     int fit = 0;
+    int crossing = 0;
     for (final IssueRow row : r.rows()) {
       if (row.side() == IssuesFirstCommitAuditTask.Side.FIT) {
         fit++;
-        gaps.add(row.count().implementation() + row.count().capped());
+        if (resolutions.get(row.id()) > cut) {
+          crossing++;
+        } else {
+          gaps.add(row.count().implementation() + row.count().capped());
+        }
       }
     }
     assertEquals(r.sizes().fit(), fit);
+    assertTrue(crossing > 0, "the fixture has fitting issues crossing the inner cut");
+    assertEquals(r.temporal().innerCrossing(), crossing);
     assertEquals(FirstCommit.threshold(gaps), r.threshold(),
         "each fitting issue here has one gap, its uncapped implementation days");
   }
@@ -289,25 +303,6 @@ class IssuesFirstCommitAuditTaskTest {
     assertEquals(30, at.get(0.3), "Q-110's first original carries 31% of its lines");
     assertEquals(32, at.get(0.7), "P-105's first commit carries 60%");
     assertEquals(r.sizes(), r.sensitivity().get(1).sizes());
-  }
-
-  @Test
-  @DisplayName("every training issue is placed against the In Progress split; the test is not")
-  void overlap() {
-    final Report r = run();
-    int total = 0;
-    int outside = 0;
-    for (final var row : r.overlap().values()) {
-      for (final var e : row.entrySet()) {
-        total += e.getValue();
-        if (e.getKey() == IssuesFirstCommitAuditTask.Side.OUTSIDE) {
-          outside += e.getValue();
-        }
-      }
-    }
-    assertEquals(r.sizes().train(), total);
-    assertFalse(r.overlap().containsKey(IssuesFirstCommitAuditTask.Side.TEST));
-    assertEquals(1, outside, "Q-110 never went to In Progress");
   }
 
   // ------------------------------------------------------------------ the draw, by rule
@@ -329,56 +324,6 @@ class IssuesFirstCommitAuditTaskTest {
         List.of(), List.of());
   }
 
-  @Test
-  @DisplayName("the random rule draws ProjectSplit's sides over the population, as the audit "
-      + "before the rule became a parameter, and learns the cap on their inner fitting")
-  void randomRuleDrawsProjectSplit() {
-    final Map<String, FirstCommit.Issue> from = new LinkedHashMap<>();
-    final Map<String, String> projects = new HashMap<>();
-    for (int n = 1; n <= 23; n++) {
-      final FirstCommit.Issue i = started(n, n % 3 == 0 ? "q" : "p", n % 9, 1 + n % 4);
-      from.put(i.id(), i);
-      projects.put(i.id(), i.project());
-    }
-    final IssuesFirstCommitAuditTask.Drawn d = IssuesFirstCommitAuditTask.draw(from,
-        FirstCommit.SHARE, MIDNIGHT, SplitRule.RANDOM);
-    final ProjectSplit.Parts today = ProjectSplit.draw(projects);
-    assertEquals(today, d.parts());
-    final List<Integer> gaps = new ArrayList<>();
-    today.inner().forEach((id, part) -> {
-      if (part == Part.TRAIN) {
-        gaps.addAll(FirstCommit.gaps(from.get(id), d.verdicts().get(id)));
-      }
-    });
-    assertEquals(FirstCommit.threshold(gaps), d.threshold());
-  }
-
-  @Test
-  @DisplayName("the temporal rule learns the cap on its inner fitting's waits alone, and the "
-      + "training targets are counted with it")
-  void temporalCap() {
-    final Map<String, FirstCommit.Issue> from = new LinkedHashMap<>();
-    for (int week = 0; week < 10; week++) {
-      final FirstCommit.Issue i = started(week + 1, "p", week, week < 5 ? 1 : 3);
-      from.put(i.id(), i);
-    }
-    final IssuesFirstCommitAuditTask.Drawn d = IssuesFirstCommitAuditTask.draw(from,
-        FirstCommit.SHARE, MIDNIGHT, SplitRule.TEMPORAL);
-    for (int week = 0; week < 10; week++) {
-      final Side expected = week < 5 ? Side.FIT : week < 7 ? Side.VALIDATION : Side.TEST;
-      assertEquals(expected, IssuesFirstCommitAuditTask.side(d.parts(), id(week + 1)),
-          "week " + week);
-    }
-    // the five waits of one day of the inner fitting alone; with the validation's or the test's
-    // waits of three days the cap would be three
-    assertEquals(FirstCommit.threshold(List.of(1, 1, 1, 1, 1)), d.threshold());
-    assertEquals(1, d.threshold().cap());
-    assertEquals(7, d.training().size(), "the outer training alone carries a target");
-    final FirstCommit.Count validation = d.training().get(id(6));
-    assertEquals(1, validation.total(), "Monday to Thursday, the wait capped at one day");
-    assertEquals(2, validation.capped());
-  }
-
   // ------------------------------------------------------------------ the wait fence's k
 
   /** Ten weekly issues: the inner fitting's waits are {@code fit}, the validation's are 4 days. */
@@ -396,9 +341,9 @@ class IssuesFirstCommitAuditTaskTest {
   void drawDefaultsToTheOfficialFence() {
     final Map<String, FirstCommit.Issue> from = weekly(1, 1, 1, 2, 4);
     final IssuesFirstCommitAuditTask.Drawn usual = IssuesFirstCommitAuditTask.draw(from,
-        FirstCommit.SHARE, MIDNIGHT, SplitRule.TEMPORAL);
+        FirstCommit.SHARE, MIDNIGHT, SplitRule.REVISED);
     final IssuesFirstCommitAuditTask.Drawn explicit = IssuesFirstCommitAuditTask.draw(from,
-        FirstCommit.SHARE, MIDNIGHT, SplitRule.TEMPORAL, 1.5);
+        FirstCommit.SHARE, MIDNIGHT, SplitRule.REVISED, 1.5);
     assertEquals(usual.threshold(), explicit.threshold());
     assertEquals(usual.training(), explicit.training());
   }
@@ -406,11 +351,12 @@ class IssuesFirstCommitAuditTaskTest {
   @Test
   @DisplayName("k = 3 and no cap raise the cap and change the targets of the outer training")
   void largerFenceChangesCapAndTarget() {
-    final Map<String, FirstCommit.Issue> from = weekly(1, 1, 1, 2, 10);
+    // the long wait on week 2, so the issue resolves before the inner cut and its wait is learned
+    final Map<String, FirstCommit.Issue> from = weekly(1, 1, 10, 2, 1);
     final IssuesFirstCommitAuditTask.Drawn usual = IssuesFirstCommitAuditTask.draw(from,
-        FirstCommit.SHARE, MIDNIGHT, SplitRule.TEMPORAL, 1.5);
+        FirstCommit.SHARE, MIDNIGHT, SplitRule.REVISED, 1.5);
     final IssuesFirstCommitAuditTask.Drawn none = IssuesFirstCommitAuditTask.draw(from,
-        FirstCommit.SHARE, MIDNIGHT, SplitRule.TEMPORAL, FirstCommit.NO_WAIT_CAP);
+        FirstCommit.SHARE, MIDNIGHT, SplitRule.REVISED, FirstCommit.NO_WAIT_CAP);
     assertEquals(2, usual.threshold().cap());
     assertEquals(Integer.MAX_VALUE, none.threshold().cap(), "no cap at all");
     // the validation's waits (4 business days) are cut at 2, kept whole with no cap
@@ -419,29 +365,29 @@ class IssuesFirstCommitAuditTaskTest {
     assertEquals(0, none.training().values().stream().mapToInt(FirstCommit.Count::capped).sum());
     assertEquals(usual.parts(), none.parts(), "the sides do not depend on the k");
 
-    final Map<String, FirstCommit.Issue> mild = weekly(1, 1, 1, 2, 4);
-    assertEquals(2, IssuesFirstCommitAuditTask.draw(mild, FirstCommit.SHARE, MIDNIGHT,
-        SplitRule.TEMPORAL, 1.5).threshold().cap());
+    // issue 5, at the inner cut, crosses it: its wait is not learned
+    final Map<String, FirstCommit.Issue> mild = weekly(1, 1, 1, 4, 1);
+    assertEquals(1, IssuesFirstCommitAuditTask.draw(mild, FirstCommit.SHARE, MIDNIGHT,
+        SplitRule.REVISED, 1.5).threshold().cap());
     assertEquals(4, IssuesFirstCommitAuditTask.draw(mild, FirstCommit.SHARE, MIDNIGHT,
-        SplitRule.TEMPORAL, 3.0).threshold().cap(), "the wait of 4 is between the fences");
+        SplitRule.REVISED, 3.0).threshold().cap(), "the wait of 4 is between the fences");
   }
 
   @Test
-  @DisplayName("the audit's report carries the k, and its sensitivity and random comparison use it")
+  @DisplayName("the audit's report carries the k, and its sensitivity uses it")
   void auditReportsItsFence() {
     assertEquals(FirstCommit.DEFAULT_WAIT_K, run().waitFenceK());
-    final Report none = run(SplitRule.TEMPORAL, FirstCommit.NO_WAIT_CAP);
+    final Report none = run(SplitRule.REVISED, FirstCommit.NO_WAIT_CAP);
     assertEquals(FirstCommit.NO_WAIT_CAP, none.waitFenceK());
     for (final var s : none.sensitivity()) {
       assertEquals(Double.POSITIVE_INFINITY, s.threshold().fence(), "limit " + s.limit());
     }
-    assertEquals(Double.POSITIVE_INFINITY, none.temporal().random().fence());
   }
 
   @Test
   @DisplayName("the revised rule learns the cap without the waits of the inner fitting issues "
-      + "crossing the inner cut, draws the temporal rule's sides with their crossing sets, and "
-      + "still counts a target for every outer training issue, crossing ones included")
+      + "crossing the inner cut, draws the temporal sides with their crossing sets, and still "
+      + "counts a target for every outer training issue, crossing ones included")
   void revisedCap() {
     final Map<String, FirstCommit.Issue> from = new LinkedHashMap<>();
     // inner fitting weeks 0..4 (inner cut week 4), inner validation 5 and 6 (outer cut week 6);
@@ -453,23 +399,15 @@ class IssuesFirstCommitAuditTaskTest {
     }
     final IssuesFirstCommitAuditTask.Drawn d = IssuesFirstCommitAuditTask.draw(from,
         FirstCommit.SHARE, MIDNIGHT, SplitRule.REVISED);
-    final IssuesFirstCommitAuditTask.Drawn t = IssuesFirstCommitAuditTask.draw(from,
-        FirstCommit.SHARE, MIDNIGHT, SplitRule.TEMPORAL);
-    assertEquals(t.parts().outer(), d.parts().outer());
-    assertEquals(t.parts().inner(), d.parts().inner());
     assertEquals(Set.of(id(5)), d.parts().innerCrossing(), "week 4, at the inner cut");
     assertEquals(Set.of(id(7)), d.parts().outerCrossing(), "week 6, at the outer cut");
     // the four waits of the inner fitting issues that teach; week 4's three-day wait is left out
     assertEquals(FirstCommit.threshold(List.of(1, 1, 2, 2)), d.threshold());
     assertEquals(2, d.threshold().cap());
-    assertEquals(FirstCommit.threshold(List.of(1, 1, 2, 2, 3)), t.threshold());
-    assertEquals(3, t.threshold().cap(), "with the crossing wait the cap would be three");
     assertEquals(7, d.training().size(), "the outer training keeps every issue");
     assertEquals(2, d.training().get(id(5)).total(), "week 4's wait capped at two days");
-    assertEquals(new IssuesFirstCommitAuditTask.Crossing(1, 1), d.crossing(Map.of()),
-        "counted from the crossing sets, no issue read");
-    assertEquals(t.crossing(from), d.crossing(Map.of()),
-        "the temporal design counts the same issues from their first resolutions");
+    assertEquals(new IssuesFirstCommitAuditTask.Crossing(1, 1), d.crossing(),
+        "counted from the crossing sets");
   }
 
   @Test

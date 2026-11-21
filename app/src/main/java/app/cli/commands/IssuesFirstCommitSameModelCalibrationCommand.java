@@ -3,7 +3,6 @@ package app.cli.commands;
 import app.cli.CommandFailedException;
 import app.cli.CommandRunner;
 import app.cli.Context;
-import app.issues.AdjustedDuration;
 import app.issues.Augmentation;
 import app.issues.BusinessDays;
 import app.issues.ElasticNetSelection;
@@ -130,16 +129,7 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
     final Path elasticNet = path("ELASTIC_NET_PARAMETERS");
     final Path testPredictions = path("TEST_PREDICTIONS");
     final Path dir = path("REPORT_DIR");
-    final SplitRule rule;
-    try {
-      rule = SplitRule.declared(settings.apply(SplitRule.SETTING), Population.FIRST_COMMIT);
-    } catch (final IllegalArgumentException e) {
-      throw refused(e.getMessage());
-    }
-    if (rule != SplitRule.REVISED) {
-      throw refused("the same-model calibration reads the revised design alone; "
-          + SplitRule.SETTING + " declares " + rule.setting());
-    }
+    final SplitRule rule = SplitRule.REVISED;
     final Path testDir = testPredictions.toAbsolutePath().normalize().getParent();
     if (dir.toAbsolutePath().normalize().startsWith(testDir)) {
       throw refused(dir + " is the test step's REPORT_DIR, or lies in it (" + testDir
@@ -149,7 +139,7 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
       throw refused(dir + " exists; this step writes to a folder of its own");
     }
     final ResultStore store =
-        IssuesInProgressExtractCommand.runStore(context, Population.FIRST_COMMIT, rule);
+        IssuesInProgressExtractCommand.runStore(context);
     final Optional<Boolean> opened =
         store.recorded(IssuesSimilarityTestCommand.FIRST_COMMIT_REVISED_STAGE);
     if (opened.isEmpty() || !opened.get()) {
@@ -237,7 +227,7 @@ public final class IssuesFirstCommitSameModelCalibrationCommand implements Comma
     }
 
     final double k = chosen.cut().k();
-    final int floor = AdjustedDuration.marked(entries) ? 0 : 1;
+    final int floor = 1;
     final int threads = Parallel.threads(Parallel.BOOTSTRAP_THREADS);
     final SimilarityScoring.Readings outer;
     final double rerun;

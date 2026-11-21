@@ -52,13 +52,11 @@ import java.util.function.Function;
  * at or below that k's fence. The chosen k, the model it was chosen on, both fences and every
  * k's error are printed, written to the parameters file and recorded.
  *
- * <p><b>The first-commit study's temporal split</b> (its ticket 06). Under {@code
- * SPLIT_RULE=temporal} every forest is swept with {@link Forest#LIBRARY_TREES} trees, and the
- * analogy estimate, the fifteenth model, is chosen on the same usual-flow validation issues
- * ({@link ElasticNetSelection#run(List, int, Population, SplitRule)}); the parameters file then
- * names the rule in its header and gives the tree count and the chosen column, which the record
- * states with every similarity median's error. Under the random split the file and the record
- * are as before it.
+ * <p><b>The revised temporal split.</b> Every forest is swept with {@link Forest#LIBRARY_TREES}
+ * trees, and the analogy estimate, the fifteenth model, is chosen on the same usual-flow
+ * validation issues ({@link ElasticNetSelection#run(List, int, Population, SplitRule)}); the
+ * parameters file names the rule in its header and gives the tree count and the chosen column,
+ * which the record states with every similarity median's error.
  *
  * <p>The target is whole business days, on the issues of at least one ({@link BusinessDays}):
  * the outer training rows are read with each one's day boundary from the matrix, any of 0
@@ -67,8 +65,7 @@ import java.util.function.Function;
  *
  * <p>Reads MATRIX, the one {@code issues-in-progress-retrospective} wrote, which has every
  * model's columns; refuses, writing and recording nothing, unless every row's split is the one the
- * rule the run declares draws ({@link SplitRule}, setting {@code SPLIT_RULE}, random unless the
- * first-commit study's matrix is declared temporal) and the matrix has the day boundary and
+ * revised rule draws ({@link SplitRule}) and the matrix has the first-commit target and
  * every column the models declare at every combination. Of the outer test only the ids, the
  * projects and the split
  * labels are read, to count it and to check the split. Writes the choices to
@@ -143,17 +140,10 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
       throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
           + e.getMessage()));
     }
-    final SplitRule rule;
-    try {
-      rule = SplitRule.declared(settings.apply(SplitRule.SETTING), study);
-    } catch (final IllegalArgumentException e) {
-      throw new CommandFailedException(List.of("  REFUSED, nothing was written or recorded: "
-          + e.getMessage()));
-    }
-    final boolean firstCommit = study == Population.FIRST_COMMIT;
-    // before any row is read, choose the run store of the declared design
-    final ResultStore store = IssuesInProgressExtractCommand.runStore(context, study, rule);
-    final double waitK = IssuesInProgressExtractCommand.matrixWaitFenceK(store, study);
+    final SplitRule rule = SplitRule.REVISED;
+    // before any row is read, choose the run store of the design
+    final ResultStore store = IssuesInProgressExtractCommand.runStore(context);
+    final double waitK = IssuesInProgressExtractCommand.matrixWaitFenceK(store);
 
     final String matrixSha;
     final List<RowCache.Entry> entries;
@@ -173,7 +163,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
           + parameters + ": " + e));
     }
     System.out.printf("%n  DURATION FROM %s -- DESCRIPTION SIMILARITY -- ELASTIC NET "
-        + "ON THE INNER VALIDATION%n", firstCommit ? "THE FIRST COMMIT" : "IN PROGRESS");
+        + "ON THE INNER VALIDATION%n", "THE FIRST COMMIT");
     System.out.printf("  matrix read %s  sha256 %s (%,d rows)%n", matrix, matrixSha,
         entries.size());
 
@@ -288,16 +278,13 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
       System.out.println(grid);
       rows.add(row(m));
     }
-    final boolean temporal = rule.temporal();
-    if (temporal) {
-      System.out.printf("%n  random forests: %d trees each (%s)%n", r.trees(), TEMPORAL_TREES);
-      System.out.printf(java.util.Locale.ROOT, "  %s; fallback %.3f bd (similarity median: MAE bd, "
-          + "issues given the fallback, of %,d)%n", ANALOGY_RULE, r.analogyFallback(),
-          r.validationRows());
-      for (final AnalogyEstimate.Candidate c : r.analogy().candidates()) {
-        System.out.printf(java.util.Locale.ROOT, "    %-20s %.3f %,6d%s%n", c.name(), c.mae(),
-            c.fallbacks(), c.name().equals(r.analogy().chosen()) ? "  chosen" : "");
-      }
+    System.out.printf("%n  random forests: %d trees each (%s)%n", r.trees(), TEMPORAL_TREES);
+    System.out.printf(java.util.Locale.ROOT, "  %s; fallback %.3f bd (similarity median: MAE bd, "
+        + "issues given the fallback, of %,d)%n", ANALOGY_RULE, r.analogyFallback(),
+        r.validationRows());
+    for (final AnalogyEstimate.Candidate c : r.analogy().candidates()) {
+      System.out.printf(java.util.Locale.ROOT, "    %-20s %.3f %,6d%s%n", c.name(), c.mae(),
+          c.fallbacks(), c.name().equals(r.analogy().chosen()) ? "  chosen" : "");
     }
 
     final String parametersSha;
@@ -318,16 +305,12 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     run.put("mode", "inner");
     run.put("outer_test", "not read");
     run.put("split_rule", rule.rule());
-    if (firstCommit && rule.temporal()) {
-      run.put(SplitRule.DESIGN_FIELD, rule.setting());
-    }
+    run.put(SplitRule.DESIGN_FIELD, rule.setting());
     run.putAll(statements(study));
     run.put("target", BusinessDays.target(training, waitK));
     run.put("population", BusinessDays.populationRule(training));
-    if (firstCommit) {
-      run.put("study", study.name());
-      run.put("first_commit_attributes", FIRST_COMMIT_ATTRIBUTES);
-    }
+    run.put("study", study.name());
+    run.put("first_commit_attributes", FIRST_COMMIT_ATTRIBUTES);
     run.put("population_rows", populationRows(population));
     run.put("models", ElasticNetSelection.MODELS);
     run.put("matrix_sha256", matrixSha);
@@ -348,12 +331,9 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     run.put("validation_scored", r.scored().description(rule));
     run.put("project_mae_business_days", r.projectMae());
     run.put("constant_mae_business_days", r.constantMae());
-    if (temporal) {
-      // the temporal split's additions; the random split's record stays as it was
-      run.put("forest_trees", r.trees());
-      run.put("forest_trees_rule", TEMPORAL_TREES);
-      run.put("analogy_estimate", analogyRecord(r));
-    }
+    run.put("forest_trees", r.trees());
+    run.put("forest_trees_rule", TEMPORAL_TREES);
+    run.put("analogy_estimate", analogyRecord(r));
     run.put("seconds", (System.nanoTime() - began) / 1e9);
     run.put("java", System.getProperty("java.version"));
     System.out.printf("  run recorded in ISSUES_DB: %s%n",
@@ -437,17 +417,10 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
 
   /**
    * What the run record states about the target, the population, the forest and the
-   * retrospective scenario.
+   * retrospective scenario, with the retrospective window of {@code population}.
    */
-  static Map<String, Object> statements() {
-    return statements(Population.IN_PROGRESS);
-  }
-
-  /** {@link #statements()} with the retrospective window of {@code population}. */
   static Map<String, Object> statements(final Population population) {
     final Map<String, Object> out = new LinkedHashMap<>();
-    out.put("target", BusinessDays.TARGET);
-    out.put("population", BusinessDays.POPULATION);
     out.put("holidays", BusinessDays.HOLIDAYS);
     out.put("forest_role", FOREST_ROLE);
     out.put("retrospective_scenario", Retrospective.scenario(population));
@@ -514,12 +487,7 @@ public final class IssuesSimilarityElasticNetCommand implements CommandRunner {
     return out;
   }
 
-  /** The forest's declared grid as a document, for the run records of both steps. */
-  static Map<String, Object> forestGrid() {
-    return forestGrid(Forest.TREES);
-  }
-
-  /** {@link #forestGrid()} with {@code trees} trees per forest. */
+  /** The forest's declared grid as a document, with {@code trees} trees per forest. */
   static Map<String, Object> forestGrid(final int trees) {
     final Map<String, Object> out = new LinkedHashMap<>();
     out.put("trees", trees);

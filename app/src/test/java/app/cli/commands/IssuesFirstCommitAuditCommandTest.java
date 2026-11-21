@@ -36,23 +36,18 @@ class IssuesFirstCommitAuditCommandTest {
   private static final long DAY = World.DAY;
   private static final long MONDAY = Instant.parse("2024-01-01T12:00:00Z").toEpochMilli();
 
-  /** Ten issues in the population, each with two commits two business days apart. */
-  private static StudySource source() {
-    return source(0);
-  }
-
   /**
-   * The same ten issues, issue n's dates moved {@code weeks * (n - 1)} weeks later; with 0 every
-   * first commit is on the same instant.
+   * Ten issues in the population, each with two commits two business days apart, issue n's dates
+   * {@code n - 1} weeks after the first's.
    */
-  private static StudySource source(final int weeks) {
+  private static StudySource source() {
     final List<Corpus.Issue> issues = new ArrayList<>();
     final List<Corpus.Event> events = new ArrayList<>();
     final List<Corpus.Commit> commits = new ArrayList<>();
     final Map<String, FirstCommitFacts.Native> facts = new HashMap<>();
     for (int n = 1; n <= 10; n++) {
       final String id = String.format("%024x", n);
-      final long monday = MONDAY + 7L * weeks * (n - 1) * DAY;
+      final long monday = MONDAY + 7L * (n - 1) * DAY;
       issues.add(new Corpus.Issue(id, "P-" + n, "p", monday, "rep", "rep", null, "Bug", "Major",
           null, List.of(), List.of()));
       events.add(new Corpus.Event(id, monday + 20 * DAY, "status", "x", "Open", "Resolved",
@@ -123,7 +118,8 @@ class IssuesFirstCommitAuditCommandTest {
     final String md = Files.readString(out.resolve("audit.md"));
     assertTrue(md.contains("| Fixed na primeira resolução | 10 | — |"), md);
     assertTrue(md.contains("| 10 | 1 | 7 | 3 | 5 | 2 |"), "drawn, projects and the sides: " + md);
-    assertTrue(md.contains("| teste externo | — | — | — | — | 3 |"), "only the test's total: " + md);
+    assertTrue(md.contains("| teste externo | 3 | 1 | — | — | — | — |"),
+        "of the test, its size and its projects alone: " + md);
     final List<String> lines = Files.readAllLines(out.resolve("per-issue.tsv"));
     assertEquals(1 + 7, lines.size(), "the header and the training side, never the test side");
     for (final String line : lines.subList(1, lines.size())) {
@@ -145,35 +141,30 @@ class IssuesFirstCommitAuditCommandTest {
   }
 
   @Test
-  @DisplayName("under SPLIT_RULE=temporal the summary gives the cuts, the sides, the crossings "
-      + "and the censoring, and of the test only counts and dates")
-  void temporal() throws Exception {
-    final Path out = dir.resolve("temporal");
-    new IssuesFirstCommitAuditCommand(Map.of("AUDIT_DIR", out.toString(),
-        "SPLIT_RULE", "temporal")::get).run(context(source(1)));
+  @DisplayName("the summary gives the cuts, the sides, the crossings and the censoring, and of "
+      + "the test only counts and dates")
+  void revisedSummary() throws Exception {
+    final Path out = dir.resolve("revised");
+    new IssuesFirstCommitAuditCommand(Map.of("AUDIT_DIR", out.toString())::get).run(context());
     final String md = Files.readString(out.resolve("audit.md"));
     assertTrue(md.contains("| 10 | 1 | 7 | 3 | 5 | 2 |"), md);
-    assertTrue(md.contains("temporal: the candidates ordered by their first commit"), md);
+    assertTrue(md.contains("the candidates ordered by their first commit"), md);
     assertTrue(md.contains("2024-02-13T12:00:00Z"), "the outer cut, Tuesday of week 6: " + md);
     assertTrue(md.contains("2024-01-30T12:00:00Z"), "the inner cut, Tuesday of week 4: " + md);
     assertTrue(md.contains("| teste externo | 3 | 1 | — | — | — | — |"),
         "of the test, its size and its projects alone: " + md);
     assertTrue(md.contains("## Censura no fim dos dados"), md);
     assertTrue(md.contains("Issues de treino que cruzam o corte externo"), md);
-    assertTrue(md.contains("divisão aleatória"), "the random rule's cap beside it: " + md);
     final List<String> lines = Files.readAllLines(out.resolve("per-issue.tsv"));
     assertEquals(1 + 7, lines.size(), "the header and the training side, never the test side");
-    assertTrue(md.contains("- Projetos com issues na validação interna e nenhuma no ajuste "
-        + "interno: "), "the temporal line as it was: " + md);
   }
 
   @Test
-  @DisplayName("under SPLIT_RULE=revised the inner level's new projects come by both readings, "
-      + "each labelled, as the outer level's")
+  @DisplayName("the inner level's new projects come by both readings, each labelled, as the outer "
+      + "level's")
   void revisedInnerNewProjectsLabelled() throws Exception {
-    final Path out = dir.resolve("revised");
-    new IssuesFirstCommitAuditCommand(Map.of("AUDIT_DIR", out.toString(),
-        "SPLIT_RULE", "revised")::get).run(context(source(1)));
+    final Path out = dir.resolve("new-projects");
+    new IssuesFirstCommitAuditCommand(Map.of("AUDIT_DIR", out.toString())::get).run(context());
     final String md = Files.readString(out.resolve("audit.md"));
     assertTrue(md.contains("- Projetos com issues na validação interna e nenhuma issue que ensine "
         + "no ajuste interno (como a pontuação os lê): "), md);
@@ -184,22 +175,11 @@ class IssuesFirstCommitAuditCommandTest {
   }
 
   @Test
-  @DisplayName("the random rule, the default, writes none of the temporal sections")
-  void randomHasNoTemporalSections() throws Exception {
-    final Path out = dir.resolve("random");
-    new IssuesFirstCommitAuditCommand(Map.of("AUDIT_DIR", out.toString())::get)
-        .run(context(source(1)));
-    final String md = Files.readString(out.resolve("audit.md"));
-    assertFalse(md.contains("Censura"), md);
-    assertFalse(md.contains("Corte externo"), md);
-  }
-
-  @Test
   @DisplayName("the default wait fence leaves audit.md as it was: no line about the k")
   void defaultFenceLeavesTheSummaryAsItWas() throws Exception {
     final Path out = dir.resolve("default-fence");
     new IssuesFirstCommitAuditCommand(Map.of("AUDIT_DIR", out.toString())::get)
-        .run(context(source(1)));
+        .run(context());
     final String md = Files.readString(out.resolve("audit.md"));
     assertTrue(md.contains("Cerca (Q3 + 1,5 IQR)"), md);
     assertFalse(md.contains("Cerca das esperas"), md);
@@ -212,7 +192,7 @@ class IssuesFirstCommitAuditCommandTest {
   void waitFenceIsRecorded() throws Exception {
     final Path three = dir.resolve("k3");
     new IssuesFirstCommitAuditCommand(Map.of("AUDIT_DIR", three.toString(),
-        "WAIT_FENCE_K", "3")::get).run(context(source(1)));
+        "WAIT_FENCE_K", "3")::get).run(context());
     final String md3 = Files.readString(three.resolve("audit.md"));
     assertTrue(md3.contains("Cerca das esperas: Q3 + 3 IQR (sensibilidade; a oficial é 1,5)"), md3);
     assertTrue(md3.contains("Cerca (Q3 + 3 IQR)"), md3);
@@ -220,7 +200,7 @@ class IssuesFirstCommitAuditCommandTest {
 
     final Path none = dir.resolve("none");
     new IssuesFirstCommitAuditCommand(Map.of("AUDIT_DIR", none.toString(),
-        "WAIT_FENCE_K", "none", "SPLIT_RULE", "temporal")::get).run(context(source(1)));
+        "WAIT_FENCE_K", "none")::get).run(context());
     final String mdNone = Files.readString(none.resolve("audit.md"));
     assertTrue(mdNone.contains("Cerca das esperas: sem teto (sensibilidade; a oficial é 1,5)"),
         mdNone);
@@ -241,10 +221,4 @@ class IssuesFirstCommitAuditCommandTest {
     }
   }
 
-  @Test
-  @DisplayName("refuses a SPLIT_RULE it does not know")
-  void unknownRule() {
-    assertThrows(CommandFailedException.class, () -> new IssuesFirstCommitAuditCommand(
-        Map.of("AUDIT_DIR", dir.toString(), "SPLIT_RULE", "monthly")::get).run(context()));
-  }
 }

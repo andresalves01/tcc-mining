@@ -48,7 +48,7 @@ class IssuesRetrospectiveCommandTest {
   /** A context with nothing to read and a result store that fails the test if anything is recorded. */
   private static Context context() {
     return new Context(null, null, null, null, null, null, null, null, null, null, null,
-        SilentProgress.INSTANCE, null, (run, rows) -> {
+        SilentProgress.INSTANCE, null, (FreshStore) (run, rows) -> {
           throw new AssertionError("recorded " + run);
         }, null);
   }
@@ -56,25 +56,26 @@ class IssuesRetrospectiveCommandTest {
   /** A matrix of one row with the given columns. */
   private Path matrix(final String name, final List<String> columns) throws IOException {
     final Map<Population, String[]> parts = new EnumMap<>(Population.class);
-    parts.put(Population.IN_PROGRESS, new String[] {"TRAIN", "TRAIN"});
+    parts.put(Population.FIRST_COMMIT, new String[] {"TRAIN", "TRAIN"});
     final Map<String, Double> values = new HashMap<>();
     columns.forEach(c -> values.put(c, 1.0));
     final Instant t = Instant.parse("2016-01-01T00:00:00Z");
     final Path path = dir.resolve(name);
     RowCache.write(path, List.of(new RowCache.Entry(new IssueUnit("a", "P-1", "p", "r", "d", t,
         t.plusSeconds(86_400 * 5), "Fixed", false, t.plusSeconds(3600)),
-        new Row("a", values, Set.of()), parts)), columns, List.of(Population.IN_PROGRESS));
+        new Row("a", values, Set.of()), parts)), columns, List.of(Population.FIRST_COMMIT));
     return path;
   }
 
   /**
-   * The similarity stage's columns: the extracted one, the medians, the start columns of ticket 19,
-   * the day boundary and the active business days.
+   * The similarity stage's columns: the extracted one, the medians, the first-commit target with
+   * its day boundary, and the attributes of decision 16a.
    */
   private static List<String> similarity() {
     final List<String> out = new ArrayList<>(List.of("A01_desc_length"));
     out.addAll(app.pipeline.IssuesSimilarityTask.columns());
-    out.addAll(BusinessDays.COLUMNS);
+    out.addAll(BusinessDays.columns(Population.FIRST_COMMIT));
+    out.addAll(app.issues.FirstCommit.ATTRIBUTE_COLUMNS);
     return out;
   }
 
@@ -125,7 +126,8 @@ class IssuesRetrospectiveCommandTest {
   @DisplayName("the run record names the scenario retrospective and says its counts grow with the "
       + "duration itself")
   void statements() {
-    final String scenario = IssuesRetrospectiveCommand.statements().get("scenario").toString();
+    final String scenario =
+        IssuesRetrospectiveCommand.statements(Population.FIRST_COMMIT).get("scenario").toString();
     assertTrue(scenario.startsWith("retrospective"), scenario);
     assertTrue(scenario.contains("grow with the duration itself"), scenario);
   }

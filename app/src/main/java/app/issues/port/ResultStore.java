@@ -35,16 +35,11 @@ public interface ResultStore {
   }
 
   /**
-   * The store of the runs drawn under {@code rule}: this one for the random rule, whose runs keep
-   * the collections they were always recorded in; collections of their own, named with {@link
-   * SplitRule#collectionSuffix}, for any other. A store that keeps the random design's runs alone
-   * refuses another rule.
+   * The store of the runs drawn under {@code rule}, in collections named with {@link
+   * SplitRule#collectionSuffix}; a store without separate collections keeps them in itself.
    */
   default ResultStore design(final SplitRule rule) {
-    if (rule == SplitRule.RANDOM) {
-      return this;
-    }
-    throw new UnsupportedOperationException("this store records the random design's runs alone");
+    return this;
   }
 
   /**
@@ -66,10 +61,11 @@ public interface ResultStore {
   }
 
   /**
-   * The designs of the runs this store already holds ({@link SplitRule#recordedBy}); empty when
-   * this store cannot tell, which a stage that must not mix designs reads as a refusal.
+   * How many runs this store already holds of a design other than the revised one ({@link
+   * SplitRule#recordedBy}); empty when this store cannot tell, which a stage that must not mix
+   * designs reads as a refusal.
    */
-  default java.util.Optional<java.util.Set<SplitRule>> designs() {
+  default java.util.Optional<Long> otherDesignRuns() {
     return java.util.Optional.empty();
   }
 }

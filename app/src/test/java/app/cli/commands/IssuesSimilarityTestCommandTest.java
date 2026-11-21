@@ -10,23 +10,26 @@ import app.cli.Context;
 import app.issues.BusinessDays;
 import app.issues.ElasticNetSelection;
 import app.issues.PredictionIntervals;
+import app.issues.SplitRule;
 import app.issues.TailCut;
+import app.issues.Universe.Population;
 import app.issues.model.ProjectBootstrap;
-import app.pipeline.port.Progress;
+import app.pipeline.port.SilentProgress;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import app.pipeline.port.SilentProgress;
 
 /**
- * The test command's refusals, every one reached before the matrix is parsed, so nothing is
- * scored, written or recorded. No row is read here: the matrix is a placeholder file.
+ * The test command's refusals, every one reached before a row is scored, so nothing is scored,
+ * written or recorded: on the study's own databases, a first-commit matrix of the revised design
+ * and its earlier runs in the store, each test breaks one input.
  */
 class IssuesSimilarityTestCommandTest {
 
@@ -40,20 +43,42 @@ class IssuesSimilarityTestCommandTest {
     return new IssuesSimilarityTestCommand(settings::get);
   }
 
-  /** A context whose result store fails the test if anything is recorded. */
-  private static Context context() {
-    return new Context(null, null, null, null, null, null, null, null, null, null, null,
-        SilentProgress.INSTANCE, null, (run, rows) -> {
-          throw new AssertionError("recorded " + run);
-        }, null);
+  /**
+   * A context on the study's own databases whose run store holds the revised design's earlier
+   * runs for the MATRIX set and no run of this step, and fails the test if anything is recorded.
+   */
+  private Context context() throws IOException {
+    final String matrix = settings.get("MATRIX");
+    final List<Map<String, Object>> upstream = matrix == null || !Files.exists(Path.of(matrix))
+        ? List.of() : RevisedUpstream.of(Path.of(matrix));
+    final FreshStore store = new FreshStore() {
+      @Override
+      public String record(final Map<String, Object> run, final List<Map<String, Object>> rows) {
+        throw new AssertionError("recorded " + run);
+      }
+
+      @Override
+      public Optional<Boolean> recorded(final String stage) {
+        return Optional.of(false);
+      }
+
+      @Override
+      public Optional<List<Map<String, Object>>> recordedRuns(final String stage) {
+        return RevisedUpstream.runs(upstream, stage);
+      }
+    };
+    return new Context(OwnDatabases.config(), null, null, null, null, null, null, null, null, null,
+        null, SilentProgress.INSTANCE, null, store, null);
   }
 
+  /** A first-commit matrix of the revised design; its rows are never scored here. */
   private Path matrix() throws IOException {
-    return Files.writeString(dir.resolve("matrix.tsv"), "placeholder, never parsed\n");
+    return SelectionFixture.write(dir.resolve("matrix.tsv"), Population.FIRST_COMMIT);
   }
 
   private Path elasticNet(final String matrixSha) throws IOException {
-    final List<String> lines = new java.util.ArrayList<>(List.of(ElasticNetSelection.HEADER,
+    final List<String> lines = new java.util.ArrayList<>(List.of(ElasticNetSelection.header(
+        Population.FIRST_COMMIT, SplitRule.REVISED),
         "# step\tname\tparameter\tvalue", "elastic-net\tinputs\tmatrix_sha256\t" + matrixSha,
         "tail-cut\tchosen\tk\t5.0", "tail-cut\tchosen\tfence_business_days\t30.0",
         "tail-cut\tusual_flow\tk\t3.0", "tail-cut\tusual_flow\tfence_business_days\t20.0"));
@@ -255,7 +280,8 @@ class IssuesSimilarityTestCommandTest {
   void refusesAFileOfTheEarlierModels() throws IOException {
     final Path matrix = matrix();
     final String sha = Sha256.of(matrix);
-    final List<String> lines = new java.util.ArrayList<>(List.of(ElasticNetSelection.HEADER,
+    final List<String> lines = new java.util.ArrayList<>(List.of(ElasticNetSelection.header(
+        Population.FIRST_COMMIT, SplitRule.REVISED),
         "# step\tname\tparameter\tvalue", "elastic-net\tinputs\tmatrix_sha256\t" + sha));
     for (final String m : List.of("previous_own_start", "revised_nine", "similarity_alone",
         "revised_twelve", "alzubaidi_start", "kikas_start", "union_revised")) {
@@ -290,8 +316,6 @@ class IssuesSimilarityTestCommandTest {
       + "selection effort differs")
   void statements() {
     final Map<String, Object> run = IssuesSimilarityTestCommand.statements();
-    assertEquals("the outer test is a new draw of 30% per project, seed 1738.",
-        run.get("outer_test_draw"));
     assertTrue(run.get("selection_effort").toString().contains("differs"));
     assertTrue(run.get("forest_role").toString().contains("robustness check"));
   }
@@ -312,24 +336,11 @@ class IssuesSimilarityTestCommandTest {
   }
 
   @Test
-  @DisplayName("the run records retain silent days and exclude Open/Reopened, with the "
-      + "population of at least one day and holidays ignored")
-  void businessDayStatements() {
-    for (final Map<String, Object> run : List.of(IssuesSimilarityTestCommand.statements(),
-        IssuesSimilarityElasticNetCommand.statements())) {
-      assertTrue(run.get("target").toString().startsWith("whole business days"), run.toString());
-      assertTrue(run.get("target").toString().contains("days without recorded activity are retained"), run.toString());
-      assertTrue(run.get("population").toString().contains("at least one business day"));
-      assertTrue(run.get("holidays").toString().contains("holidays ignored"));
-    }
-  }
-
-  @Test
   @DisplayName("the run records of both steps name the retrospective scenario and state that its "
       + "counts grow with the duration itself")
   void retrospectiveStatements() {
     for (final Map<String, Object> run : List.of(IssuesSimilarityTestCommand.statements(),
-        IssuesSimilarityElasticNetCommand.statements())) {
+        IssuesSimilarityElasticNetCommand.statements(Population.FIRST_COMMIT))) {
       final String scenario = run.get("retrospective_scenario").toString();
       assertTrue(scenario.startsWith("retrospective"), scenario);
       assertTrue(scenario.contains("grow with the duration itself"), scenario);
@@ -357,7 +368,7 @@ class IssuesSimilarityTestCommandTest {
     final Map<String, Object> s = IssuesSimilarityTestCommand.statements();
     assertEquals(app.issues.PredictionIntervals.RULE, s.get("prediction_intervals"));
     assertTrue(s.get("prediction_interval_factor").toString().contains("ceil((n + 1) L)"));
-    final String outer = s.get("prediction_interval_outer_calibration").toString();
+    final String outer = PredictionIntervals.outer(SplitRule.REVISED);
     assertTrue(outer.contains("approximation") && outer.contains("inner validation"), outer);
   }
 
@@ -458,7 +469,8 @@ class IssuesSimilarityTestCommandTest {
     try {
       System.setOut(new java.io.PrintStream(printed, true,
           java.nio.charset.StandardCharsets.UTF_8));
-      IssuesSimilarityTestCommand.printIntervals(reads, tops, rows);
+      IssuesSimilarityTestCommand.printIntervals(reads, tops, rows,
+          IssuesSimilarityTestCommand.intervalsLabel(SplitRule.REVISED));
     } finally {
       System.setOut(out);
     }

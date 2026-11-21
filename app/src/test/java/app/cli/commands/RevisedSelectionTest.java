@@ -68,11 +68,9 @@ class RevisedSelectionTest {
       }
 
       @Override
-      public Optional<Set<SplitRule>> designs() {
-        final Set<SplitRule> out = new java.util.HashSet<>();
-        collections.getOrDefault(collection, List.of())
-            .forEach(r -> out.add(SplitRule.recordedBy(r)));
-        return Optional.of(out);
+      public Optional<Long> otherDesignRuns() {
+        return Optional.of(collections.getOrDefault(collection, List.of()).stream()
+            .filter(r -> !SplitRule.recordedBy(r)).count());
       }
 
       @Override
@@ -99,9 +97,7 @@ class RevisedSelectionTest {
     final Path revised = SelectionFixture.revised(dir.resolve("revised.tsv"));
     final Path temporal = SelectionFixture.temporal(dir.resolve("temporal.tsv"));
     assertEquals(List.of(), SplitRule.REVISED.differences(RowCache.splits(revised), FC));
-    assertFalse(SplitRule.TEMPORAL.differences(RowCache.splits(revised), FC).isEmpty());
     assertFalse(SplitRule.REVISED.differences(RowCache.splits(temporal), FC).isEmpty());
-    assertEquals(List.of(), SplitRule.TEMPORAL.differences(RowCache.splits(temporal), FC));
     final Map<String, Integer> cases = new HashMap<>();
     RowCache.read(revised).forEach(e -> cases.merge(e.outer(FC) + "/" + e.inner(FC), 1,
         Integer::sum));
@@ -171,7 +167,6 @@ class RevisedSelectionTest {
     final Map<String, String> settings = new HashMap<>();
     settings.put("MATRIX", matrix.toString());
     settings.put("ELASTIC_NET_PARAMETERS", at.resolve("elastic-net.tsv").toString());
-    settings.put(SplitRule.SETTING, "revised");
     new IssuesSimilarityElasticNetCommand(settings::get).run(context());
     settings.put("REPORT_DIR", at.resolve("inner").toString());
     new IssuesSimilarityInnerReportCommand(settings::get).run(context());
@@ -203,7 +198,7 @@ class RevisedSelectionTest {
     }
     final List<Map<String, Object>> revised = collections.get("runs_revised");
     assertEquals(2, revised.size(), "the two selections, in the revised design's collection");
-    assertTrue(revised.stream().allMatch(r -> SplitRule.recordedBy(r) == SplitRule.REVISED));
+    assertTrue(revised.stream().allMatch(SplitRule::recordedBy));
     assertFalse(collections.containsKey("runs"), "nothing in the random design's collection");
     assertFalse(collections.containsKey("runs_temporal"));
   }

@@ -10,8 +10,8 @@ import java.util.List;
  * The study's tail cut (ticket 23, item 50): the issues of extreme
  * duration leave the fitting rows, and the validation is read on the usual flow.
  *
- * <p><b>Fence.</b> {@code Q3 + k * IQR} of the business days ({@link BusinessDays#ACTIVE}, the
- * outcome each unit carries) of the fitting side of the split it serves, and only of it: the inner
+ * <p><b>Fence.</b> {@code Q3 + k * IQR} of the business days (the target, the outcome each
+ * unit carries) of the fitting side of the split it serves, and only of it: the inner
  * fitting set in the inner scope, the outer training set in the outer one; never of validation or
  * test labels. The quartiles are those of {@link #quantile}, the only definition this chain uses
  * for them.
@@ -91,25 +91,14 @@ public final class TailCut {
       this.holds = holds;
     }
 
-    /**
-     * The main reading under {@code rule}: all issues under the revised temporal design, the
-     * usual flow under every other rule.
-     */
+    /** The main reading under {@code rule}: all issues, the revised design's. */
     public static Reading main(final SplitRule rule) {
-      return rule == SplitRule.REVISED ? ALL : USUAL_FLOW;
+      return ALL;
     }
 
     /** Both readings, the main one under {@code rule} first. */
     public static List<Reading> ordered(final SplitRule rule) {
-      return main(rule) == ALL ? List.of(ALL, USUAL_FLOW) : List.of(USUAL_FLOW, ALL);
-    }
-
-    /**
-     * What the reading holds, in words, for the report, with its role in every design but the
-     * revised one: the usual flow the main reading, all issues the complementary one.
-     */
-    public String description() {
-      return description(SplitRule.RANDOM);
+      return List.of(ALL, USUAL_FLOW);
     }
 
     /** What the reading holds, in words, with its role under {@code rule} ({@link #main}). */

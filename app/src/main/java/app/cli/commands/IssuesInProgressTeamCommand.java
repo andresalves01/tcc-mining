@@ -19,14 +19,12 @@ import java.util.function.Function;
 
 /**
  * The revised team columns, on their own file. Runs the extraction as {@code
- * issues-in-progress-extract} does and writes only the four columns per issue to TEAM_COLUMNS, so
- * the extracted matrix is never rewritten; refuses, as the extraction does, when its time-travel
- * gate fails. That gate recomputes the extracted columns only, not these four. Never replaces a
- * file that is not a team file. Records the run, with the file's SHA-256, in ISSUES_DB.
- *
- * <p>With POPULATION=FIRST_COMMIT, the columns of the first-commit population read at the first
- * commit that counts ({@link IssuesFirstCommitExtractTask}); it refuses the In Progress study's
- * TARGET_DB and ISSUES_DB before reading anything.
+ * issues-in-progress-extract} does ({@link IssuesFirstCommitExtractTask}), the columns read at the
+ * first commit that counts, and writes only the four columns per issue to TEAM_COLUMNS, so the
+ * extracted matrix is never rewritten; refuses, as the extraction does, when its time-travel gate
+ * fails. That gate recomputes the extracted columns only, not these four. Never replaces a file
+ * that is not a team file. Refuses the In Progress study's TARGET_DB and ISSUES_DB before reading
+ * anything, and records the run, with the file's SHA-256, in the revised design's collection.
  */
 public final class IssuesInProgressTeamCommand implements CommandRunner {
 
@@ -55,23 +53,13 @@ public final class IssuesInProgressTeamCommand implements CommandRunner {
     if (file == null || file.isBlank()) {
       throw new CommandFailedException(List.of("  TEAM_COLUMNS=<output file> is required"));
     }
-    final Population population =
-        IssuesInProgressExtractCommand.population(settings.apply("POPULATION"));
-    final boolean firstCommit = population == Population.FIRST_COMMIT;
-    final SplitRule rule;
-    try {
-      rule = SplitRule.declared(settings.apply(SplitRule.SETTING), population);
-    } catch (final IllegalArgumentException e) {
-      throw new CommandFailedException(List.of("  " + e.getMessage()));
-    }
-    final ResultStore store = IssuesInProgressExtractCommand.runStore(context, population, rule);
-    final IssuesInProgressExtractTask.Report r = firstCommit
-        ? new IssuesFirstCommitExtractTask(context.study(), context.progress(), rule).run()
-            .extraction()
-        : new IssuesInProgressExtractTask(context.study(), context.progress()).run();
+    final SplitRule rule = SplitRule.REVISED;
+    final ResultStore store = IssuesInProgressExtractCommand.runStore(context);
+    final IssuesInProgressExtractTask.Report r =
+        new IssuesFirstCommitExtractTask(context.study(), context.progress(), rule).run()
+            .extraction();
 
-    System.out.printf("%n  DURATION FROM %s -- REVISED TEAM COLUMNS%n",
-        firstCommit ? "THE FIRST COMMIT" : "IN PROGRESS");
+    System.out.printf("%n  DURATION FROM THE FIRST COMMIT -- REVISED TEAM COLUMNS%n");
     System.out.printf("    %,d issues  time-travel gate (the registry's columns) %s%n",
         r.team().size(), r.travelPassed() ? "passed" : "FAILED");
     if (!r.passed()) {
@@ -95,14 +83,10 @@ public final class IssuesInProgressTeamCommand implements CommandRunner {
 
     final Map<String, Object> run = new LinkedHashMap<>();
     run.put("stage", STAGE);
-    if (firstCommit) {
-      run.put("study_population", population.name());
-      run.put("read_at", "the first commit that counts");
-      if (rule.temporal()) {
-        run.put(SplitRule.DESIGN_FIELD, rule.setting());
-        run.put(SplitRule.RULE_FIELD, rule.rule());
-      }
-    }
+    run.put("study_population", Population.FIRST_COMMIT.name());
+    run.put("read_at", "the first commit that counts");
+    run.put(SplitRule.DESIGN_FIELD, rule.setting());
+    run.put(SplitRule.RULE_FIELD, rule.rule());
     run.put("gate_time_travel", r.travelPassed());
     run.put("rows", r.team().size());
     run.put("columns", Extractor.TEAM_REVISED);

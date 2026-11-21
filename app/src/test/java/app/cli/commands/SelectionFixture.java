@@ -69,7 +69,14 @@ final class SelectionFixture {
         projects.put("i" + n++, "p" + p);
       }
     }
-    final ProjectSplit.Parts parts = ProjectSplit.draw(projects);
+    // provisional sides: every reader redraws them by the revised rule ({@link #drawn})
+    final Map<String, Part> outerSides = new HashMap<>();
+    final Map<String, Part> innerSides = new HashMap<>();
+    projects.keySet().forEach(id -> {
+      outerSides.put(id, Part.TRAIN);
+      innerSides.put(id, Part.TRAIN);
+    });
+    final ProjectSplit.Parts parts = new ProjectSplit.Parts(outerSides, innerSides);
     final Random random = new Random(3);
     final List<RowCache.Entry> out = new ArrayList<>();
     n = 0;
@@ -97,16 +104,10 @@ final class SelectionFixture {
           values.put(a.absenceName(), 0.0);
         }
       }
-      if (population == Population.FIRST_COMMIT) {
-        values.put(FirstCommit.TARGET_COLUMN, (double) days);
-        values.put(FirstCommit.BOUNDARY_COLUMN, 4.0);
-        values.put("FC_marks", 2.0 + n % 4);
-        values.put("FC_patches", (double) (n % 3 == 0 ? 1 : 0));
-      } else {
-        values.put(BusinessDays.BOUNDARY, 4.0);
-        // never sent back to Open or Reopened: active, the whole interval's business days
-        values.put(BusinessDays.ACTIVE, (double) days);
-      }
+      values.put(FirstCommit.TARGET_COLUMN, (double) days);
+      values.put(FirstCommit.BOUNDARY_COLUMN, 4.0);
+      values.put("FC_marks", 2.0 + n % 4);
+      values.put("FC_patches", (double) (n % 3 == 0 ? 1 : 0));
       final Instant start = CREATED.plusSeconds(3600L * 7 * (n + 1));
       final Part inner = parts.inner().get(id);
       final Map<Population, String[]> verdicts = new EnumMap<>(Population.class);
@@ -120,9 +121,9 @@ final class SelectionFixture {
     return out;
   }
 
-  /** Writes {@code population}'s matrix to {@code path}, its columns sorted by name. */
+  /** Writes the matrix at the revised design's verdicts to {@code path} ({@link #revised}). */
   static Path write(final Path path, final Population population) throws IOException {
-    return write(path, entries(population), population);
+    return revised(path);
   }
 
   /**
@@ -152,7 +153,7 @@ final class SelectionFixture {
    */
   static Path temporal(final Path path, final int newIssues, final int testIssues)
       throws IOException {
-    return drawn(path, newIssues, testIssues, SplitRule.TEMPORAL);
+    return drawn(path, newIssues, testIssues, app.issues.TemporalSplit::draw);
   }
 
   /**
@@ -168,12 +169,13 @@ final class SelectionFixture {
   /** {@link #temporal(Path, int, int)} at the revised design's verdicts, as {@link #revised(Path)}. */
   static Path revised(final Path path, final int newIssues, final int testIssues)
       throws IOException {
-    return drawn(path, newIssues, testIssues, SplitRule.REVISED);
+    return drawn(path, newIssues, testIssues, app.issues.TemporalSplit::drawRevised);
   }
 
   /** The rows of {@link #temporal(Path, int, int)} at the verdicts {@code rule} draws. */
   private static Path drawn(final Path path, final int newIssues, final int testIssues,
-      final SplitRule rule)
+      final java.util.function.Function<java.util.Collection<SplitRule.Candidate>,
+          ProjectSplit.Parts> rule)
       throws IOException {
     final Population population = Population.FIRST_COMMIT;
     final List<RowCache.Entry> moved = new ArrayList<>();
@@ -190,7 +192,7 @@ final class SelectionFixture {
           after(start, days)));
       n++;
     }
-    final ProjectSplit.Parts parts = rule.draw(candidates);
+    final ProjectSplit.Parts parts = rule.apply(candidates);
     final List<String> renamed = moved.stream()
         .filter(e -> parts.inner().get(e.unit().issueId()) == Part.TEST)
         .sorted(java.util.Comparator.comparing((RowCache.Entry e) -> e.unit().startedAt()))

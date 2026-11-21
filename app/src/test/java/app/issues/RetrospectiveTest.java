@@ -86,7 +86,7 @@ class RetrospectiveTest {
       final Universe universe = Universe.of(corpus);
       final Retrospective r =
           new Retrospective(new World(universe, corpus), bots, Releases.of(corpus));
-      final Universe.Unit u = universe.unit(Universe.Population.IN_PROGRESS, id);
+      final Universe.Unit u = universe.started(id);
       assertNotNull(u, id + " is in the In-Progress population");
       return r.row(u, methods);
     }

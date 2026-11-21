@@ -46,9 +46,8 @@ import java.util.TreeSet;
  *
  * <p><b>Outer test</b> ({@link #outer}, item 53 viii). The factors the inner models calibrated
  * on the whole calibration reading of the inner validation are applied to the outer models'
- * predictions, an approximation ({@link #OUTER}); under the revised design it is shown for
- * comparison only, the official intervals being the same-model ones ({@link
- * #outer(SplitRule)}).
+ * predictions, an approximation, shown for comparison only, the official intervals being the
+ * same-model ones ({@link #outer(SplitRule)}).
  *
  * <p><b>Same model</b> ({@link #sameModel}, the revised design's official intervals, chosen
  * before its outer test was opened). The inner models' own predictions of the outer test, from
@@ -98,37 +97,26 @@ public final class PredictionIntervals {
   /**
    * The inner validation issues the intervals are calibrated on under {@code rule}: its main
    * reading ({@link TailCut.Reading#main}), every inner validation issue, the tail above the usual
-   * flow's fence included, under the revised temporal design; the usual flow under every other
-   * rule, as before it.
+   * flow's fence included.
    */
   public static TailCut.Reading calibrationReading(final SplitRule rule) {
     return TailCut.Reading.main(rule);
   }
 
   /**
-   * {@link #rule(double)} under {@code rule}: under the revised temporal design the calibration
-   * issues are every inner validation issue ({@link #calibrationReading}); under every other rule
-   * the text is {@link #rule(double)}'s.
+   * {@link #rule(double)} under {@code rule}, whose calibration issues are every inner validation
+   * issue ({@link #calibrationReading}).
    */
   public static String rule(final double floor, final SplitRule rule) {
-    final String text = rule(floor);
-    return calibrationReading(rule) == TailCut.Reading.ALL
-        ? text.replace("calibrated on the usual-flow inner validation issues", "calibrated on "
-            + "every inner validation issue, the tail above the usual flow's k = 3 fence included")
-        : text;
+    return rule(floor).replace("calibrated on the usual-flow inner validation issues",
+        "calibrated on every inner validation issue, the tail above the usual flow's k = 3 fence "
+            + "included");
   }
 
-  /** What the outer test's intervals are, in words, under every rule but the revised one. */
-  public static final String OUTER = "the outer models' intervals take the factors the inner "
-      + "models calibrated on the whole usual-flow inner validation, an approximation: the outer "
-      + "models are refitted on the whole outer training side, so no held-out outer issue is left "
-      + "to calibrate on; the outer coverage shows whether it holds; the bands of the observed "
-      + "duration are those of the outer training rows fitted";
-
   /**
-   * What the test step's intervals are, in words, under the revised temporal design: the same
-   * construction as {@link #OUTER}, on every inner validation issue, shown for comparison beside
-   * the official same-model intervals ({@link #SAME_MODEL}).
+   * What the test step's intervals are, in words: the outer models' intervals with the factors the
+   * inner models calibrated on every inner validation issue, shown for comparison beside the
+   * official same-model intervals ({@link #SAME_MODEL}).
    */
   public static final String OUTER_APPROXIMATION = "an approximation, for comparison, not the "
       + "official intervals of the revised design, which are the same-model ones: the outer "
@@ -138,12 +126,9 @@ public final class PredictionIntervals {
       + "calibrate on; the outer coverage shows whether it holds; the bands of the observed "
       + "duration are those of the outer training rows fitted";
 
-  /**
-   * What the test step's intervals are under {@code rule}: {@link #OUTER_APPROXIMATION} under
-   * the revised temporal design, {@link #OUTER} under every other rule.
-   */
+  /** What the test step's intervals are under {@code rule}: {@link #OUTER_APPROXIMATION}. */
   public static String outer(final SplitRule rule) {
-    return rule == SplitRule.REVISED ? OUTER_APPROXIMATION : OUTER;
+    return OUTER_APPROXIMATION;
   }
 
   /**

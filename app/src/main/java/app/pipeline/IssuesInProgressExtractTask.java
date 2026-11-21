@@ -30,25 +30,16 @@ import java.util.TreeSet;
 import java.util.function.BiFunction;
 
 /**
- * The study's population and columns: the issues resolved as Fixed read at their first In
- * Progress, the split drawn over those of at least one active business day, and the gate before
- * anything is fitted.
+ * The registry's columns of the first-commit population ({@link IssuesFirstCommitExtractTask}),
+ * each read at the issue's own start, and the gate before anything is fitted.
  *
- * <p>Every column of the registry is read at t0 = the first In Progress (P11): the changelog is
- * undone from t0 on ({@link Initial#at}), the executor is the assignee at t0 or else whoever made
- * the change (P8), and the participants are the reporter and whoever commented on or changed the
- * issue before t0 (P13). The gate, which must pass for the cache to be written: time travel at t0.
- *
- * <p><b>Population and split</b> (ticket 21). Each issue's active business days are counted as
- * the target counts them ({@link BusinessDays#of}); only the issues of at least one are kept, and
- * the split is drawn over them alone, at random and stratified by project ({@link ProjectSplit}).
- * The cache holds those issues only. The extractor still learns its executors' first touches from
- * every In-Progress issue, as before the drop, so no kept issue's columns depend on it.
+ * <p>Every column of the registry is read at t0, the issue's start (P11): the changelog is undone
+ * from t0 on ({@link Initial#at}), the executor is the assignee at t0 or else the starter the
+ * extraction names (P8), and the participants are the reporter and whoever commented on or
+ * changed the issue before t0 (P13). The gate, which must pass for the cache to be written: time
+ * travel at t0.
  */
 public final class IssuesInProgressExtractTask {
-
-  /** P16: the issue went back from In Progress to Open before its first resolution. */
-  public static final String PAUSED = "PAUSA_volta_open";
 
   /**
    * The population and its split, in counts alone: no outcome of either side.
@@ -81,38 +72,7 @@ public final class IssuesInProgressExtractTask {
     }
   }
 
-  private final StudySource source;
-  private final Progress progress;
-
-  public IssuesInProgressExtractTask(final StudySource source, final Progress progress) {
-    this.source = source;
-    this.progress = progress;
-  }
-
-  public Report run() {
-    progress.phase(1, 5, "reading the corpus: %s", source.describe());
-    final Corpus corpus = source.load();
-
-    progress.phase(2, 5, "population from In Progress and its active business days");
-    final Universe universe = Universe.of(corpus);
-    final List<Universe.Unit> started = universe.population(Population.IN_PROGRESS);
-    final Set<String> all = new TreeSet<>();
-    started.forEach(u -> all.add(u.id()));
-    final BusinessDays.Counted counted = BusinessDays.of(corpus, universe, all);
-    final List<Universe.Unit> units =
-        started.stream().filter(u -> counted.active().get(u.id()) >= 1).toList();
-
-    progress.phase(3, 5, "split of the %,d issues of at least one business day", units.size());
-    final Map<String, String> projects = new HashMap<>(units.size() * 2);
-    units.forEach(u -> projects.put(u.id(), u.project()));
-    final ProjectSplit.Parts split = ProjectSplit.draw(projects);
-
-    progress.phase(4, 5, "columns of %,d issues at the In Progress instant", units.size());
-    // the executors' first touches learnt from every In-Progress issue, as before the drop
-    return columns(source, progress, corpus, universe, units, all, IN_PROGRESS_STARTER,
-        Population.IN_PROGRESS, split, summary(started.size(), projects, split), Map.of(),
-        List.of(), 5, 5);
-  }
+  private IssuesInProgressExtractTask() {}
 
   /**
    * Who made the start, as a canonical person: the executor when nobody was assigned at the start;
@@ -121,11 +81,6 @@ public final class IssuesInProgressExtractTask {
   record Starter(BiFunction<World, Universe.Unit, String> person, String assignee,
       String starter, String none) {}
 
-  /** P8 for the In Progress population: whoever made the transition. */
-  static final Starter IN_PROGRESS_STARTER = new Starter(
-      (world, u) -> world.person(u.startedBy()), "assignee at t0",
-      "no assignee: whoever made the transition", "none");
-
   /**
    * The columns of {@code units}, each read at its own start ({@link Universe.Unit#start}), the
    * time-travel gate at that instant, and the cache's entries under {@code population}'s split,
@@ -133,7 +88,7 @@ public final class IssuesInProgressExtractTask {
    * phase - 1} and {@code phase} of {@code phases}.
    *
    * @param studied the issues whose executors' first touches the extractor learns
-   * @param extra per issue id, further values written after the pause flag, in the order of
+   * @param extra per issue id, further values written after the registry's, in the order of
    *     {@code extraColumns}; empty for none
    */
   static Report columns(final StudySource source, final Progress progress, final Corpus corpus,
@@ -163,7 +118,6 @@ public final class IssuesInProgressExtractTask {
       at.put(u.id(), a);
       final Map<String, Double> row =
           extractor.row(u, init, corpus.labels().get(u.id()), a);
-      row.put(PAUSED, paused(events, t0, u.resolved()) ? 1.0 : 0.0);
       values.put(u.id(), row);
     }
 
@@ -171,7 +125,6 @@ public final class IssuesInProgressExtractTask {
     final List<TimeTravel.Check> travel = TimeTravel.run(world, units, values, at);
 
     final List<String> columns = new ArrayList<>(Attributes.stored());
-    columns.add(PAUSED);
     columns.addAll(extraColumns);
     final List<RowCache.Entry> entries = new ArrayList<>(units.size());
     final Map<String, Map<String, Double>> team = new java.util.LinkedHashMap<>();
@@ -189,20 +142,19 @@ public final class IssuesInProgressExtractTask {
       parts.put(population, new String[] {split.outerVerdict(u.id()).name(),
           Verdict.text(split.innerVerdict(u.id()))});
       final Row row = row(u.id(), values.get(u.id()));
-      final Map<String, Double> withPause = new java.util.LinkedHashMap<>(row.values());
-      withPause.put(PAUSED, values.get(u.id()).get(PAUSED));
+      final Map<String, Double> withExtra = new java.util.LinkedHashMap<>(row.values());
       final Map<String, Double> more = extra.getOrDefault(u.id(), Map.of());
       for (final String column : extraColumns) {
         final Double v = more.get(column);
         if (v != null) {
-          withPause.put(column, v);
+          withExtra.put(column, v);
         }
       }
       entries.add(new RowCache.Entry(new IssueUnit(u.id(), u.key(), u.project(),
           world.person(u.reporter()), at.get(u.id()).executor(),
           Instant.ofEpochMilli(u.created()), Instant.ofEpochMilli(u.resolved()), u.reason(),
           u.moved(), Instant.ofEpochMilli(u.start())),
-          new Row(u.id(), withPause, row.absent()), parts));
+          new Row(u.id(), withExtra, row.absent()), parts));
     }
     return new Report(summary, travel, executors, entries, columns, team);
   }
@@ -268,14 +220,4 @@ public final class IssuesInProgressExtractTask {
     return out;
   }
 
-  /** P16: a status change from In Progress back to Open in [t0, t1). */
-  static boolean paused(final List<Corpus.Event> events, final long t0, final long t1) {
-    for (final Corpus.Event e : events) {
-      if ("status".equals(e.field()) && Universe.IN_PROGRESS_STATUS.equals(e.oldValue())
-          && "Open".equals(e.newValue()) && e.at() != null && e.at() >= t0 && e.at() < t1) {
-        return true;
-      }
-    }
-    return false;
-  }
 }

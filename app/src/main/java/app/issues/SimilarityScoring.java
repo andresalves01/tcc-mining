@@ -155,7 +155,6 @@ public final class SimilarityScoring {
       new String[] {forest(ElasticNetSelection.RETROSPECTIVE),
           forest(ElasticNetSelection.BEFORE_PRESSURE)});
 
-  private static final Population P = Population.IN_PROGRESS;
 
   /**
    * Where the models are refitted and what is scored: the mode of the sides and the variant of
@@ -333,7 +332,7 @@ public final class SimilarityScoring {
    * analogy estimate's choice, and the count of trees every forest is refitted with.
    *
    * @param analogy the analogy estimate's frozen choice; null for none, the fourteen alone
-   * @param trees the trees per forest, {@link Forest#TREES} when the file gives none
+   * @param trees the trees per forest, as the file gives them
    */
   public record Design(AnalogyEstimate.Frozen analogy, int trees) {
 
@@ -344,14 +343,8 @@ public final class SimilarityScoring {
       }
     }
 
-    /** {@code analogy}, and the forests at {@link Forest#TREES}. */
-    public static Design of(final AnalogyEstimate.Frozen analogy) {
-      return new Design(analogy, Forest.TREES);
-    }
   }
 
-  /** The fourteen models, the forests at {@link Forest#TREES}: every file of the random split. */
-  private static final Design FOURTEEN = Design.of(null);
 
   /**
    * Both readings of one fit.
@@ -410,56 +403,6 @@ public final class SimilarityScoring {
   /** The name of the forest beside an Elastic Net model. */
   public static String forest(final String model) {
     return model + "_forest";
-  }
-
-  /**
-   * Refits on the fitting rows at or below the fence of {@code k} and scores both readings, the
-   * usual flow and every scored issue, each with its own figures (ticket 23), on the threads
-   * {@link Parallel} asks for.
-   */
-  public static Readings readings(final List<RowCache.Entry> entries,
-      final Map<String, ElasticNetSelection.Choice> choices,
-      final Map<String, Forest.Choice> forests, final double k, final Scope scope) {
-    return readings(entries, choices, forests, k, scope,
-        Parallel.threads(Parallel.ELASTIC_NET_THREADS),
-        Parallel.threads(Parallel.BOOTSTRAP_THREADS));
-  }
-
-  /**
-   * {@link #readings(List, Map, Map, double, Scope)} on the threads given. Each reading refits:
-   * the fits are the same bits, being deterministic on the same rows, and every figure of a
-   * reading, the forests' permutation importance included, is read on its own issues.
-   */
-  public static Readings readings(final List<RowCache.Entry> entries,
-      final Map<String, ElasticNetSelection.Choice> choices,
-      final Map<String, Forest.Choice> forests, final double k, final Scope scope,
-      final int fitThreads, final int drawThreads) {
-    return readings(entries, choices, forests, k, scope, fitThreads, drawThreads, P);
-  }
-
-  /**
-   * {@link #readings(List, Map, Map, double, Scope)} on the split and the attribute sets of
-   * {@code population}, on the threads {@link Parallel} asks for.
-   */
-  public static Readings readings(final List<RowCache.Entry> entries,
-      final Map<String, ElasticNetSelection.Choice> choices,
-      final Map<String, Forest.Choice> forests, final double k, final Scope scope,
-      final Population population) {
-    return readings(entries, choices, forests, k, scope,
-        Parallel.threads(Parallel.ELASTIC_NET_THREADS),
-        Parallel.threads(Parallel.BOOTSTRAP_THREADS), population);
-  }
-
-  /**
-   * {@link #readings(List, Map, Map, double, Scope, int, int)} on the split and the attribute
-   * sets of {@code population}: its split's verdicts give the sides, its sets the models.
-   */
-  public static Readings readings(final List<RowCache.Entry> entries,
-      final Map<String, ElasticNetSelection.Choice> choices,
-      final Map<String, Forest.Choice> forests, final double k, final Scope scope,
-      final int fitThreads, final int drawThreads, final Population population) {
-    return readings(entries, choices, forests, k, scope, fitThreads, drawThreads, population,
-        FOURTEEN);
   }
 
   /**
@@ -533,30 +476,6 @@ public final class SimilarityScoring {
   }
 
   /**
-   * The inner calibration the outer test's prediction intervals read (ticket 24, item 53 viii):
-   * every model refitted as the inner report fits it, on the inner fitting rows at or below the
-   * fence of {@code k}, and its predictions of the usual-flow inner validation issues, what every
-   * rule but the revised one calibrates on (the revised design's calibration is {@link
-   * #calibration(List, Map, Map, double, Population, Design, TailCut.Reading)} on every issue);
-   * no comparison is drawn. Of the outer test nothing is read: the inner scope fits and scores
-   * the outer training rows only.
-   */
-  public static Report calibration(final List<RowCache.Entry> entries,
-      final Map<String, ElasticNetSelection.Choice> choices,
-      final Map<String, Forest.Choice> forests, final double k) {
-    return score(entries, choices, forests, k, Scope.INNER, TailCut.Reading.USUAL_FLOW, false,
-        Parallel.threads(Parallel.ELASTIC_NET_THREADS),
-        Parallel.threads(Parallel.BOOTSTRAP_THREADS), P, FOURTEEN, false);
-  }
-
-  /** {@link #calibration(List, Map, Map, double)} on the split and sets of {@code population}. */
-  public static Report calibration(final List<RowCache.Entry> entries,
-      final Map<String, ElasticNetSelection.Choice> choices,
-      final Map<String, Forest.Choice> forests, final double k, final Population population) {
-    return calibration(entries, choices, forests, k, population, FOURTEEN);
-  }
-
-  /**
    * {@link #calibration(List, Map, Map, double, Population)} with what the parameters froze
    * beyond the fourteen's choices ({@link Design}): the analogy estimate, if any, read in its inner
    * column with the inner fitting rows' global median as its fallback, and the forests at the
@@ -584,39 +503,6 @@ public final class SimilarityScoring {
     return score(entries, choices, forests, k, Scope.INNER, reading, false,
         Parallel.threads(Parallel.ELASTIC_NET_THREADS),
         Parallel.threads(Parallel.BOOTSTRAP_THREADS), population, design, false);
-  }
-
-  /**
-   * Refits, with no tail cut, and scores every scored issue: the scoring before ticket 23.
-   *
-   * @param choices per Elastic Net model, its alpha and lambda chosen on the inner validation and,
-   *     for a model with the similarity medians, its combination; exactly the models of {@link
-   *     ElasticNetSelection#MODELS}, a combination for exactly those of {@link
-   *     ElasticNetSelection#WITH_SIMILARITY}, or the run refuses
-   * @param forests per Elastic Net model, its forest's column share and leaf chosen on the inner
-   *     validation; exactly the models of {@link ElasticNetSelection#MODELS}, or the run refuses
-   */
-  public static Report run(final List<RowCache.Entry> entries,
-      final Map<String, ElasticNetSelection.Choice> choices,
-      final Map<String, Forest.Choice> forests, final Scope scope) {
-    return run(entries, choices, forests, scope, Parallel.threads(Parallel.ELASTIC_NET_THREADS),
-        Parallel.threads(Parallel.BOOTSTRAP_THREADS));
-  }
-
-  /**
-   * Refits and scores, the models refitted each alone on up to {@code fitThreads} threads and the
-   * draws of every interval evaluated each alone on up to {@code drawThreads}, all read back in
-   * their order, so the report is the same bits whatever the numbers.
-   *
-   * @param scope where the models are refitted and what is scored: {@link Scope#RESERVED} for
-   *     the test, {@link Scope#INNER} for the inner report; nothing else of the scoring differs
-   */
-  public static Report run(final List<RowCache.Entry> entries,
-      final Map<String, ElasticNetSelection.Choice> choices,
-      final Map<String, Forest.Choice> forests, final Scope scope, final int fitThreads,
-      final int drawThreads) {
-    return score(entries, choices, forests, TailCut.NO_CUT, scope, TailCut.Reading.ALL, true,
-        fitThreads, drawThreads, P, FOURTEEN, false);
   }
 
   /**
@@ -972,38 +858,6 @@ public final class SimilarityScoring {
     final double[] observed = units.stream().mapToDouble(IssueUnit::duration).toArray();
     return new Fitting.Sides(sides.fitUnits(), sides.fitRows(), List.copyOf(units),
         List.copyOf(rows), observed);
-  }
-
-  /**
-   * The relevance section ({@link Relevance}), on the threads {@link Parallel} asks for: per
-   * Elastic Net model, in {@link ElasticNetSelection#MODELS}' order, each standardised column's
-   * coefficient in the refit of {@link #readings} at {@code k} and its 95% interval from
-   * resampling whole projects of the scope's fitting side.
-   */
-  public static List<Relevance> relevance(final List<RowCache.Entry> entries,
-      final Map<String, ElasticNetSelection.Choice> choices, final double k, final Scope scope) {
-    return relevance(entries, choices, k, scope, Parallel.threads(Parallel.BOOTSTRAP_THREADS));
-  }
-
-  /**
-   * {@link #relevance(List, Map, double, Scope)} with each model's draws evaluated on up to
-   * {@code drawThreads} threads, the same bits on any number.
-   *
-   * <p>The refit is the one the scores read: the fitting rows at or below the fence of {@code k},
-   * taken on the scope's fitting side, the declared columns missing on every one of them
-   * removed, the alpha given and the lambda as the scores fit it. Each draw takes the projects of
-   * the fitting rows with replacement, from the same {@link ProjectBootstrap#DRAWS} draws and seed
-   * every interval reads, keeps every fitting row of each project drawn (a project drawn twice
-   * counted twice), and refits the model on them as the refit was made: the design matrix
-   * learned on the drawn rows -- the medians that fill a gap and the means and spreads that
-   * standardise --, the same alpha, and the lambda times the drawn rows over the fitting rows,
-   * since the estimator sums the squared error over rows, as the outer refit scales it. A column
-   * constant on a draw's rows carries nothing there and counts as zero. Reads no scored issue.
-   */
-  public static List<Relevance> relevance(final List<RowCache.Entry> entries,
-      final Map<String, ElasticNetSelection.Choice> choices, final double k, final Scope scope,
-      final int drawThreads) {
-    return relevance(entries, choices, k, scope, drawThreads, P);
   }
 
   /** {@link #relevance(List, Map, double, Scope)} on the split and sets of {@code population}. */
