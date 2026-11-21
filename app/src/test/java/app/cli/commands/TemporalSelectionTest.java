@@ -124,8 +124,8 @@ class TemporalSelectionTest {
 
     // the choice, made again by the exploratory stage's own reading of the same rule
     final double k = ElasticNetSelection.tailCut(file).k();
-    final AnalogyEstimate.Choice expected = IssuesFirstCommitAnalogyCommand.inner(
-        RowCache.read(matrix, Population.FIRST_COMMIT, "TRAIN"), k).choice();
+    final AnalogyEstimate.Choice expected =
+        innerChoice(RowCache.read(matrix, Population.FIRST_COMMIT, "TRAIN"), k);
     assertEquals(expected.chosen(), ElasticNetSelection.analogy(file).column());
 
     final Map<String, Object> run = runs.getFirst();
@@ -247,5 +247,23 @@ class TemporalSelectionTest {
     assertEquals(500, ElasticNetSelection.trees(SplitRule.TEMPORAL));
     assertEquals(Forest.TREES, ElasticNetSelection.trees(SplitRule.RANDOM));
     assertEquals(300, Forest.TREES);
+  }
+
+  /** The analogy estimate's choice on the usual-flow inner validation, derived independently. */
+  private static AnalogyEstimate.Choice innerChoice(final List<RowCache.Entry> entries,
+      final double k) {
+    final List<RowCache.Entry> training = entries.stream()
+        .filter(e -> app.issues.Verdict.outerTraining(e.outer(Population.FIRST_COMMIT))).toList();
+    final app.issues.model.Fitting.Sides whole = app.issues.model.Fitting.sides(
+        app.issues.BusinessDays.population(training, app.issues.Augmentation.Variant.INNER)
+            .entries(),
+        app.issues.model.Fitting.Mode.INNER, Population.FIRST_COMMIT);
+    final app.issues.model.Fitting.Sides cut = app.issues.TailCut.cut(whole,
+        app.issues.TailCut.fence(whole.fitUnits(), k));
+    final app.issues.model.Fitting.Sides usual = app.issues.TailCut.usualFlow(cut,
+        app.issues.TailCut.fence(whole.fitUnits(), app.issues.TailCut.USUAL_FLOW_K));
+    final double global = app.issues.model.References.learnedOn(cut.fitUnits()).constant(1)[0];
+    return AnalogyEstimate.choose(usual.scoreRows(), app.issues.Augmentation.Variant.INNER,
+        global, usual.observed());
   }
 }
