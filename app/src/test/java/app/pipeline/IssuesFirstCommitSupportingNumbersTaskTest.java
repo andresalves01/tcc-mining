@@ -39,20 +39,19 @@ public class IssuesFirstCommitSupportingNumbersTaskTest {
 
   /**
    * Issue n starts n - 1 weeks after the first, its second commit two days after the first
-   * commit, except issue 10's, 16 days after it; the first six went through In Progress, a day
-   * after their first commit.
+   * commit, except issue 10's, 16 days after it, each resolved an hour after its second commit;
+   * the first six went through In Progress, a day after their first commit.
    */
   public static StudySource source() {
-    return source(n -> n == 10 ? 17 : 3, false);
+    return source(n -> n == 10 ? 17 : 3);
   }
 
   /**
    * As {@link #source()}, issue n's second commit {@code secondDay.applyAsInt(n)} days after its
-   * Monday; with {@code quick}, each issue resolved an hour after its second commit instead of 30
-   * days after its Monday, so under the revised rule only the issue at each cut crosses it.
+   * Monday, so under the revised rule only an issue whose second commit falls past the next
+   * issue's start crosses a cut.
    */
-  private static StudySource source(final java.util.function.IntUnaryOperator secondDay,
-      final boolean quick) {
+  private static StudySource source(final java.util.function.IntUnaryOperator secondDay) {
     final List<Corpus.Issue> issues = new ArrayList<>();
     final List<Corpus.Event> events = new ArrayList<>();
     final List<Corpus.Commit> commits = new ArrayList<>();
@@ -61,7 +60,7 @@ public class IssuesFirstCommitSupportingNumbersTaskTest {
       final String id = id(n);
       final long monday = MONDAY + 7L * (n - 1) * DAY;
       final long second = monday + secondDay.applyAsInt(n) * DAY;
-      final long resolved = quick ? second + DAY / 24 : monday + 30 * DAY;
+      final long resolved = second + DAY / 24;
       issues.add(new Corpus.Issue(id, "P-" + n, "p", monday, "rep", "rep", null, "Bug", "Major",
           null, List.of(), List.of()));
       if (n <= 6) {
@@ -125,7 +124,7 @@ public class IssuesFirstCommitSupportingNumbersTaskTest {
   @DisplayName("counts the filter's three cases over the Fixed issues with a commit, the real "
       + "In Progress as the start")
   void counts() {
-    final SupportingNumbers.Counts c = run(SplitRule.TEMPORAL, 1.5).counts();
+    final SupportingNumbers.Counts c = run(SplitRule.REVISED, 1.5).counts();
     assertEquals(10, c.base());
     assertEquals(10, c.withCode());
     assertEquals(0, c.createdAfterFirstCommit());
@@ -139,8 +138,9 @@ public class IssuesFirstCommitSupportingNumbersTaskTest {
   @DisplayName("the worked examples come from the outer training alone: the outer test's issue "
       + "with the longest wait is never chosen, though it would top the gap")
   void neverTheTest() {
-    final IssuesFirstCommitSupportingNumbersTask.Report r = run(SplitRule.TEMPORAL, 1.5);
-    assertEquals(7, r.training(), "the outer training of the temporal draw");
+    final IssuesFirstCommitSupportingNumbersTask.Report r = run(SplitRule.REVISED, 1.5);
+    assertEquals(6, r.training(), "the outer training issues that teach");
+    assertEquals(1, r.crossing(), "issue 7, at the outer cut, crosses it");
     final List<String> chosen = r.examples().stream().map(e -> e.pick().entry().id()).toList();
     assertEquals(3, chosen.size());
     assertEquals(chosen.size(), Set.copyOf(chosen).size(), "three distinct issues");
@@ -153,7 +153,7 @@ public class IssuesFirstCommitSupportingNumbersTaskTest {
   @Test
   @DisplayName("each example carries the issue's dates, marks, waits with their cut, and tail")
   void examplesCarryTheirExplanation() {
-    final IssuesFirstCommitSupportingNumbersTask.Report r = run(SplitRule.TEMPORAL, 1.5);
+    final IssuesFirstCommitSupportingNumbersTask.Report r = run(SplitRule.REVISED, 1.5);
     for (final IssuesFirstCommitSupportingNumbersTask.Example e : r.examples()) {
       final FirstCommit.Explanation x = e.pick().entry().explanation();
       assertEquals(FirstCommit.count(e.issue(), e.verdict(), r.threshold().cap()), x.count());
@@ -166,7 +166,7 @@ public class IssuesFirstCommitSupportingNumbersTaskTest {
   @DisplayName("the wait fence's k is the run's: with no cap no wait is cut in any example")
   void usesTheRunsFence() {
     final IssuesFirstCommitSupportingNumbersTask.Report none =
-        run(SplitRule.TEMPORAL, FirstCommit.NO_WAIT_CAP);
+        run(SplitRule.REVISED, FirstCommit.NO_WAIT_CAP);
     assertEquals(FirstCommit.NO_WAIT_CAP, none.waitFenceK());
     for (final IssuesFirstCommitSupportingNumbersTask.Example e : none.examples()) {
       assertEquals(0, e.pick().entry().explanation().count().capped());
@@ -176,8 +176,7 @@ public class IssuesFirstCommitSupportingNumbersTaskTest {
   @Test
   @DisplayName("under the revised rule the examples are chosen among the outer training issues "
       + "that teach, the one crossing the outer cut left out though it tops the gap, at the cap "
-      + "the draw learns without the wait of the issue crossing the inner cut; the temporal rule "
-      + "keeps every outer training issue")
+      + "the draw learns without the wait of the issue crossing the inner cut")
   void revisedReadsTheOuterTrainingThatTeaches() {
     // waits of 1, 1, 2, 2 and 3 days on the inner fitting, issues 1 to 5; issue 5, at the inner
     // cut, crosses it, and issue 7, at the outer cut, crosses that one, with the longest wait of
@@ -186,23 +185,13 @@ public class IssuesFirstCommitSupportingNumbersTaskTest {
     final java.util.function.IntUnaryOperator second =
         n -> 1 + (n <= 5 ? waits[n - 1] : n == 10 || n == 7 ? 16 : 1);
     final IssuesFirstCommitSupportingNumbersTask.Report revised =
-        new IssuesFirstCommitSupportingNumbersTask(source(second, true), SilentProgress.INSTANCE,
+        new IssuesFirstCommitSupportingNumbersTask(source(second), SilentProgress.INSTANCE,
             SplitRule.REVISED, 1.5).run();
-    final IssuesFirstCommitSupportingNumbersTask.Report temporal =
-        new IssuesFirstCommitSupportingNumbersTask(source(second, true), SilentProgress.INSTANCE,
-            SplitRule.TEMPORAL, 1.5).run();
     assertEquals(6, revised.training(), "the outer training issues that teach, issue 7 out");
     assertEquals(1, revised.crossing(), "issue 7 crosses the outer cut");
-    assertEquals(7, temporal.training(), "every outer training issue, issue 7 included");
-    assertEquals(0, temporal.crossing());
-    assertTrue(temporal.examples().stream().anyMatch(e -> e.pick().entry().id().equals(id(7))),
-        "the temporal rule would show issue 7");
     assertTrue(revised.examples().stream().noneMatch(e -> e.pick().entry().id().equals(id(7))),
         "issue 7 teaches nothing under the revised rule");
     assertEquals(4, revised.threshold().gaps(), "issue 5's wait crosses the inner cut");
-    assertEquals(5, temporal.threshold().gaps());
-    assertTrue(revised.threshold().cap() < temporal.threshold().cap(),
-        revised.threshold() + " against " + temporal.threshold());
     for (final IssuesFirstCommitSupportingNumbersTask.Example e : revised.examples()) {
       assertTrue(Integer.parseInt(e.pick().entry().id(), 16) <= 6, "teaches on the outer level");
       assertEquals(FirstCommit.count(e.issue(), e.verdict(), revised.threshold().cap()),

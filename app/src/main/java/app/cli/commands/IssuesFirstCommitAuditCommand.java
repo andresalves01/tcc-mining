@@ -5,7 +5,6 @@ import app.cli.CommandRunner;
 import app.cli.Context;
 import app.issues.FirstCommit;
 import app.issues.SplitRule;
-import app.issues.Universe.Population;
 import app.pipeline.IssuesFirstCommitAuditTask;
 import app.pipeline.IssuesFirstCommitAuditTask.IssueRow;
 import app.pipeline.IssuesFirstCommitAuditTask.Report;
@@ -51,12 +50,7 @@ public final class IssuesFirstCommitAuditCommand implements CommandRunner {
     if (dir == null || dir.isBlank()) {
       throw new CommandFailedException(List.of("  AUDIT_DIR=<output directory> is required"));
     }
-    final SplitRule rule;
-    try {
-      rule = SplitRule.declared(settings.apply(SplitRule.SETTING), Population.FIRST_COMMIT);
-    } catch (final IllegalArgumentException e) {
-      throw new CommandFailedException(List.of("  " + e.getMessage()));
-    }
+    final SplitRule rule = SplitRule.REVISED;
     final double waitK = IssuesInProgressExtractCommand.waitFenceK(settings);
     final Path root = Path.of(dir);
     Files.createDirectories(root);
@@ -66,10 +60,8 @@ public final class IssuesFirstCommitAuditCommand implements CommandRunner {
     System.out.printf("%n  First-commit audit: %,d issues drawn (training %,d, test %,d); %s%n",
         r.sizes().rows(), r.sizes().train(), r.sizes().test(), r.threshold().uncapped()
             ? "no cap on the waits" : "cap " + r.threshold().cap() + " business days");
-    if (r.temporal() != null) {
-      System.out.printf("  temporal split: outer cut %s, inner cut %s%n",
-          r.temporal().cuts().outer(), r.temporal().cuts().inner());
-    }
+    System.out.printf("  temporal split: outer cut %s, inner cut %s%n",
+        r.temporal().cuts().outer(), r.temporal().cuts().inner());
     System.out.printf("  written to %s%n", root.toAbsolutePath());
   }
 
@@ -150,9 +142,7 @@ public final class IssuesFirstCommitAuditCommand implements CommandRunner {
     md.add("| " + n(z.rows()) + " | " + n(z.projects()) + " | " + n(z.train()) + " | "
         + n(z.test()) + " | " + n(z.fit()) + " | " + n(z.validation()) + " |");
     md.add("");
-    if (r.temporal() != null) {
-      temporalSides(md, r);
-    }
+    temporalSides(md, r);
     md.add("## Teto das pausas, aprendido no ajuste interno");
     md.add("");
     final FirstCommit.Threshold t = r.threshold();
@@ -161,16 +151,6 @@ public final class IssuesFirstCommitAuditCommand implements CommandRunner {
     md.add("| " + d(t.q1()) + " | " + d(t.median()) + " | " + d(t.q3()) + " | " + fence(t)
         + " | " + cap(t) + " | " + n(t.gaps()) + " |");
     md.add("");
-    if (r.temporal() != null) {
-      final FirstCommit.Threshold old = r.temporal().random();
-      md.add("O teto acima é aprendido só nas esperas do ajuste interno temporal e aplicado "
-          + "congelado a todas as issues. Na divisão aleatória, sobre as mesmas issues e nesta "
-          + "mesma rodada, " + (old.uncapped() ? "também não há teto (" : "o teto é "
-          + n(old.cap()) + " dias úteis (cerca " + fence(old) + ", ") + n(old.gaps())
-          + " intervalos); a auditoria de 25/10/2026, com a divisão "
-          + "aleatória, aprendeu 2.");
-      md.add("");
-    }
     md.add("## Alvo no treino externo, em dias úteis");
     md.add("");
     md.add("| Issues | Mín. | Q1 | Mediana | Q3 | P90 | Máx. | Média | Soma |");
@@ -201,31 +181,7 @@ public final class IssuesFirstCommitAuditCommand implements CommandRunner {
           + " | " + quantiles(s.target()) + " |");
     }
     md.add("");
-    md.add("## Sobreposição com o estudo In Progress");
-    md.add("");
-    md.add("Linhas: o lado de cada issue nesta partição. Colunas: o lado dela na partição do "
-        + "estudo In Progress, sorteada como a extração dele sorteia.");
-    md.add("");
-    final List<Side> sides = List.of(Side.values());
-    md.add("| Aqui \\ In Progress | " + String.join(" | ",
-        sides.stream().map(Side::label).toList()) + " | Total |");
-    md.add("|---|" + "---:|".repeat(sides.size() + 1));
-    for (final Map.Entry<Side, Map<Side, Integer>> e : r.overlap().entrySet()) {
-      final StringBuilder b = new StringBuilder("| " + e.getKey().label() + " |");
-      int total = 0;
-      for (final Side side : sides) {
-        b.append(' ').append(n(e.getValue().get(side))).append(" |");
-        total += e.getValue().get(side);
-      }
-      md.add(b.append(' ').append(n(total)).append(" |").toString());
-    }
-    md.add("| " + Side.TEST.label() + " |" + " — |".repeat(sides.size()) + " "
-        + n(r.sizes().test()) + " |");
-    md.add("");
-    md.add("Do teste externo, só o total.");
-    if (r.temporal() != null) {
-      censoring(md, r.temporal().censoring(), r.temporal().cuts().outer());
-    }
+    censoring(md, r.temporal().censoring(), r.temporal().cuts().outer());
     return md;
   }
 

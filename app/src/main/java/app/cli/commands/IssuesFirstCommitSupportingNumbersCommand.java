@@ -6,7 +6,6 @@ import app.cli.Context;
 import app.issues.FirstCommit;
 import app.issues.SplitRule;
 import app.issues.SupportingNumbers;
-import app.issues.Universe.Population;
 import app.pipeline.IssuesFirstCommitSupportingNumbersTask;
 import app.pipeline.IssuesFirstCommitSupportingNumbersTask.Example;
 import app.pipeline.IssuesFirstCommitSupportingNumbersTask.Report;
@@ -49,12 +48,7 @@ public final class IssuesFirstCommitSupportingNumbersCommand implements CommandR
     if (dir == null || dir.isBlank()) {
       throw new CommandFailedException(List.of("  SUPPORTING_DIR=<output directory> is required"));
     }
-    final SplitRule rule;
-    try {
-      rule = SplitRule.declared(settings.apply(SplitRule.SETTING), Population.FIRST_COMMIT);
-    } catch (final IllegalArgumentException e) {
-      throw new CommandFailedException(List.of("  " + e.getMessage()));
-    }
+    final SplitRule rule = SplitRule.REVISED;
     final double waitK = IssuesInProgressExtractCommand.waitFenceK(settings);
     final Path root = Path.of(dir);
     Files.createDirectories(root);

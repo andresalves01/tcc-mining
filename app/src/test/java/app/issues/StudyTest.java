@@ -230,8 +230,8 @@ class StudyTest {
         (f.ext++) + "%%0"));
     final Universe u = Universe.of(f.build());
 
-    assertEquals(10, u.population(Universe.Population.IN_PROGRESS).size(), "late is left out");
-    final Universe.Unit i3 = u.unit(Universe.Population.IN_PROGRESS, "i3");
+    assertNull(u.started("late"), "late is left out");
+    final Universe.Unit i3 = u.started("i3");
     assertEquals(T0 + 3 * D, i3.start());
     assertEquals("dev", i3.startedBy());
     assertEquals(12.0, (i3.resolved() - i3.start()) / 3_600_000.0, 1e-9,
@@ -278,7 +278,7 @@ class StudyTest {
     final Universe u = Universe.of(corpus);
     final World w = new World(u, corpus);
     final Extractor e = new Extractor(w, Set.of("a"));
-    final Universe.Unit unit = u.unit(Universe.Population.IN_PROGRESS, "a");
+    final Universe.Unit unit = u.started("a");
     final Initial.Values init = Initial.at(u.issue("a"), u.events("a"), null, unit.start());
     final Map<String, Double> row = e.row(unit, init, null,
         new Extractor.At(unit.start(), "dev", Set.of("r", "s")));
@@ -294,7 +294,7 @@ class StudyTest {
     g.resolve("x", t0 + 5 * D, "Fixed");
     final Corpus broken = g.build();
     final Universe ub = Universe.of(broken);
-    final Universe.Unit ux = ub.unit(Universe.Population.IN_PROGRESS, "x");
+    final Universe.Unit ux = ub.started("x");
     final Initial.Values ix = Initial.at(ub.issue("x"), ub.events("x"), null, ux.start());
     assertEquals("dev", ix.assignee());
     assertEquals(0.0, new Extractor(new World(ub, broken), Set.of("x")).row(ux, ix, null,
@@ -334,7 +334,7 @@ class StudyTest {
     f.resolve("a", t0 + 5 * D, "Fixed");
     final Corpus corpus = f.build();
     final Universe u = Universe.of(corpus);
-    final Universe.Unit unit = u.unit(Universe.Population.IN_PROGRESS, "a");
+    final Universe.Unit unit = u.started("a");
     return new Extractor(new World(u, corpus), Set.of("a")).row(unit,
         Initial.at(u.issue("a"), u.events("a"), null, unit.start()), null,
         new Extractor.At(unit.start(), null, Set.of("r")));

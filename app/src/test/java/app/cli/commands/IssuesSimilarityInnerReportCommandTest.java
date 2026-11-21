@@ -17,6 +17,7 @@ import app.issues.IssueUnit;
 import app.issues.RowCache;
 import app.issues.SimilarityScoring;
 import app.issues.TailCut;
+import app.issues.SplitRule;
 import app.issues.Universe.Population;
 import app.issues.model.Cell;
 import app.pipeline.port.Progress;
@@ -59,7 +60,7 @@ class IssuesSimilarityInnerReportCommandTest {
   /** A context with no port at all but a result store that fails the test if anything is recorded. */
   private static Context context() {
     return new Context(null, null, null, null, null, null, null, null, null, null, null,
-        SilentProgress.INSTANCE, null, (run, rows) -> {
+        SilentProgress.INSTANCE, null, (FreshStore) (run, rows) -> {
           throw new AssertionError("recorded " + run);
         }, null);
   }
@@ -148,7 +149,7 @@ class IssuesSimilarityInnerReportCommandTest {
     final Set<Attribute> later = new LinkedHashSet<>();
     for (final Augmentation.Variant v : List.of(Augmentation.Variant.INNER,
         Augmentation.Variant.OUTER)) {
-      for (final Cell cell : ElasticNetSelection.everyCell(v)) {
+      for (final Cell cell : ElasticNetSelection.everyCell(v, Population.FIRST_COMMIT)) {
         (cell.label().equals(KIKAS_RETROSPECTIVE) ? later : drawn).addAll(cell.attributes());
       }
     }
@@ -190,13 +191,12 @@ class IssuesSimilarityInnerReportCommandTest {
             values.put(a.absenceName(), 0.0);
           }
         }
-        values.put(BusinessDays.BOUNDARY, 4.0);
-        // never sent back to Open or Reopened: active, the whole interval's business days
-        values.put(BusinessDays.ACTIVE, (double) days);
+        values.put(app.issues.FirstCommit.BOUNDARY_COLUMN, 4.0);
+        values.put(app.issues.FirstCommit.TARGET_COLUMN, (double) Math.max(1, days));
         final String id = "i" + n++;
         final Instant start = created.plusSeconds(3600L * 7 * n);
         final Map<Population, String[]> parts = new EnumMap<>(Population.class);
-        parts.put(Population.IN_PROGRESS, part);
+        parts.put(Population.FIRST_COMMIT, part);
         out.add(new RowCache.Entry(new IssueUnit(id, "K-" + id, "p" + p, "r", "e" + (k % 3),
             created, after(start, days), "Fixed", false, start), new Row(id, values, Set.of()),
             parts));
@@ -221,9 +221,9 @@ class IssuesSimilarityInnerReportCommandTest {
     final List<RowCache.Entry> entries = entries(crossing);
     final List<String> columns = new ArrayList<>(new LinkedHashSet<>(entries.stream()
         .flatMap(e -> e.row().values().keySet().stream()).sorted().toList()));
-    RowCache.write(matrix, entries, columns, List.of(Population.IN_PROGRESS));
+    RowCache.write(matrix, entries, columns, List.of(Population.FIRST_COMMIT));
     final List<String> lines = new ArrayList<>(Files.readAllLines(matrix));
-    final int outer = List.of(lines.get(0).split("\t")).indexOf("andamento_externa");
+    final int outer = List.of(lines.get(0).split("\t")).indexOf("primeiro_commit_externa");
     for (int k = 1; k < lines.size(); k++) {
       if (!"TRAIN".equals(lines.get(k).split("\t", -1)[outer])) {
         lines.set(k, lines.get(k).replace("2016-", "never-").replace("\t4.0", "\tfour\tx"));
@@ -231,10 +231,10 @@ class IssuesSimilarityInnerReportCommandTest {
     }
     Files.write(matrix, lines);
     final ElasticNetSelection.Result chosen = ElasticNetSelection.run(BusinessDays.population(
-        RowCache.read(matrix, Population.IN_PROGRESS, "TRAIN"), Augmentation.Variant.INNER)
-        .entries(), 1);
-    Files.write(elasticNet,
-        ElasticNetSelection.parameters(chosen, Sha256.of(matrix)));
+        RowCache.training(matrix, Population.FIRST_COMMIT), Augmentation.Variant.INNER)
+        .entries(), 1, Population.FIRST_COMMIT, SplitRule.REVISED);
+    Files.write(elasticNet, ElasticNetSelection.parameters(chosen, Sha256.of(matrix),
+        Population.FIRST_COMMIT, SplitRule.REVISED));
     return chosen;
   }
 
@@ -276,9 +276,10 @@ class IssuesSimilarityInnerReportCommandTest {
         Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.MODELS));
     final Map<String, String[]> models = byModel(modelLines, "usual_flow");
     final Map<String, String[]> all = byModel(modelLines, "all");
-    assertEquals(14, models.size());
+    // the six models, their forests, the two medians and the analogy estimate
+    assertEquals(15, models.size(), models.keySet().toString());
     assertEquals(models.keySet(), all.keySet());
-    assertEquals(1 + 2 * 14, modelLines.size());
+    assertEquals(1 + 2 * 15, modelLines.size());
     assertEquals(chosen.validationRows(), Integer.parseInt(models.get("global_median")[2]));
     for (final ElasticNetSelection.Model m : chosen.models()) {
       final String name = m.cell().label();
@@ -292,7 +293,7 @@ class IssuesSimilarityInnerReportCommandTest {
     final List<String> predictions =
         Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.PREDICTIONS));
     assertEquals(List.of("id", "key", "project", "observed_business_days", "usual_flow",
-        "has_implementation_commit"), List.of(predictions.get(0).split("\t")).subList(0, 6));
+        "has_java_code"), List.of(predictions.get(0).split("\t")).subList(0, 6));
     final int validation = Integer.parseInt(all.get("global_median")[2]);
     assertEquals(1 + validation, predictions.size());
     assertTrue(chosen.validationRows() < validation, "the fixture's validation has a tail");
@@ -307,13 +308,14 @@ class IssuesSimilarityInnerReportCommandTest {
         + TailCut.label(chosen.cut().k()) + ", fence " + chosen.cut().fence())
         && l.contains("usual flow: k 3.0, fence " + chosen.cut().usualFence())),
         report.toString());
-    assertTrue(report.stream().anyMatch(l -> l.startsWith("- readings: main, usual flow")
-        && l.contains(": " + chosen.validationRows() + " inner validation issues")
-        && l.endsWith(": " + validation)), report.toString());
-    assertTrue(report.contains("## Main reading: the usual flow (" + chosen.validationRows()
-        + " issues)"), report.toString());
-    assertTrue(report.contains("## Complementary reading: all issues (" + validation
-        + " issues)"), report.toString());
+    // the revised design's main reading is every issue; the usual flow is the complementary one
+    assertTrue(report.stream().anyMatch(l -> l.startsWith("- readings: main, all issues")
+        && l.contains(": " + validation + " inner validation issues")
+        && l.endsWith(": " + chosen.validationRows())), report.toString());
+    assertTrue(report.contains("## Main reading: all issues (" + validation + " issues)"),
+        report.toString());
+    assertTrue(report.contains("## Complementary reading: the usual flow ("
+        + chosen.validationRows() + " issues)"), report.toString());
     // the roles of the retrospective readings and of Kikas's, the model the k was chosen on
     assertTrue(report.contains("- kikas_retrospective: "
         + ElasticNetSelection.KIKAS_RETROSPECTIVE_ROLE), report.toString());
@@ -322,11 +324,12 @@ class IssuesSimilarityInnerReportCommandTest {
     assertTrue(report.contains("## SPSP uncertainty context"));
     final List<String> uncertainty = Files.readAllLines(reports.resolve(
         IssuesSimilarityInnerReportCommand.UNCERTAINTY));
-    assertEquals(1 + 2 * 14 * 9 * 6, uncertainty.size());
-    assertEquals(1 + 2 * 14 * 5, Files.readAllLines(reports.resolve(
+    // the fifteen rows of the models file: the analogy estimate among them
+    assertEquals(1 + 2 * 15 * 9 * 6, uncertainty.size());
+    assertEquals(1 + 2 * 15 * 5, Files.readAllLines(reports.resolve(
         IssuesSimilarityInnerReportCommand.PERCENTILES)).size());
     for (final String reading : List.of("usual_flow", "all")) {
-      assertEquals(14, uncertainty.stream().skip(1).map(l -> l.split("\t", -1))
+      assertEquals(15, uncertainty.stream().skip(1).map(l -> l.split("\t", -1))
           .filter(f -> f[0].equals(reading) && f[2].equals("overall")
               && f[9].equals("mae_bd")).count());
       assertTrue(uncertainty.stream().anyMatch(l -> l.startsWith(reading + "\t")
@@ -345,9 +348,9 @@ class IssuesSimilarityInnerReportCommandTest {
         Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.COMPARISONS));
     for (final String reading : List.of("usual_flow\t", "all\t")) {
       assertTrue(comparisons.stream().anyMatch(l -> l.startsWith(reading
-          + "without implementation commit\t")), reading);
+          + "without Java code\t")), reading);
       assertTrue(comparisons.stream().anyMatch(l -> l.startsWith(reading
-          + "with implementation commit\t")), reading);
+          + "with Java code\t")), reading);
     }
     final List<String> agreed = List.of(
         "\town_with_similarity_before_pressure\talzubaidi_start\t",
@@ -368,13 +371,15 @@ class IssuesSimilarityInnerReportCommandTest {
       }
     }
     // the comparisons: 6 agreed pairs, 7 against the global median, 6 against the project
-    // median, then the forests' 6, 6 and 6, per reading
-    assertEquals(2 * 37, comparisons.stream().filter(l -> l.contains("\tall scored\t"))
+    // median, then the forests' 6, 6 and 6, and the analogy estimate against the six start
+    // models and the two medians, per reading
+    assertEquals(2 * 45, comparisons.stream().filter(l -> l.contains("\tall scored\t"))
         .count());
     final List<String> ordering =
         Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.ORDERING));
     assertTrue(ordering.stream().noneMatch(l -> l.contains("\tglobal_median\t")));
-    assertEquals(1 + 2 * (37 - 7 - 6), ordering.size());
+    // no pair with the global median, which ranks nothing: its 7, the forests' 6 and the analogy's
+    assertEquals(1 + 2 * (45 - 7 - 6 - 1), ordering.size());
     for (final String pair : agreed.stream().filter(p -> !p.contains("global_median")).toList()) {
       assertTrue(ordering.stream().anyMatch(l -> l.startsWith("usual_flow" + pair)), pair);
       assertTrue(ordering.stream().anyMatch(l -> l.startsWith("all" + pair)), pair);
@@ -417,7 +422,7 @@ class IssuesSimilarityInnerReportCommandTest {
     assertTrue(ElasticNetSelection.WITH_DISCUSSION_ROLE.startsWith("a CEILING, not a competitor"));
     final List<String> intervals =
         Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.INTERVALS));
-    assertEquals(1 + 2 * 14 * 2 * 5, intervals.size());
+    assertEquals(1 + 2 * 15 * 2 * 5, intervals.size());
     assertTrue(intervals.stream().anyMatch(l -> l.startsWith("usual_flow\tglobal_median\t0.8\t"
         + "all\t")));
     // the bands are the error bands, labels and all; one factor for every band of a model and level
@@ -433,7 +438,7 @@ class IssuesSimilarityInnerReportCommandTest {
     assertEquals(1, forest95.stream().map(f -> f[7]).distinct().count());
     assertEquals(Integer.parseInt(forest95.get(0)[8]), forest95.subList(1, 5).stream()
         .mapToInt(f -> Integer.parseInt(f[8])).sum());
-    assertEquals(1 + 14 * 2,
+    assertEquals(1 + 15 * 2,
         Files.readAllLines(reports.resolve(IssuesSimilarityInnerReportCommand.CALIBRATION)).size());
     // the check reads half B of the validation, a part of it, whole projects
     final int checkedUsual = Integer.parseInt(intervals.stream()
@@ -443,14 +448,14 @@ class IssuesSimilarityInnerReportCommandTest {
         checkedUsual + " of " + chosen.validationRows());
     // nothing of the outer test reaches any file: not one of its issues' keys, bare, anywhere
     final List<java.util.regex.Pattern> outerTest = entries(false).stream()
-        .filter(e -> "TEST".equals(e.outer(Population.IN_PROGRESS)))
+        .filter(e -> "TEST".equals(e.outer(Population.FIRST_COMMIT)))
         .map(e -> java.util.regex.Pattern.compile(
             "(?<![\\w-])" + java.util.regex.Pattern.quote(e.unit().key()) + "(?!\\w)"))
         .toList();
     assertEquals(4 * 8, outerTest.size());
     // the same search finds an inner validation issue's key where it is written
     final String validationKey = entries(false).stream()
-        .filter(e -> "TEST".equals(e.inner(Population.IN_PROGRESS))).findFirst().orElseThrow()
+        .filter(e -> "TEST".equals(e.inner(Population.FIRST_COMMIT))).findFirst().orElseThrow()
         .unit().key();
     assertTrue(java.util.regex.Pattern.compile("(?<![\\w-])"
         + java.util.regex.Pattern.quote(validationKey) + "(?!\\w)").matcher(String.join("\n",
@@ -518,20 +523,20 @@ class IssuesSimilarityInnerReportCommandTest {
   }
 
   /**
-   * Every file of the report of {@link #entries} but the report itself, as the code wrote it
-   * before the final release-lag exclusion, by {@link #ofTheFourteen}. The values below were
-   * recaptured after that deliberate change; the start and literature specifications are unchanged.
+   * Every file of the report of {@link #entries} but the report itself, by {@link #ofTheFourteen},
+   * as the code of 728207b wrote it on the first-commit population under the revised design, the
+   * last code before the In Progress study was removed.
    */
   private static final Map<String, String> FOURTEEN_FINAL = Map.of(
-      IssuesSimilarityInnerReportCommand.PREDICTIONS, "20 aa2d606c",
-      IssuesSimilarityInnerReportCommand.MODELS, "29 fbef30bf",
-      IssuesSimilarityInnerReportCommand.BANDS, "113 8b15b22a",
-      IssuesSimilarityInnerReportCommand.COMPARISONS, "75 6f3d4343",
-      IssuesSimilarityInnerReportCommand.ORDERING, "41 be0883e7",
-      IssuesSimilarityInnerReportCommand.DIAGNOSTICS, "218 9359f121",
-      IssuesSimilarityInnerReportCommand.IMPORTANCE, "116 e31e9cb8",
-      IssuesSimilarityInnerReportCommand.INTERVALS, "281 c0ad28e4",
-      IssuesSimilarityInnerReportCommand.CALIBRATION, "29 3c2cf10b");
+      IssuesSimilarityInnerReportCommand.PREDICTIONS, "21 d47fcc62",
+      IssuesSimilarityInnerReportCommand.MODELS, "31 3a398574",
+      IssuesSimilarityInnerReportCommand.BANDS, "121 3480174a",
+      IssuesSimilarityInnerReportCommand.COMPARISONS, "91 e700342",
+      IssuesSimilarityInnerReportCommand.ORDERING, "55 e266f53f",
+      IssuesSimilarityInnerReportCommand.DIAGNOSTICS, "223 2480d934",
+      IssuesSimilarityInnerReportCommand.IMPORTANCE, "121 5d6788e3",
+      IssuesSimilarityInnerReportCommand.INTERVALS, "301 7f247bd5",
+      IssuesSimilarityInnerReportCommand.CALIBRATION, "31 f4d177d6");
 
   @Test
   @DisplayName("every file of the final fourteen-model report but the report itself is bit for bit")
@@ -590,31 +595,6 @@ class IssuesSimilarityInnerReportCommandTest {
     Files.writeString(matrix, "\n", java.nio.file.StandardOpenOption.APPEND);
     e = assertThrows(CommandFailedException.class, () -> command().run(context()));
     assertTrue(String.join("\n", e.lines()).contains("chosen on another matrix"),
-        e.lines().toString());
-    assertFalse(Files.exists(reports));
-
-    // the same matrix as written before ticket 18, without the active business days, its
-    // parameters made on it: refused, the stage to run again named
-    final Path old = dir.resolve("old.tsv");
-    write(old, elasticNet);
-    final List<String> lines = Files.readAllLines(old);
-    final int active = List.of(lines.get(0).split("\t", -1)).indexOf(BusinessDays.ACTIVE);
-    final List<String> without = new ArrayList<>();
-    for (final String line : lines) {
-      final List<String> fields = new ArrayList<>(List.of(line.split("\t", -1)));
-      if (fields.size() > active) {
-        fields.remove(active);
-      }
-      without.add(String.join("\t", fields));
-    }
-    final String before = Sha256.of(old);
-    Files.write(old, without);
-    Files.writeString(elasticNet, Files.readString(elasticNet)
-        .replace(before, Sha256.of(old)));
-    set(old, elasticNet, reports);
-    e = assertThrows(CommandFailedException.class, () -> command().run(context()));
-    assertTrue(String.join("\n", e.lines()).contains(BusinessDays.ACTIVE)
-        && String.join("\n", e.lines()).contains("issues-in-progress-similarity"),
         e.lines().toString());
     assertFalse(Files.exists(reports));
 

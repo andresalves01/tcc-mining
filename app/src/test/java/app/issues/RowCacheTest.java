@@ -27,7 +27,7 @@ class RowCacheTest {
 
   private static RowCache.Entry entry(final String id, final String outer, final String inner) {
     final Map<Population, String[]> parts = new EnumMap<>(Population.class);
-    parts.put(Population.IN_PROGRESS, new String[] {outer, inner});
+    parts.put(Population.FIRST_COMMIT, new String[] {outer, inner});
     final Instant t = Instant.parse("2016-03-01T10:00:00Z");
     return new RowCache.Entry(new IssueUnit(id, "P-" + id, "p", "r", "d", t,
         t.plusSeconds(86_400 * 3), "Fixed", false, t.plusSeconds(3600)),
@@ -47,7 +47,7 @@ class RowCacheTest {
     final Path path = dir.resolve("matrix.tsv");
     RowCache.write(path, List.of(entry("a", "TRAIN", "TRAIN"), entry("b", "TEST", ""),
         entry("c", "TRAIN", "TEST"), entry("x", "CROSSES", "")), List.of("A01_desc_length"),
-        List.of(Population.IN_PROGRESS));
+        List.of(Population.FIRST_COMMIT));
     final List<String> lines = new ArrayList<>(Files.readAllLines(path));
     for (int k = 1; k < lines.size(); k++) {
       if (lines.get(k).contains("\tTEST\t\t") || lines.get(k).contains("\tCROSSES\t")) {
@@ -64,10 +64,10 @@ class RowCacheTest {
   void readsOnlyOneSideOfTheOuterCut() throws IOException {
     final Path path = corrupted();
     assertThrows(RuntimeException.class, () -> RowCache.read(path));
-    final List<RowCache.Entry> training = RowCache.read(path, Population.IN_PROGRESS, "TRAIN");
+    final List<RowCache.Entry> training = RowCache.read(path, Population.FIRST_COMMIT, "TRAIN");
     assertEquals(List.of("a", "c"), training.stream().map(e -> e.unit().issueId()).toList());
     assertEquals(12.0, training.get(1).row().values().get("A01_desc_length"));
-    assertEquals("TEST", training.get(1).inner(Population.IN_PROGRESS));
+    assertEquals("TEST", training.get(1).inner(Population.FIRST_COMMIT));
     assertEquals(Instant.parse("2016-03-01T11:00:00Z"), training.get(0).unit().startedAt());
   }
 
@@ -78,7 +78,7 @@ class RowCacheTest {
     Files.writeString(path, "id\tchave\tprojeto\trelator\texecutor\tcriada_em\tresolvida_em"
         + "\tmotivo\tmovida\tA01_desc_length\n"
         + "a\tK-1\tp\tr\te\t2016-01-01T00:00:00Z\t2016-01-02T00:00:00Z\tFixed\t0\t1.0\n");
-    assertThrows(IOException.class, () -> RowCache.read(path, Population.IN_PROGRESS, "TRAIN"));
+    assertThrows(IOException.class, () -> RowCache.read(path, Population.FIRST_COMMIT, "TRAIN"));
   }
 
   @Test
@@ -86,7 +86,7 @@ class RowCacheTest {
   void onePopulationPerCache() {
     assertThrows(IllegalArgumentException.class, () -> RowCache.write(dir.resolve("two.tsv"),
         List.of(), List.of("A01_desc_length"),
-        List.of(Population.IN_PROGRESS, Population.FIRST_COMMIT)));
+        List.of(Population.FIRST_COMMIT, Population.FIRST_COMMIT)));
   }
 
   @Test
@@ -102,16 +102,16 @@ class RowCacheTest {
     assertEquals(List.of("a", "b", "c", "x"),
         splits.stream().map(e -> e.unit().issueId()).toList());
     assertEquals(List.of("TRAIN", "TEST", "TRAIN", "CROSSES"),
-        splits.stream().map(e -> e.outer(Population.IN_PROGRESS)).toList());
+        splits.stream().map(e -> e.outer(Population.FIRST_COMMIT)).toList());
     assertEquals(List.of("TRAIN", "", "TEST", ""),
-        splits.stream().map(e -> e.inner(Population.IN_PROGRESS)).toList());
+        splits.stream().map(e -> e.inner(Population.FIRST_COMMIT)).toList());
     assertEquals("P-b", splits.get(1).unit().key());
     assertEquals("p", splits.get(1).unit().project());
     assertEquals(Map.of(), splits.get(1).row().values());
     assertEquals(Instant.parse("2016-03-01T11:00:00Z"), splits.get(1).unit().startedAt());
     assertEquals(null, splits.get(1).unit().createdAt());
-    assertEquals(Population.IN_PROGRESS, RowCache.splitPopulation(path));
-    assertEquals(List.of(Population.IN_PROGRESS), RowCache.splitPopulations(path));
+    assertEquals(Population.FIRST_COMMIT, RowCache.splitPopulation(path));
+    assertEquals(List.of(Population.FIRST_COMMIT), RowCache.splitPopulations(path));
 
     final Path none = dir.resolve("none.tsv");
     RowCache.write(none, List.of(), List.of("A01_desc_length"), List.of());
@@ -129,7 +129,7 @@ class RowCacheTest {
     RowCache.write(path, List.of(entry("a", "TRAIN", "TRAIN"), entry("w", "TRAIN", "CROSSING"),
         entry("y", "CROSSING", "CROSSING"), entry("t", "TEST", ""), entry("v", "TRAIN", "TEST"),
         entry("z", "CROSSING", "TEST")), List.of("A01_desc_length"),
-        List.of(Population.IN_PROGRESS));
+        List.of(Population.FIRST_COMMIT));
     final List<String> lines = new ArrayList<>(Files.readAllLines(path));
     for (int k = 1; k < lines.size(); k++) {
       if (lines.get(k).contains("\tTEST\t\t")) {
@@ -146,17 +146,17 @@ class RowCacheTest {
       + "never parsed beyond its split field; a read by a set of outer verdicts reads those alone")
   void readsTheTrainingSide() throws IOException {
     final Path path = revised();
-    final List<RowCache.Entry> training = RowCache.training(path, Population.IN_PROGRESS);
+    final List<RowCache.Entry> training = RowCache.training(path, Population.FIRST_COMMIT);
     assertEquals(List.of("a", "w", "y", "v", "z"),
         training.stream().map(e -> e.unit().issueId()).toList());
     assertEquals(12.0, training.get(2).row().values().get("A01_desc_length"));
-    assertEquals("CROSSING", training.get(2).inner(Population.IN_PROGRESS));
-    assertEquals(List.of("a", "w", "v"), RowCache.read(path, Population.IN_PROGRESS,
+    assertEquals("CROSSING", training.get(2).inner(Population.FIRST_COMMIT));
+    assertEquals(List.of("a", "w", "v"), RowCache.read(path, Population.FIRST_COMMIT,
         Set.of("TRAIN")).stream().map(e -> e.unit().issueId()).toList());
-    assertEquals(List.of("y", "z"), RowCache.read(path, Population.IN_PROGRESS,
+    assertEquals(List.of("y", "z"), RowCache.read(path, Population.FIRST_COMMIT,
         Set.of("CROSSING")).stream().map(e -> e.unit().issueId()).toList());
-    assertEquals(RowCache.read(path, Population.IN_PROGRESS, Set.of("TRAIN")).stream()
-        .map(e -> e.unit().issueId()).toList(), RowCache.read(path, Population.IN_PROGRESS,
+    assertEquals(RowCache.read(path, Population.FIRST_COMMIT, Set.of("TRAIN")).stream()
+        .map(e -> e.unit().issueId()).toList(), RowCache.read(path, Population.FIRST_COMMIT,
         "TRAIN").stream().map(e -> e.unit().issueId()).toList());
   }
 

@@ -38,103 +38,56 @@ import java.util.Set;
 import java.util.function.Function;
 
 /**
- * The study's test step, outer mode only (see {@link
- * SimilarityScoring}): the fourteen models the inner report scores -- the global and project
+ * The study's test step, outer mode only ({@link SimilarityScoring}): it opens the outer test of
+ * the revised design once. The fifteen models the inner report scores -- the global and project
  * medians, the six Elastic Nets of {@link ElasticNetSelection#MODELS} (the own start model,
  * Al-Zubaidi and Kikas at the start; the retrospective scenario's main reading ({@link
- * Retrospective}), without the comments and the participants, the same with them, a ceiling and
- * not a competitor, and Kikas's retrospective one) and, as a robustness check, the random forest
- * beside each -- refitted on the outer training set with the parameters the selection step
- * wrote, the outer test scored once, every agreed comparison, and the side reading of the
- * retrospective comparison on the issues with an implementation commit. The target is whole
- * business days, on the issues of at least one ({@link BusinessDays}): every row is read with its
- * day boundary from the matrix and any of 0 business days is dropped from the outer training and
- * the outer test before anything is fitted (none since ticket 21, the split being drawn over the
- * issues of at least one); every error, band and comparison is in business days.
+ * Retrospective}), the same with the comments and the participants, a ceiling and not a
+ * competitor, and Kikas's retrospective one), the random forest beside each as a robustness
+ * check, and the analogy estimate ({@link AnalogyEstimate}) -- are refitted on the outer training
+ * set with the parameters the selection step wrote and scored on the outer test, with every
+ * agreed comparison and the side reading on the issues with Java code. The target is whole
+ * business days ({@link BusinessDays}).
  *
- * <p><b>Tail cut</b> (ticket 23; {@link TailCut}). Every model, forest and reference is refitted
- * on the outer training rows at or below the fence of the k the parameters file records, both
- * fences taken on the outer training set, never on the outer test. Every table is printed and
- * recorded twice, each document with its {@code reading}: on the outer test issues at or below
- * the usual flow's fence, and on every one. The usual flow is the main reading and every issue
- * the complementary one, but under the revised temporal design, where every issue is the main
- * reading and is printed and recorded first ({@link TailCut.Reading#main}). The predictions file
- * holds every scored issue; the diagnostics are the usual flow's, the fit being the same in both.
+ * <p><b>Tail cut</b> ({@link TailCut}). Every model, forest and reference is refitted on the outer
+ * training rows at or below the fence of the k the parameters file records, both fences taken on
+ * the outer training set, never on the outer test. Every table is printed and recorded twice: on
+ * every outer test issue, the main reading, first, and on the usual flow.
  *
  * <p><b>Relevance</b> ({@link SimilarityScoring#relevance}). Per Elastic Net model, each
  * standardised column's coefficient in the refit on the outer training set, with its 95%
- * interval from resampling whole projects of the outer training set, printed, written ({@link
- * #RELEVANCE}) and recorded. No forest's permutation importance: shuffling a column among the
- * outer test's issues and reading the rise in error would read the test's labels column by
- * column.
+ * interval from resampling whole projects of the outer training set ({@link #RELEVANCE}). No
+ * forest's permutation importance: it would read the outer test's labels column by column.
  *
- * <p><b>Prediction intervals</b> (ticket 24; {@link PredictionIntervals}). The inner models are
- * refitted as the inner report fits them and calibrated on the whole usual-flow inner validation
- * ({@link SimilarityScoring#calibration}), or, under the revised temporal design, on every inner
- * validation issue, its main reading ({@link PredictionIntervals#calibrationReading}); their
- * factors, one per model and level, are applied to the outer models' predictions, an
- * approximation (item 53 viii), and the coverage, median width, width over the global median's
- * and MAE are printed and recorded per reading, model and level, overall and per band of the
- * observed duration, read after the fact. The bands, the error bands', are cut at the quartiles
- * of the outer training rows fitted. Under the revised design these intervals are shown for
- * comparison and say so: its official intervals are the same-model ones, from {@link
- * IssuesFirstCommitSameModelCalibrationCommand}, run right after this step.
+ * <p><b>Prediction intervals</b> ({@link PredictionIntervals}). The inner models are calibrated on
+ * every inner validation issue ({@link PredictionIntervals#calibrationReading}) and their factors
+ * applied to the outer models' predictions, an approximation shown for comparison: the official
+ * intervals are the same-model ones, from {@link IssuesFirstCommitSameModelCalibrationCommand},
+ * run right after this step.
  *
- * <p><b>The first-commit study's temporal split</b> (its ticket 07). The parameters file's header
- * names the split rule its choices were made under ({@link ElasticNetSelection#headerRule}, the
- * random one when it names none), and a file of another rule than the run's is refused. Under the
- * temporal rule the analogy estimate ({@link AnalogyEstimate}) is the fifteenth model, its column
- * read from the file ({@link ElasticNetSelection#analogy}), never chosen here, its fallback the
- * global median the declared reference learns on the outer training; a temporal file without
- * that choice is refused, and so is a file of another rule with it, where the analogy estimate
- * stays exploratory. The forests are refitted with the file's tree count ({@link
- * ElasticNetSelection#trees}); a temporal file must give it, a random one without it is at {@link
- * Forest#TREES}. Every reading is also given without the issues of new
- * projects, those with issues on the outer test side and none on the outer training side, with
- * their count; with none, the readings without them are the readings themselves and are not
- * repeated. The temporal opening is recorded under {@link #FIRST_COMMIT_TEMPORAL_STAGE} and, as
- * the random one, runs once. The revised design ({@code SPLIT_RULE=revised}) is read as a
- * temporal one, recorded under {@link #FIRST_COMMIT_REVISED_STAGE}, once, and its record never
- * says the outer test is read for the first time: it had been read once under the design of
+ * <p><b>The parameters file.</b> Its header must name the revised rule ({@link
+ * ElasticNetSelection#headerRule}), and it must freeze the analogy estimate's column ({@link
+ * ElasticNetSelection#analogy}) and the forests' tree count ({@link ElasticNetSelection#trees});
+ * nothing is chosen here. Every reading is also given without the issues of new projects. The
+ * opening is recorded under {@link #FIRST_COMMIT_REVISED_STAGE}, once, and its record never says
+ * the outer test is read for the first time: it had been read once under the design of
  * 02/11/2026.
  *
- * <p>Reads MATRIX and ELASTIC_NET_PARAMETERS, which gives per model its alpha and lambda, for
- * the three with the similarity medians the Jaccard n, embedding n and cluster k they read, and
- * its forest's column share and leaf; it chooses nothing. A parameters file without a forest for
- * every model, or written for other models, is refused. Refuses, scoring, writing and recording nothing, unless the parameters file
- * exists and is the step's own, its choices were made on this very matrix (by SHA-256), every
- * row's split is the one the rule the run declares draws ({@link SplitRule}, setting {@code
- * SPLIT_RULE}), and the matrix has every column
- * the models read.
- * Beside the error comparisons, the ordering intervals, a declared measure stated before the
- * outer test was opened ({@link #ORDERING}, {@link ProjectBootstrap#ordering}), printed and
- * recorded. Writes the per-issue predictions, the models' diagnostics and the relevance to
- * REPORT_DIR; records the run,
- * with the SHA-256 of every input and output, the time taken, the hardware and the versions, in
- * ISSUES_DB under its own stage name.
+ * <p>Refuses, scoring, writing and recording nothing, unless the parameters file exists and is the
+ * selection's own, its choices were made on this very matrix (by SHA-256), every row's split is
+ * the revised rule's ({@link SplitRule}), and the matrix has every column the models read.
+ * Beside the error comparisons, the ordering intervals ({@link #ORDERING}, {@link
+ * ProjectBootstrap#ordering}). Writes the per-issue predictions, the models' diagnostics and the
+ * relevance to REPORT_DIR; records the run, with the SHA-256 of every input and output, the time
+ * taken, the hardware and the versions, in ISSUES_DB.
  */
 public final class IssuesSimilarityTestCommand implements CommandRunner {
 
-  public static final String STAGE = "issues-in-progress-similarity-test";
-
-  /**
-   * The step that opens the first-commit study's outer test (its ticket 05): the same scoring on
-   * that population, run once. It refuses when ISSUES_DB already holds a run under this name or
-   * REPORT_DIR already holds predictions.
-   */
-  public static final String FIRST_COMMIT_STAGE = "issues-first-commit-test";
-
-  /**
-   * The step that opens the outer test of the first-commit study's temporal split, recorded under
-   * a name of its own: ISSUES_DB already holds the opening of the random split's, under {@link
-   * #FIRST_COMMIT_STAGE}, and each is opened once.
-   */
-  public static final String FIRST_COMMIT_TEMPORAL_STAGE = "issues-first-commit-test-temporal";
-
   /**
    * The step that reads the outer test of the temporal split's revised design, recorded under a
-   * name of its own: ISSUES_DB already holds the opening of the design of 02/11/2026, under {@link
-   * #FIRST_COMMIT_TEMPORAL_STAGE}, and this one runs once too.
+   * name of its own: the earlier designs' openings are recorded under other names, and this one
+   * runs once too. It refuses when ISSUES_DB already holds a run under this name or REPORT_DIR
+   * already holds predictions.
    */
   public static final String FIRST_COMMIT_REVISED_STAGE = "issues-first-commit-test-revised";
 
@@ -149,15 +102,6 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
   static final String FIRST_COMMIT_REVISED_EXAMINED = "the outer test is the first-commit "
       + "population's temporal split: every issue whose first commit came after the cut, "
       + REVISED_READING + ".";
-
-  /** The first-commit study's outer test, a sentence of its own. */
-  static final String FIRST_COMMIT_EXAMINED = "the outer test is the first-commit population's "
-      + "draw of 30% per project, seed 1738, read for the first time by this run.";
-
-  /** The outer test of the first-commit study's temporal split, a sentence of its own. */
-  static final String FIRST_COMMIT_TEMPORAL_EXAMINED = "the outer test is the first-commit "
-      + "population's temporal split: every issue whose first commit came after the cut, read "
-      + "for the first time by this run.";
 
   /** What the analogy estimate is in the test, for the output and the run record. */
   static final String ANALOGY_RULE = "the analogy estimate, the fifteenth model of the temporal "
@@ -194,9 +138,6 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
   public static final String PERCENTILES = "similarity-test-prediction-percentiles.tsv";
   public static final String UNCERTAINTY_REPORT = "similarity-test-uncertainty.md";
 
-  /** What the outer test is, a sentence of its own (André, 17/10/2026). */
-  static final String EXAMINED = "the outer test is a new draw of 30% per project, seed 1738.";
-
   private static final String EFFORT = "selection effort differs between families: the three "
       + "literature sets (Al-Zubaidi and Kikas at the start, Kikas's retrospective one) chose "
       + "only alpha and lambda on the 3 x 12 grid; the "
@@ -217,19 +158,12 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       + ProjectBootstrap.DRAWS + " draws of whole projects as the error comparisons (seed "
       + ProjectBootstrap.SEED + "); an interval containing zero is a tie";
 
-  /**
-   * Why this step scores no other population: the first-commit study's outer test is opened once,
-   * by a step of its own, with the design frozen and the author's explicit authorisation.
-   */
-  static final String SEALED = "the outer test of the first-commit study is sealed: it is opened "
-      + "once, with the design frozen and the author's explicit authorisation, and this step "
-      + "scores the In Progress study's alone";
 
   /** Where each setting is read from: the environment, then the system properties. */
   private final Function<String, String> settings;
 
-  /** The population this step scores: the In Progress study's, or the first-commit study's. */
-  private final app.issues.Universe.Population study;
+  /** The population this step scores: the first-commit study's. */
+  private final app.issues.Universe.Population study = app.issues.Universe.Population.FIRST_COMMIT;
 
   public IssuesSimilarityTestCommand() {
     this(name -> {
@@ -243,44 +177,22 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
    *     environment of whoever runs them can never be read, let alone scored
    */
   IssuesSimilarityTestCommand(final Function<String, String> settings) {
-    this(settings, app.issues.Universe.Population.IN_PROGRESS);
-  }
-
-  /** The step for {@code study}: the In Progress study's test or the first-commit study's. */
-  IssuesSimilarityTestCommand(final Function<String, String> settings,
-      final app.issues.Universe.Population study) {
     this.settings = settings;
-    this.study = study;
   }
 
   /** The first-commit study's test step, settings from the environment. */
   public static IssuesSimilarityTestCommand firstCommit() {
-    return new IssuesSimilarityTestCommand(name -> {
-      final String fromEnv = System.getenv(name);
-      return fromEnv == null || fromEnv.isBlank() ? System.getProperty(name) : fromEnv;
-    }, app.issues.Universe.Population.FIRST_COMMIT);
+    return new IssuesSimilarityTestCommand();
   }
 
-  private boolean firstCommitStudy() {
-    return study == app.issues.Universe.Population.FIRST_COMMIT;
+  /** The stage the opening is recorded under. */
+  private static String stage(final SplitRule rule) {
+    return FIRST_COMMIT_REVISED_STAGE;
   }
 
-  private String stage(final SplitRule rule) {
-    return !firstCommitStudy() ? STAGE
-        : switch (rule) {
-          case RANDOM -> FIRST_COMMIT_STAGE;
-          case TEMPORAL -> FIRST_COMMIT_TEMPORAL_STAGE;
-          case REVISED -> FIRST_COMMIT_REVISED_STAGE;
-        };
-  }
-
-  private String examined(final SplitRule rule) {
-    return !firstCommitStudy() ? EXAMINED
-        : switch (rule) {
-          case RANDOM -> FIRST_COMMIT_EXAMINED;
-          case TEMPORAL -> FIRST_COMMIT_TEMPORAL_EXAMINED;
-          case REVISED -> FIRST_COMMIT_REVISED_EXAMINED;
-        };
+  /** What the outer test is, in the output and the record. */
+  private static String examined(final SplitRule rule) {
+    return FIRST_COMMIT_REVISED_EXAMINED;
   }
 
   /**
@@ -340,10 +252,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
   }
 
   /** What the run records of the outer test: under the revised design, never a first reading. */
-  private String outerTest(final SplitRule rule) {
-    return !firstCommitStudy() ? "scored"
-        : rule == SplitRule.REVISED ? "scored, " + REVISED_READING
-        : "scored, opened for the first time";
+  private static String outerTest(final SplitRule rule) {
+    return "scored, " + REVISED_READING;
   }
 
   @Override
@@ -351,13 +261,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final Path matrix = path(settings, "MATRIX");
     final Path elasticNet = path(settings, "ELASTIC_NET_PARAMETERS");
     final Path reports = path(settings, "REPORT_DIR");
-    final SplitRule rule;
-    try {
-      rule = SplitRule.declared(settings.apply(SplitRule.SETTING), study);
-    } catch (final IllegalArgumentException e) {
-      throw new CommandFailedException(List.of("  REFUSED, nothing was read, scored, written or "
-          + "recorded: " + e.getMessage()));
-    }
+    final SplitRule rule = SplitRule.REVISED;
     final Path predictionsFile = reports.resolve(PREDICTIONS);
     final Path diagnosticsFile = reports.resolve(DIAGNOSTICS);
     final Path inputsFile = reports.resolve(INPUTS);
@@ -375,51 +279,36 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       }
     }
 
-    // the first-commit study's outer test is sealed (its ticket 05): the In Progress step refuses
-    // its matrix on the header alone, before the parameters, any row or any label is read; the
-    // first-commit step takes only that matrix, and only once
+    // the outer test is opened once, and only on a matrix of the first-commit population's split
     try {
-      if (!firstCommitStudy()) {
-        if (Files.exists(matrix) && RowCache.splitPopulations(matrix)
-            .contains(app.issues.Universe.Population.FIRST_COMMIT)) {
-          throw new CommandFailedException(List.of("  REFUSED, nothing was read, scored, "
-              + "written or recorded: " + matrix + " holds the first-commit population's split; "
-              + SEALED));
-        }
-      } else {
-        IssuesInProgressExtractCommand.requireOwnDatabases(context.config());
-        if (!Files.exists(matrix)
-            || RowCache.splitPopulation(matrix) != app.issues.Universe.Population.FIRST_COMMIT) {
-          throw new CommandFailedException(List.of("  REFUSED, nothing was read, scored, "
-              + "written or recorded: " + matrix + " is not a matrix of the first-commit "
-              + "population's split"));
-        }
-        if (rule.temporal()) {
-          store = IssuesInProgressExtractCommand.runStore(context, study, rule);
-        }
-        if (Files.exists(predictionsFile)) {
-          throw new CommandFailedException(List.of("  REFUSED, nothing was read, scored, "
-              + "written or recorded: " + predictionsFile + " exists; the first-commit study's "
-              + "outer test is opened once"));
-        }
-        final java.util.Optional<Boolean> before =
-            store.recorded(stage(rule));
-        if (before.isEmpty() || before.get()) {
-          throw new CommandFailedException(List.of("  REFUSED, nothing was read, scored, "
-              + "written or recorded: " + (before.isEmpty()
-                  ? "ISSUES_DB cannot tell whether a run of " + stage(rule) + " exists"
-                  : "ISSUES_DB already holds a run of " + stage(rule))
-              + "; the first-commit study's outer test is opened once"));
-        }
-        // the revised design's outer test waits for the whole design: its matrix's extraction
-        // leaves the crossing issues out and its similarity reads point-in-time histories
-        if (rule == SplitRule.REVISED) {
-          final String unready = revisedUnready(store, Sha256.of(matrix));
-          if (unready != null) {
-            throw new CommandFailedException(List.of("  REFUSED, nothing was read, scored, "
-                + "written or recorded: " + unready));
-          }
-        }
+      IssuesInProgressExtractCommand.requireOwnDatabases(context.config());
+      if (!Files.exists(matrix)
+          || RowCache.splitPopulation(matrix) != app.issues.Universe.Population.FIRST_COMMIT) {
+        throw new CommandFailedException(List.of("  REFUSED, nothing was read, scored, "
+            + "written or recorded: " + matrix + " is not a matrix of the first-commit "
+            + "population's split"));
+      }
+      store = IssuesInProgressExtractCommand.runStore(context);
+      if (Files.exists(predictionsFile)) {
+        throw new CommandFailedException(List.of("  REFUSED, nothing was read, scored, "
+            + "written or recorded: " + predictionsFile + " exists; the first-commit study's "
+            + "outer test is opened once"));
+      }
+      final java.util.Optional<Boolean> before =
+          store.recorded(stage(rule));
+      if (before.isEmpty() || before.get()) {
+        throw new CommandFailedException(List.of("  REFUSED, nothing was read, scored, "
+            + "written or recorded: " + (before.isEmpty()
+                ? "ISSUES_DB cannot tell whether a run of " + stage(rule) + " exists"
+                : "ISSUES_DB already holds a run of " + stage(rule))
+            + "; the first-commit study's outer test is opened once"));
+      }
+      // the revised design's outer test waits for the whole design: its matrix's extraction
+      // leaves the crossing issues out and its similarity reads point-in-time histories
+      final String unready = revisedUnready(store, Sha256.of(matrix));
+      if (unready != null) {
+        throw new CommandFailedException(List.of("  REFUSED, nothing was read, scored, "
+            + "written or recorded: " + unready));
       }
     } catch (final IOException | IllegalArgumentException e) {
       throw new CommandFailedException(List.of("  could not read the inputs: " + e));
@@ -455,38 +344,8 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     }
 
     // the split is checked before anything of the matrix is printed, its sizes included
-    final String splitReferenceSetting = settings.apply("SPLIT_REFERENCE_MATRIX");
     final List<String> split;
-    if (splitReferenceSetting == null || splitReferenceSetting.isBlank()) {
-      split = rule.differences(entries, study);
-    } else {
-      final List<RowCache.Entry> reference;
-      try {
-        reference = RowCache.read(Path.of(splitReferenceSetting));
-      } catch (final IOException e) {
-        throw refused("cannot read split reference: " + e);
-      }
-      split = new ArrayList<>(rule.differences(reference, study));
-      if (split.isEmpty()) {
-        final Map<String, RowCache.Entry> byId = new LinkedHashMap<>();
-        for (final RowCache.Entry e : reference) {
-          if (byId.put(e.unit().issueId(), e) != null) {
-            split.add("duplicate issue in split reference: " + e.unit().issueId());
-            break;
-          }
-        }
-        for (final RowCache.Entry e : entries) {
-          final RowCache.Entry original = byId.get(e.unit().issueId());
-          if (original == null || !original.unit().project().equals(e.unit().project())
-              || !original.outer(study).equals(e.outer(study))
-              || !original.inner(study).equals(e.inner(study))) {
-            split.add("scored issue is absent from or moved relative to the full split: "
-                + e.unit().issueId());
-            break;
-          }
-        }
-      }
-    }
+    split = rule.differences(entries, study);
     if (!split.isEmpty()) {
       throw refused(split.get(0));
     }
@@ -496,7 +355,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     }
     final AnalogyEstimate.Frozen analogy = chosen.analogy();
     System.out.printf("%n  DURATION FROM %s -- DESCRIPTION SIMILARITY -- OUTER TEST%n",
-        firstCommitStudy() ? "THE FIRST COMMIT" : "IN PROGRESS");
+        "THE FIRST COMMIT");
     System.out.printf("  matrix read %s  sha256 %s (%,d rows)%n", matrix, matrixSha,
         entries.size());
     System.out.println(choicesLine(elasticNet, elasticNetSha));
@@ -506,7 +365,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     final List<String> missing;
     try {
       missing = IssuesSimilarityElasticNetCommand.missing(ElasticNetSelection.cells(
-          ElasticNetSelection.combinations(choices), Augmentation.Variant.OUTER), columns);
+          ElasticNetSelection.combinations(choices), Augmentation.Variant.OUTER, study), columns);
     } catch (final IllegalArgumentException e) {
       throw refused(e.getMessage());
     }
@@ -526,7 +385,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     }
 
     System.out.printf("%n  NOTE: %s%n  NOTE: %s.%n", examined(rule), EFFORT);
-    final double waitK = IssuesInProgressExtractCommand.matrixWaitFenceK(store, study);
+    final double waitK = IssuesInProgressExtractCommand.matrixWaitFenceK(store);
     System.out.printf("  target: %s; %s%n", BusinessDays.target(entries, waitK),
         BusinessDays.HOLIDAYS);
     System.out.printf("  population: %s%n", BusinessDays.populationRule(entries));
@@ -536,7 +395,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     System.out.printf("  the parameters are read, never chosen; the outer test is scored now%n");
     final long fitting = System.nanoTime();
     // the lower end of the prediction intervals, in business days
-    final int floor = app.issues.AdjustedDuration.marked(entries) ? 0 : 1;
+    final int floor = 1;
     final SimilarityScoring.Readings readings;
     final SimilarityScoring.Readings withoutNew;
     final List<PredictionIntervals.Read> intervals;
@@ -615,7 +474,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     }
     System.out.printf(PredictedBands.BANDS_LINE, BusinessDays.BANDS, BusinessDays.bandLimits(r.bandTops()));
     System.out.printf("  prediction intervals: %s; %s; %s%n",
-        PredictionIntervals.rule(app.issues.AdjustedDuration.marked(entries) ? 0 : 1, rule),
+        PredictionIntervals.rule(1, rule),
         PredictionIntervals.FACTOR, PredictionIntervals.outer(rule));
 
     final List<Map<String, Object>> rows = new ArrayList<>();
@@ -627,7 +486,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     for (final SimilarityScoring.Report reading : scored) {
       System.out.printf("%n  READING: %s%n", readingDescription(reading, rule));
       final List<Map<String, Object>> of = new ArrayList<>();
-      print(reading, of, choices, sidePhrase(), firstCommitStudy());
+      print(reading, of, choices, sidePhrase(), true);
       printIntervals((reading.withoutNewProjects() ? intervalsWithoutNew : intervals).stream()
           .filter(x -> x.reading() == reading.reading()).toList(), reading.bandTops(), of,
           intervalsLabel(rule));
@@ -678,46 +537,27 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
 
     final Map<String, Object> run = new LinkedHashMap<>();
     run.put("stage", stage(rule));
-    if (firstCommitStudy()) {
-      run.put("split_rule", rule.rule());
-      if (rule.temporal()) {
-        run.put(SplitRule.DESIGN_FIELD, rule.setting());
-      }
-    }
+    run.put("split_rule", rule.rule());
+    run.put(SplitRule.DESIGN_FIELD, rule.setting());
     run.put("mode", "outer");
     run.put("outer_test", outerTest(rule));
-    if (firstCommitStudy()) {
-      run.put("outer_test_opened_at", java.time.Instant.now().toString());
-    }
+    run.put("outer_test_opened_at", java.time.Instant.now().toString());
     run.put("models", r.models().stream().map(SimilarityScoring.Scored::name).toList());
     run.putAll(statements());
-    if (rule == SplitRule.REVISED) {
-      // the revised design's official intervals are the same-model step's; these, for comparison
-      run.put("prediction_interval_outer_calibration", PredictionIntervals.outer(rule));
-      run.put("prediction_interval_official", OFFICIAL_INTERVALS);
-    }
+    // the revised design's official intervals are the same-model step's; these, for comparison
+    run.put("prediction_interval_outer_calibration", PredictionIntervals.outer(rule));
+    run.put("prediction_interval_official", OFFICIAL_INTERVALS);
     run.put("outer_test_draw", examined(rule));
-    // the first-commit study's additions (its temporal split's ticket 07); the In Progress
-    // study's record stays as it was
-    if (firstCommitStudy()) {
-      run.put("analogy_estimate", analogy == null
-          ? "absent: not a model of this step under the " + rule.setting() + " split"
-          : analogyRecord(analogy, r, main));
-      run.put("new_projects", newProjects(r, main, withoutNew, rule));
-    }
+    run.put("analogy_estimate", analogy == null
+        ? "absent: not a model of this step under the " + rule.setting() + " split"
+        : analogyRecord(analogy, r, main));
+    run.put("new_projects", newProjects(r, main, withoutNew, rule));
     run.put("target", BusinessDays.target(entries, waitK));
     run.put("population", BusinessDays.populationRule(entries));
     run.put("prediction_intervals",
-        PredictionIntervals.rule(app.issues.AdjustedDuration.marked(entries) ? 0 : 1, rule));
+        PredictionIntervals.rule(1, rule));
     run.put("population_rows", populationRows(population));
     run.put("matrix_sha256", matrixSha);
-    if (splitReferenceSetting != null && !splitReferenceSetting.isBlank()) {
-      try {
-        run.put("split_reference_matrix_sha256", Sha256.of(Path.of(splitReferenceSetting)));
-      } catch (final IOException e) {
-        throw new CommandFailedException(List.of("could not hash split reference: " + e));
-      }
-    }
     run.put("elastic_net_parameters_sha256", elasticNetSha);
     run.put("predictions_sha256", predictionsSha);
     run.put("diagnostics_sha256", diagnosticsSha);
@@ -735,9 +575,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     run.put("spsp_context", UncertaintyTables.context());
     run.put("relevance", RELEVANCE_RULE);
     run.put("forest_grid", IssuesSimilarityElasticNetCommand.forestGrid(chosen.trees()));
-    if (firstCommitStudy()) {
-      run.put("forest_trees", chosen.trees());
-    }
+    run.put("forest_trees", chosen.trees());
     run.put("forest_permutation_importance", "not read: it would read the outer test's labels");
     run.put("candidates", candidates(choices));
     run.put("tail_cut", tailCut(r.fences()));
@@ -747,8 +585,7 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
     run.put("fit_rows", r.fitRows());
     run.put("scored_rows", r.scoredRows());
     run.put("usual_flow_scored_rows", main.scoredRows());
-    run.put(firstCommitStudy() ? "scored_rows_with_java_code"
-        : "scored_rows_with_implementation_commit", r.withCommitRows());
+    run.put("scored_rows_with_java_code", r.withCommitRows());
     run.put("inner_fit_rows", r.innerFitRows());
     run.put("final_lambda", "chosen lambda x fit_rows / inner_fit_rows; alpha as chosen");
     run.put("bootstrap_draws", ProjectBootstrap.DRAWS);
@@ -789,9 +626,9 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       TailCut.Choice cut, app.issues.Universe.Population population, SplitRule rule,
       AnalogyEstimate.Frozen analogy, java.util.OptionalInt givenTrees) {
 
-    /** Every forest's count of trees: the file's, or {@link Forest#TREES} when it gives none. */
+    /** Every forest's count of trees, as the file gives it ({@link #otherDesign} requires it). */
     int trees() {
-      return givenTrees.orElse(Forest.TREES);
+      return givenTrees.getAsInt();
     }
 
     /** What the file freezes beyond the fourteen's choices, as the scoring reads it. */
@@ -858,23 +695,17 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
   static String otherDesign(final Chosen chosen, final SplitRule rule, final Path elasticNet) {
     if (chosen.rule() != rule) {
       return elasticNet + " was written under the split rule " + chosen.rule().setting()
-          + "; this run declares " + rule.setting() + " (" + SplitRule.SETTING + ")";
+          + "; this run declares " + rule.setting();
     }
-    if (rule.temporal() && chosen.analogy() == null) {
+    if (chosen.analogy() == null) {
       return elasticNet + " freezes no choice of the analogy estimate, the fifteenth "
           + "model of the temporal split; the selection of the temporal split must write it "
           + "first";
     }
-    if (rule.temporal() && chosen.givenTrees().isEmpty()) {
+    if (chosen.givenTrees().isEmpty()) {
       return elasticNet + " gives no tree count for the forests (the line "
           + ElasticNetSelection.FOREST_STEP + " " + ElasticNetSelection.EVERY_MODEL
-          + " trees <n>); a file of the temporal split must give it, and only a file of the "
-          + "random split is read at " + Forest.TREES + " trees without it";
-    }
-    if (!rule.temporal() && chosen.analogy() != null) {
-      return elasticNet + " freezes a choice of the analogy estimate, a declared model of "
-          + "the first-commit study's temporal split alone; under the " + rule.setting()
-          + " split it is exploratory and never scored here";
+          + " trees <n>); the revised split's file must give it";
     }
     return null;
   }
@@ -936,19 +767,18 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
 
   /** The scored issues the side reading keeps, in words. */
   private String sidePhrase() {
-    return firstCommitStudy() ? "with Java code" : "with at least one implementation commit";
+    return "with Java code";
   }
 
   /** What the run record states about the test it scores. */
   static Map<String, Object> statements() {
     final Map<String, Object> out = new LinkedHashMap<>();
-    out.put("outer_test_draw", EXAMINED);
     out.put("selection_effort", EFFORT);
     out.put("ordering_intervals", ORDERING);
     out.put("prediction_intervals", PredictionIntervals.RULE);
     out.put("prediction_interval_factor", PredictionIntervals.FACTOR);
-    out.put("prediction_interval_outer_calibration", PredictionIntervals.OUTER);
-    out.putAll(IssuesSimilarityElasticNetCommand.statements());
+    out.putAll(IssuesSimilarityElasticNetCommand.statements(
+        app.issues.Universe.Population.FIRST_COMMIT));
     return out;
   }
 
@@ -1278,16 +1108,10 @@ public final class IssuesSimilarityTestCommand implements CommandRunner {
       + PredictionIntervals.SAME_MODEL + "; the intervals of this step are the approximation, "
       + "shown for comparison";
 
-  /** What the interval tables of the test step are under {@code rule}, in their heading. */
+  /** What the interval tables of the test step are, in their heading. */
   static String intervalsLabel(final SplitRule rule) {
-    return rule == SplitRule.REVISED ? "the approximation, for comparison; the official "
-        + "intervals are " + IssuesFirstCommitSameModelCalibrationCommand.STAGE + "'s"
-        : "an approximation";
-  }
-
-  static void printIntervals(final List<PredictionIntervals.Read> reads,
-      final double[] tops, final List<Map<String, Object>> rows) {
-    printIntervals(reads, tops, rows, intervalsLabel(SplitRule.RANDOM));
+    return "the approximation, for comparison; the official intervals are "
+        + IssuesFirstCommitSameModelCalibrationCommand.STAGE + "'s";
   }
 
   /** The interval tables, headed as {@code label} says what they are. */

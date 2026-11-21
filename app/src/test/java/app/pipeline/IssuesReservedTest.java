@@ -54,7 +54,7 @@ class IssuesReservedTest {
         final String id = "i" + (n++);
         final Map<Population, String[]> parts = new EnumMap<>(Population.class);
         if (part != null) {
-          parts.put(Population.IN_PROGRESS, part);
+          parts.put(Population.FIRST_COMMIT, part);
         }
         out.add(new RowCache.Entry(new IssueUnit(id, "K-" + id, "p" + p, "r", "e" + (k % 3),
             t0, t0.plusMillis((long) (hours * 3_600_000)), "Fixed", k % 7 == 0,
@@ -68,7 +68,7 @@ class IssuesReservedTest {
   @Test
   @DisplayName("the reserved mode fits on the whole outer training side and scores only the test")
   void reservedSides() {
-    final Fitting.Sides s = Fitting.sides(corpus(), Fitting.Mode.RESERVED, Population.IN_PROGRESS);
+    final Fitting.Sides s = Fitting.sides(corpus(), Fitting.Mode.RESERVED, Population.FIRST_COMMIT);
     assertEquals(6 * 30, s.fitUnits().size(), "inner fit and inner validation both train");
     assertEquals(6 * 10, s.scoreUnits().size(), "rows outside the population are in neither");
   }

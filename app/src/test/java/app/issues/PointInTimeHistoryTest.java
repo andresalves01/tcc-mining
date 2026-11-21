@@ -210,9 +210,6 @@ class PointInTimeHistoryTest {
       assertEquals(20.0, r.columns().get("q").get(Augmentation.jaccard(n, Variant.INNER)),
           "a filter after the 20 nearest would have left none: n " + n);
     }
-    // the whole side reads the late ones instead
-    final Augmentation.Result whole = run(rows, Histories.WHOLE_SIDE);
-    assertEquals(202.0, whole.columns().get("q").get(Augmentation.jaccard(5, Variant.INNER)));
 
     // on the random corpus, every row's neighbours are the brute-force nearest of the admitted
     final List<Augmentation.Issue> corpus = temporal(3);
@@ -285,39 +282,6 @@ class PointInTimeHistoryTest {
       assertEquals(100.0, r.columns().get("t").get(Augmentation.embedding(5, v)), v.toString());
       assertEquals(100.0, r.columns().get("t").get(Augmentation.reporter(v)), v.toString());
     }
-    // the whole side reads "later" at the outer level
-    final Augmentation.Result whole = run(rows, Histories.WHOLE_SIDE);
-    assertEquals(299.5, whole.columns().get("t").get(Augmentation.jaccard(5, Variant.OUTER)));
-  }
-
-  @Test
-  @DisplayName("clusters: the centres, the fits and every row's nearest centre are those of the "
-      + "whole side; only the members a median reads are filtered")
-  void centresUnchanged() {
-    final List<Augmentation.Issue> rows = temporal(11);
-    final Augmentation.Result whole = run(rows, Histories.WHOLE_SIDE);
-    final Augmentation.Result point = run(rows, Histories.POINT_IN_TIME);
-    assertEquals(whole.clusterFits(), point.clusterFits(), "the same fits, members included");
-    for (int f = 0; f < whole.clusterFits().size(); f++) {
-      assertEquals(Double.doubleToLongBits(whole.clusterFits().get(f).distortion()),
-          Double.doubleToLongBits(point.clusterFits().get(f).distortion()));
-    }
-    final Map<String, Augmentation.ClusterQuery> before = new HashMap<>();
-    whole.clusterQueries().forEach(q -> before.put(q.id() + q.variant() + q.k(), q));
-    int compared = 0;
-    boolean fewer = false;
-    for (final Augmentation.ClusterQuery q : point.clusterQueries()) {
-      final Augmentation.ClusterQuery p = before.get(q.id() + q.variant() + q.k());
-      if (p == null) {
-        continue;
-      }
-      assertEquals(p.cluster(), q.cluster(), q.toString());
-      assertEquals(Double.doubleToLongBits(p.distance()), Double.doubleToLongBits(q.distance()));
-      fewer |= q.members() < p.members();
-      compared++;
-    }
-    assertTrue(compared > 500, "rows compared: " + compared);
-    assertTrue(fewer, "the filter left members out of some median");
   }
 
   @Test
@@ -370,7 +334,6 @@ class PointInTimeHistoryTest {
     assertTrue(r.clusterQueries().stream().filter(q -> q.variant() == Variant.INNER
         && "TEST".equals(byId.get(q.id()).outer())).allMatch(q -> q.split().equals("outer_test")));
     assertEquals(2 * Augmentation.CLUSTER_K.size(), r.clusterFits().size(), "no new fit");
-    assertEquals(run(rows, Histories.WHOLE_SIDE).clusterFits(), r.clusterFits());
     assertTrue(r.coverage().stream().anyMatch(c -> c.by().equals("split")
         && c.group().equals("outer_test") && c.column().endsWith(Variant.INNER.suffix())
         && c.rows() == tests.size()));
@@ -445,25 +408,6 @@ class PointInTimeHistoryTest {
       }
     }
     assertTrue(compared > 1_000, "outer values compared: " + compared);
-  }
-
-  @Test
-  @DisplayName("the whole side, as every rule but the revised one reads: the outer test has no "
-      + "inner column, and the four-argument run is the whole side's")
-  void wholeSideUnchanged() {
-    final List<Augmentation.Issue> rows = temporal(19);
-    final Augmentation.Result whole = run(rows, Histories.WHOLE_SIDE);
-    for (final Augmentation.Issue i : rows) {
-      if ("TEST".equals(i.outer())) {
-        assertTrue(whole.columns().get(i.id()).keySet().stream()
-            .noneMatch(c -> c.endsWith(Variant.INNER.suffix())), i.id());
-      }
-    }
-    assertTrue(whole.queries().stream().noneMatch(q -> q.variant() == Variant.INNER
-        && q.split().equals("outer_test")));
-    final Augmentation.Result plain = Augmentation.run(rows, fake, DIMENSION, new SmileKMeans());
-    assertEquals(whole, plain);
-    assertFalse(whole.equals(run(rows, Histories.POINT_IN_TIME)));
   }
 
   @Test

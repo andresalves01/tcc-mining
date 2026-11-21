@@ -6,12 +6,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import app.issues.Augmentation;
 import app.issues.ElasticNetSelection;
+import app.issues.SplitRule;
+import app.issues.Universe.Population;
 import app.issues.model.Cell;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import app.pipeline.port.SilentProgress;
 
 /** Which files the Elastic Net step may write over, and which matrices it refuses. */
 class IssuesSimilarityElasticNetCommandTest {
@@ -22,7 +23,8 @@ class IssuesSimilarityElasticNetCommandTest {
       + "models before ticket 12, not one of the six models before the retrospective one, not "
       + "one of the eleven models before the fourteen")
   void overwritesOnlyItsOwnFile() {
-    final List<String> own = List.of(ElasticNetSelection.HEADER,
+    final List<String> own = List.of(ElasticNetSelection.header(Population.FIRST_COMMIT,
+        SplitRule.REVISED),
         "# step\tname\tparameter\tvalue",
         "elastic-net\tinputs\tmatrix_sha256\tab12",
         "elastic-net\town_with_similarity_before_pressure\talpha\t0.5",
@@ -97,9 +99,9 @@ class IssuesSimilarityElasticNetCommandTest {
     final java.nio.file.Path parameters = dir.resolve("elastic-net.tsv");
     final java.util.Map<String, String> settings = java.util.Map.of("MATRIX", matrix.toString(),
         "ELASTIC_NET_PARAMETERS", parameters.toString());
-    final app.cli.Context context = new app.cli.Context(null, null, null, null, null, null, null,
-        null, null, null, null, app.pipeline.port.SilentProgress.INSTANCE, null,
-        (run, rows) -> {
+    final app.cli.Context context = new app.cli.Context(OwnDatabases.config(), null, null, null,
+        null, null, null, null, null, null, null, app.pipeline.port.SilentProgress.INSTANCE, null,
+        (FreshStore) (run, rows) -> {
           throw new AssertionError("recorded " + run);
         }, null);
     final java.io.PrintStream out = System.out;
@@ -114,7 +116,8 @@ class IssuesSimilarityElasticNetCommandTest {
       System.setOut(out);
     }
     final String why = String.join("\n", e.lines());
-    assertTrue(why.contains("not at the verdicts of the split's rule"), why);
+    // the moved row is on the training side by the rule, and the matrix marks it TEST
+    assertTrue(why.contains("is on the training side by the rule"), why);
     assertFalse(printed.toString(java.nio.charset.StandardCharsets.UTF_8).contains("outer test"));
     assertFalse(java.nio.file.Files.exists(parameters), "nothing was written");
   }
@@ -127,7 +130,9 @@ class IssuesSimilarityElasticNetCommandTest {
     final List<String> columns = new ArrayList<>(app.issues.Attributes.stored());
     columns.addAll(app.issues.Extractor.TEAM_REVISED);
     columns.addAll(app.pipeline.IssuesSimilarityTask.columns());
-    final List<Cell> every = ElasticNetSelection.everyCell(Augmentation.Variant.INNER);
+    columns.addAll(app.issues.FirstCommit.ATTRIBUTE_COLUMNS);
+    final List<Cell> every = ElasticNetSelection.everyCell(Augmentation.Variant.INNER,
+        Population.FIRST_COMMIT);
     assertEquals(27 * 6, every.size());
     // the similarity stage's matrix lacks the retrospective columns, named in the models' order:
     // the main reading's, then the comments and the participants the ceiling adds

@@ -50,10 +50,7 @@ public final class RowCache {
 
   /** The prefix of a population's two partition columns. */
   static String prefix(final Population p) {
-    return switch (p) {
-      case IN_PROGRESS -> "andamento";
-      case FIRST_COMMIT -> "primeiro_commit";
-    };
+    return "primeiro_commit";
   }
 
   private static String text(final String s) {
@@ -62,8 +59,8 @@ public final class RowCache {
 
   /**
    * One cache for the given populations. The start instant is written when a population's duration
-   * does not start at creation, as neither {@link Population#IN_PROGRESS}'s nor {@link
-   * Population#FIRST_COMMIT}'s does; a cache holds the start of one population only.
+   * does not start at creation, as {@link Population#FIRST_COMMIT}'s does not; a cache holds the
+   * start of one population only.
    */
   public static void write(final Path path, final List<Entry> entries, final List<String> columns,
       final List<Population> populations) throws IOException {

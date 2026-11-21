@@ -45,25 +45,23 @@ public final class MongoIssuesStore implements ResultStore {
     this.results = RESULTS + suffix;
   }
 
-  /**
-   * The random design's runs in {@code runs} and {@code results}, as always; another design's in
-   * the same names with its suffix ({@link SplitRule#collectionSuffix}), such as {@code
-   * runs_temporal}.
-   */
+  /** The design's runs in {@code runs} and {@code results} with its suffix, {@code _revised}. */
   @Override
   public ResultStore design(final SplitRule rule) {
     return new MongoIssuesStore(database, rule.collectionSuffix());
   }
 
-  /** The design of every run in this store's run collection; reads two fields of each. */
+  /** The runs of another design in this store's run collection; reads two fields of each. */
   @Override
-  public java.util.Optional<java.util.Set<SplitRule>> designs() {
-    final java.util.Set<SplitRule> out = java.util.EnumSet.noneOf(SplitRule.class);
+  public java.util.Optional<Long> otherDesignRuns() {
+    long others = 0;
     for (final Document d : database.getCollection(runs).find()
         .projection(new Document(SplitRule.DESIGN_FIELD, 1).append(SplitRule.RULE_FIELD, 1))) {
-      out.add(SplitRule.recordedBy(d));
+      if (!SplitRule.recordedBy(d)) {
+        others++;
+      }
     }
-    return java.util.Optional.of(out);
+    return java.util.Optional.of(others);
   }
 
   /** The k of the latest first-commit extraction run in this store's run collection. */

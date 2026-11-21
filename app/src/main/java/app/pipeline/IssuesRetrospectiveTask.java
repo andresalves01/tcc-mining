@@ -70,22 +70,11 @@ public final class IssuesRetrospectiveTask {
   private final Progress progress;
   private final Function<List<RowCache.Entry>, List<String>> split;
 
-  public IssuesRetrospectiveTask(final StudySource source, final ChangedMethodSource methods,
-      final Progress progress) {
-    this(source, methods, progress, Population.IN_PROGRESS);
-  }
-
   /**
-   * The same for the matrix of {@code population}. For {@link Population#FIRST_COMMIT} the start
-   * t0 is the matrix's, the first commit that counts, and the target is the extraction's ({@link
+   * The matrix of {@code population}, its split checked against {@code rule}: the start t0 is the
+   * matrix's, the first commit that counts, and the target is the extraction's ({@link
    * BusinessDays#columns}).
    */
-  public IssuesRetrospectiveTask(final StudySource source, final ChangedMethodSource methods,
-      final Progress progress, final Population population) {
-    this(source, methods, progress, population, SplitRule.RANDOM);
-  }
-
-  /** The same, the split checked against {@code rule}, the one the run declares. */
   public IssuesRetrospectiveTask(final StudySource source, final ChangedMethodSource methods,
       final Progress progress, final Population population, final SplitRule rule) {
     this(source, methods, progress, e -> rule.differences(e, population), population);
@@ -96,12 +85,6 @@ public final class IssuesRetrospectiveTask {
    *
    * @param split why the matrix's verdicts are not the split's, empty when they are
    */
-  IssuesRetrospectiveTask(final StudySource source, final ChangedMethodSource methods,
-      final Progress progress, final Function<List<RowCache.Entry>, List<String>> split) {
-    this(source, methods, progress, split, Population.IN_PROGRESS);
-  }
-
-  /** The same for the matrix of {@code population}. */
   IssuesRetrospectiveTask(final StudySource source, final ChangedMethodSource methods,
       final Progress progress, final Function<List<RowCache.Entry>, List<String>> split,
       final Population population) {
@@ -146,13 +129,9 @@ public final class IssuesRetrospectiveTask {
       }
     }
     if (!unknown.isEmpty()) {
-      return refused(List.of(population == Population.IN_PROGRESS
-          ? String.format("%,d issues of the matrix are not In-Progress issues of the corpus "
-              + "with the same first In Progress and first resolution, the first %s",
-              unknown.size(), unknown.get(0))
-          : String.format("%,d issues of the matrix are not issues of the corpus with the same "
-              + "creation and first resolution and a start between them, the first %s",
-              unknown.size(), unknown.get(0))));
+      return refused(List.of(String.format("%,d issues of the matrix are not issues of the "
+          + "corpus with the same creation and first resolution and a start between them, the "
+          + "first %s", unknown.size(), unknown.get(0))));
     }
 
     progress.phase(2, 4, "implementation commits of %,d issues", entries.size());
@@ -192,17 +171,11 @@ public final class IssuesRetrospectiveTask {
 
   /**
    * The unit the nine columns are read for, its start the matrix's; null when the corpus does not
-   * hold the issue as the matrix has it. For {@link Population#IN_PROGRESS}, the In-Progress unit
-   * with the same first In Progress and first resolution. For {@link Population#FIRST_COMMIT}, the
-   * issue of the universe with the same creation and first resolution, started at the matrix's
-   * first commit, which must lie strictly between them ({@link IssuesSimilarityTask#heldAsIs}).
+   * hold the issue as the matrix has it: the issue of the universe with the same creation and first
+   * resolution, started at the matrix's first commit, which must lie strictly between them ({@link
+   * IssuesSimilarityTask#heldAsIs}).
    */
   private Universe.Unit unit(final Universe universe, final RowCache.Entry e) {
-    if (population == Population.IN_PROGRESS) {
-      final Universe.Unit u = universe.unit(population, e.unit().issueId());
-      return u == null || u.start() != e.unit().startedAt().toEpochMilli()
-          || u.resolved() != e.unit().resolvedAt().toEpochMilli() ? null : u;
-    }
     if (!IssuesSimilarityTask.heldAsIs(universe, e)) {
       return null;
     }
@@ -213,13 +186,9 @@ public final class IssuesRetrospectiveTask {
 
   /**
    * Per inner side, fitting then validation, on its issues of at least one business day, the rows
-   * with each of the nine observed. Only rows of the outer training set are read.
+   * with each of the nine observed, under the split of {@code split}. Only rows of the outer
+   * training set are read.
    */
-  static List<Coverage> coverage(final List<RowCache.Entry> entries) {
-    return coverage(entries, Population.IN_PROGRESS);
-  }
-
-  /** The same under the split of {@code split}. */
   static List<Coverage> coverage(final List<RowCache.Entry> entries, final Population split) {
     final BusinessDays.Population population = BusinessDays.population(entries.stream()
         .filter(e -> Verdict.outerTraining(e.outer(split))).toList(), Augmentation.Variant.INNER);

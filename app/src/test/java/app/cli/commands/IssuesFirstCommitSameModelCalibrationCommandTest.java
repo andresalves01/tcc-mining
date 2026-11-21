@@ -82,18 +82,12 @@ class IssuesFirstCommitSameModelCalibrationCommandTest {
     }
 
     @Override
-    public Optional<Set<SplitRule>> designs() {
-      return Optional.of(random.stream().map(SplitRule::recordedBy).collect(Collectors.toSet()));
+    public Optional<Long> otherDesignRuns() {
+      return Optional.of(random.stream().filter(r -> !SplitRule.recordedBy(r)).count());
     }
 
     @Override
     public ResultStore design(final SplitRule rule) {
-      if (rule == SplitRule.RANDOM) {
-        return this;
-      }
-      if (rule != SplitRule.REVISED) {
-        throw new UnsupportedOperationException(rule.setting());
-      }
       return new ResultStore() {
         @Override
         public String record(final Map<String, Object> run,
@@ -111,9 +105,8 @@ class IssuesFirstCommitSameModelCalibrationCommandTest {
         }
 
         @Override
-        public Optional<Set<SplitRule>> designs() {
-          return Optional.of(revised.stream().map(SplitRule::recordedBy)
-              .collect(Collectors.toSet()));
+        public Optional<Long> otherDesignRuns() {
+          return Optional.of(revised.stream().filter(r -> !SplitRule.recordedBy(r)).count());
         }
 
         @Override
@@ -145,11 +138,10 @@ class IssuesFirstCommitSameModelCalibrationCommandTest {
     final Map<String, String> settings = new HashMap<>();
     settings.put("MATRIX", matrix.toString());
     settings.put("ELASTIC_NET_PARAMETERS", parameters.toString());
-    settings.put(SplitRule.SETTING, "revised");
     settings.put("REPORT_DIR", testDir.toString());
     final Store store = new Store(OPENED);
     new IssuesSimilarityElasticNetCommand(settings::get).run(context(store));
-    new IssuesSimilarityTestCommand(settings::get, Population.FIRST_COMMIT).run(context(store));
+    new IssuesSimilarityTestCommand(settings::get).run(context(store));
     assertEquals(IssuesSimilarityTestCommand.FIRST_COMMIT_REVISED_STAGE,
         OPENED.getLast().get("stage"));
   }
@@ -166,7 +158,6 @@ class IssuesFirstCommitSameModelCalibrationCommandTest {
     settings.put("TEST_PREDICTIONS",
         testDir.resolve(IssuesSimilarityTestCommand.PREDICTIONS).toString());
     settings.put("REPORT_DIR", report.toString());
-    settings.put(SplitRule.SETTING, "revised");
     return settings;
   }
 
@@ -376,8 +367,7 @@ class IssuesFirstCommitSameModelCalibrationCommandTest {
 
   @Test
   @DisplayName("refuses, writing and recording nothing: a REPORT_DIR that exists or is or lies "
-      + "in the test step's folder, a rule other than the revised one, a matrix the parameters "
-      + "were not made on")
+      + "in the test step's folder, a matrix the parameters were not made on")
   void refusals() throws Exception {
     final Map<String, String> before = snapshot(testDir);
     final Store store = opened();
@@ -388,15 +378,6 @@ class IssuesFirstCommitSameModelCalibrationCommandTest {
     assertTrue(refused(settings(testDir), store).contains("the test step's REPORT_DIR"));
     assertTrue(refused(settings(testDir.resolve("inside")), store)
         .contains("the test step's REPORT_DIR"));
-
-    for (final String rule : List.of("temporal", "random")) {
-      final Map<String, String> s = settings(dir.resolve("out-" + rule));
-      s.put(SplitRule.SETTING, rule);
-      assertTrue(refused(s, store).contains("the revised design alone"), rule);
-    }
-    final Map<String, String> unset = settings(dir.resolve("out-unset"));
-    unset.remove(SplitRule.SETTING);
-    assertTrue(refused(unset, store).contains("the revised design alone"));
 
     final Map<String, String> other = settings(dir.resolve("out-other"));
     other.put("MATRIX", SelectionFixture.temporal(dir.resolve("other.tsv"), 1).toString());

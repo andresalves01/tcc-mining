@@ -159,20 +159,12 @@ class TailCutTest {
   }
 
   @Test
-  @DisplayName("the main reading is all issues under the revised temporal design and the usual "
-      + "flow under every other rule; each reading's words say so, the older designs' unchanged")
+  @DisplayName("the main reading is all issues, first, and the usual flow the complementary one; "
+      + "each reading's words say so")
   void mainReadingByRule() {
     assertSame(TailCut.Reading.ALL, TailCut.Reading.main(SplitRule.REVISED));
-    for (final SplitRule rule : List.of(SplitRule.RANDOM, SplitRule.TEMPORAL)) {
-      assertSame(TailCut.Reading.USUAL_FLOW, TailCut.Reading.main(rule), rule.setting());
-      for (final TailCut.Reading reading : TailCut.Reading.values()) {
-        assertEquals(reading.description(), reading.description(rule), rule.setting());
-      }
-    }
-    assertEquals("usual flow (main reading): the scored issues at or below the k = 3 fence",
-        TailCut.Reading.USUAL_FLOW.description());
-    assertEquals("all issues (complementary reading): every scored issue, those above the k = 3 "
-        + "fence included", TailCut.Reading.ALL.description());
+    assertEquals(List.of(TailCut.Reading.ALL, TailCut.Reading.USUAL_FLOW),
+        TailCut.Reading.ordered(SplitRule.REVISED));
     assertEquals("usual flow (complementary reading): the scored issues at or below the k = 3 "
         + "fence", TailCut.Reading.USUAL_FLOW.description(SplitRule.REVISED));
     assertEquals("all issues (main reading): every scored issue, those above the k = 3 fence "

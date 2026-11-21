@@ -30,9 +30,9 @@ import java.util.Set;
  *       labelled funnel ({@code issue_label}) with the first linked commit no later than the
  *       resolution, one per key. The units are the history the columns and the Blocker pace read;
  *       dropping some would move those columns.
- *   <li><b>Population.</b> {@link Population#IN_PROGRESS}: the units whose reason is Fixed with a
- *       status change to In Progress in [creation, first resolution); their duration starts at the
- *       first such change.
+ *   <li><b>First In Progress.</b> The units whose reason is Fixed with a status change to In
+ *       Progress in [creation, first resolution) have a second unit starting at the first such
+ *       change ({@link #started}), which the first-commit study's supporting numbers read.
  * </ul>
  */
 public final class Universe {
@@ -42,11 +42,6 @@ public final class Universe {
 
   /** The study's population. */
   public enum Population {
-    /**
-     * The issues resolved as Fixed at the first resolution with a status change to In Progress in
-     * [creation, first resolution); their duration starts at the first such change.
-     */
-    IN_PROGRESS,
     /**
      * The first-commit population ({@link FirstCommit}): the issues resolved as Fixed at the first
      * resolution whose duration starts at their first commit that counts. It is built from the
@@ -66,7 +61,7 @@ public final class Universe {
    * One issue with its outcome, as every later stage sees it.
    *
    * @param start where the duration starts: the creation for a unit of the history, the first In
-   *     Progress in {@link Population#IN_PROGRESS}
+   *     Progress for one of {@link #started}
    * @param startedBy the raw author of the change that started it, null when it is the creation
    */
   public record Unit(String id, String key, String project, String reporter, long created,
@@ -84,18 +79,15 @@ public final class Universe {
   private final Map<String, List<Corpus.Event>> changelog;
   private final List<String> universe;
   private final Map<String, Unit> units;
-  private final List<String> inProgress;
   private final Map<String, Unit> started;
 
   private Universe(final Map<String, Corpus.Issue> issues,
       final Map<String, List<Corpus.Event>> changelog, final List<String> universe,
-      final Map<String, Unit> units, final List<String> inProgress,
-      final Map<String, Unit> started) {
+      final Map<String, Unit> units, final Map<String, Unit> started) {
     this.issues = issues;
     this.changelog = changelog;
     this.universe = universe;
     this.units = units;
-    this.inProgress = inProgress;
     this.started = started;
   }
 
@@ -164,9 +156,8 @@ public final class Universe {
       }
     }
 
-    // the population: the Fixed units with an In Progress before their first resolution
+    // the Fixed units with an In Progress before their first resolution, started there
     final Map<String, Unit> started = new HashMap<>();
-    final List<String> inProgress = new ArrayList<>();
     for (final String id : fixed) {
       final Unit u = units.get(id);
       final Corpus.Event e =
@@ -174,11 +165,9 @@ public final class Universe {
       if (e != null) {
         started.put(id, new Unit(id, u.key(), u.project(), u.reporter(), u.created(),
             u.resolved(), u.reason(), u.moved(), e.at(), e.author()));
-        inProgress.add(id);
       }
     }
-    return new Universe(issues, changelog, List.copyOf(universe), units, List.copyOf(inProgress),
-        started);
+    return new Universe(issues, changelog, List.copyOf(universe), units, started);
   }
 
   /** The first status change to In Progress with its instant in {@code [from, to)}, or null. */
@@ -299,28 +288,17 @@ public final class Universe {
     return universe;
   }
 
-  /** The units of {@link Population#IN_PROGRESS}; refuses any other population. */
-  public List<Unit> population(final Population population) {
-    requireInProgress(population);
-    return inProgress.stream().map(started::get).toList();
-  }
-
   /** The unit of an issue in the history, its duration from creation; null without one. */
   public Unit unit(final String id) {
     return units.get(id);
   }
 
-  /** The unit of an issue in the population: it starts at the first In Progress. */
-  public Unit unit(final Population population, final String id) {
-    requireInProgress(population);
+  /**
+   * The unit of an issue resolved as Fixed that was moved to In Progress before its first
+   * resolution, starting at the first such move; null for any other issue.
+   */
+  public Unit started(final String id) {
     return started.get(id);
-  }
-
-  private static void requireInProgress(final Population population) {
-    if (population != Population.IN_PROGRESS) {
-      throw new IllegalArgumentException(population + " is not built from the changelog: the "
-          + "extraction builds it");
-    }
   }
 
   public Corpus.Issue issue(final String id) {

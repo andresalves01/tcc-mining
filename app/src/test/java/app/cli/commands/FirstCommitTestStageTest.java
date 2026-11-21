@@ -50,13 +50,24 @@ class FirstCommitTestStageTest {
         SilentProgress.INSTANCE, null, store, null);
   }
 
-  /** A store that tells whether the step ran, and keeps what it records. */
-  private static class Store implements ResultStore {
+  /** The revised design's earlier runs for the fixture's matrix, once it is written. */
+  private List<Map<String, Object>> upstream = List.of();
+
+  /**
+   * A store that tells whether the step ran, holds the revised design's earlier runs, and keeps
+   * what it records.
+   */
+  private class Store implements FreshStore {
     final List<Map<String, Object>> runs = new ArrayList<>();
     final Optional<Boolean> before;
 
     Store(final Optional<Boolean> before) {
       this.before = before;
+    }
+
+    @Override
+    public Optional<List<Map<String, Object>>> recordedRuns(final String stage) {
+      return RevisedUpstream.runs(upstream, stage);
     }
 
     @Override
@@ -67,7 +78,7 @@ class FirstCommitTestStageTest {
 
     @Override
     public Optional<Boolean> recorded(final String stage) {
-      assertEquals(IssuesSimilarityTestCommand.FIRST_COMMIT_STAGE, stage);
+      assertEquals(IssuesSimilarityTestCommand.FIRST_COMMIT_REVISED_STAGE, stage);
       return runs.isEmpty() ? before : Optional.of(true);
     }
   }
@@ -77,15 +88,16 @@ class FirstCommitTestStageTest {
   /** The fixture's first-commit matrix and the selection's parameters chosen on it. */
   private void selected() throws Exception {
     final Path matrix = SelectionFixture.write(dir.resolve("matrix.tsv"), Population.FIRST_COMMIT);
+    upstream = RevisedUpstream.of(matrix);
     settings.put("MATRIX", matrix.toString());
     settings.put("ELASTIC_NET_PARAMETERS", dir.resolve("elastic-net.tsv").toString());
     new IssuesSimilarityElasticNetCommand(settings::get).run(context(own(),
-        (run, rows) -> "run"));
+        (FreshStore) (run, rows) -> "run"));
     settings.put("REPORT_DIR", dir.resolve("test").toString());
   }
 
   private IssuesSimilarityTestCommand step() {
-    return new IssuesSimilarityTestCommand(settings::get, Population.FIRST_COMMIT);
+    return new IssuesSimilarityTestCommand(settings::get);
   }
 
   private String refused(final PipelineConfig config, final ResultStore store) {
@@ -103,9 +115,10 @@ class FirstCommitTestStageTest {
     step().run(context(own(), store));
     assertEquals(1, store.runs.size());
     final Map<String, Object> run = store.runs.getFirst();
-    assertEquals(IssuesSimilarityTestCommand.FIRST_COMMIT_STAGE, run.get("stage"));
+    assertEquals(IssuesSimilarityTestCommand.FIRST_COMMIT_REVISED_STAGE, run.get("stage"));
     assertTrue(run.containsKey("outer_test_opened_at"));
-    assertEquals(IssuesSimilarityTestCommand.FIRST_COMMIT_EXAMINED, run.get("outer_test_draw"));
+    assertEquals(IssuesSimilarityTestCommand.FIRST_COMMIT_REVISED_EXAMINED,
+        run.get("outer_test_draw"));
     assertTrue(run.containsKey("scored_rows_with_java_code"));
     assertTrue(Files.exists(dir.resolve("test").resolve(IssuesSimilarityTestCommand.PREDICTIONS)));
 
@@ -129,19 +142,7 @@ class FirstCommitTestStageTest {
     };
     assertTrue(refused(defaults(), never).contains("databases of its own"));
     assertTrue(refused(own(), new Store(Optional.empty())).contains("cannot tell"));
-    settings.put("MATRIX", SelectionFixture.write(dir.resolve("in-progress.tsv"),
-        Population.IN_PROGRESS).toString());
-    assertTrue(refused(own(), never).contains("not a matrix of the first-commit"));
     assertFalse(Files.exists(dir.resolve("test")));
   }
 
-  @Test
-  @DisplayName("the In Progress study's step still refuses a first-commit matrix")
-  void inProgressStepStaysSealed() throws Exception {
-    selected();
-    final CommandFailedException e = assertThrows(CommandFailedException.class,
-        () -> new IssuesSimilarityTestCommand(settings::get).run(context(own(),
-            new Store(Optional.of(false)))));
-    assertTrue(String.join("\n", e.lines()).contains(IssuesSimilarityTestCommand.SEALED));
-  }
 }

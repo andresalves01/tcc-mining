@@ -105,8 +105,8 @@ import java.util.concurrent.Callable;
  * the outcome each unit carries, and the rows are the issues of at least one: the entries are
  * {@link BusinessDays#population}'s. Every error the selection reads and keeps is in business
  * days; the shared names of the fitting code are unit-neutral (ticket 17). The procedures, grids
- * and tie rules are those chosen for the hours, unchanged. A parameters file written for the hours has another
- * {@link #HEADER} and is never read or overwritten.
+ * and tie rules are those chosen for the hours, unchanged. A parameters file with another header is
+ * never read or overwritten.
  */
 public final class ElasticNetSelection {
 
@@ -180,7 +180,6 @@ public final class ElasticNetSelection {
       + BEFORE_PRESSURE + ") alone, the start model the SPSP would use, and then reaches every "
       + "model, forest and reference";
 
-  private static final Population P = Population.IN_PROGRESS;
 
   /** The suffix of a missing indicator, as the extracted matrix names its own. */
   private static final String ABSENT = "_ausente";
@@ -291,21 +290,6 @@ public final class ElasticNetSelection {
   public record Parameter(String step, String name, String parameter, String value) {}
 
   /**
-   * The first line of every parameters file this step writes; one written for other models, as
-   * the eleven before the fourteen were settled, or without the tail cut, before ticket 23, has
-   * another, and is refused and never overwritten.
-   */
-  public static final String HEADER = "# the tail cut's k and fences, the k chosen on the own "
-      + "start model, Elastic Net alpha and lambda, the similarity medians' n, n and k, and each "
-      + "random forest's column share and leaf, chosen on the usual flow of the inner validation "
-      + "only, the target in whole business days excluding Open/Reopened and retaining silence, "
-      + "on the issues of at least one, for six "
-      + "attribute sets: the own, Al-Zubaidi's and Kikas's at the start, the own retrospective "
-      + "one without and with the comments and participants, both excluding release lag, and "
-      + "Kikas's retrospective one; the "
-      + "outer test was not read";
-
-  /**
    * The first line of every parameters file this step writes for {@link Population#FIRST_COMMIT}:
    * the same choices on the same six attribute sets, the own ones with the two attributes of
    * decision 16a, and the target of that population, which another header tells apart.
@@ -322,7 +306,7 @@ public final class ElasticNetSelection {
 
   /** The header of {@code population}'s parameters file. */
   public static String header(final Population population) {
-    return population == Population.FIRST_COMMIT ? HEADER_FIRST_COMMIT : HEADER;
+    return HEADER_FIRST_COMMIT;
   }
 
   /**
@@ -334,12 +318,10 @@ public final class ElasticNetSelection {
 
   /**
    * The header of {@code population}'s parameters file under {@code rule}: {@link
-   * #header(Population)}, followed for a rule other than the random one by {@link #RULE_MARK} and
-   * its name.
+   * #header(Population)}, followed by {@link #RULE_MARK} and the rule's name.
    */
   public static String header(final Population population, final SplitRule rule) {
-    return rule == SplitRule.RANDOM ? header(population)
-        : header(population) + RULE_MARK + rule.setting();
+    return header(population) + RULE_MARK + rule.setting();
   }
 
   /** The population a parameters file's header was written for; null for another header. */
@@ -348,8 +330,7 @@ public final class ElasticNetSelection {
       return null;
     }
     final String base = base(header);
-    return HEADER.equals(base) ? Population.IN_PROGRESS
-        : HEADER_FIRST_COMMIT.equals(base) ? Population.FIRST_COMMIT : null;
+    return HEADER_FIRST_COMMIT.equals(base) ? Population.FIRST_COMMIT : null;
   }
 
   /**
@@ -361,11 +342,11 @@ public final class ElasticNetSelection {
       return null;
     }
     final String base = base(header);
-    if (!HEADER.equals(base) && !HEADER_FIRST_COMMIT.equals(base)) {
+    if (!HEADER_FIRST_COMMIT.equals(base)) {
       return null;
     }
     if (base.length() == header.length()) {
-      return SplitRule.RANDOM;
+      return null;
     }
     final String named = header.substring(base.length() + RULE_MARK.length());
     for (final SplitRule r : SplitRule.values()) {
@@ -398,21 +379,16 @@ public final class ElasticNetSelection {
 
   /**
    * The name, under {@link #FOREST_STEP}, of the line giving every forest's count of trees: one
-   * line, its parameter {@code trees}, its value a whole number ({@link #treesLine}). A file
-   * of the random split without it is at {@link Forest#TREES}; one of the temporal split must
-   * give it.
+   * line, its parameter {@code trees}, its value a whole number ({@link #treesLine}); the
+   * revised split's file must give it.
    */
   public static final String EVERY_MODEL = "every_model";
 
   private static final String TREES = "trees";
 
-  /**
-   * The trees of every forest the selection sweeps under {@code rule}: {@link
-   * Forest#LIBRARY_TREES} in the temporal split, {@link Forest#TREES} in the random one, whose
-   * outer test was opened with them.
-   */
+  /** The trees of every forest the selection sweeps: {@link Forest#LIBRARY_TREES}. */
   public static int trees(final SplitRule rule) {
-    return rule.temporal() ? Forest.LIBRARY_TREES : Forest.TREES;
+    return Forest.LIBRARY_TREES;
   }
 
   /** The line giving every forest's count of trees, as the parameters file writes it. */
@@ -524,13 +500,10 @@ public final class ElasticNetSelection {
    * Outer training, outer test, inner fitting and inner validation rows, counted from the split
    * labels: nothing else of an outer test row is read. Each training side is counted whole,
    * crossing issues included ({@link Verdict#trainingSide}), so the sizes are those of the sides
-   * drawn, as on 02/11/2026. The split read is the first-commit population's when the rows carry
-   * it, the In Progress one's otherwise.
+   * drawn, as on 02/11/2026. The split read is the first-commit population's.
    */
   public static ProjectSplit.Sizes sizes(final List<RowCache.Entry> entries) {
-    final Population split = entries.stream()
-        .anyMatch(e -> e.parts().containsKey(Population.FIRST_COMMIT))
-        ? Population.FIRST_COMMIT : P;
+    final Population split = Population.FIRST_COMMIT;
     int train = 0;
     int test = 0;
     int fit = 0;
@@ -560,27 +533,12 @@ public final class ElasticNetSelection {
    * validation issues; each k as {@link TailCut#label} writes it, each fence and error as Java
    * prints the double, no cut's fence {@code Infinity}.
    */
-  public static List<String> parameters(final Result r, final String matrixSha) {
-    return parameters(r, matrixSha, P);
-  }
-
-  /** {@link #parameters(Result, String)} under {@code population}'s header. */
-  public static List<String> parameters(final Result r, final String matrixSha,
-      final Population population) {
-    return parameters(r, matrixSha, population, SplitRule.RANDOM);
-  }
-
-  /**
-   * {@link #parameters(Result, String)} under {@code population}'s header for {@code rule}
-   * ({@link #header(Population, SplitRule)}).
-   */
   public static List<String> parameters(final Result r, final String matrixSha,
       final Population population, final SplitRule rule) {
-    // the temporal split freezes the analogy estimate's choice and the forests' trees; the random
-    // split's file stays as every one written before it, with neither
-    if (rule.temporal() ? r.analogy() == null : r.analogy() != null) {
-      throw new IllegalArgumentException("the analogy estimate is chosen under the temporal "
-          + "split alone, not under the " + rule.setting() + " one");
+    // the file freezes the analogy estimate's choice and the forests' trees
+    if (r.analogy() == null) {
+      throw new IllegalArgumentException("the analogy estimate's choice is missing; the "
+          + rule.setting() + " split freezes it");
     }
     if (r.trees() != trees(rule)) {
       throw new IllegalArgumentException("forests of " + r.trees() + " trees under the "
@@ -619,10 +577,8 @@ public final class ElasticNetSelection {
       out.add(String.join("\t", FOREST_STEP, name, MTRY, Integer.toString(f.mtry())));
       out.add(String.join("\t", FOREST_STEP, name, NODE_SIZE, Integer.toString(f.nodeSize())));
     }
-    if (rule.temporal()) {
-      out.add(treesLine(r.trees()));
-      out.addAll(analogyLines(new AnalogyEstimate.Frozen(r.analogy().chosen())));
-    }
+    out.add(treesLine(r.trees()));
+    out.addAll(analogyLines(new AnalogyEstimate.Frozen(r.analogy().chosen())));
     return out;
   }
 
@@ -783,11 +739,6 @@ public final class ElasticNetSelection {
         && p.parameter().equals(MATRIX_SHA)).map(Parameter::value).findFirst().orElse(null);
   }
 
-  /** The choice with the threads {@link Parallel#ELASTIC_NET_THREADS} asks for. */
-  public static Result run(final List<RowCache.Entry> entries) {
-    return run(entries, Parallel.threads(Parallel.ELASTIC_NET_THREADS));
-  }
-
   /**
    * Chooses the tail cut's k ({@link TailCut}, ticket 23), then, by the declared sweep ({@link
    * Fitting#sweep}) on the inner fitting rows that cut leaves scored on the usual-flow inner
@@ -822,39 +773,18 @@ public final class ElasticNetSelection {
    * <p>Then each model's forest is swept on the columns its Elastic Net kept at its chosen
    * combination, one job per model on the same threads, read back in the models' order. The
    * forest's trees have seeds of their own, so its choice is the same bits whatever the number of
-   * threads, and the Elastic Net's choices are made before it and do not depend on it.
-   */
-  public static Result run(final List<RowCache.Entry> entries, final int threads) {
-    return run(entries, threads, P);
-  }
-
-  /**
-   * {@link #run(List, int)} on the split and the attribute sets of {@code population}: the outer
-   * training rows are those of its split, the models its sets ({@link #cells(Combination,
-   * Augmentation.Variant, Population)}). Nothing else differs.
-   */
-  public static Result run(final List<RowCache.Entry> entries, final int threads,
-      final Population population) {
-    return run(entries, threads, population, SplitRule.RANDOM);
-  }
-
-  /**
-   * {@link #run(List, int, Population)} under {@code rule}. Under the temporal split (its
-   * ticket 06) two things differ: every forest is swept with {@link
-   * Forest#LIBRARY_TREES} trees; and, once the k is chosen, the analogy estimate's candidate is
-   * chosen by {@link AnalogyEstimate#choose} on the same validation issues every choice is scored
-   * on, in their inner columns, an issue without the candidate's median taking the global median
-   * of the inner fitting rows at or below the chosen k's fence, the declared reference's. Nothing
-   * of the fourteen's choices depends on it. Under the random split, nothing differs.
+   * threads, and the Elastic Net's choices are made before it and do not depend on it. Every
+   * forest is swept with {@link Forest#LIBRARY_TREES} trees.
+   *
+   * <p>Once the k is chosen, the analogy estimate's candidate is chosen by {@link
+   * AnalogyEstimate#choose} on the same validation issues every choice is scored on, in their
+   * inner columns, an issue without the candidate's median taking the global median of the inner
+   * fitting rows at or below the chosen k's fence, the declared reference's. Nothing of the
+   * fourteen's choices depends on it.
    */
   public static Result run(final List<RowCache.Entry> entries, final int threads,
       final Population population, final SplitRule rule) {
     return select(entries, TailCut.GRID, TailCut.Reading.USUAL_FLOW, threads, population, rule);
-  }
-
-  static Result select(final List<RowCache.Entry> entries, final List<Double> grid,
-      final TailCut.Reading scored, final int threads) {
-    return select(entries, grid, scored, threads, P, SplitRule.RANDOM);
   }
 
   static Result select(final List<RowCache.Entry> entries, final List<Double> grid,
@@ -908,11 +838,10 @@ public final class ElasticNetSelection {
       out.add(new Model(x.cell(), x.combination(), x.fitted(), x.removed(), x.combinations(),
           forests.get(m)));
     }
-    // the temporal split's fifteenth model, its fallback the global median learned just above
-    final double fallback = rule.temporal() ? refs.constant(1)[0] : Double.NaN;
-    final AnalogyEstimate.Choice analogy = rule.temporal()
-        ? AnalogyEstimate.choose(cut.scoreRows(), Augmentation.Variant.INNER, fallback, observed)
-        : null;
+    // the fifteenth model, its fallback the global median learned just above
+    final double fallback = refs.constant(1)[0];
+    final AnalogyEstimate.Choice analogy =
+        AnalogyEstimate.choose(cut.scoreRows(), Augmentation.Variant.INNER, fallback, observed);
     return new Result(cut.fitUnits().size(), observed.length, projectMae, constantMae,
         List.copyOf(out), new TailCut.Choice(best.k(), best.fence(), usualFence,
             List.copyOf(trials)), scored, trees(rule), analogy, fallback);
@@ -1043,14 +972,6 @@ public final class ElasticNetSelection {
     return out;
   }
 
-  /**
-   * Every model at every combination, in the given variant: the combinations in {@link
-   * Combination#all}'s order, the six models of each in theirs. What the selection may read.
-   */
-  public static List<Cell> everyCell(final Augmentation.Variant variant) {
-    return everyCell(variant, P);
-  }
-
   /** {@link #everyCell(Augmentation.Variant)} for the sets of {@code population}. */
   public static List<Cell> everyCell(final Augmentation.Variant variant,
       final Population population) {
@@ -1059,18 +980,6 @@ public final class ElasticNetSelection {
       out.addAll(cells(c, variant, population));
     }
     return List.copyOf(out);
-  }
-
-  /**
-   * The six models in their order, reading the split-dependent columns of the given variant,
-   * each with the similarity medians at its own combination.
-   *
-   * @param combinations per model of {@link #WITH_SIMILARITY}, the values it reads the medians
-   *     at; exactly those models, or the call refuses
-   */
-  public static List<Cell> cells(final Map<String, Combination> combinations,
-      final Augmentation.Variant variant) {
-    return cells(combinations, variant, P);
   }
 
   /** {@link #cells(Map, Augmentation.Variant)} for the sets of {@code population}. */
@@ -1089,14 +998,6 @@ public final class ElasticNetSelection {
       out.add(c == null ? without.get(m) : cells(c, variant, population).get(m));
     }
     return List.copyOf(out);
-  }
-
-  /**
-   * The six models in their order, reading the split-dependent columns of the given variant,
-   * the three with the similarity medians at {@code c}; the other three do not depend on it.
-   */
-  public static List<Cell> cells(final Combination c, final Augmentation.Variant variant) {
-    return cells(c, variant, P);
   }
 
   /**

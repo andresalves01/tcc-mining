@@ -187,46 +187,6 @@ class TemporalSplitTest {
     return out;
   }
 
-  @Test
-  @DisplayName("the check passes a matrix at the temporal rule's sides and refuses one at the "
-      + "random rule's, and the random check the other way round")
-  void check() {
-    final List<Candidate> in = corpus();
-    final Map<String, String> projects = new HashMap<>();
-    in.forEach(x -> projects.put(x.id(), x.project()));
-    final List<RowCache.Entry> temporal = rows(in, TemporalSplit.draw(in));
-    final List<RowCache.Entry> random = rows(in, ProjectSplit.draw(projects));
-    final Population fc = Population.FIRST_COMMIT;
-
-    assertEquals(List.of(), TemporalSplit.differences(temporal, fc));
-    assertFalse(TemporalSplit.differences(random, fc).isEmpty());
-    assertEquals(List.of(), ProjectSplit.differences(random, fc));
-    assertFalse(ProjectSplit.differences(temporal, fc).isEmpty());
-    assertEquals(List.of(), SplitRule.TEMPORAL.differences(temporal, fc));
-    assertEquals(List.of(), SplitRule.RANDOM.differences(random, fc));
-  }
-
-  @Test
-  @DisplayName("the check refuses a moved side and a row without its first-commit instant")
-  void checkRefuses() {
-    final List<Candidate> in = corpus();
-    final List<RowCache.Entry> rows = rows(in, TemporalSplit.draw(in));
-    final Population fc = Population.FIRST_COMMIT;
-
-    final List<RowCache.Entry> moved = new ArrayList<>(rows);
-    final Candidate last = in.get(in.size() - 1);
-    moved.set(in.size() - 1, entry(last, "TRAIN", "TEST"));
-    assertFalse(TemporalSplit.differences(moved, fc).isEmpty());
-
-    final List<RowCache.Entry> undated = new ArrayList<>(rows);
-    final RowCache.Entry first = undated.get(0);
-    undated.set(0, entry(new Candidate(first.unit().issueId(), first.unit().project(), null),
-        first.outer(fc), first.inner(fc)));
-    final List<String> d = TemporalSplit.differences(undated, fc);
-    assertEquals(1, d.size());
-    assertTrue(d.get(0).contains("first-commit instant"), d.get(0));
-  }
-
   // ------------------------------------------------------------------ the revised design
 
   /** A candidate of project p started on day {@code d} and first resolved at {@code resolved}. */
@@ -332,8 +292,8 @@ class TemporalSplitTest {
 
   @Test
   @DisplayName("revised check: passes a matrix at the revised verdicts, reading the first "
-      + "resolution of the training side alone, and refuses one at the temporal rule's verdicts, "
-      + "as the temporal check refuses the revised one")
+      + "resolution of the training side alone, and refuses one at the temporal sides without "
+      + "the crossing verdicts")
   void revisedCheck() {
     final List<Candidate> in = resolvedCorpus();
     final ProjectSplit.Parts revised = TemporalSplit.drawRevised(in);
@@ -342,9 +302,7 @@ class TemporalSplitTest {
     final List<RowCache.Entry> rows = revisedRows(in, revised);
     assertEquals(List.of(), TemporalSplit.differencesRevised(rows, fc));
     assertEquals(List.of(), SplitRule.REVISED.differences(rows, fc));
-    assertFalse(SplitRule.TEMPORAL.differences(rows, fc).isEmpty());
     final List<RowCache.Entry> temporal = revisedRows(in, TemporalSplit.draw(in));
-    assertEquals(List.of(), SplitRule.TEMPORAL.differences(temporal, fc));
     assertFalse(SplitRule.REVISED.differences(temporal, fc).isEmpty());
   }
 

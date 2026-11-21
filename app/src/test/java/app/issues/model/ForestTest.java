@@ -51,7 +51,7 @@ class ForestTest {
         final String id = "i" + (n++);
         final Map<Population, String[]> parts = new EnumMap<>(Population.class);
         if (part != null) {
-          parts.put(Population.IN_PROGRESS, part);
+          parts.put(Population.FIRST_COMMIT, part);
         }
         out.add(new RowCache.Entry(new IssueUnit(id, "K-" + id, "p" + p, "r", "e",
             t0, t0.plusMillis((long) (hours * 3_600_000)), "Fixed", false,
@@ -66,7 +66,8 @@ class ForestTest {
   @DisplayName("the forest sweeps its declared grid on the inner sides and keeps the point that "
       + "errs least there")
   void sweep() {
-    final Fitting.Sides sides = Fitting.sides(corpus(), Fitting.Mode.INNER, Population.IN_PROGRESS);
+    final Fitting.Sides sides = Fitting.sides(corpus(), Fitting.Mode.INNER,
+        Population.FIRST_COMMIT);
     final Forest.Fitted f = Forest.sweep(Cell.byLabel(CELL), sides, 1, 1);
     assertEquals(6 * 10, f.predicted().length, "only the inner selection is scored");
     assertEquals(Forest.MTRY_SHARES.length * Forest.NODE_SIZES.length, f.trials().size());
@@ -81,7 +82,8 @@ class ForestTest {
   @DisplayName("the sweep fits its forests with the count of trees given, and the chosen point "
       + "refitted with that count gives the same predictions; without one, 300")
   void sweepTrees() {
-    final Fitting.Sides sides = Fitting.sides(corpus(), Fitting.Mode.INNER, Population.IN_PROGRESS);
+    final Fitting.Sides sides = Fitting.sides(corpus(), Fitting.Mode.INNER,
+        Population.FIRST_COMMIT);
     final Cell cell = Cell.byLabel(CELL);
     for (final int trees : new int[] {Forest.TREES, 500}) {
       final Forest.Fitted f = Forest.sweep(cell, sides, 1, 1, trees);
@@ -107,7 +109,8 @@ class ForestTest {
     assertEquals(1, ForestTrials.chosen(later));
 
     // the sweep keeps the point chosen() picks from its own trials, and records its share
-    final Fitting.Sides sides = Fitting.sides(corpus(), Fitting.Mode.INNER, Population.IN_PROGRESS);
+    final Fitting.Sides sides = Fitting.sides(corpus(), Fitting.Mode.INNER,
+        Population.FIRST_COMMIT);
     final Forest.Fitted f = Forest.sweep(Cell.byLabel(CELL), sides, 1, 1);
     final Forest.Trial kept = f.trials().get(ForestTrials.chosen(f.trials()));
     assertEquals(List.of(kept.share(), (double) kept.mtry(), (double) kept.nodeSize()),

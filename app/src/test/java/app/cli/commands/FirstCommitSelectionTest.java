@@ -16,6 +16,7 @@ import app.issues.FirstCommit;
 import app.issues.LargestErrors;
 import app.issues.RowCache;
 import app.issues.SimilarityScoring;
+import app.issues.SplitRule;
 import app.issues.Universe.Population;
 import app.issues.port.ResultStore;
 import app.pipeline.port.SilentProgress;
@@ -63,8 +64,25 @@ class FirstCommitSelectionTest {
         SilentProgress.INSTANCE, null, store, null);
   }
 
+  /** The header the In Progress study's selection wrote, before that study was removed. */
+  private static final String IN_PROGRESS_HEADER = "# the tail cut's k and fences, the k chosen "
+      + "on the own start model, Elastic Net alpha and lambda, the similarity medians' n, n and "
+      + "k, and each random forest's column share and leaf, chosen on the usual flow of the inner "
+      + "validation only, the target in whole business days excluding Open/Reopened and "
+      + "retaining silence, on the issues of at least one, for six attribute sets: the own, "
+      + "Al-Zubaidi's and Kikas's at the start, the own retrospective one without and with the "
+      + "comments and participants, both excluding release lag, and Kikas's retrospective one; "
+      + "the outer test was not read";
+
+  /** The outer test's issues, at the verdicts the matrix was written with. */
+  private static java.util.Set<String> outerTestIds(final Path matrix) throws Exception {
+    return RowCache.splits(matrix).stream()
+        .filter(e -> "TEST".equals(e.outer(Population.FIRST_COMMIT)))
+        .map(e -> e.unit().issueId()).collect(java.util.stream.Collectors.toSet());
+  }
+
   private static ResultStore never() {
-    return (run, rows) -> {
+    return (FreshStore) (run, rows) -> {
       throw new AssertionError("recorded " + run);
     };
   }
@@ -98,7 +116,7 @@ class FirstCommitSelectionTest {
 
   /** A store whose extraction run recorded the wait fence {@code k}. */
   private static ResultStore extractedWith(final double k, final List<Map<String, Object>> runs) {
-    return new ResultStore() {
+    return new FreshStore() {
       @Override
       public String record(final Map<String, Object> run, final List<Map<String, Object>> rows) {
         runs.add(run);
@@ -149,13 +167,15 @@ class FirstCommitSelectionTest {
     settings.put("MATRIX", matrix.toString());
     settings.put("ELASTIC_NET_PARAMETERS", parameters.toString());
     final List<Map<String, Object>> runs = new ArrayList<>();
-    new IssuesSimilarityElasticNetCommand(settings::get).run(context(own(), (run, rows) -> {
-      runs.add(run);
-      return "run";
-    }));
+    new IssuesSimilarityElasticNetCommand(settings::get).run(context(own(),
+        (FreshStore) (run, rows) -> {
+          runs.add(run);
+          return "run";
+        }));
 
     final List<String> written = Files.readAllLines(parameters);
-    assertEquals(ElasticNetSelection.HEADER_FIRST_COMMIT, written.get(0));
+    assertEquals(ElasticNetSelection.header(Population.FIRST_COMMIT, SplitRule.REVISED),
+        written.get(0));
     assertEquals(1, runs.size());
     final Map<String, Object> run = runs.get(0);
     assertEquals("FIRST_COMMIT", run.get("study"));
@@ -169,12 +189,12 @@ class FirstCommitSelectionTest {
         + "that counts and the first resolution"));
 
     // the selection is the one on the outer training rows of the first-commit split
-    final List<RowCache.Entry> training =
-        RowCache.read(matrix, Population.FIRST_COMMIT, "TRAIN");
+    final List<RowCache.Entry> training = RowCache.training(matrix, Population.FIRST_COMMIT);
     final ElasticNetSelection.Result direct = ElasticNetSelection.run(BusinessDays.population(
-        training, Augmentation.Variant.INNER).entries(), 1, Population.FIRST_COMMIT);
+        training, Augmentation.Variant.INNER).entries(), 1, Population.FIRST_COMMIT,
+        SplitRule.REVISED);
     assertEquals(ElasticNetSelection.parameters(direct, Sha256.of(matrix),
-        Population.FIRST_COMMIT), written);
+        Population.FIRST_COMMIT, SplitRule.REVISED), written);
     // the own models read the first commit's size; the retrospective readings its share too
     for (final ElasticNetSelection.Model m : direct.models()) {
       final List<String> declared =
@@ -254,8 +274,9 @@ class FirstCommitSelectionTest {
         report.getLast());
 
     // nothing of the outer test reaches any file: not one of its issues' keys
+    final java.util.Set<String> testIds = outerTestIds(matrix);
     final List<Pattern> outerTest = SelectionFixture.entries(Population.FIRST_COMMIT).stream()
-        .filter(e -> "TEST".equals(e.outer(Population.FIRST_COMMIT)))
+        .filter(e -> testIds.contains(e.unit().issueId()))
         .map(e -> Pattern.compile("(?<![\\w-])" + Pattern.quote(e.unit().key()) + "(?!\\w)"))
         .toList();
     assertFalse(outerTest.isEmpty());
@@ -284,45 +305,25 @@ class FirstCommitSelectionTest {
   }
 
   @Test
-  @DisplayName("the test refuses a first-commit matrix on its header alone: the study's outer "
-      + "test is sealed, nothing is read, scored, written or recorded")
-  void sealsTheOuterTest() throws Exception {
-    final Path matrix = sealedMatrix();
-    final Path parameters = dir.resolve("elastic-net.tsv");
-    final Map<String, String> settings = new HashMap<>();
-    settings.put("MATRIX", matrix.toString());
-    settings.put("ELASTIC_NET_PARAMETERS", parameters.toString());
-    new IssuesSimilarityElasticNetCommand(settings::get).run(context(own(), (run, rows) -> "run"));
-    final Path reports = dir.resolve("test");
-    settings.put("REPORT_DIR", reports.toString());
-    for (final PipelineConfig config : List.of(own(), defaults())) {
-      final CommandFailedException e = assertThrows(CommandFailedException.class,
-          () -> new IssuesSimilarityTestCommand(settings::get).run(context(config, never())));
-      assertTrue(String.join("\n", e.lines()).contains(IssuesSimilarityTestCommand.SEALED),
-          e.lines().toString());
-      assertFalse(Files.exists(reports));
-    }
-  }
-
-  @Test
-  @DisplayName("an In Progress parameters file is refused on a first-commit matrix, and the other "
-      + "way round, before anything is scored")
+  @DisplayName("a parameters file of the In Progress study is refused on a first-commit matrix, "
+      + "before anything is scored")
   void refusesAnotherPopulationsParameters() throws Exception {
     final Path matrix = sealedMatrix();
     final Path parameters = dir.resolve("elastic-net.tsv");
     final Map<String, String> settings = new HashMap<>();
     settings.put("MATRIX", matrix.toString());
     settings.put("ELASTIC_NET_PARAMETERS", parameters.toString());
-    new IssuesSimilarityElasticNetCommand(settings::get).run(context(own(), (run, rows) -> "run"));
+    new IssuesSimilarityElasticNetCommand(settings::get).run(context(own(),
+        (FreshStore) (run, rows) -> "run"));
     final List<String> lines = new ArrayList<>(Files.readAllLines(parameters));
-    lines.set(0, ElasticNetSelection.HEADER);
+    lines.set(0, IN_PROGRESS_HEADER);
     Files.write(parameters, lines);
     final Path reports = dir.resolve("inner");
     settings.put("REPORT_DIR", reports.toString());
     final CommandFailedException e = assertThrows(CommandFailedException.class,
         () -> new IssuesSimilarityInnerReportCommand(settings::get).run(context(own(), never())));
-    assertTrue(String.join("\n", e.lines()).contains("was written for IN_PROGRESS"),
-        e.lines().toString());
+    assertTrue(String.join("\n", e.lines()).contains("is not the Elastic Net step's parameters "
+        + "file"), e.lines().toString());
     assertFalse(Files.exists(reports));
   }
 
@@ -336,7 +337,8 @@ class FirstCommitSelectionTest {
     final Map<String, String> settings = new HashMap<>();
     settings.put("MATRIX", matrix.toString());
     settings.put("ELASTIC_NET_PARAMETERS", parameters.toString());
-    new IssuesSimilarityElasticNetCommand(settings::get).run(context(own(), (run, rows) -> "run"));
+    new IssuesSimilarityElasticNetCommand(settings::get).run(context(own(),
+        (FreshStore) (run, rows) -> "run"));
     final Path out = dir.resolve("ablation");
     settings.put("REPORT_DIR", out.toString());
     new IssuesFirstCommitShareAblationCommand(settings::get).run(context(own(), never()));
@@ -345,10 +347,10 @@ class FirstCommitSelectionTest {
         Files.readAllLines(out.resolve(IssuesFirstCommitShareAblationCommand.TABLE));
     assertEquals(1 + 4, table.size());
     // the variant with the share reads, on the usual flow, the selection's own error
-    final List<RowCache.Entry> training =
-        RowCache.read(matrix, Population.FIRST_COMMIT, "TRAIN");
+    final List<RowCache.Entry> training = RowCache.training(matrix, Population.FIRST_COMMIT);
     final ElasticNetSelection.Result direct = ElasticNetSelection.run(BusinessDays.population(
-        training, Augmentation.Variant.INNER).entries(), 1, Population.FIRST_COMMIT);
+        training, Augmentation.Variant.INNER).entries(), 1, Population.FIRST_COMMIT,
+        SplitRule.REVISED);
     final double own = direct.models().get(ElasticNetSelection.MODELS.indexOf(
         ElasticNetSelection.RETROSPECTIVE)).fitted().score().mae();
     final String[] usual = table.get(1).split("\t");
@@ -359,23 +361,14 @@ class FirstCommitSelectionTest {
     final List<String> md =
         Files.readAllLines(out.resolve(IssuesFirstCommitShareAblationCommand.REPORT));
     assertTrue(md.get(0).contains("a diagnostic"), md.get(0));
+    final java.util.Set<String> testIds = outerTestIds(matrix);
     final List<Pattern> outerTest = SelectionFixture.entries(Population.FIRST_COMMIT).stream()
-        .filter(e -> "TEST".equals(e.outer(Population.FIRST_COMMIT)))
+        .filter(e -> testIds.contains(e.unit().issueId()))
         .map(e -> Pattern.compile("(?<![\\w-])" + Pattern.quote(e.unit().key()) + "(?!\\w)"))
         .toList();
     for (final String text : List.of(String.join("\n", table), String.join("\n", md))) {
       assertTrue(outerTest.stream().noneMatch(p -> p.matcher(text).find()));
     }
 
-    final Path inProgress = SelectionFixture.write(dir.resolve("in-progress.tsv"),
-        Population.IN_PROGRESS);
-    settings.put("MATRIX", inProgress.toString());
-    settings.put("REPORT_DIR", dir.resolve("refused").toString());
-    final CommandFailedException e = assertThrows(CommandFailedException.class,
-        () -> new IssuesFirstCommitShareAblationCommand(settings::get).run(context(own(),
-            never())));
-    assertTrue(String.join("\n", e.lines()).contains("not of the first-commit population"),
-        e.lines().toString());
-    assertFalse(Files.exists(dir.resolve("refused")));
   }
 }

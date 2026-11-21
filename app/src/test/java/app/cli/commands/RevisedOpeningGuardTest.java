@@ -124,7 +124,7 @@ class RevisedOpeningGuardTest {
   @Test
   void refusesWholeSideHistories() {
     final List<Map<String, Object>> runs = ready();
-    runs.set(1, similarity(IssuesSimilarityCommand.HISTORY, SIMILARITY));
+    runs.set(1, similarity("the whole training side of the split", SIMILARITY));
     assertTrue(IssuesSimilarityTestCommand.revisedUnready(store(runs), MATRIX)
         .contains("point-in-time"));
   }
@@ -133,7 +133,7 @@ class RevisedOpeningGuardTest {
   void readsTheSimilarityRunThatWroteTheMatrix() {
     // a point-in-time similarity run of another matrix does not stand for this one's
     final List<Map<String, Object>> runs = ready();
-    runs.set(1, similarity(IssuesSimilarityCommand.HISTORY, SIMILARITY));
+    runs.set(1, similarity("the whole training side of the split", SIMILARITY));
     runs.add(similarity(IssuesSimilarityCommand.POINT_IN_TIME_HISTORY, "other-sha"));
     assertTrue(IssuesSimilarityTestCommand.revisedUnready(store(runs), MATRIX)
         .contains("point-in-time"));

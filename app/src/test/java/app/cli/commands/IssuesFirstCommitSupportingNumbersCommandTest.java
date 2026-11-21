@@ -37,7 +37,6 @@ class IssuesFirstCommitSupportingNumbersCommandTest {
   private static Map<String, String> settings(final Path out, final String... more) {
     final Map<String, String> s = new java.util.HashMap<>();
     s.put("SUPPORTING_DIR", out.toString());
-    s.put("SPLIT_RULE", "temporal");
     for (int i = 0; i < more.length; i += 2) {
       s.put(more[i], more[i + 1]);
     }
@@ -78,8 +77,8 @@ class IssuesFirstCommitSupportingNumbersCommandTest {
   }
 
   @Test
-  @DisplayName("refuses to run without SUPPORTING_DIR, and refuses an invalid WAIT_FENCE_K or "
-      + "SPLIT_RULE before reading")
+  @DisplayName("refuses to run without SUPPORTING_DIR, and refuses an invalid WAIT_FENCE_K before "
+      + "reading")
   void refusals() {
     assertThrows(CommandFailedException.class,
         () -> new IssuesFirstCommitSupportingNumbersCommand(Map.<String, String>of()::get)
@@ -87,9 +86,6 @@ class IssuesFirstCommitSupportingNumbersCommandTest {
     assertThrows(CommandFailedException.class,
         () -> new IssuesFirstCommitSupportingNumbersCommand(
             settings(dir.resolve("a"), "WAIT_FENCE_K", "0")::get).run(context()));
-    assertThrows(CommandFailedException.class,
-        () -> new IssuesFirstCommitSupportingNumbersCommand(
-            settings(dir.resolve("b"), "SPLIT_RULE", "monthly")::get).run(context()));
   }
 
   @Test

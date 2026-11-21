@@ -4,7 +4,6 @@ import app.issues.FirstCommit;
 import app.issues.SplitRule;
 import app.issues.SupportingNumbers;
 import app.issues.Universe;
-import app.issues.Universe.Population;
 import app.pipeline.port.Progress;
 import app.issues.port.StudySource;
 import java.util.ArrayList;
@@ -66,7 +65,7 @@ public final class IssuesFirstCommitSupportingNumbersTask {
     progress.phase(4, PHASES, "counts of the filter");
     final Universe universe = b.universe();
     final SupportingNumbers.Counts counts = SupportingNumbers.count(b.issues().values(), id -> {
-      final Universe.Unit started = universe.unit(Population.IN_PROGRESS, id);
+      final Universe.Unit started = universe.started(id);
       return started == null ? null : started.start();
     });
 

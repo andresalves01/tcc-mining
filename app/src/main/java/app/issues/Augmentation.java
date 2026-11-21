@@ -55,7 +55,6 @@ import java.util.stream.IntStream;
  * outer test (ticket 06): each outer test row reads the inner fitting history, point in time, and
  * is assigned to the inner centres already fitted; its inner split is outer_test, and it never
  * enters a history or a fit, so the fitting and validation rows read the same with or without it.
- * Every other design reads {@link Histories#WHOLE_SIDE}, as above.
  *
  * <p><b>Neighbours.</b> The candidates are the history issues sharing at least one token with the
  * query; the closest n by Jaccard distance give the unweighted median of their business days,
@@ -120,23 +119,17 @@ public final class Augmentation {
   /** Which members a history admits for a query, and which rows answer each level. */
   public enum Histories {
     /**
-     * Every member of the training side that teaches, whatever the dates; each level answers its
-     * training side and its scored rows. The In Progress study, the first-commit random split and
-     * the temporal design opened on 02/11/2026.
-     */
-    WHOLE_SIDE,
-    /**
      * A point-in-time history: for a query, only the members that teach whose first resolution
      * comes strictly before the query's start (its first commit), never the query. The inner level
      * also answers the outer test (ticket 06), from the inner fitting history and the inner
      * centres alone; no outer test row ever enters a history or a fit. The revised temporal
-     * design ({@link SplitRule#pointInTime}).
+     * design's.
      */
     POINT_IN_TIME;
 
     /** Whether {@code member}, a member that teaches, may enter {@code query}'s history. */
     boolean admits(final Issue query, final Issue member) {
-      return this == WHOLE_SIDE || admits(member.resolved(), query.start());
+      return admits(member.resolved(), query.start());
     }
 
     /**
@@ -216,8 +209,7 @@ public final class Augmentation {
     }
 
     private boolean outerTestAtInner(final Issue i, final Histories design) {
-      return this == INNER && design == Histories.POINT_IN_TIME
-          && OUTER.scored(i.outer(), i.inner());
+      return this == INNER && OUTER.scored(i.outer(), i.inner());
     }
   }
 
@@ -237,17 +229,11 @@ public final class Augmentation {
    * @param description the cleaned description at the first In Progress, null when there is none
    */
   public record Issue(String id, String project, String reporter, long start, long resolved,
-      int innerDays, int outerDays, String outer, String inner, String description,
-      boolean zeroAllowed) {
-    public Issue(final String id, final String project, final String reporter, final long start,
-        final long resolved, final int innerDays, final int outerDays, final String outer,
-        final String inner, final String description) {
-      this(id, project, reporter, start, resolved, innerDays, outerDays, outer, inner, description, false);
-    }
+      int innerDays, int outerDays, String outer, String inner, String description) {
 
     /** Whether it may be history of {@code v}: it lasted at least one business day there. */
     boolean counted(final Variant v) {
-      return days(v) >= (zeroAllowed ? 0 : 1);
+      return days(v) >= 1;
     }
 
     /** What a median of {@code v} reads of it. */
@@ -398,14 +384,8 @@ public final class Augmentation {
   /**
    * Every column and diagnostic, each described issue embedded once by {@code embedder} into
    * vectors of {@code dimension} components, the clusters fitted by {@code clusterer}; every
-   * history the whole side ({@link Histories#WHOLE_SIDE}).
+   * history admitting its members as {@code design} says.
    */
-  public static Result run(final List<Issue> issues, final Embedder embedder,
-      final int dimension, final Clusterer clusterer) {
-    return run(issues, embedder, dimension, clusterer, Histories.WHOLE_SIDE);
-  }
-
-  /** The same, every history admitting its members as {@code design} says. */
   public static Result run(final List<Issue> issues, final Embedder embedder,
       final int dimension, final Clusterer clusterer, final Histories design) {
     final Tokens tokens = new Tokens(issues);
@@ -917,7 +897,6 @@ public final class Augmentation {
      * the one a plain scan gives.
      */
     List<Found> search(final List<Issue> queries, final int most, final Histories design) {
-      final boolean pointInTime = design == Histories.POINT_IN_TIME;
       final Found[] out = new Found[queries.size()];
       final int groups = (queries.size() + GROUP - 1) / GROUP;
       IntStream.range(0, groups).parallel().forEach(g -> {
@@ -944,7 +923,7 @@ public final class Augmentation {
                 continue;
               }
               // a point-in-time history: only the members resolved before the query's start
-              if (pointInTime && !Histories.admits(resolved[j], start[q])) {
+              if (!Histories.admits(resolved[j], start[q])) {
                 continue;
               }
               final double s = Math.max(-1.0, Math.min(1.0, vectors.dot(row[q], rows[j])));
