@@ -119,6 +119,67 @@ class PredictedBandsTest {
     assertEquals(0, r.longBand().observedOnly() + r.longBand().neither());
   }
 
+  @Test
+  @DisplayName("the risk band marks the predictions above the third quartile of the model's own "
+      + "predictions and checks them against the observed long issues, even when nothing is "
+      + "predicted above the long band's limit")
+  void riskBand() {
+    // predictions 1..8 (all under the long limit 8): their Q3 is 6.25, so rows 6 and 7 are marked;
+    // observed long (above 8): rows 0 and 6
+    final PredictedBands.Reading r = PredictedBands.of(new double[] {1, 2, 3, 4, 5, 6, 7, 8},
+        new double[] {9, 1, 1, 1, 1, 1, 12, 1}, TOPS);
+    assertTrue(Double.isNaN(r.longBand().precision()), "nothing is predicted long");
+    final PredictedBands.RiskBand risk = r.riskBand();
+    assertEquals(6.25, risk.threshold(), 1e-12);
+    assertEquals(1, risk.counts().both());
+    assertEquals(1, risk.counts().predictedOnly());
+    assertEquals(1, risk.counts().observedOnly());
+    assertEquals(5, risk.counts().neither());
+    assertEquals(0.5, risk.counts().precision(), 1e-12);
+    assertEquals(0.5, risk.counts().recall(), 1e-12);
+    assertEquals(2 / 8.0, risk.baseRate(), 1e-12);
+  }
+
+  @Test
+  @DisplayName("the risk band's mark reads no label: other observed durations, the same limit "
+      + "and the same marked issues")
+  void riskBandReadsNoLabel() {
+    final double[] predicted = {3, 1, 4, 1, 5, 9, 2, 6};
+    final PredictedBands.RiskBand a = PredictedBands.of(predicted,
+        new double[] {1, 1, 1, 1, 1, 1, 1, 1}, TOPS).riskBand();
+    final PredictedBands.RiskBand b = PredictedBands.of(predicted,
+        new double[] {50, 50, 50, 50, 50, 50, 50, 50}, TOPS).riskBand();
+    assertEquals(a.threshold(), b.threshold());
+    assertEquals(a.counts().both() + a.counts().predictedOnly(),
+        b.counts().both() + b.counts().predictedOnly());
+    assertEquals(2, b.counts().both());
+  }
+
+  @Test
+  @DisplayName("in the usual flow the risk band's quartile is taken over the usual flow's "
+      + "predictions alone")
+  void riskBandInTheUsualFlow() {
+    // the row observed above the fence (predicted 100) leaves, so the Q3 is that of 1, 2, 3, 4
+    final PredictedBands.Reading r = PredictedBands.usualFlow(new double[] {1, 2, 3, 4, 100},
+        new double[] {1, 1, 1, 9, 40}, TOPS, 30);
+    assertEquals(3.25, r.riskBand().threshold(), 1e-12);
+    assertEquals(1, r.riskBand().counts().both());
+    assertEquals(0, r.riskBand().counts().predictedOnly());
+    assertEquals(1 / 4.0, r.riskBand().baseRate(), 1e-12);
+  }
+
+  @Test
+  @DisplayName("an empty reading has a risk band without a limit or figures, and no exception")
+  void riskBandOfAnEmptyReading() {
+    final PredictedBands.RiskBand risk = PredictedBands.usualFlow(new double[] {5},
+        new double[] {40}, TOPS, 30).riskBand();
+    assertTrue(Double.isNaN(risk.threshold()));
+    assertEquals(0, risk.counts().both() + risk.counts().predictedOnly()
+        + risk.counts().observedOnly() + risk.counts().neither());
+    assertTrue(Double.isNaN(risk.counts().precision()) && Double.isNaN(risk.counts().recall())
+        && Double.isNaN(risk.baseRate()));
+  }
+
   private static final List<String> TABLE = List.of(
       "id\tkey\tproject\tobserved_business_days\tglobal_median\tmodel_a\tmodel_b",
       "1\tP-1\tp\t5.0\t5.0\t4.5\t6.0", "2\tP-2\tp\t18.0\t5.0\t3.0\t7.5");

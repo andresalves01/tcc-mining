@@ -59,10 +59,19 @@ class IssuesFirstCommitPredictedBandCommandTest {
     assertTrue(tsv.contains("all\tkikas_start\tby_prediction\t>8\tn\t3"), text);
     // usual flow drops d (31 > 30): the high band by prediction holds a and c
     assertTrue(tsv.contains("usual_flow\tkikas_start\tby_prediction\t>8\tn\t2"), text);
+    // the risk band: the predictions 20, 3, 9, 9 have Q3 11.75, so only a (observed 1) is marked;
+    // observed long (above 8): c and d
+    assertTrue(tsv.contains("all\tkikas_start\trisk\ttop_quarter\tthreshold_bd\t11.750"), text);
+    assertTrue(tsv.contains("all\tkikas_start\trisk\ttop_quarter\tmarked_observed_long\t0"),
+        text);
+    assertTrue(tsv.contains("all\tkikas_start\trisk\ttop_quarter\tmarked_observed_not\t1"),
+        text);
+    assertTrue(tsv.contains("all\tkikas_start\trisk\ttop_quarter\tbase_rate\t0.500"), text);
     assertFalse(text.contains("own_retrospective"), "only the three Elastic Net start models");
     assertFalse(text.contains("global_median"));
     final String md = Files.readString(out.resolve(IssuesFirstCommitPredictedBandCommand.REPORT));
     assertTrue(md.contains("<=2") && md.contains(">8"));
+    assertTrue(md.contains("Risk band (the quarter of the highest predictions"), md);
     assertTrue(md.indexOf("## Reading: full population") >= 0
         && md.indexOf("## Reading: full population") < md.indexOf("## Reading: usual flow"));
     try (Stream<Path> written = Files.list(out)) {

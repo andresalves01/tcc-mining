@@ -14,7 +14,9 @@ import java.util.stream.IntStream;
  * 07 of the review): the bands are the ones of {@link BusinessDays#bandLabels}, cut at the
  * quartiles of the observed duration of the cut fitting rows as the test's report records them,
  * never recomputed on the test, but each issue goes to the band of its PREDICTION. Beside them
- * stand the same bands by the observed duration, the reading the report already gives.
+ * stand the same bands by the observed duration, the reading the report already gives, the long
+ * band (predicted above Q3 against observed above Q3) and the risk band ({@link RiskBand}: the
+ * quarter of the highest predictions against observed above Q3).
  *
  * <p>{@code Breakdown.byEdges} is not reused here: it groups by its second vector (the observed
  * one), so handing it the predictions to group by would also swap what the error and the median
@@ -47,8 +49,28 @@ public final class PredictedBands {
   public record LongBand(int both, int predictedOnly, int observedOnly, int neither,
       double precision, double recall) {}
 
-  /** One reading of one model: the bands by prediction, by observation, and the long band. */
-  public record Reading(List<Band> byPrediction, List<Band> byObservation, LongBand longBand) {}
+  /**
+   * The risk band (ticket 13 of the review, comment 10's "risco estimado"): the issues whose
+   * prediction is above the third quartile of the model's own predictions in the reading, the
+   * quarter it ranks highest, against the issues observed above the long band's limit. The mark
+   * reads the predictions alone, never a label, so it says whether the model ranks the long issues
+   * on top even when it never predicts one above the limit.
+   *
+   * @param threshold the third quartile of the reading's predictions ({@link TailCut#quartiles}),
+   *     {@code NaN} for an empty reading
+   * @param counts marked against observed long: {@code both} marked and long, {@code
+   *     predictedOnly} marked only, and so on, with precision and recall
+   * @param baseRate the share of the reading observed long, the precision a mark of the same size
+   *     drawn at random would have on average; {@code NaN} for an empty reading
+   */
+  public record RiskBand(double threshold, LongBand counts, double baseRate) {}
+
+  /**
+   * One reading of one model: the bands by prediction, by observation, the long band and the risk
+   * band.
+   */
+  public record Reading(List<Band> byPrediction, List<Band> byObservation, LongBand longBand,
+      RiskBand riskBand) {}
 
   private PredictedBands() {}
 
@@ -57,7 +79,8 @@ public final class PredictedBands {
       final double[] tops) {
     final String[] labels = BusinessDays.bandLabels(tops);
     return new Reading(bands(predicted, observed, predicted, tops, labels),
-        bands(predicted, observed, observed, tops, labels), longBand(predicted, observed, tops));
+        bands(predicted, observed, observed, tops, labels), longBand(predicted, observed, tops),
+        riskBand(predicted, observed, tops));
   }
 
   /**
@@ -97,13 +120,31 @@ public final class PredictedBands {
 
   private static LongBand longBand(final double[] predicted, final double[] observed,
       final double[] tops) {
+    return crossed(predicted, observed, tops[2], tops[2]);
+  }
+
+  private static RiskBand riskBand(final double[] predicted, final double[] observed,
+      final double[] tops) {
+    if (predicted.length == 0) {
+      return new RiskBand(Double.NaN, crossed(predicted, observed, Double.NaN, tops[2]),
+          Double.NaN);
+    }
+    final double threshold = TailCut.quartiles(predicted)[2];
+    final long observedLong = Arrays.stream(observed).filter(o -> o > tops[2]).count();
+    return new RiskBand(threshold, crossed(predicted, observed, threshold, tops[2]),
+        (double) observedLong / observed.length);
+  }
+
+  /** Predicted above {@code markAbove} against observed above {@code longAbove}. */
+  private static LongBand crossed(final double[] predicted, final double[] observed,
+      final double markAbove, final double longAbove) {
     int both = 0;
     int predictedOnly = 0;
     int observedOnly = 0;
     int neither = 0;
     for (int i = 0; i < predicted.length; i++) {
-      final boolean p = predicted[i] > tops[2];
-      final boolean o = observed[i] > tops[2];
+      final boolean p = predicted[i] > markAbove;
+      final boolean o = observed[i] > longAbove;
       if (p && o) {
         both++;
       } else if (p) {

@@ -154,6 +154,16 @@ public final class IssuesFirstCommitPredictedBandCommand implements CommandRunne
       for (final String[] c : counts) {
         lines.add(String.join("\t", r.reading(), r.model(), "long", "long", c[0], c[1]));
       }
+      final PredictedBands.RiskBand k = r.bands().riskBand();
+      final PredictedBands.LongBand m = k.counts();
+      final String[][] risk = {{"threshold_bd", number(k.threshold())},
+          {"marked_observed_long", "" + m.both()}, {"marked_observed_not", "" + m.predictedOnly()},
+          {"not_marked_observed_long", "" + m.observedOnly()}, {"neither", "" + m.neither()},
+          {"precision", number(m.precision())}, {"recall", number(m.recall())},
+          {"base_rate", number(k.baseRate())}};
+      for (final String[] c : risk) {
+        lines.add(String.join("\t", r.reading(), r.model(), "risk", "top_quarter", c[0], c[1]));
+      }
     }
     return lines;
   }
@@ -183,7 +193,11 @@ public final class IssuesFirstCommitPredictedBandCommand implements CommandRunne
         + "), never recomputed on the test; the bands are half-open, up to and including each "
         + "limit. MAE and median error are of the absolute error in business days; bias is the "
         + "mean of observed - predicted (positive means underestimation). The error is the "
-        + "whole one, never clipped. Models: the three Elastic Net models of the start. "
+        + "whole one, never clipped. The long band marks the predictions above the last limit; "
+        + "the risk band marks the quarter of the highest predictions of each model in each "
+        + "reading (above the third quartile of those predictions, no label read), both against "
+        + "the issues observed above the last limit. Models: the three Elastic Net models of the "
+        + "start. "
         + scored + " scored issues; the usual flow is the issues observed at or under "
         + BusinessDays.days(fence) + " business days, the report's fence.");
     for (final String reading : List.of("all", "usual_flow")) {
@@ -215,6 +229,16 @@ public final class IssuesFirstCommitPredictedBandCommand implements CommandRunne
             + ", observed long only " + l.observedOnly() + ", neither " + l.neither()
             + "; precision " + number(l.precision()) + ", recall " + number(l.recall())
             + " (n/a: division by zero).");
+        final PredictedBands.RiskBand k = r.bands().riskBand();
+        final PredictedBands.LongBand m = k.counts();
+        md.add("");
+        md.add("Risk band (the quarter of the highest predictions, above their third quartile, "
+            + number(k.threshold()) + " business days, against observed above "
+            + BusinessDays.days(tops[2]) + "): marked and observed long " + m.both()
+            + ", marked only " + m.predictedOnly() + ", observed long only " + m.observedOnly()
+            + ", neither " + m.neither() + "; precision " + number(m.precision()) + ", recall "
+            + number(m.recall()) + "; share observed long " + number(k.baseRate())
+            + ", the precision of a mark of the same size drawn at random.");
       }
     }
     return md;
