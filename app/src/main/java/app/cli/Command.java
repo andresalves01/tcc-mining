@@ -527,7 +527,10 @@ public enum Command {
       fitting rows as the test's report records them (half-open, as the
       error bands are), beside the same bands by observed duration: n, MAE,
       median error and bias per band; for the long band (above Q3) the four
-      counts of predicted long against observed long, precision and recall.
+      counts of predicted long against observed long, precision and recall;
+      for the risk band, the same against the quarter of the highest
+      predictions of each model in each reading (above the third quartile of
+      those predictions, no label read), with the share observed long.
       The three Elastic Net start models, on the full population (main) and
       on the usual flow (observed at or under the report's fence). Reads
       REPORT_DIR (similarity-test-predictions.tsv) and the run's log, RUN_LOG
