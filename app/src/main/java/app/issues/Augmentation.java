@@ -28,33 +28,27 @@ import java.util.stream.IntStream;
  * issue uses its own day boundary. The same duration is used in both split variants. A past
  * issue of 0 days enters no history; since ticket 21 the extraction draws none of them.
  *
- * <p><b>History</b> (ticket 21, item 45 of the retrospective decisions). The history of a split
- * is its whole training side, whatever the dates: the inner fitting set for the inner variant, the
- * outer training set for the outer. Each variant has one history, one neighbour index and one
- * cluster fit per k, read alike by the rows of its training side (inner fitting; outer training)
- * and by its scored rows (inner validation; outer test). A training row reads issues resolved
- * after its own start; no label of the other side ever enters -- no validation label in the inner
- * variant, no test label in the outer -- and no row ever reads its own: the neighbours, the
- * cluster's members and the reporter median leave the query out by id. The split is random and
- * stratified by project ({@link ProjectSplit}), so no instant separates the sides. Under the
- * revised temporal design an issue crossing a level's cut ({@link Verdict#CROSSING}) is in no
- * history of that level and reads no column there unless the level scores it; the cluster centres
- * are still fitted on the whole training side, crossing issues included. Of a label the centres
- * read one bit alone, whether the issue lasted at least one business day ({@link Issue#counted});
- * in the first-commit population every issue does, so there the centres read no label.
+ * <p><b>History.</b> The history of a level is its training side that teaches: the inner fitting
+ * set for the inner variant, the outer training set for the outer. Each variant has one history
+ * and one neighbour index, read alike by the rows of its training side and by its scored rows
+ * (inner validation; outer test), each row admitting only its point-in-time part of it. No label
+ * of the other side ever enters -- no validation label in the inner variant, no test label in the
+ * outer -- and no row ever reads its own: the neighbours, the cluster's members and the reporter
+ * median leave the query out by id. An issue crossing a level's cut ({@link Verdict#CROSSING}) is
+ * in no history of that level and reads no column there unless the level scores it, nor enters
+ * any cluster fit.
  *
  * <p><b>Point-in-time history</b> (the revised temporal design, {@link Histories#POINT_IN_TIME}).
  * For each query, a member counts only when it teaches at the level, its first resolution comes
  * strictly before the query's start -- the first commit -- and it is not the query: only labels
  * already known when its work began. The filter applies before anything is chosen: the closest n
  * Jaccard and embedding neighbours are the closest of the admitted members, the reporter median
- * reads the admitted issues, and a cluster's median its admitted members. The cluster centres and
- * every row's nearest centre stay those of the whole side, since they read no label beyond {@link
- * Issue#counted}, always true in the first-commit population. A query with
- * no admitted member has a missing value. Under this design the inner level also answers the
- * outer test (ticket 06): each outer test row reads the inner fitting history, point in time, and
- * is assigned to the inner centres already fitted; its inner split is outer_test, and it never
- * enters a history or a fit, so the fitting and validation rows read the same with or without it.
+ * reads the admitted issues, and the cluster centres are fitted on the admitted members' vectors
+ * alone, so no issue that had not ended when the query's work began shapes its group. A query
+ * with no admitted member has a missing value. Under this design the inner level also answers the
+ * outer test (ticket 06): each outer test row reads the inner fitting history, point in time; its
+ * inner split is outer_test, and it never enters a history or a fit, so the fitting and
+ * validation rows read the same with or without it.
  *
  * <p><b>Neighbours.</b> The candidates are the history issues sharing at least one token with the
  * query; the closest n by Jaccard distance give the unweighted median of their business days,
@@ -80,16 +74,20 @@ import java.util.stream.IntStream;
  * of the reporter in the project resolved before t0, to the target's interval and the matching
  * split.
  *
- * <p><b>Clusters.</b> For each candidate k, the {@link Clusterer} is fitted on the vectors of a
- * history, the same as the embedding neighbours', and on those alone, never on durations, with
- * seed {@link #CLUSTER_SEED}: once per variant, read by every row of it. The history is fitted in
- * order of first In Progress, ties by id. Every history member with a valid vector is assigned to
- * its nearest centre by Euclidean distance, the rule the query is assigned by, so a cluster's
- * members are the members nearest to its centre. The value is the unweighted median duration of
- * the members of the query's cluster, the query itself never among them; the centre only picks the
- * group. It is missing when the query has no valid vector, when the history has fewer distinct
- * vectors than k -- k never shrunk -- or when the cluster has no member but the query. The fits
- * run on a pool of threads of their own; each depends on its vectors, k and seed alone.
+ * <p><b>Clusters.</b> For each candidate k and each query, the {@link Clusterer} is fitted on the
+ * vectors of the members the query's history admits, the members the embedding neighbours are
+ * chosen from, and on those alone, never on durations, with seed {@link #CLUSTER_SEED}. The
+ * admitted members are a prefix of the history ordered by first resolution, so queries admitting
+ * the same prefix read one fit, made once: under the revised design every scored row starts after
+ * every member of its history has ended and reads the widest fit, and each training row one of
+ * its own. A prefix is fitted in order of first commit, ties by id. Each of its members with a
+ * valid vector is assigned to its nearest centre by Euclidean distance, the rule the query is
+ * assigned by, so a cluster's members are the members nearest to its centre. The value is the
+ * unweighted median duration of the members of the query's cluster, the query itself never among
+ * them; the centre only picks the group. It is missing when the query has no valid vector, when
+ * its admitted members have fewer distinct vectors than k -- k never shrunk -- or when the cluster
+ * has no member but the query. The fits run on a pool of threads of their own; each depends on
+ * its vectors, k and seed alone.
  *
  * <p>Pure but for the embedder and the clusterer it is given: rows and descriptions in, columns
  * and diagnostics out.
@@ -120,10 +118,10 @@ public final class Augmentation {
   public enum Histories {
     /**
      * A point-in-time history: for a query, only the members that teach whose first resolution
-     * comes strictly before the query's start (its first commit), never the query. The inner level
-     * also answers the outer test (ticket 06), from the inner fitting history and the inner
-     * centres alone; no outer test row ever enters a history or a fit. The revised temporal
-     * design's.
+     * comes strictly before the query's start (its first commit), never the query; the cluster
+     * centres it reads are fitted on those members alone. The inner level also answers the outer
+     * test (ticket 06), from the inner fitting history alone; no outer test row ever enters a
+     * history or a fit. The revised temporal design's.
      */
     POINT_IN_TIME;
 
@@ -168,15 +166,6 @@ public final class Augmentation {
     /** The same, by an issue's outer and inner verdicts. */
     public boolean fitting(final String outer, final String inner) {
       return Verdict.teaches(this, outer, inner);
-    }
-
-    /**
-     * The rows of the training side, whether they teach or cross this level's cut ({@link
-     * Verdict#trainingSide}): what the cluster centres are fitted on, the rows of at least one
-     * business day ({@link Issue#counted}), which in the first-commit population is every row.
-     */
-    public boolean trainingSide(final Issue i) {
-      return Verdict.trainingSide(this, i.outer(), i.inner());
     }
 
     /** The rows scored against the training side: inner validation, or outer test. */
@@ -300,16 +289,19 @@ public final class Augmentation {
   public record Embedded(String id, int chunks, String problem) {}
 
   /**
-   * One K-means fit of one variant's history.
+   * One K-means fit of a point-in-time history of one variant: the members resolved before the
+   * first commit of the rows that read it.
    *
-   * @param vectors the history members with a valid vector, the vectors fitted
+   * @param vectors the admitted members with a valid vector, the vectors fitted
    * @param distinct how many of those vectors differ, as {@link Clusterer#distinct} counts
    * @param distortion the clusterer's distortion of the fit, NaN when not fitted
-   * @param members per cluster, the ids of the members nearest its centre, in history order;
-   *     empty when not fitted
+   * @param rows how many rows read this fit
+   * @param members per cluster, the ids of the members nearest its centre, in history order, for
+   *     the variant's widest fit alone, the one its scored rows read; empty for every other fit
+   *     and when not fitted
    */
   public record ClusterFit(Variant variant, int k, int vectors, int distinct, boolean fitted,
-      double distortion, List<List<String>> members) {}
+      double distortion, int rows, List<List<String>> members) {}
 
   /**
    * One row's cluster for one k against one variant's history.
@@ -318,9 +310,10 @@ public final class Augmentation {
    *     history was not fitted
    * @param distance the query's Euclidean distance to that centre, NaN without a cluster
    * @param members how many members the median read, the query itself left out
+   * @param history how many vectors the query's fit was fitted on, the members its history admits
    */
   public record ClusterQuery(String id, Variant variant, String split, int k, int cluster,
-      double distance, int members) {}
+      double distance, int members, int history) {}
 
   /**
    * @param columns per issue id, every new column, absent when missing; every issue is a key
@@ -409,17 +402,10 @@ public final class Augmentation {
       issues.stream().filter(i -> !v.fitting(i) && !v.scored(i) && v.answers(i, design))
           .forEach(rows::add);
       final List<Issue> history = fitting.stream().filter(i -> i.counted(v)).toList();
-      // the cluster centres: fitted on the whole training side, crossing issues included, in
-      // the same order; without crossing issues the history itself. Of a label they read only
-      // counted(), at least one business day, which every first-commit issue has, so in that
-      // population they read no label
-      final List<Issue> centres = issues.stream().filter(v::trainingSide)
-          .sorted(Comparator.comparingLong(Issue::start).thenComparing(Issue::id))
-          .filter(i -> i.counted(v)).toList();
       final Index index = new Index(history, tokens);
       final Space space = new Space(history, vectors);
       histories.add(new History(v, rows.size(), history.size()));
-      frozen.add(new Frozen(v, history, centres, rows));
+      frozen.add(new Frozen(v, history, rows));
       final List<Space.Found> found = space.search(rows, mostVectors, design);
       for (int k = 0; k < rows.size(); k++) {
         final Issue q = rows.get(k);
@@ -436,71 +422,149 @@ public final class Augmentation {
   }
 
   /**
-   * One variant's history, the issues its cluster centres are fitted on, and the rows that read
-   * it: its training side that teaches, then its scored rows, then the outer test it answers.
+   * One variant's history and the rows that read it: its training side that teaches, then its
+   * scored rows, then the outer test it answers.
    */
-  private record Frozen(Variant variant, List<Issue> history, List<Issue> centres,
-      List<Issue> rows) {}
+  private record Frozen(Variant variant, List<Issue> history, List<Issue> rows) {}
 
   /**
-   * Fits every history for every k, all fits on a pool of threads of their own, then assigns each
-   * history's members and each row to the nearest centre.
+   * Every row's cluster for every k, point in time: for each row the centres are fitted on the
+   * vectors of the members its history admits, those resolved strictly before its first commit,
+   * and on those alone. The admitted members are a prefix of the history ordered by first
+   * resolution, so the rows that admit the same prefix read the same fit, made once. Each fit runs
+   * on a pool of threads of its own; the columns are written here, in the rows' order.
    */
   private static void clusters(final List<Frozen> frozen, final Vectors vectors,
       final Clusterer clusterer, final Histories design,
       final Map<String, Map<String, Double>> columns, final List<ClusterFit> fits,
       final List<ClusterQuery> queries) {
-    final List<List<Issue>> members = new ArrayList<>();
-    final List<double[][]> data = new ArrayList<>();
-    final List<Callable<Clusterer.Fit>> jobs = new ArrayList<>();
+    final List<Callable<Answered>> jobs = new ArrayList<>();
     for (final Frozen f : frozen) {
-      final List<Issue> kept =
-          f.centres().stream().filter(h -> vectors.row(h.id()) >= 0).toList();
-      final double[][] x = new double[kept.size()][];
-      for (int j = 0; j < x.length; j++) {
-        x[j] = vectors.vector(vectors.row(kept.get(j).id()));
+      // the history members with a valid vector, by first resolution then id
+      final List<Issue> byResolution = f.history().stream()
+          .filter(h -> vectors.row(h.id()) >= 0)
+          .sorted(Comparator.comparingLong(Issue::resolved).thenComparing(Issue::id)).toList();
+      final long[] resolved = byResolution.stream().mapToLong(Issue::resolved).toArray();
+      // read here, on one thread: the vectors are materialised lazily
+      final Map<String, double[]> of = new HashMap<>();
+      byResolution.forEach(h -> of.put(h.id(), vectors.vector(vectors.row(h.id()))));
+      final Map<String, double[]> own = new HashMap<>();
+      for (final Issue q : f.rows()) {
+        final int row = vectors.row(q.id());
+        if (row >= 0) {
+          own.put(q.id(), vectors.vector(row));
+        }
       }
-      members.add(kept);
-      data.add(x);
+      final TreeMap<Integer, List<Issue>> readers = new TreeMap<>();
+      for (final Issue q : f.rows()) {
+        readers.computeIfAbsent(admitted(resolved, q.start()), n -> new ArrayList<>()).add(q);
+      }
+      final int widest = readers.isEmpty() ? 0 : readers.lastKey();
       for (final int k : CLUSTER_K) {
-        jobs.add(() -> clusterer.fit(x, k, CLUSTER_SEED));
+        for (final Map.Entry<Integer, List<Issue>> e : readers.entrySet()) {
+          final List<Issue> prefix = byResolution.subList(0, e.getKey());
+          final List<Issue> rows = e.getValue();
+          final boolean keep = e.getKey() == widest;
+          jobs.add(() -> fit(f.variant(), k, prefix, rows, keep, of, own, clusterer, design));
+        }
       }
     }
-    final List<Clusterer.Fit> fitted = fitAll(jobs);
-    for (int h = 0; h < frozen.size(); h++) {
-      final Frozen f = frozen.get(h);
-      final List<Issue> kept = members.get(h);
-      final double[][] x = data.get(h);
-      final int distinct = Clusterer.distinct(x);
-      for (int c = 0; c < CLUSTER_K.size(); c++) {
-        final int k = CLUSTER_K.get(c);
-        final Clusterer.Fit fit = fitted.get(h * CLUSTER_K.size() + c);
-        final List<List<Issue>> groups = new ArrayList<>();
-        if (fit.fitted()) {
-          final int[] nearest = IntStream.range(0, x.length).parallel()
-              .map(j -> fit.assign(x[j]).cluster()).toArray();
-          for (int g = 0; g < k; g++) {
-            groups.add(new ArrayList<>());
-          }
-          // a median reads the members that teach alone: no crossing label among them
-          for (int j = 0; j < x.length; j++) {
-            if (f.variant().fitting(kept.get(j))) {
-              groups.get(nearest[j]).add(kept.get(j));
-            }
-          }
-        }
-        fits.add(new ClusterFit(f.variant(), k, x.length, distinct, fit.fitted(),
-            fit.distortion(), groups.stream().map(g -> g.stream().map(Issue::id).toList())
-                .toList()));
+    final Map<String, ClusterQuery> answered = new HashMap<>();
+    final Map<String, Double> values = new HashMap<>();
+    for (final Answered a : runAll(jobs)) {
+      fits.add(a.fit());
+      a.queries().forEach(q -> answered.put(q.id() + "\t" + q.variant() + "\t" + q.k(), q));
+      values.putAll(a.values());
+    }
+    for (final Frozen f : frozen) {
+      for (final int k : CLUSTER_K) {
         for (final Issue q : f.rows()) {
-          queries.add(assign(q, f, k, fit, groups, vectors, design, columns));
+          final String at = q.id() + "\t" + f.variant() + "\t" + k;
+          queries.add(answered.get(at));
+          final Double value = values.get(at);
+          if (value != null) {
+            columns.get(q.id()).put(cluster(k, f.variant()), value);
+          }
         }
       }
     }
   }
 
-  /** The fits of {@code jobs}, in their order, each on a thread of its own pool. */
-  private static List<Clusterer.Fit> fitAll(final List<Callable<Clusterer.Fit>> jobs) {
+  /**
+   * How many members of a history ordered by first resolution, {@code resolved}, a row starting
+   * at {@code start} admits: those before the first the point-in-time rule refuses.
+   */
+  static int admitted(final long[] resolved, final long start) {
+    int low = 0;
+    int high = resolved.length;
+    while (low < high) {
+      final int mid = (low + high) >>> 1;
+      if (Histories.admits(resolved[mid], start)) {
+        low = mid + 1;
+      } else {
+        high = mid;
+      }
+    }
+    return low;
+  }
+
+  /** One fit, the rows that read it, and their columns, keyed by id, variant and k. */
+  private record Answered(ClusterFit fit, List<ClusterQuery> queries, Map<String, Double> values) {}
+
+  /**
+   * The fit of {@code prefix}'s vectors for {@code k}, in order of first commit, ties by id, as
+   * every history is fitted; each member assigned to its nearest centre; and each of {@code rows}
+   * assigned to its nearest centre, its value the median of the members of its cluster it admits.
+   */
+  private static Answered fit(final Variant v, final int k, final List<Issue> prefix,
+      final List<Issue> rows, final boolean keep, final Map<String, double[]> of,
+      final Map<String, double[]> own, final Clusterer clusterer, final Histories design) {
+    final List<Issue> members = prefix.stream()
+        .sorted(Comparator.comparingLong(Issue::start).thenComparing(Issue::id)).toList();
+    final double[][] x = new double[members.size()][];
+    for (int j = 0; j < x.length; j++) {
+      x[j] = of.get(members.get(j).id());
+    }
+    final int distinct = Clusterer.distinct(x);
+    final Clusterer.Fit fit = distinct < k ? Clusterer.Fit.notFitted(k)
+        : clusterer.fit(x, k, CLUSTER_SEED);
+    final List<List<Issue>> groups = new ArrayList<>();
+    if (fit.fitted()) {
+      for (int g = 0; g < k; g++) {
+        groups.add(new ArrayList<>());
+      }
+      for (int j = 0; j < x.length; j++) {
+        groups.get(fit.assign(x[j]).cluster()).add(members.get(j));
+      }
+    }
+    final List<ClusterQuery> queries = new ArrayList<>(rows.size());
+    final Map<String, Double> values = new HashMap<>();
+    for (final Issue q : rows) {
+      final String split = v.split(q, design);
+      final double[] vector = own.get(q.id());
+      if (vector == null || !fit.fitted()) {
+        queries.add(new ClusterQuery(q.id(), v, split, k, -1, Double.NaN, 0, x.length));
+        continue;
+      }
+      final Clusterer.Assignment a = fit.assign(vector);
+      // the centre picks the group; its median reads the members the query's history admits
+      final List<Double> days = groups.get(a.cluster()).stream()
+          .filter(m -> !m.id().equals(q.id()) && design.admits(q, m)).map(m -> m.days(v))
+          .toList();
+      if (!days.isEmpty()) {
+        values.put(q.id() + "\t" + v + "\t" + k, median(days));
+      }
+      queries.add(new ClusterQuery(q.id(), v, split, k, a.cluster(), a.distance(), days.size(),
+          x.length));
+    }
+    final List<List<String>> kept = keep
+        ? groups.stream().map(g -> g.stream().map(Issue::id).toList()).toList() : List.of();
+    return new Answered(new ClusterFit(v, k, x.length, distinct, fit.fitted(), fit.distortion(),
+        rows.size(), kept), queries, values);
+  }
+
+  /** The results of {@code jobs}, in their order, each on a thread of its own pool. */
+  private static <T> List<T> runAll(final List<Callable<T>> jobs) {
     final int threads = Math.max(1, Math.min(jobs.size(),
         Runtime.getRuntime().availableProcessors()));
     final ExecutorService pool = Executors.newFixedThreadPool(threads, r -> {
@@ -509,8 +573,8 @@ public final class Augmentation {
       return t;
     });
     try {
-      final List<Clusterer.Fit> out = new ArrayList<>(jobs.size());
-      for (final Future<Clusterer.Fit> f : pool.invokeAll(jobs)) {
+      final List<T> out = new ArrayList<>(jobs.size());
+      for (final Future<T> f : pool.invokeAll(jobs)) {
         out.add(f.get());
       }
       return out;
@@ -528,25 +592,6 @@ public final class Augmentation {
     } finally {
       pool.shutdownNow();
     }
-  }
-
-  private static ClusterQuery assign(final Issue q, final Frozen f, final int k,
-      final Clusterer.Fit fit, final List<List<Issue>> groups, final Vectors vectors,
-      final Histories design, final Map<String, Map<String, Double>> columns) {
-    final Variant v = f.variant();
-    final String split = v.split(q, design);
-    final int row = vectors.row(q.id());
-    if (row < 0 || !fit.fitted()) {
-      return new ClusterQuery(q.id(), v, split, k, -1, Double.NaN, 0);
-    }
-    final Clusterer.Assignment a = fit.assign(vectors.vector(row));
-    // the centre picks the group; its median reads the members the query's history admits
-    final List<Double> days = groups.get(a.cluster()).stream()
-        .filter(m -> !m.id().equals(q.id()) && design.admits(q, m)).map(m -> m.days(v)).toList();
-    if (!days.isEmpty()) {
-      columns.get(q.id()).put(cluster(k, v), median(days));
-    }
-    return new ClusterQuery(q.id(), v, split, k, a.cluster(), a.distance(), days.size());
   }
 
   private static Query answer(final Issue q, final Variant v, final Histories design,

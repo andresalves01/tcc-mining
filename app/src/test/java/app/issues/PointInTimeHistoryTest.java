@@ -10,6 +10,7 @@ import app.pipeline.clustering.SmileKMeans;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -118,6 +119,16 @@ class PointInTimeHistoryTest {
     return out;
   }
 
+  /** The fake embedder's vector of {@code text}, exact in double, as the augmentation reads it. */
+  private double[] vector(final String text) {
+    final float[] v = fake.embed(text).vector();
+    final double[] out = new double[v.length];
+    for (int d = 0; d < v.length; d++) {
+      out[d] = v[d];
+    }
+    return out;
+  }
+
   private static Double median(final List<Double> days) {
     return days.isEmpty() ? null : Augmentation.median(days);
   }
@@ -151,24 +162,48 @@ class PointInTimeHistoryTest {
         .allMatch(q -> q.nearest().stream().noneMatch(n -> n.id().equals("edge-h"))),
         "resolved at the very instant of the first commit: not yet known");
 
-    // the reporter median and the cluster median, recomputed by brute force
-    final Map<String, Augmentation.ClusterFit> fits = new HashMap<>();
-    r.clusterFits().forEach(f -> fits.put(f.variant() + " " + f.k(), f));
+    // the cluster median, recomputed by brute force: the centres refitted on the vectors of the
+    // members the query's history admits and on those alone, its cluster the nearest centre, its
+    // median that of the admitted members nearest the same centre
+    final Map<String, Clusterer.Fit> refits = new HashMap<>();
     int clustered = 0;
     for (final Augmentation.ClusterQuery q : r.clusterQueries()) {
       final Augmentation.Issue query = byId.get(q.id());
-      if (q.cluster() < 0) {
+      final List<Augmentation.Issue> known = rows.stream()
+          .filter(h -> admitted(q.variant(), query, h) && h.counted(q.variant())
+              && h.description() != null)
+          .sorted(Comparator.comparingLong(Augmentation.Issue::start)
+              .thenComparing(Augmentation.Issue::id))
+          .toList();
+      assertEquals(known.size(), q.history(), q.toString());
+      final double[][] x = known.stream().map(h -> vector(h.description()))
+          .toArray(double[][]::new);
+      final Clusterer.Fit fit = refits.computeIfAbsent(q.variant() + " " + q.k() + " "
+          + known.stream().map(Augmentation.Issue::id).toList(),
+          ids -> new SmileKMeans().fit(x, q.k(), Augmentation.CLUSTER_SEED));
+      final Double column = r.columns().get(q.id()).get(Augmentation.cluster(q.k(), q.variant()));
+      if (!fit.fitted() || query.description() == null) {
+        assertEquals(-1, q.cluster(), q.toString());
+        assertEquals(null, column, q.toString());
         continue;
       }
-      final List<Double> days = fits.get(q.variant() + " " + q.k()).members().get(q.cluster())
-          .stream().map(byId::get).filter(h -> admitted(q.variant(), query, h))
-          .map(h -> h.days(q.variant())).toList();
+      final Clusterer.Assignment a = fit.assign(vector(query.description()));
+      assertEquals(a.cluster(), q.cluster(), q.toString());
+      assertEquals(a.distance(), q.distance(), q.toString());
+      final List<Double> days = new ArrayList<>();
+      for (int j = 0; j < x.length; j++) {
+        if (fit.assign(x[j]).cluster() == a.cluster()) {
+          days.add(known.get(j).days(q.variant()));
+        }
+      }
       assertEquals(days.size(), q.members(), q.toString());
-      assertEquals(median(days),
-          r.columns().get(q.id()).get(Augmentation.cluster(q.k(), q.variant())), q.toString());
+      assertEquals(median(days), column, q.toString());
       clustered += days.size();
     }
     assertTrue(clustered > 1_000, "members read: " + clustered);
+    assertTrue(refits.size() > 20, "fits refitted: " + refits.size());
+
+    // the reporter median, recomputed by brute force
     int reported = 0;
     for (final Augmentation.Issue q : rows) {
       for (final Variant v : Variant.values()) {
@@ -299,9 +334,9 @@ class PointInTimeHistoryTest {
     for (final Augmentation.Issue i : rows) {
       assertEquals(Map.of(), r.columns().get(i.id()), i.id());
     }
-    assertTrue(r.clusterQueries().stream().allMatch(q -> q.members() == 0));
-    assertTrue(r.clusterFits().stream().anyMatch(Augmentation.ClusterFit::fitted),
-        "the centres are still fitted: they read no label");
+    assertTrue(r.clusterQueries().stream().allMatch(q -> q.members() == 0 && q.history() == 0));
+    assertTrue(r.clusterFits().stream().noneMatch(Augmentation.ClusterFit::fitted),
+        "no centre is fitted: nobody's description was known at anyone's first commit");
   }
 
   @Test
@@ -333,7 +368,19 @@ class PointInTimeHistoryTest {
         && "TEST".equals(byId.get(q.id()).outer())).allMatch(q -> q.split().equals("outer_test")));
     assertTrue(r.clusterQueries().stream().filter(q -> q.variant() == Variant.INNER
         && "TEST".equals(byId.get(q.id()).outer())).allMatch(q -> q.split().equals("outer_test")));
-    assertEquals(2 * Augmentation.CLUSTER_K.size(), r.clusterFits().size(), "no new fit");
+    // every outer test row reads the widest inner fit, the inner validation's: no new fit
+    final List<Augmentation.Issue> without = rows.stream()
+        .filter(i -> !"TEST".equals(i.outer())).toList();
+    assertEquals(fitted(run(without, Histories.POINT_IN_TIME), Variant.INNER),
+        fitted(r, Variant.INNER), "no new fit");
+    for (final int k : Augmentation.CLUSTER_K) {
+      final int widest = r.clusterFits().stream()
+          .filter(f -> f.variant() == Variant.INNER && f.k() == k)
+          .mapToInt(Augmentation.ClusterFit::vectors).max().orElseThrow();
+      assertTrue(r.clusterQueries().stream().filter(q -> q.variant() == Variant.INNER
+          && q.k() == k && "TEST".equals(byId.get(q.id()).outer()))
+          .allMatch(q -> q.history() == widest), "k " + k);
+    }
     assertTrue(r.coverage().stream().anyMatch(c -> c.by().equals("split")
         && c.group().equals("outer_test") && c.column().endsWith(Variant.INNER.suffix())
         && c.rows() == tests.size()));
@@ -358,7 +405,20 @@ class PointInTimeHistoryTest {
       compared += alone.columns().get(i.id()).size();
     }
     assertTrue(compared > 500, "values compared: " + compared);
-    assertEquals(alone.clusterFits(), with.clusterFits());
+    // the same centres, though the outer test rows also read some of them
+    assertEquals(fitted(alone, Variant.INNER), fitted(with, Variant.INNER));
+    assertTrue(fitted(with, Variant.OUTER).containsAll(fitted(alone, Variant.OUTER)));
+  }
+
+  /**
+   * {@code v}'s fits as what was fitted, without how many rows read each or the members kept of
+   * the widest: per k and size of the history fitted, its distinct vectors and distortion.
+   */
+  private static Set<List<Object>> fitted(final Augmentation.Result r, final Variant v) {
+    final Set<List<Object>> out = new HashSet<>();
+    r.clusterFits().stream().filter(f -> f.variant() == v).forEach(f -> out.add(List.of(f.k(),
+        f.vectors(), f.distinct(), f.fitted(), f.distortion())));
+    return out;
   }
 
   @Test

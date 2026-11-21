@@ -112,9 +112,11 @@ class IssuesSimilarityCommandTest {
     final Map<String, List<String>> files =
         IssuesSimilarityCommand.diagnostics(r, Population.FIRST_COMMIT);
 
-    assertEquals("variant\tk\tvectors\tdistinct\tfitted\tdistortion",
+    assertEquals("variant\tk\tvectors\tdistinct\tfitted\tdistortion\trows",
         files.get("cluster-fits.tsv").get(0));
-    assertTrue(files.get("cluster-fits.tsv").contains("inner\t16\t8\t8\tfalse\t"),
+    // the fitting rows start before any issue ends, so their fits hold nothing; the validation
+    // row's fit holds the eight
+    assertTrue(files.get("cluster-fits.tsv").contains("inner\t16\t8\t8\tfalse\t\t1"),
         files.get("cluster-fits.tsv").toString());
     assertTrue(files.get("cluster-fits.tsv").stream()
         .anyMatch(l -> l.startsWith("inner\t8\t8\t8\ttrue\t")));
@@ -129,9 +131,9 @@ class IssuesSimilarityCommandTest {
     final String v = files.get("cluster-queries.tsv").stream()
         .filter(l -> l.startsWith("v\tinner\tinner_validation\t8\t")).findFirst()
         .orElseThrow();
-    assertTrue(v.endsWith("\t0.0\t1"), "on f0's vector, its only member: " + v);
+    assertTrue(v.endsWith("\t0.0\t1\t8"), "on f0's vector, its only member, of eight: " + v);
     assertTrue(files.get("cluster-queries.tsv").contains(
-        "v\tinner\tinner_validation\t16\t\t\t0"),
+        "v\tinner\tinner_validation\t16\t\t\t0\t8"),
         "not fitted: no cluster, no distance");
     assertEquals(10.0, result.columns().get("v").get(Augmentation.cluster(8, Variant.INNER)));
     assertTrue(Augmentation.columns().stream().filter(c -> c.startsWith("cluster"))
@@ -139,9 +141,12 @@ class IssuesSimilarityCommandTest {
         "only the medians are columns: no cluster id, distance or centre");
 
     final List<Map<String, Object>> record = IssuesSimilarityCommand.fits(result.clusterFits());
-    assertEquals(result.clusterFits().size(), record.size());
+    assertEquals(2 * Augmentation.CLUSTER_K.size(), record.size(), "one per variant and k");
     final Map<String, Object> eight = record.stream().filter(m -> m.get("variant").equals("inner")
         && m.get("k").equals(8)).findFirst().orElseThrow();
+    assertEquals(2, eight.get("fits"), "the fitting rows' empty history, and the validation's");
+    assertEquals(1, eight.get("fitted_fits"));
+    assertEquals(8, eight.get("vectors"), "the widest fit's");
     assertEquals(true, eight.get("fitted"));
     assertTrue((Double) eight.get("distortion") >= 0);
     assertNull(record.stream().filter(m -> m.get("k").equals(16)).findFirst().orElseThrow()
