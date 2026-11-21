@@ -1,18 +1,15 @@
 package app.cli;
 
+import java.util.List;
 import java.util.Set;
+import java.util.stream.Stream;
 
 /**
  * The {@code --help} text.
  *
- * <p>
- * The command list comes from {@link Command}, so a command added to the enum
- * documents itself
- * and one removed from it stops being advertised. Each description is printed
- * as it is written
- * there, indented. Only the header and the environment block are written out
- * here: they describe
- * the process, not any single stage.
+ * <p>The commands are listed in the order a run takes them, from {@link StudySettings}, each with
+ * the description written in {@link Command}. Only the header and the settings block are written
+ * out here: they describe the process, not any single stage.
  */
 public final class Help {
   private static final Set<String> ALIASES = Set.of("help", "--help", "-h");
@@ -25,108 +22,65 @@ public final class Help {
 
   public static void print() {
     System.out.println("""
-        Issue duration from In Progress, over the SmartSHARK 2.2 corpus.
+        Issue duration from the first commit, over the SmartSHARK 2.2 corpus.
 
-        Estimates how many active business days an issue of an Apache Java project takes from the
-        start of the work (its first In Progress) to its first resolution. The stages run in the
-        order listed below, each writing what the next one reads: identity first, because every
-        later stage keys on the canonical author; then the contribution ledger, the labelled
-        funnel and the per-commit complexity the extraction reads; then the issue stages.
+        Estimates how many business days an issue of an Apache Java project takes from its first
+        human commit to its first resolution. The app runs one design only: the first-commit
+        population under the revised temporal split. The preparation commands build the prepared
+        collections in smartshark_tcc once; the study's stages then run in the order below, in one
+        run folder (RUN_DIR), each reading what the previous one wrote there.
+
+        The descriptions below also mention settings of designs the app no longer runs
+        (POPULATION, SPLIT_RULE, the file and database settings): those are fixed, as listed at
+        the end, and printed at the top of every run.
 
         Usage: app <command>
         """);
-    for (final Command command : Command.values()) {
+    System.out.println("Preparing the corpus:\n");
+    print(StudySettings.PREPARATION);
+    System.out.println("The study, in run order:\n");
+    print(StudySettings.stages());
+    System.out.println("""
+        Settings (environment, or -D system properties). A run sets only these:
+          RUN_DIR           (none)              the run's folder: every file the study's stages
+                                                read or write has a fixed name there
+          ISSUES_DB         (none)              the database where the run's records go; one per
+                                                run, since the test opens only once in each
+          WAIT_FENCE_K      1.5                 the sensitivity of the wait cap, Q3 + k IQR: empty
+                                                is the official 1.5, a positive number is that k,
+                                                none is no cap
+          MONGO_URI         mongodb://127.0.0.1:27017
+          SOURCE_DB         smartshark_2_2      the corpus, read only
+          MODEL_DIR         ~/.cache/tcc-minilm-java   where the embedding model is kept
+          WORK_DIR          build/identity-work        reconstruct-people's working copy
+          JIRA_CACHE_DIR    build/jira-cache           harvest-jira's answers
+          JIRA_DELAY_MS     250                 pause between issue-tracker requests
+          EMBEDDING_THREADS, ELASTIC_NET_THREADS, BOOTSTRAP_THREADS
+                                                threads; the same numbers, bit for bit, on any
+                                                count
+          REQUIRE_MODEL     (unset)             tests only: 1 makes the model tests fail, not skip
+
+        Fixed by the study (setting one is refused):
+          the preparation   TARGET_DB=smartshark_tcc, every project, identities merged by e-mail
+                            and full name
+          the study         POPULATION=FIRST_COMMIT, SPLIT_RULE=revised,
+                            TARGET_DB=smartshark_first_commit, PREPARED_DB=smartshark_tcc, and
+                            every file inside RUN_DIR
+        """);
+  }
+
+  private static void print(final List<Command> commands) {
+    for (final Command command : commands) {
       System.out.println(command.token().indent(INDENT).stripTrailing());
       System.out.print(command.help().indent(DESCRIPTION_INDENT));
       System.out.println();
     }
-    System.out.println("""
-        Environment (or -D system properties):
-          MONGO_URI         mongodb://127.0.0.1:27017
-          SOURCE_DB         smartshark_2_2      read-only
-          TARGET_DB         smartshark_tcc      written to; must differ from SOURCE_DB
-          ISSUES_DB         smartshark_issues   the issue stages' run records: written to; its own
-          PREPARED_DB       (TARGET_DB)         the issue stages read the prepared collections
-                                                (person_canonical, developer_contribution,
-                                                commit_complexity, issue_label) here; read only
-          POPULATION        IN_PROGRESS         issues-in-progress-extract and -team:
-                                                IN_PROGRESS or FIRST_COMMIT (needs TARGET_DB and
-                                                ISSUES_DB of its own); the similarity and
-                                                retrospective stages take the population of the
-                                                matrix they read
-          CACHE             (unset)             issues-in-progress-extract: the matrix written;
-                                                issues-in-progress-similarity: the one it reads
-          WORK_DIR          build/identity-work
-          JIRA_CACHE_DIR    build/jira-cache
-          JIRA_DELAY_MS     250                 pause between issue-tracker requests
-          MERGE_STRICTNESS  EMAIL_AND_FULL_NAME | EMAIL_ONLY
-          PILOT             (unset)             ledger and funnel: restrict to matching projects
-          REPORT_DIR        (unset)             issues-in-progress-similarity,
-                                                issues-in-progress-similarity-test and
-                                                -inner-report: where their files go;
-                                                issues-first-commit-same-model-calibration:
-                                                a new folder, never the test step's
-          MATRIX            (unset)             issues-in-progress-similarity: the augmented matrix
-                                                written; issues-in-progress-retrospective,
-                                                issues-in-progress-similarity-elastic-net, -test
-                                                and -inner-report: the one they read (for the
-                                                last three, the retrospective matrix, which has
-                                                every model's columns)
-          RETROSPECTIVE_MATRIX (unset)          issues-in-progress-retrospective: the matrix with
-                                                the nine retrospective columns written
-          TEAM_COLUMNS      (unset)             issues-in-progress-team writes it,
-                                                issues-in-progress-similarity reads it
-          MODEL_DIR         (unset)             issues-download-model: where the embedding model goes;
-                                                the embedder reads and verifies it there
-                                                (issues-in-progress-similarity)
-          REQUIRE_MODEL     (unset)             tests: 1 makes the model tests fail, not skip,
-                                                without a valid model in MODEL_DIR
-          EMBEDDING_CACHE   (unset)             issues-in-progress-similarity: directory of the
-                                                embedding cache, one file per model, revision,
-                                                chunking policy and cleaner version
-          EMBEDDING_THREADS (processors)        issues-in-progress-similarity: threads that embed
-                                                the descriptions the cache misses; 1 embeds them
-                                                one by one. Same vectors, bit for bit, on any
-                                                number of threads
-          ELASTIC_NET_THREADS 1                 threads for the Elastic Net fits: the sweep's
-                                                points and the similarity test's refits; 1 fits
-                                                them in sequence. Same numbers, bit for bit, on
-                                                any number of threads
-          BOOTSTRAP_THREADS (processors)        threads for the draws of the project-resampled
-                                                intervals; 1 runs them in sequence. Same
-                                                intervals, bit for bit, on any number of threads
-          ELASTIC_NET_PARAMETERS (unset)        issues-in-progress-similarity-elastic-net: where
-                                                each model's alpha and lambda go, and the Jaccard
-                                                n, embedding n and cluster k of the three
-                                                models with the similarity medians, and the tail
-                                                cut's k, chosen on the own start model, both
-                                                fences and each k's error;
-                                                issues-in-progress-similarity-test and
-                                                -inner-report read it
-          TEST_PREDICTIONS  (unset)             issues-first-commit-analogy and
-                                                -same-model-calibration: the test step's
-                                                similarity-test-predictions.tsv, read only
-          AUDIT_DIR         (unset)             issues-first-commit-audit: where audit.md and
-                                                per-issue.tsv go
-          SUPPORTING_DIR    (unset)             issues-first-commit-supporting-numbers: where
-                                                filter-counts.md, worked-example.md and
-                                                worked-example.tsv go
-          WAIT_FENCE_K      1.5                 the k of the first-commit target's wait fence,
-                                                Q3 + k IQR (empty is 1.5, none is no cap; zero,
-                                                negative, NaN, infinity or text is refused):
-                                                read by issues-first-commit-audit, the first-commit
-                                                issues-in-progress-extract and
-                                                issues-first-commit-supporting-numbers; the
-                                                In Progress study never reads it
-          SPLIT_RULE        random              random | temporal | revised: the rule the
-                                                first-commit audit and extraction draw, and the
-                                                similarity, retrospective, selection and test
-                                                stages check the matrix's sides against;
-                                                temporal (the design opened on 02/11/2026) and
-                                                revised (its revised design) for the first-commit
-                                                study only, whose writing stages record their
-                                                runs in runs_temporal and runs_revised
-        """);
+  }
+
+  /** Every command, the preparation first and then the study in run order. */
+  static List<Command> listed() {
+    return Stream.concat(StudySettings.PREPARATION.stream(), StudySettings.stages().stream())
+        .toList();
   }
 
   private Help() {

@@ -5,6 +5,7 @@ import app.cli.CommandFailedException;
 import app.cli.ConsoleProgress;
 import app.cli.Context;
 import app.cli.Help;
+import app.cli.StudySettings;
 import app.config.PipelineConfig;
 import app.model.Parallel;
 import app.pipeline.jira.JiraChangelogSource;
@@ -20,6 +21,7 @@ import app.pipeline.mongo.MongoLabelStore;
 import app.pipeline.mongo.MongoPersonRegistry;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -74,7 +76,10 @@ public final class App {
     final Command command = selected.get();
 
     final PipelineConfig config;
+    final Map<String, String> preset;
     try {
+      // the study fixes every setting but a few, and fills them in before anything reads them
+      preset = StudySettings.apply(command, App::setting, System::setProperty);
       config = PipelineConfig.fromEnvironment();
       // a bad thread count refuses the run here, before any stage reads or writes anything
       Parallel.check();
@@ -87,6 +92,7 @@ public final class App {
 
     System.out.println("=== " + command.token() + " ===");
     System.out.println("  " + config.describe());
+    preset.forEach((key, value) -> System.out.println("  study setting: " + key + "=" + value));
     System.out.println();
 
     try (MongoClient client = MongoClients.create(config.mongoUri())) {
@@ -123,6 +129,12 @@ public final class App {
             progress),
         new app.pipeline.mongo.MongoIssuesStore(client, config.issuesDb()),
         new app.pipeline.mongo.MongoChangedMethodSource(client, config.sourceDb(), progress));
+  }
+
+  /** A setting as every stage reads it: the environment first, then a system property. */
+  private static String setting(final String name) {
+    final String fromEnv = System.getenv(name);
+    return fromEnv == null || fromEnv.isBlank() ? System.getProperty(name) : fromEnv;
   }
 
   private App() {}

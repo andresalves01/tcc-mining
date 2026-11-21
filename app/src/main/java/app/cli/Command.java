@@ -12,7 +12,6 @@ import app.cli.commands.IssuesRetrospectiveCommand;
 import app.cli.commands.IssuesSimilarityCommand;
 import app.cli.commands.IssuesSimilarityElasticNetCommand;
 import app.cli.commands.IssuesSimilarityInnerReportCommand;
-import app.cli.commands.IssuesSimilarityTestCommand;
 import app.cli.commands.ReconstructPeopleCommand;
 import app.pipeline.port.Corpus;
 import java.util.Arrays;
@@ -29,13 +28,6 @@ import java.util.stream.Stream;
  *
  */
 public enum Command {
-
-  ISSUES_ADJUSTED_DURATION("issues-in-progress-adjusted-duration",
-      new app.cli.commands.IssuesAdjustedDurationCommand(), """
-      Build a versioned two-phase target on frozen outer training rows only.
-      Requires MATRIX, ADJUSTED_DIR, BOT_ACCOUNTS, START_DESCRIPTIONS and EMBEDDING_CACHE.
-      ADJUSTED_STEP: evidence, audit, matrix, select, report, models, baseline-select or baseline-report.
-      Preserves original partitions and target; no outer-test outcomes or database writes."""),
 
   ISSUES_FIRST_COMMIT_AUDIT("issues-first-commit-audit",
       new app.cli.commands.IssuesFirstCommitAuditCommand(), """
@@ -343,69 +335,6 @@ public enum Command {
       and the chosen column (analogy chosen column), and the run record
       states both and every similarity median's error."""),
 
-  ISSUES_SIMILARITY_TEST("issues-in-progress-similarity-test",
-      new IssuesSimilarityTestCommand(), """
-      Issue duration from the first In Progress, outer mode only: SCORES THE OUTER TEST, in whole business days
-      (Monday-to-Friday dates reached, at each issue's day boundary,
-      holidays ignored, the time back in Open or Reopened left out) on the
-      issues of at least one business day, those of 0 dropped from the outer
-      training and test. Every model, forest and reference fits on the outer
-      training rows at or below the fence of the chosen k (Q3 + k IQR of the
-      outer training set's business days), and every table is read twice:
-      on the usual flow, the outer test issues at or below the k = 3 fence of
-      the outer training set, the main reading, and on all issues, the
-      complementary one; under SPLIT_RULE=revised all issues are the main
-      reading, printed and recorded first, and the usual flow the
-      complementary one. Reads MATRIX and ELASTIC_NET_PARAMETERS and chooses
-      nothing. Scores the fourteen models the inner report scores: refits
-      the six Elastic Net models (the own start model, Al-Zubaidi and Kikas
-      at the start; the retrospective main reading, the same with the
-      comments and the participants, a ceiling, and Kikas's retrospective
-      one) on the outer training set with its chosen alpha and the chosen
-      lambda times the ratio of rows,
-      the similarity medians at the Jaccard n, embedding n and cluster k
-      chosen for each model; refits beside each, as a robustness check, its
-      random forest with the chosen count of columns per split and leaf;
-      and with the global and project medians scores the outer test: error
-      in business days, with the slowest 10% left out too, Spearman,
-      pairwise ordering, error by band of the true business days (at the
-      quartiles of the outer training rows fitted; nothing clipped),
-      prediction intervals at 80% and 95% (split conformal on the log1p
-      scale, one factor per model and level, the factors the inner models
-      calibrated on the usual-flow inner validation applied to the outer
-      models, an approximation; read overall and per error band), and the
-      agreed paired comparisons with intervals resampling whole projects:
-      the own start model against Al-Zubaidi and against Kikas at the
-      start; the retrospective main reading against the own start model;
-      the ceiling against the main reading and against Kikas's
-      retrospective model; the main reading against Kikas's; every model
-      against the global median and every model but the global median
-      against the project median; the forests in the same pairs. As a side
-      reading, the main reading against the own start model again on the
-      issues with an implementation commit only. Relevance: each Elastic
-      Net's standardised coefficients in the refit on the outer training
-      set, with intervals resampling whole projects of the outer training
-      set; no forest's permutation importance, which would read the outer
-      test's labels. Refuses unless the parameters file exists and is for
-      these models with a forest for each, its choices were made on that
-      matrix, every row's split is the one its rule draws and every column
-      is present. Writes the per-issue predictions, the diagnostics and the
-      relevance to REPORT_DIR; records the run in ISSUES_DB. The
-      uncertainty TSV and Markdown report add relative bias, pooled SD and
-      shares within +/-25/50/100%, with project-bootstrap confidence
-      intervals, overall, by observed-duration band and start-description
-      availability. Prediction percentile illustrations use the existing
-      inner factors. SPSP scenarios provide context only, no acceptance rule.
-      The outer test is a new draw of 30% per project, seed 1738. Ordering
-      intervals, a declared measure stated before the outer test was
-      opened: for every agreed pair and every model against the project
-      median (the global median orders nothing), the paired difference in
-      Spearman and in pairwise ordering, each with its interval from the
-      same draws of whole projects as the error comparisons; printed and
-      recorded. A matrix of the first-commit population is refused on its
-      header alone: that study's outer test is sealed until it is opened
-      once, with the design frozen and the author's authorisation."""),
-
   ISSUES_SIMILARITY_INNER_REPORT("issues-in-progress-similarity-inner-report",
       new IssuesSimilarityInnerReportCommand(), """
       Issue duration from the first In Progress, INNER REPORT, read-only: every figure is optimistic, the
@@ -501,22 +430,6 @@ public enum Command {
       first-commit retrospective matrix, the outer training rows only) and
       ELASTIC_NET_PARAMETERS (written on it); writes share-ablation.md and
       share-ablation.tsv to REPORT_DIR; nothing to the database."""),
-
-  ISSUES_FIRST_COMMIT_ANALOGY("issues-first-commit-analogy",
-      new app.cli.commands.IssuesFirstCommitAnalogyCommand(), """
-      Issue duration from the first commit, ANALOGY ESTIMATE, read-only and
-      EXPLORATORY: added after the random split's outer test was opened, it
-      confirms nothing. One similarity median used directly as the estimate, in the
-      manner of Shepperd and Schofield (1997), the candidate with the lowest
-      MAE on the usual-flow inner validation; an issue without neighbours
-      takes the global median. Read on the outer test beside the fourteen
-      models as the test wrote them, on all issues and on the usual flow:
-      MAE, Spearman, pairwise ordering, MMRE and Pred(25), and the analogy
-      estimate against the two medians and the six start models with
-      intervals resampling whole projects. Reads MATRIX,
-      ELASTIC_NET_PARAMETERS and TEST_PREDICTIONS; writes
-      analogy-comparison.md and analogy-predictions.tsv to ANALOGY_DIR;
-      nothing to any database."""),
 
   ISSUES_FIRST_COMMIT_PREDICTED_BAND("issues-first-commit-predicted-band",
       new app.cli.commands.IssuesFirstCommitPredictedBandCommand(), """
