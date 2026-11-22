@@ -68,11 +68,10 @@ public final class IssuesSimilarityCommand implements CommandRunner {
       + "split's training side that teach there (the inner fitting set for the _inner columns, "
       + "the outer training for the _outer ones, never an issue crossing the level's cut) whose "
       + "first resolution comes strictly before the row's first commit, never the row itself; "
-      + "the closest n neighbours chosen among those; the cluster centres fitted once per k per "
-      + "variant on the whole training side, only the median of the members point-in-time; an "
-      + "empty history leaves the value missing; the outer test also answers in the _inner "
-      + "columns, from the inner fitting history and the inner centres alone, and never enters a "
-      + "history or a fit";
+      + "the closest n neighbours chosen among those; the cluster centres fitted, per k, on "
+      + "those issues' vectors alone, and the median read from their members; an empty history "
+      + "leaves the value missing; the outer test also answers in the _inner columns, from the "
+      + "inner fitting history alone, and never enters a history or a fit";
 
   /** Where each setting is read from: the environment, then the system properties. */
   private final Function<String, String> settings;
@@ -270,10 +269,13 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     }
     System.out.printf("%n  K-MEANS FITS (%s, seed %d)%n", clusterer.describe(),
         Augmentation.CLUSTER_SEED);
-    for (final Augmentation.ClusterFit f : r.result().clusterFits()) {
-      System.out.printf("    %-6s k %2d  %,6d vectors  %,6d distinct  %s%n",
-          name(f.variant()), f.k(), f.vectors(), f.distinct(),
-          f.fitted() ? String.format("distortion %.6f", f.distortion()) : "not fitted");
+    System.out.println("    point in time: each row's centres fitted on the members its history"
+        + " admits; the widest fit, the one the scored rows read, shown");
+    for (final Map<String, Object> f : fits(r.result().clusterFits())) {
+      System.out.printf("    %-6s k %2d  %,6d fits (%,6d fitted)  widest %,6d vectors  %,6d "
+          + "distinct  %s%n", f.get("variant"), f.get("k"), f.get("fits"), f.get("fitted_fits"),
+          f.get("vectors"), f.get("distinct"), f.get("distortion") == null ? "not fitted"
+              : String.format("distortion %.6f", (Double) f.get("distortion")));
     }
     System.out.printf("%n  HISTORIES: %s%n", "point-in-time, only the training side's issues "
         + "that teach there, first resolved strictly before each row's first commit; the outer "
@@ -364,22 +366,33 @@ public final class IssuesSimilarityCommand implements CommandRunner {
   }
 
   /**
-   * Each K-means fit for the run record: its history, k, vector counts and distortion, which is
-   * null when not fitted.
+   * The K-means fits for the run record, per variant and k: how many fits the point-in-time
+   * histories took and how many were fitted, and the widest fit's vector counts and distortion,
+   * which is null when not fitted.
    */
   static List<Map<String, Object>> fits(final List<Augmentation.ClusterFit> fits) {
-    final List<Map<String, Object>> out = new ArrayList<>();
+    final Map<String, Map<String, Object>> out = new LinkedHashMap<>();
     for (final Augmentation.ClusterFit f : fits) {
-      final Map<String, Object> fit = new LinkedHashMap<>();
-      fit.put("variant", name(f.variant()));
-      fit.put("k", f.k());
-      fit.put("vectors", f.vectors());
-      fit.put("distinct", f.distinct());
-      fit.put("fitted", f.fitted());
-      fit.put("distortion", f.fitted() ? f.distortion() : null);
-      out.add(fit);
+      final Map<String, Object> fit = out.computeIfAbsent(name(f.variant()) + "\t" + f.k(),
+          key -> {
+            final Map<String, Object> m = new LinkedHashMap<>();
+            m.put("variant", name(f.variant()));
+            m.put("k", f.k());
+            m.put("fits", 0);
+            m.put("fitted_fits", 0);
+            m.put("vectors", -1);
+            return m;
+          });
+      fit.merge("fits", 1, (a, b) -> (Integer) a + (Integer) b);
+      fit.merge("fitted_fits", f.fitted() ? 1 : 0, (a, b) -> (Integer) a + (Integer) b);
+      if (f.vectors() > (Integer) fit.get("vectors")) {
+        fit.put("vectors", f.vectors());
+        fit.put("distinct", f.distinct());
+        fit.put("fitted", f.fitted());
+        fit.put("distortion", f.fitted() ? f.distortion() : null);
+      }
     }
-    return out;
+    return List.copyOf(out.values());
   }
 
   /**
@@ -447,14 +460,14 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     out.put("embedding-chunks.tsv", chunks);
 
     final List<String> fits = new ArrayList<>(List.of("variant\tk\tvectors\tdistinct\tfitted"
-        + "\tdistortion"));
+        + "\tdistortion\trows"));
     final List<String> sizes = new ArrayList<>(List.of("variant\tk\tcluster\tmembers"));
     final List<String> makeup = new ArrayList<>(List.of("variant\tk\tcluster\tproject\tmembers"));
     for (final Augmentation.ClusterFit f : r.result().clusterFits()) {
       final String at = String.join("\t", name(f.variant()), Integer.toString(f.k()));
       fits.add(String.join("\t", at, Integer.toString(f.vectors()),
           Integer.toString(f.distinct()), Boolean.toString(f.fitted()),
-          f.fitted() ? Double.toString(f.distortion()) : ""));
+          f.fitted() ? Double.toString(f.distortion()) : "", Integer.toString(f.rows())));
       for (int c = 0; c < f.members().size(); c++) {
         final List<String> members = f.members().get(c);
         sizes.add(String.join("\t", at, Integer.toString(c), Integer.toString(members.size())));
@@ -469,12 +482,13 @@ public final class IssuesSimilarityCommand implements CommandRunner {
     out.put("cluster-sizes.tsv", sizes);
     out.put("cluster-projects.tsv", makeup);
     final List<String> assigned = new ArrayList<>(List.of("id\tvariant\tsplit\tk\tcluster"
-        + "\tdistance\tmembers"));
+        + "\tdistance\tmembers\thistory"));
     for (final Augmentation.ClusterQuery q : r.result().clusterQueries()) {
       final boolean none = q.cluster() < 0;
       assigned.add(String.join("\t", q.id(), name(q.variant()), q.split(),
           Integer.toString(q.k()), none ? "" : Integer.toString(q.cluster()),
-          none ? "" : Double.toString(q.distance()), Integer.toString(q.members())));
+          none ? "" : Double.toString(q.distance()), Integer.toString(q.members()),
+          Integer.toString(q.history())));
     }
     out.put("cluster-queries.tsv", assigned);
 

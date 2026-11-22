@@ -103,8 +103,8 @@ For one issue, the training-side issues that teach at its level, the crossing is
 them, whose first resolution comes strictly before that issue's first commit, the issue itself
 never among them either: only labels already known when its work began. It may be empty, and its summary is then missing. In the revised design of the
 first-commit temporal split every history is one: the reporter median, the similarity medians and the analogy estimate. The
-embedding clusters are drawn from the training side's descriptions and do not read labels.
-Only the median of the members is point-in-time.
+embedding clusters too are fitted on that history's descriptions alone, so no issue that had not
+ended when the work began shapes the group.
 _Avoid_: dated history, causal history
 
 ### Attributes

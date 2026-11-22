@@ -384,6 +384,19 @@ class AugmentationTest {
         && x.variant() == v).findFirst().orElseThrow();
   }
 
+  /** The variant's widest fit for {@code k}, the one its scored rows read. */
+  private static Augmentation.ClusterFit widest(final Augmentation.Result r, final Variant v,
+      final int k) {
+    return r.clusterFits().stream().filter(f -> f.variant() == v && f.k() == k)
+        .max(java.util.Comparator.comparingInt(Augmentation.ClusterFit::vectors)).orElseThrow();
+  }
+
+  /** The variant's widest fit for every k, in the order of the k. */
+  private static List<Augmentation.ClusterFit> widest(final Augmentation.Result r,
+      final Variant v) {
+    return Augmentation.CLUSTER_K.stream().map(k -> widest(r, v, k)).toList();
+  }
+
   /** The description {@code text} embeds as {@code v} brought to length one. */
   private void unit(final String text, final double... v) {
     final double norm = Math.sqrt(Arrays.stream(v).map(x -> x * x).sum());
@@ -448,8 +461,7 @@ class AugmentationTest {
         assertTrue(median, q + " k=" + k + ": " + value + " is no member's duration");
       }
     }
-    final Augmentation.ClusterFit whole = r.clusterFits().stream()
-        .filter(f -> f.variant() == Variant.INNER && f.k() == 8).findFirst().orElseThrow();
+    final Augmentation.ClusterFit whole = widest(r, Variant.INNER, 8);
     assertTrue(whole.fitted());
     assertEquals(32, whole.vectors());
     assertEquals(List.of(4, 4, 4, 4, 4, 4, 4, 4),
@@ -474,8 +486,7 @@ class AugmentationTest {
       assertTrue(embedding(r, q, 5, Variant.INNER) != null);
       assertEquals(-1, assignment(r, q, 16, Variant.INNER).cluster());
     }
-    final List<Augmentation.ClusterFit> whole = r.clusterFits().stream()
-        .filter(f -> f.variant() == Variant.INNER).toList();
+    final List<Augmentation.ClusterFit> whole = widest(r, Variant.INNER);
     assertEquals(List.of(8, 16, 32), whole.stream().map(Augmentation.ClusterFit::k).toList());
     assertEquals(List.of(true, false, false),
         whole.stream().map(Augmentation.ClusterFit::fitted).toList());
@@ -536,14 +547,17 @@ class AugmentationTest {
       issue("t" + i, "TEST", "", 10L * i, 7, "t" + i);
     }
     final Augmentation.Result r = run(issues);
-    assertEquals(List.of(true, false, false, true, true, false), r.clusterFits().stream()
-        .map(Augmentation.ClusterFit::fitted).toList(), "ten inner vectors, twenty outer");
-    for (final Augmentation.ClusterFit f : r.clusterFits()) {
+    final List<Augmentation.ClusterFit> widest = new ArrayList<>(widest(r, Variant.INNER));
+    widest.addAll(widest(r, Variant.OUTER));
+    assertEquals(List.of(true, false, false, true, true, false), widest.stream()
+        .map(Augmentation.ClusterFit::fitted).toList(), "nine inner vectors, eighteen outer");
+    for (final Augmentation.ClusterFit f : widest) {
       if (!f.fitted()) {
         continue;
       }
       final List<String> members = f.members().stream().flatMap(List::stream).toList();
-      assertEquals(f.variant() == Variant.INNER ? 10 : 20, members.size(), f.toString());
+      // the last rows start at hour 90, before the tenth fitting and validation issues end
+      assertEquals(f.variant() == Variant.INNER ? 9 : 18, members.size(), f.toString());
       assertTrue(members.stream().noneMatch(m -> m.startsWith("t")), f.toString());
       assertEquals(f.variant() == Variant.OUTER, members.stream().anyMatch(m -> m.startsWith("v")),
           f.toString());
@@ -601,9 +615,8 @@ class AugmentationTest {
       fitted += f.fitted() ? 1 : 0;
     }
     assertTrue(fitted > 0, "the clusters were exercised");
-    final Augmentation.ClusterFit whole = r.clusterFits().stream()
-        .filter(f -> f.variant() == Variant.INNER).findFirst().orElseThrow();
-    assertEquals(32, whole.vectors(), "the forty fitting issues but the eight of 0");
+    assertEquals(32, widest(r, Variant.INNER, 8).vectors(),
+        "the forty fitting issues but the eight of 0");
     // the reporter's every fitting issue but the zeros: 1 + i % 7 over the 32, median 4
     assertEquals(4.0, reporter(r, "v", Variant.INNER));
     assertEquals(4.0, reporter(r, "t", Variant.OUTER));
@@ -698,42 +711,70 @@ class AugmentationTest {
   }
 
   @Test
-  @DisplayName("crossing issues: the cluster centres are fitted on the whole training side, "
-      + "crossing issues included, in the same order, so every fit and every row's nearest centre "
-      + "is that of the same issues unmarked; only the members a median reads change")
-  void crossingCentres() {
+  @DisplayName("point in time: issues that end after every row's first commit move no column of "
+      + "any of those rows, the clusters' included: no group is shaped by an issue not yet ended")
+  void futureIssuesShapeNoCluster() {
     random(7);
     randomVectors(3);
-    final Augmentation.Result plain = run(issues);
-    final Augmentation.Result marked = run(crossed());
-    assertEquals(plain.clusterFits().size(), marked.clusterFits().size());
-    boolean fewer = false;
-    for (int f = 0; f < plain.clusterFits().size(); f++) {
-      final Augmentation.ClusterFit a = plain.clusterFits().get(f);
-      final Augmentation.ClusterFit b = marked.clusterFits().get(f);
-      assertEquals(a.variant(), b.variant());
-      assertEquals(a.k(), b.k());
-      assertEquals(a.vectors(), b.vectors(), "the training side's vectors, crossing included");
-      assertEquals(a.distinct(), b.distinct());
-      assertEquals(a.fitted(), b.fitted());
-      assertEquals(Double.doubleToLongBits(a.distortion()),
-          Double.doubleToLongBits(b.distortion()), a.variant() + " " + a.k());
-      fewer |= b.members().stream().mapToInt(List::size).sum()
-          < a.members().stream().mapToInt(List::size).sum();
+    final Augmentation.Result before = run(issues);
+    final List<Augmentation.Issue> with = new ArrayList<>(issues);
+    final Random rng = new Random(9);
+    for (int i = 0; i < 40; i++) {
+      unit("z" + i, rng.nextGaussian(), rng.nextGaussian(), rng.nextGaussian());
+      with.add(new Augmentation.Issue("z" + i, "p", "r", (10_000L + i) * H, (10_005L + i) * H, 5,
+          5, "TRAIN", "TRAIN", "z" + i));
     }
-    assertTrue(fewer, "the crossing issues left the members");
-    final Map<String, Augmentation.ClusterQuery> before = new HashMap<>();
-    plain.clusterQueries().forEach(q -> before.put(q.id() + q.variant() + q.k(), q));
-    int compared = 0;
-    for (final Augmentation.ClusterQuery q : marked.clusterQueries()) {
-      final Augmentation.ClusterQuery p = before.get(q.id() + q.variant() + q.k());
-      if (p != null && q.cluster() >= 0) {
-        assertEquals(p.cluster(), q.cluster(), q.toString());
-        assertEquals(Double.doubleToLongBits(p.distance()), Double.doubleToLongBits(q.distance()));
-        compared++;
+    final Augmentation.Result after = run(with);
+    int clusters = 0;
+    for (final Augmentation.Issue i : issues) {
+      assertEquals(before.columns().get(i.id()), after.columns().get(i.id()), i.id());
+      for (final int k : Augmentation.CLUSTER_K) {
+        clusters += before.columns().get(i.id()).containsKey(Augmentation.cluster(k,
+            Variant.INNER)) ? 1 : 0;
       }
     }
-    assertTrue(compared > 100, "rows compared: " + compared);
+    assertTrue(clusters > 50, "the cluster columns were exercised: " + clusters);
+    final Map<String, Augmentation.ClusterQuery> was = new HashMap<>();
+    before.clusterQueries().forEach(q -> was.put(q.id() + q.variant() + q.k(), q));
+    for (final Augmentation.ClusterQuery q : after.clusterQueries()) {
+      final Augmentation.ClusterQuery p = was.get(q.id() + q.variant() + q.k());
+      if (p != null) {
+        assertEquals(p, q, "the same fit, cluster and distance");
+      }
+    }
+  }
+
+  @Test
+  @DisplayName("point in time: each row's fit holds the members its history admits and no other, "
+      + "those resolved strictly before its first commit; rows admitting the same members share "
+      + "one fit")
+  void eachRowItsOwnFit() {
+    random(7);
+    randomVectors(3);
+    final List<Augmentation.Issue> rows = crossed();
+    final Augmentation.Result r = run(rows);
+    final Map<String, Augmentation.Issue> byId = new HashMap<>();
+    rows.forEach(i -> byId.put(i.id(), i));
+    int checked = 0;
+    for (final Augmentation.ClusterQuery q : r.clusterQueries()) {
+      final Augmentation.Issue query = byId.get(q.id());
+      final long admitted = rows.stream().filter(h -> h.description() != null
+          && Verdict.teaches(q.variant(), h.outer(), h.inner()) && h.counted(q.variant())
+          && h.resolved() < query.start()).count();
+      assertEquals(admitted, q.history(), q.toString());
+      checked++;
+    }
+    assertTrue(checked > 300, "rows checked: " + checked);
+    for (final Variant v : Variant.values()) {
+      for (final int k : Augmentation.CLUSTER_K) {
+        final List<Augmentation.ClusterFit> fits = r.clusterFits().stream()
+            .filter(f -> f.variant() == v && f.k() == k).toList();
+        assertEquals(fits.size(), fits.stream().map(Augmentation.ClusterFit::vectors).distinct()
+            .count(), "one fit per admitted prefix");
+        assertEquals(r.clusterQueries().stream().filter(q -> q.variant() == v && q.k() == k)
+            .count(), fits.stream().mapToInt(Augmentation.ClusterFit::rows).sum());
+      }
+    }
   }
 
   @Test
